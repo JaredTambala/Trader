@@ -18,5 +18,5 @@ def load_config() -> Config:
     return Config(
         mode=os.getenv("MODE", "once"),
         strategy_id=os.getenv("STRATEGY_ID", "noop"),
-        db_path=os.getenv("DB_PATH", "/data/events.duckdb"),
+        db_path=os.getenv("DB_PATH", "events.duckdb"),
     )
