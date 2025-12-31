@@ -2,7 +2,7 @@
 
 from .broker import Broker, NoOpBroker
 from .config import Config, load_config
-from .data import EventStore, NoOpEventStore
+from .data import DuckDBEventStore, EventStore, NoOpEventStore
 from .risk import RiskManager, NoOpRiskManager
 from .strategy import Strategy, NoOpStrategy
 
@@ -12,6 +12,7 @@ __all__ = [
     "Config",
     "load_config",
     "EventStore",
+    "DuckDBEventStore",
     "NoOpEventStore",
     "RiskManager",
     "NoOpRiskManager",
