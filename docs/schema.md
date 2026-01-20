@@ -14,12 +14,30 @@ This document describes the DuckDB schema used as the authoritative event store.
 - `status` (TEXT)
 - `error_message` (TEXT, nullable)
 
-### `market_data_events`
+### `stock_bar_events`
 - `symbol` (TEXT)
 - `ts` (TIMESTAMP)
 - `ingested_at` (TIMESTAMP)
-- `price` (DOUBLE)
-- `volume` (DOUBLE, nullable)
+- `open` (DOUBLE)
+- `high` (DOUBLE)
+- `low` (DOUBLE)
+- `close` (DOUBLE)
+- `volume` (DOUBLE)
+- `trade_count` (DOUBLE, nullable)
+- `vwap` (DOUBLE, nullable)
+- `source` (TEXT)
+
+### `crypto_bar_events`
+- `symbol` (TEXT)
+- `ts` (TIMESTAMP)
+- `ingested_at` (TIMESTAMP)
+- `open` (DOUBLE)
+- `high` (DOUBLE)
+- `low` (DOUBLE)
+- `close` (DOUBLE)
+- `volume` (DOUBLE)
+- `trade_count` (DOUBLE, nullable)
+- `vwap` (DOUBLE, nullable)
 - `source` (TEXT)
 
 ### `signal_events`
@@ -61,13 +79,26 @@ This document describes the DuckDB schema used as the authoritative event store.
 - `run_events.run_id` is unique.
 - `order_events.client_order_id` is unique.
 - `config_kv.key` is unique.
-- `market_data_events` uses a unique index on `(symbol, ts, source)` to prevent duplicates.
+- `stock_bar_events` uses a unique index on `(symbol, ts, source)` to prevent duplicates.
+- `crypto_bar_events` uses a unique index on `(symbol, ts, source)` to prevent duplicates.
 - Timestamps are stored in UTC.
+
+## Identifier Formats
+
+- `run_id` is `run_<sha256>` derived from `STRATEGY_ID` and `decision_ts` in UTC ISO-8601.
+- `client_order_id` is `order_<sha256>` derived from `run_id`, `symbol` (uppercased),
+  `side` (lowercased), and `target_qty` normalized to 8 decimal places.
+
+## Guarantees
+
+- Same inputs produce the same `run_id` and `client_order_id`.
+- Deterministic IDs enable idempotent retries without duplicate orders.
 
 ## Event Semantics
 
 - `run_events` is the authoritative record of each execution cycle.
-- `market_data_events` stores raw ingested data before signals.
+- `stock_bar_events` stores Alpaca stock OHLCV bars.
+- `crypto_bar_events` stores Alpaca crypto OHLCV bars.
 - `signal_events` stores strategy outputs tied to `run_id`.
 - `order_events` stores the canonical order lifecycle events.
 - `fill_events` records executions tied to `client_order_id`.
@@ -101,11 +132,19 @@ FROM (
 WHERE rn = 1;
 ```
 
-Latest market data per symbol:
+Latest stock bar per symbol:
 
 ```sql
-SELECT symbol, price, ts
-FROM market_data_events
+SELECT symbol, close, ts
+FROM stock_bar_events
+QUALIFY ts = MAX(ts) OVER (PARTITION BY symbol);
+```
+
+Latest crypto bar per symbol:
+
+```sql
+SELECT symbol, close, ts
+FROM crypto_bar_events
 QUALIFY ts = MAX(ts) OVER (PARTITION BY symbol);
 ```
 

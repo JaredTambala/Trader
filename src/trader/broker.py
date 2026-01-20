@@ -11,11 +11,32 @@ class Broker(ABC):
 
     @abstractmethod
     def submit_orders(self, orders: Iterable[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
-        """Submit orders and return broker responses."""
+        """Submit orders and return broker responses.
+
+        Args:
+            orders: Iterable of order payloads ready for execution.
+
+        Returns:
+            Sequence of broker response payloads.
+
+        Raises:
+            Exception: Implementations raise if submission fails or is rejected.
+        """
 
 
 class NoOpBroker(Broker):
     """Broker that accepts orders without executing them."""
 
     def submit_orders(self, orders: Iterable[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
+        """Accept orders without executing them.
+
+        Args:
+            orders: Iterable of order payloads.
+
+        Returns:
+            An empty list, since no orders are actually submitted.
+
+        Raises:
+            None.
+        """
         return []
