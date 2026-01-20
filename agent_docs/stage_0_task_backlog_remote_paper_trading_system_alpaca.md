@@ -11,6 +11,7 @@
 - **Single node**, single container
 - **DuckDB is the authoritative store**
 - **Alpaca paper brokerage** is the default execution target
+- **Alpaca integrations must use the official Alpaca Python SDK (`alpaca-py`)** (avoid raw HTTP unless the SDK is missing an endpoint)
 - All execution must be **idempotent**
 - Failures default to **no trading**
 - No distributed systems, no Airflow, no Spark, no MLflow
@@ -280,7 +281,7 @@ Guarantee idempotency across retries and restarts.
 Ingest live or near-live market data.
 
 **Scope**
-- Implement polling or websocket client
+- Implement polling or websocket client using `alpaca-py` market data clients
 - Persist **raw** market data events to DuckDB
 - Minimal normalization (timestamp, symbol)
 
@@ -338,6 +339,7 @@ Execute real paper trades via Alpaca from the VPS with a well-defined, idempoten
 
 ### Configuration
 - Load Alpaca credentials from env vars
+- Use `alpaca-py` to interact with Alpaca trading APIs (avoid raw HTTP unless required)
 
 ### Broker methods
 Implement:
@@ -516,4 +518,3 @@ Run unattended in the cloud.
 - Restarts on failure
 - Logs accessible
 - Health endpoint reachable
-

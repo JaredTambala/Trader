@@ -12,11 +12,25 @@ class Strategy(ABC):
     @property
     @abstractmethod
     def strategy_id(self) -> str:
-        """Unique identifier for the strategy version."""
+        """Unique identifier for the strategy version.
+
+        Returns:
+            Strategy identifier string.
+
+        Raises:
+            None.
+        """
 
     @abstractmethod
     def generate_signals(self) -> Iterable[Mapping[str, object]]:
-        """Return signal payloads to be validated and routed."""
+        """Return signal payloads to be validated and routed.
+
+        Returns:
+            Iterable of signal payload mappings.
+
+        Raises:
+            Exception: Implementations may raise on data or logic errors.
+        """
 
 
 class NoOpStrategy(Strategy):
@@ -24,7 +38,23 @@ class NoOpStrategy(Strategy):
 
     @property
     def strategy_id(self) -> str:
+        """Return the no-op strategy identifier.
+
+        Returns:
+            Strategy identifier string.
+
+        Raises:
+            None.
+        """
         return "noop"
 
     def generate_signals(self) -> Iterable[Mapping[str, object]]:
+        """Return an empty signal list.
+
+        Returns:
+            Empty iterable.
+
+        Raises:
+            None.
+        """
         return []

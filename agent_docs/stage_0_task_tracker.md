@@ -54,7 +54,7 @@ Complete (pending verification in your environment).
 - Tests: `tests/test_data.py`.
 
 ### Review Notes
-- `market_data_events` enforces uniqueness on `(symbol, ts, source)` via an index; confirm if this matches desired ingestion behavior.
+- `stock_bar_events` and `crypto_bar_events` enforce uniqueness on `(symbol, ts, source)` via indexes.
 - `run_events` is single-row per run; later tasks may expand lifecycle handling if intermediate states are needed.
 - Default `DB_PATH` is now `events.duckdb` so `run_cycle` works without `/data`; tests still override it per run.
 
@@ -62,4 +62,75 @@ Complete (pending verification in your environment).
 - Tests passed with `UV_CACHE_DIR=.uv-cache uv run pytest`.
 
 ### Open Questions
-- Should `market_data_events` allow duplicates for the same `(symbol, ts, source)` or keep the unique index?
+- None.
+
+---
+
+## Task 0.3 — Deterministic Run & Order Identity
+
+### Status
+In progress (deterministic IDs and run lifecycle implemented; order idempotency pending order generation).
+
+### What was delivered
+- Deterministic `run_id` and `client_order_id` helpers.
+- `run_cycle` uses deterministic `run_id` and records started/success/failed lifecycle.
+- `DuckDBEventStore` supports run start/finish upserts for idempotent retries.
+- Tests for deterministic IDs and run lifecycle behavior.
+
+### Evidence
+- Identifier helpers: `src/trader/identifiers.py`.
+- Run lifecycle recording: `src/trader/cycle.py`, `src/trader/data.py`.
+- Tests: `tests/test_identifiers.py`, `tests/test_data.py`, `tests/test_cycle.py`.
+- Documentation: `docs/schema.md`.
+
+### Review Notes
+- Run lifecycle uses a single-row update (insert + update) rather than append-only events.
+- Deterministic IDs rely on UTC ISO-8601 timestamps and 8-decimal quantity normalization.
+
+### Testing
+- Tests passed with `UV_CACHE_DIR=.uv-cache uv run pytest`.
+
+### Open Questions
+- Should run lifecycle be modeled as append-only events instead of a single row update?
+- Confirm `target_qty` normalization precision (8 decimals) aligns with intended instruments.
+
+---
+
+## Task 0.4 — Market Data Ingestion (Streaming-Lite)
+
+### Status
+Complete (pending validation of Alpaca data credentials in the runtime environment).
+
+### What was delivered
+- Market data ingestion module with source interface, Alpaca polling source (via `alpaca-py`), and persistence helper.
+- Cycle now ingests market data before strategy and skips trading on missing/stale data.
+- Stock and crypto bars are stored in separate OHLCV tables with dedicated event types.
+- Tests covering ingestion ordering, staleness skip, and persistence to DuckDB.
+- Ops doc updated with market data configuration.
+- Local `.env` template and README instructions for Alpaca ingestion.
+
+### Evidence
+- Market data module: `src/trader/market_data.py`.
+- Cycle integration: `src/trader/cycle.py`.
+- Config additions: `src/trader/config.py`.
+- Alpaca bar parsing: `src/trader/alpaca_market_data.py`.
+- Event store schema: `src/trader/data.py`.
+- Tests: `tests/test_market_data.py`.
+- Schema tests: `tests/test_data.py`.
+- Documentation: `docs/ops.md`.
+- Local env template: `.env`.
+- README updates: `README.md`.
+
+### Review Notes
+- Default `MARKET_DATA_SOURCE=noop` skips trading; set `MARKET_DATA_SOURCE=alpaca` and `MARKET_DATA_SYMBOLS` to enable ingestion.
+- Staleness check uses the newest event timestamp; all events are still persisted even if stale.
+- Alpaca ingestion uses `MARKET_DATA_ASSET_CLASS=stocks|crypto` to select the alpaca-py client.
+- Alpaca bar parsing now supports `timestamp/close/volume` attribute names in addition to `t/c/v`.
+- Stock data can now set `MARKET_DATA_STOCK_FEED=iex|sip` (Basic plan should use `iex`).
+- Alpaca stock and crypto bars now persist to `stock_bar_events` and `crypto_bar_events`; the legacy `market_data_events` table was dropped.
+
+### Testing
+- Tests passed with `UV_CACHE_DIR=.uv-cache uv run pytest`.
+
+### Open Questions
+- Should unknown `MARKET_DATA_SOURCE` values raise errors instead of skipping ingestion?
