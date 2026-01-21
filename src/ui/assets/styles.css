@@ -57,16 +57,51 @@ body {
 .section-title {
   font-size: 16px;
   font-weight: 600;
+  color: #9a6b55;
 }
 
 .filter-row {
   flex-wrap: wrap;
   gap: 16px;
+  align-items: flex-end;
 }
 
 .field {
   min-width: 180px;
   flex: 1 1 180px;
+}
+
+.range-field {
+  min-width: 320px;
+  flex: 1 1 320px;
+}
+
+.range-row {
+  justify-content: flex-start;
+}
+
+.range-row .range-field {
+  flex: 1 1 100%;
+}
+
+.range-stack {
+  gap: 10px;
+}
+
+.range-inputs {
+  gap: 10px;
+  align-items: center;
+}
+
+.range-label {
+  min-width: 44px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.range-inputs .input {
+  flex: 1 1 120px;
+  min-width: 120px;
 }
 
 .field-label {
@@ -109,12 +144,25 @@ body {
 
 .chart-card {
   min-height: 1040px;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.chart-scroll {
+  width: 100%;
+  max-width: 100%;
+  display: block;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  padding-bottom: 8px;
 }
 
 .plotly-chart {
-  width: 1280px;
+  display: inline-block;
   height: 1024px;
-  max-width: 100%;
+  min-width: 1280px;
+  width: auto;
+  overflow-x: auto;
 }
 
 .empty-state {

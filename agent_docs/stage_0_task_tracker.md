@@ -160,6 +160,8 @@ Complete (local UI scaffolded; run with Reflex).
 - DuckDB-backed queries for both `stock_bar_events` and `crypto_bar_events`.
 - Candlestick chart with session axis (no time gaps) and real-time axis toggle.
 - Session axis uses timestamp labels (category axis) with 45° ticks and higher-resolution visibility on zoom.
+- Chart drag mode toggle (zoom/pan), y-axis locked, and scroll-zoom enabled.
+- Date + time range inputs for precise filtering (no data-dependent timestamp dropdowns).
 - Docs updated with run instructions.
 
 ### Evidence
@@ -173,12 +175,19 @@ Complete (local UI scaffolded; run with Reflex).
 ## Task 0.5 — Postgres Migration (No Data Carry-Over)
 
 ### Status
-Planned.
+In progress (Postgres event store wired into ingestion/backfill; docs + deps updated).
 
 ### What is planned
 - Replace DuckDB with Postgres for concurrent streaming + trading workloads.
 - Fresh schema only (no data migration).
 - Postgres-backed `EventStore`, updated UI queries, and tests.
+- Docker compose bootstrap and runbook steps for local Postgres.
 
 ### Evidence
 - Task definition in `agent_docs/stage_0_task_backlog_remote_paper_trading_system_alpaca.md`.
+- Docker compose file: `docker-compose.postgres.yml`.
+- Event store + selection logic: `src/trader/data.py`, `src/trader/cycle.py`.
+- Ingestion/backfill wiring: `src/trader/market_data_stream.py`, `src/trader/market_data_backfill.py`.
+- Dependency + tests updates: `pyproject.toml`, `tests/test_market_data.py`.
+- UI Postgres connectivity: `src/ui/ui/state.py`, `README.md`, `docs/ops.md`.
+- Runbook updates: `README.md`, `docs/ops.md`.

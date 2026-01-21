@@ -12,7 +12,7 @@ from typing import Sequence
 
 from .broker import Broker, NoOpBroker
 from .config import Config, load_config
-from .data import DuckDBEventStore, EventStore
+from .data import EventStore, build_event_store
 from .identifiers import deterministic_run_id
 from .alpaca_market_data import AlpacaMarketDataSource
 from .market_data import (
@@ -67,9 +67,10 @@ def run_cycle(
 
     owns_event_store = False
     if event_store is None:
-        db_path = Path(config.db_path)
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        event_store = DuckDBEventStore(str(db_path))
+        if config.event_store.lower() == "duckdb":
+            db_path = Path(config.db_path)
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+        event_store = build_event_store(config)
         owns_event_store = True
 
     if market_data_source is None:
@@ -229,6 +230,7 @@ def _log_startup_env() -> None:
         "MODE",
         "STRATEGY_ID",
         "DB_PATH",
+        "EVENT_STORE",
         "MARKET_DATA_SOURCE",
         "MARKET_DATA_ASSET_CLASS",
         "MARKET_DATA_STOCK_FEED",
@@ -238,10 +240,16 @@ def _log_startup_env() -> None:
         "ALPACA_SECRET_KEY",
         "ALPACA_DATA_BASE_URL",
         "ALPACA_BASE_URL",
+        "PG_DSN",
+        "PG_HOST",
+        "PG_PORT",
+        "PG_DB",
+        "PG_USER",
+        "PG_PASSWORD",
     ]
     masked = {
         key: _mask_secret(os.getenv(key))
-        if key in {"ALPACA_API_KEY", "ALPACA_SECRET_KEY"}
+        if key in {"ALPACA_API_KEY", "ALPACA_SECRET_KEY", "PG_PASSWORD"}
         else os.getenv(key, "<unset>")
         for key in keys
     }

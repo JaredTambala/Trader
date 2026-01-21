@@ -3,7 +3,7 @@
 from .broker import Broker, NoOpBroker
 from .config import Config, load_config
 from .alpaca_market_data import AlpacaMarketDataSource
-from .data import DuckDBEventStore, EventStore, NoOpEventStore
+from .data import DuckDBEventStore, EventStore, NoOpEventStore, PostgresEventStore
 from .identifiers import deterministic_client_order_id, deterministic_run_id
 from .market_data import (
     CryptoBarEvent,
@@ -27,6 +27,7 @@ __all__ = [
     "EventStore",
     "DuckDBEventStore",
     "NoOpEventStore",
+    "PostgresEventStore",
     "deterministic_client_order_id",
     "deterministic_run_id",
     "CryptoBarEvent",

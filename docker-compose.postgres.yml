@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: trader-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${PG_DB:-trader}
+      POSTGRES_USER: ${PG_USER:-trader}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-traderpass}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+volumes:
+  postgres_data:

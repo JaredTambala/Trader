@@ -18,7 +18,7 @@ from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 from dotenv import load_dotenv
 
 from .config import Config, load_config
-from .data import DuckDBEventStore, EventStore
+from .data import DuckDBEventStore, EventStore, PostgresEventStore, build_event_store
 from .market_data import CryptoBarEvent, StockBarEvent
 
 
@@ -62,7 +62,7 @@ class MarketDataBackfillRunner:
         self._spec = spec
         self._asset_class = (asset_class or config.market_data_asset_class).lower()
         self._symbols = list(symbols) if symbols else list(config.market_data_symbols)
-        self._event_store = event_store or DuckDBEventStore(config.db_path)
+        self._event_store = event_store or build_event_store(config)
         self._owns_event_store = event_store is None
         self._client = _build_client(self._asset_class, config)
 
@@ -120,6 +120,10 @@ class MarketDataBackfillRunner:
                 connection = self._event_store.connection()
                 for table_name, events in events_by_table.items():
                     _merge_events(connection, table_name, events)
+            elif isinstance(self._event_store, PostgresEventStore):
+                connection = self._event_store.connection()
+                for table_name, events in events_by_table.items():
+                    _upsert_events_postgres(connection, table_name, events)
             else:
                 for events in events_by_table.values():
                     for event in events:
@@ -290,6 +294,30 @@ def _merge_events(
         """
     )
     connection.execute(f"DROP TABLE {staging_table}")
+
+
+def _upsert_events_postgres(
+    connection: object,
+    table_name: str,
+    events: Sequence[StockBarEvent | CryptoBarEvent],
+) -> None:
+    """Insert events into Postgres with ON CONFLICT DO NOTHING."""
+    if not events:
+        return
+    payloads = [event.to_payload() for event in events]
+    columns = list(payloads[0].keys())
+    from psycopg import sql
+
+    query = sql.SQL(
+        "INSERT INTO {table} ({fields}) VALUES ({values}) "
+        "ON CONFLICT (symbol, timeframe, ts, source) DO NOTHING"
+    ).format(
+        table=sql.Identifier(table_name),
+        fields=sql.SQL(", ").join(sql.Identifier(col) for col in columns),
+        values=sql.SQL(", ").join(sql.Placeholder() for _ in columns),
+    )
+    with connection.cursor() as cursor:
+        cursor.executemany(query, [list(payload.values()) for payload in payloads])
 
 
 def _bar_value(bar: object, attr: str, keys: tuple[str, ...]) -> object | None:
