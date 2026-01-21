@@ -18,6 +18,7 @@ class StockBarEvent:
     """Bar event for stock market data."""
 
     symbol: str
+    timeframe: str
     ts: datetime
     ingested_at: datetime
     open: float
@@ -44,6 +45,7 @@ class StockBarEvent:
         """
         return {
             "symbol": self.symbol,
+            "timeframe": self.timeframe,
             "ts": self.ts,
             "ingested_at": self.ingested_at,
             "open": self.open,
@@ -62,6 +64,7 @@ class CryptoBarEvent:
     """Bar event for crypto market data."""
 
     symbol: str
+    timeframe: str
     ts: datetime
     ingested_at: datetime
     open: float
@@ -88,6 +91,7 @@ class CryptoBarEvent:
         """
         return {
             "symbol": self.symbol,
+            "timeframe": self.timeframe,
             "ts": self.ts,
             "ingested_at": self.ingested_at,
             "open": self.open,

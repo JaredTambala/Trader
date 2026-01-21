@@ -109,6 +109,7 @@ def test_market_data_ingested_before_strategy(tmp_path: Path) -> None:
     events = [
         StockBarEvent(
             symbol="AAPL",
+            timeframe="1Min",
             ts=now,
             ingested_at=now,
             open=149.0,
@@ -146,6 +147,7 @@ def test_stale_market_data_skips_strategy(tmp_path: Path) -> None:
     events = [
         StockBarEvent(
             symbol="AAPL",
+            timeframe="1Min",
             ts=stale_ts,
             ingested_at=stale_ts,
             open=149.0,
@@ -184,6 +186,7 @@ def test_market_data_persisted_to_duckdb(tmp_path: Path) -> None:
     events = [
         StockBarEvent(
             symbol="MSFT",
+            timeframe="1Min",
             ts=now,
             ingested_at=now,
             open=299.0,
@@ -293,6 +296,7 @@ def test_alpaca_market_data_source_parses_bars() -> None:
     assert event.open == 149.0
     assert event.close == 150.5
     assert event.volume == 10.0
+    assert event.timeframe == "1Min"
 
 
 def test_crypto_bar_event_persists(tmp_path: Path) -> None:
@@ -301,6 +305,7 @@ def test_crypto_bar_event_persists(tmp_path: Path) -> None:
     now = datetime.now(timezone.utc)
     event = CryptoBarEvent(
         symbol="BTC/USD",
+        timeframe="1Min",
         ts=now,
         ingested_at=now,
         open=1.0,

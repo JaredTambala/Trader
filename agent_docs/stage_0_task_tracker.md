@@ -105,6 +105,14 @@ Complete (pending validation of Alpaca data credentials in the runtime environme
 - Market data ingestion module with source interface, Alpaca polling source (via `alpaca-py`), and persistence helper.
 - Cycle now ingests market data before strategy and skips trading on missing/stale data.
 - Stock and crypto bars are stored in separate OHLCV tables with dedicated event types.
+- Websocket streaming runner that persists Alpaca bars continuously.
+- Historical backfill runner for Alpaca bars using a time-delta window.
+- Backfill supports calendar month windows via `--since 6mo`.
+- Backfill CLI now uses a single `--since` flag (`m`/`h`/`d`/`mo`).
+- Backfill timeframe parsing now matches Alpaca formats (Min/T, Hour/H, Day/D, Week/W, Month/M).
+- Stock and crypto bar events now include a `timeframe` column and are indexed by `(symbol, timeframe, ts, source)`.
+- Backfill now paginates all available records by default; `--limit` caps totals when needed.
+- Backfill uses staging tables and `MERGE` to deduplicate reruns.
 - Tests covering ingestion ordering, staleness skip, and persistence to DuckDB.
 - Ops doc updated with market data configuration.
 - Local `.env` template and README instructions for Alpaca ingestion.
@@ -114,8 +122,12 @@ Complete (pending validation of Alpaca data credentials in the runtime environme
 - Cycle integration: `src/trader/cycle.py`.
 - Config additions: `src/trader/config.py`.
 - Alpaca bar parsing: `src/trader/alpaca_market_data.py`.
+- Websocket streaming runner: `src/trader/market_data_stream.py`.
+- Backfill runner: `src/trader/market_data_backfill.py`.
 - Event store schema: `src/trader/data.py`.
 - Tests: `tests/test_market_data.py`.
+- Streaming tests: `tests/test_market_data_stream.py`.
+- Backfill tests: `tests/test_market_data_backfill.py`.
 - Schema tests: `tests/test_data.py`.
 - Documentation: `docs/ops.md`.
 - Local env template: `.env`.
@@ -134,3 +146,18 @@ Complete (pending validation of Alpaca data credentials in the runtime environme
 
 ### Open Questions
 - Should unknown `MARKET_DATA_SOURCE` values raise errors instead of skipping ingestion?
+
+---
+
+## Task 0.4b — Minimal Data Viewer (Reflex UI)
+
+### Status
+Planned.
+
+### What is planned
+- Minimal UI to browse DuckDB market data by Type (stock/crypto), Ticker, and Timeframe.
+- Table view and time series chart view for selected data.
+- Read-only, local-first, with simple run instructions.
+
+### Evidence
+- Task definition in `agent_docs/stage_0_task_backlog_remote_paper_trading_system_alpaca.md`.

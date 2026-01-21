@@ -91,6 +91,7 @@ def test_high_frequency_market_data_inserts(tmp_path: Path) -> None:
             "stock_bar_events",
             {
                 "symbol": "AAPL",
+                "timeframe": "1Min",
                 "ts": base_ts + timedelta(milliseconds=index),
                 "ingested_at": datetime.now(timezone.utc),
                 "open": 100.0 + index,
