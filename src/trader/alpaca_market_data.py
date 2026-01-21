@@ -98,6 +98,7 @@ class AlpacaMarketDataSource(MarketDataSource):
         response = _fetch_data(self._client, self._asset_class, self._request_spec.method, request)
         data = _extract_bar_data(response)
         ingested_at = datetime.now(timezone.utc)
+        timeframe_label = str(self._request_spec.timeframe)
 
         events: list[StockBarEvent | CryptoBarEvent] = []
         for symbol in self._symbols:
@@ -137,9 +138,9 @@ class AlpacaMarketDataSource(MarketDataSource):
                 source="alpaca",
             )
             if self._asset_class in {"crypto", "cryptocurrency"}:
-                events.append(CryptoBarEvent(**common))
+                events.append(CryptoBarEvent(timeframe=timeframe_label, **common))
             else:
-                events.append(StockBarEvent(**common))
+                events.append(StockBarEvent(timeframe=timeframe_label, **common))
 
         return events
 

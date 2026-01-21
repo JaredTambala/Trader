@@ -8,6 +8,8 @@
 ## Runbook (skeleton)
 
 - Start service: `python -m trader.cycle` for one-shot mode.
+- Start streaming market data: `python -m trader.market_data_stream --symbols AAPL,MSFT`.
+- Backfill historical bars: `python -m trader.market_data_backfill --symbols AAPL,MSFT --since 120m --timeframe 1Min` (use `m`/`h`/`d`/`mo`; months are calendar months). Omit `--limit` to fetch all pages.
 - Stop service: terminate process safely.
 - Halt trading: set global halt flag (to be implemented).
 

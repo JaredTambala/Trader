@@ -292,6 +292,33 @@ Ingest live or near-live market data.
 
 ---
 
+## Task 0.4b — Minimal Data Viewer (Reflex UI)
+
+**Purpose**  
+Provide a minimal UI to inspect ingested market data from DuckDB.
+
+**Scope**
+- Build a small Reflex app that reads from DuckDB (`DB_PATH`).
+- UI filters:
+  - Type: `stock` or `crypto`
+  - Ticker (symbol)
+  - Timeframe (e.g., `1Min`, `1Hour`, `1Day`)
+- Views:
+  - Table view of bars (columns: ts, open, high, low, close, volume, vwap, trade_count)
+  - Time series chart (line chart of close over time)
+- Default behavior:
+  - Most recent timeframe + symbol
+  - Date range selector or “last N rows” selector for safety
+- No trading actions, read-only.
+
+**Acceptance Criteria**
+- UI starts with a single command and connects to DuckDB.
+- Filters update both table and chart.
+- Works for both `stock_bar_events` and `crypto_bar_events`.
+- Docs updated with how to run the UI and required env vars.
+
+---
+
 ## Task 0.5 — Minimal Strategy Implementation
 
 **Purpose**  

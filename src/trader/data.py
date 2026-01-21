@@ -185,6 +185,7 @@ class DuckDBEventStore(EventStore):
                 create_sql="""
                 CREATE TABLE IF NOT EXISTS stock_bar_events (
                     symbol TEXT,
+                    timeframe TEXT,
                     ts TIMESTAMP,
                     ingested_at TIMESTAMP,
                     open DOUBLE,
@@ -203,6 +204,7 @@ class DuckDBEventStore(EventStore):
                 create_sql="""
                 CREATE TABLE IF NOT EXISTS crypto_bar_events (
                     symbol TEXT,
+                    timeframe TEXT,
                     ts TIMESTAMP,
                     ingested_at TIMESTAMP,
                     open DOUBLE,
@@ -282,14 +284,42 @@ class DuckDBEventStore(EventStore):
 
         self._connection.execute(
             """
-            CREATE UNIQUE INDEX IF NOT EXISTS stock_bar_events_unique
-            ON stock_bar_events(symbol, ts, source)
+            ALTER TABLE stock_bar_events
+            ADD COLUMN IF NOT EXISTS timeframe TEXT
             """
         )
         self._connection.execute(
             """
+            UPDATE stock_bar_events
+            SET timeframe = '1Min'
+            WHERE timeframe IS NULL
+            """
+        )
+        self._connection.execute("DROP INDEX IF EXISTS stock_bar_events_unique")
+        self._connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS stock_bar_events_unique
+            ON stock_bar_events(symbol, timeframe, ts, source)
+            """
+        )
+        self._connection.execute(
+            """
+            ALTER TABLE crypto_bar_events
+            ADD COLUMN IF NOT EXISTS timeframe TEXT
+            """
+        )
+        self._connection.execute(
+            """
+            UPDATE crypto_bar_events
+            SET timeframe = '1Min'
+            WHERE timeframe IS NULL
+            """
+        )
+        self._connection.execute("DROP INDEX IF EXISTS crypto_bar_events_unique")
+        self._connection.execute(
+            """
             CREATE UNIQUE INDEX IF NOT EXISTS crypto_bar_events_unique
-            ON crypto_bar_events(symbol, ts, source)
+            ON crypto_bar_events(symbol, timeframe, ts, source)
             """
         )
 
@@ -422,6 +452,10 @@ class DuckDBEventStore(EventStore):
             duckdb.Error: If closing the connection fails.
         """
         self._connection.close()
+
+    def connection(self) -> duckdb.DuckDBPyConnection:
+        """Expose the underlying DuckDB connection for advanced operations."""
+        return self._connection
 
     @contextmanager
     def transaction(self) -> Iterator[None]:

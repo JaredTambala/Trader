@@ -16,6 +16,7 @@ This document describes the DuckDB schema used as the authoritative event store.
 
 ### `stock_bar_events`
 - `symbol` (TEXT)
+- `timeframe` (TEXT)
 - `ts` (TIMESTAMP)
 - `ingested_at` (TIMESTAMP)
 - `open` (DOUBLE)
@@ -29,6 +30,7 @@ This document describes the DuckDB schema used as the authoritative event store.
 
 ### `crypto_bar_events`
 - `symbol` (TEXT)
+- `timeframe` (TEXT)
 - `ts` (TIMESTAMP)
 - `ingested_at` (TIMESTAMP)
 - `open` (DOUBLE)
@@ -79,8 +81,8 @@ This document describes the DuckDB schema used as the authoritative event store.
 - `run_events.run_id` is unique.
 - `order_events.client_order_id` is unique.
 - `config_kv.key` is unique.
-- `stock_bar_events` uses a unique index on `(symbol, ts, source)` to prevent duplicates.
-- `crypto_bar_events` uses a unique index on `(symbol, ts, source)` to prevent duplicates.
+- `stock_bar_events` uses a unique index on `(symbol, timeframe, ts, source)` to prevent duplicates.
+- `crypto_bar_events` uses a unique index on `(symbol, timeframe, ts, source)` to prevent duplicates.
 - Timestamps are stored in UTC.
 
 ## Identifier Formats
@@ -137,6 +139,7 @@ Latest stock bar per symbol:
 ```sql
 SELECT symbol, close, ts
 FROM stock_bar_events
+WHERE timeframe = '1Min'
 QUALIFY ts = MAX(ts) OVER (PARTITION BY symbol);
 ```
 
@@ -145,6 +148,7 @@ Latest crypto bar per symbol:
 ```sql
 SELECT symbol, close, ts
 FROM crypto_bar_events
+WHERE timeframe = '1Min'
 QUALIFY ts = MAX(ts) OVER (PARTITION BY symbol);
 ```
 

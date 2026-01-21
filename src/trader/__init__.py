@@ -14,6 +14,8 @@ from .market_data import (
     StockBarEvent,
     StaticMarketDataSource,
 )
+from .market_data_stream import MarketDataStreamRunner
+from .market_data_backfill import MarketDataBackfillRunner
 from .risk import RiskManager, NoOpRiskManager
 from .strategy import Strategy, NoOpStrategy
 
@@ -32,6 +34,8 @@ __all__ = [
     "MarketDataSource",
     "NoOpMarketDataSource",
     "StaticMarketDataSource",
+    "MarketDataStreamRunner",
+    "MarketDataBackfillRunner",
     "StockBarEvent",
     "AlpacaMarketDataSource",
     "MarketDataIngestor",

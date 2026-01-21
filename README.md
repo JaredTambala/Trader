@@ -47,13 +47,57 @@ uv run python -m trader.cycle
 
 Market data is persisted to DuckDB at `DB_PATH` (default: `events.duckdb`).
 
-Crypto example (no keys required by Alpaca for crypto data):
+Crypto example (REST crypto endpoints do not require keys; websocket streaming still uses your keys):
 
 ```bash
 export MARKET_DATA_SOURCE=alpaca
 export MARKET_DATA_ASSET_CLASS=crypto
 export MARKET_DATA_SYMBOLS=BTC/USD,ETH/USD
 uv run python -m trader.cycle
+```
+
+## Continuous market data (websocket)
+
+Run a long-lived process that writes bars as they arrive:
+
+```bash
+export MARKET_DATA_SOURCE=alpaca
+export MARKET_DATA_ASSET_CLASS=stocks
+export MARKET_DATA_STOCK_FEED=iex
+uv run python -m trader.market_data_stream --symbols AAPL,MSFT
+```
+
+Crypto streaming example:
+
+```bash
+export MARKET_DATA_SOURCE=alpaca
+export MARKET_DATA_ASSET_CLASS=crypto
+uv run python -m trader.market_data_stream --symbols BTC/USD,ETH/USD
+```
+
+## Historical market data backfill (REST)
+
+Backfill a window of bars from a time delta in the past:
+
+```bash
+export MARKET_DATA_SOURCE=alpaca
+export MARKET_DATA_ASSET_CLASS=stocks
+export MARKET_DATA_STOCK_FEED=iex
+uv run python -m trader.market_data_backfill --symbols AAPL,MSFT --since 120m --timeframe 1Min
+uv run python -m trader.market_data_backfill --symbols AAPL,MSFT --since 30d --timeframe 1Hour
+uv run python -m trader.market_data_backfill --symbols AAPL,MSFT --since 6mo --timeframe 1Day
+```
+`--since` supports `m`/`h`/`d`/`mo` with calendar month subtraction (e.g., Mar 31 -> Feb 29).
+`--timeframe` follows Alpaca formats like `5Min`, `15T`, `1Hour`, `1Day`, `1Week`, `3Month`.
+Omit `--limit` to fetch all pages; set it to cap total bars returned.
+Backfill uses a staging table plus `MERGE`, so reruns dedupe cleanly.
+
+Crypto backfill example:
+
+```bash
+export MARKET_DATA_SOURCE=alpaca
+export MARKET_DATA_ASSET_CLASS=crypto
+uv run python -m trader.market_data_backfill --symbols BTC/USD,ETH/USD --since 6h --timeframe 1Min
 ```
 
 ## Tests
