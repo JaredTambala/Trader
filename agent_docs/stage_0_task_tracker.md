@@ -152,12 +152,18 @@ Complete (pending validation of Alpaca data credentials in the runtime environme
 ## Task 0.4b — Minimal Data Viewer (Reflex UI)
 
 ### Status
-Planned.
+Complete (local UI scaffolded; run with Reflex).
 
-### What is planned
-- Minimal UI to browse DuckDB market data by Type (stock/crypto), Ticker, and Timeframe.
-- Table view and time series chart view for selected data.
-- Read-only, local-first, with simple run instructions.
+### What was delivered
+- Reflex UI in `src/ui` with filters for Type, Ticker, Timeframe, and row limit.
+- Table view and time series chart view for selected bars.
+- DuckDB-backed queries for both `stock_bar_events` and `crypto_bar_events`.
+- Candlestick chart with session axis (no time gaps) and real-time axis toggle.
+- Session axis uses timestamp labels (category axis) with 45° ticks and higher-resolution visibility on zoom.
+- Docs updated with run instructions.
 
 ### Evidence
-- Task definition in `agent_docs/stage_0_task_backlog_remote_paper_trading_system_alpaca.md`.
+- UI app: `src/ui/ui/ui.py`, `src/ui/ui/app.py`, `src/ui/ui/pages/index.py`, `src/ui/ui/state.py`.
+- UI styles: `src/ui/assets/styles.css`.
+- Reflex config: `src/ui/rxconfig.py`.
+- README instructions: `README.md`.

@@ -305,11 +305,90 @@ Provide a minimal UI to inspect ingested market data from DuckDB.
   - Timeframe (e.g., `1Min`, `1Hour`, `1Day`)
 - Views:
   - Table view of bars (columns: ts, open, high, low, close, volume, vwap, trade_count)
-  - Time series chart (line chart of close over time)
+  - Time series chart (candlestick view)
 - Default behavior:
   - Most recent timeframe + symbol
   - Date range selector or “last N rows” selector for safety
 - No trading actions, read-only.
+
+### Trading-Session Axis (No Time Gaps)
+
+**Goal**  
+Display OHLC candlesticks with no visual gaps for overnight/weekends/holidays by using a trading-session axis: bars are spaced evenly by bar index, not by wall-clock time.
+
+**Inputs**
+- Bars from DuckDB for a selected:
+  - `asset_type`: `stock` | `crypto`
+  - `symbol` (ticker)
+  - `timeframe` (e.g., `1Min`, `5Min`, `1Hour`, `1Day`)
+  - `limit` (max rows)
+- Each bar row must include: `ts`, `open`, `high`, `low`, `close`, `volume` (optional: `vwap`, `trade_count`).
+
+**Core Behavior**
+- Sort bars ascending by `ts`.
+- Create a synthetic index `i = 0..N-1` for the sorted bars.
+- Use `i` as the x-axis, not `ts`.
+- Preserve timestamp visibility:
+  - Use `ts` as `customdata` (or equivalent) per point.
+  - Show `ts` in hover tooltip and/or tick labels.
+- Tick label strategy:
+  - Render ticks sparsely to remain readable (e.g., 6–12 ticks across the chart).
+  - For each tick index, label it with a formatted timestamp from the corresponding bar:
+    - Default format: `YYYY-MM-DD HH:mm` (timezone-aware for stocks; UTC ok for crypto).
+    - For daily/weekly/monthly timeframes, use `YYYY-MM-DD`.
+- No market calendar required: session gaps are removed implicitly because index increments only when a bar exists.
+
+**Plotly Implementation Requirements (Candlestick)**
+- Candlestick trace:
+  - `x = indices`
+  - `open/high/low/close = series`
+- Layout:
+  - `xaxis.type = "linear"`
+  - `xaxis.tickmode = "array"`
+  - `xaxis.tickvals = [indices...]`
+  - `xaxis.ticktext = [formatted timestamps...]`
+  - `hovermode = "x unified"` (optional)
+- Tooltip:
+  - Use `customdata = [ts_strings...]`
+  - `hovertemplate` includes timestamp + OHLC + volume.
+
+**UI Requirements**
+- Add a toggle in the chart view:
+  - Axis mode: Trading session | Real time
+  - Default for stocks: Trading session (recommended)
+  - Default for crypto: Real time (since it trades 24/7) or still allow session mode.
+- When switching axis mode:
+  - The figure regenerates without requerying the DB.
+
+**Data/State Changes**
+- Extend UI state to compute:
+  - `sorted_chart_rows`
+  - `x_indices`
+  - `x_tickvals`
+  - `x_ticktext`
+  - `customdata_ts`
+- Ensure the system handles:
+  - `N == 0` → show empty state
+  - `N < tick_count` → label every point or every other point
+  - Duplicate timestamps → keep stable order; index still unique
+
+**Acceptance Criteria**
+- Candlestick chart shows continuous bars with no gaps when data has overnight/weekend gaps.
+- Hover tooltip shows the true timestamp for each bar.
+- Axis tick labels show meaningful timestamps at a readable density.
+- Works for both `stock_bar_events` and `crypto_bar_events` (crypto may show continuous even in real-time mode).
+- No dependency on market calendars/holidays for this mode.
+
+**Non-goals**
+- No holiday-aware range breaks in this mode.
+- No imputation/fill of missing bars.
+- No resampling/aggregation beyond what’s already stored.
+
+**Suggested Defaults**
+- `tick_count = 8` for `limit <= 2000`, else `tick_count = 12`.
+- `label_timezone`:
+  - stocks: `America/New_York`
+  - crypto: `UTC`
 
 **Acceptance Criteria**
 - UI starts with a single command and connects to DuckDB.

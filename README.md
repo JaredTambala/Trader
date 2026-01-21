@@ -105,3 +105,15 @@ uv run python -m trader.market_data_backfill --symbols BTC/USD,ETH/USD --since 6
 ```bash
 uv run pytest
 ```
+
+## UI (Reflex data viewer)
+
+Install UI dependencies (includes Plotly for candlesticks) and run the viewer from `src/ui`:
+
+```bash
+uv sync --group ui
+cd src/ui
+uv run reflex run
+```
+
+The UI reads `DB_PATH` to locate the DuckDB file and lets you filter by type, ticker, and timeframe.
