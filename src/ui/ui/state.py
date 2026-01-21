@@ -108,13 +108,22 @@ class DataViewerState(rx.State):
                 tickangle=-45,
             )
         else:
-            fig.update_xaxes(
-                type="date",
-                tickmode="array",
-                tickvals=tickvals,
-                ticktext=ticktext,
-                tickangle=-45,
-            )
+            if tickvals:
+                fig.update_xaxes(
+                    type="date",
+                    tickmode="array",
+                    tickvals=tickvals,
+                    ticktext=ticktext,
+                    tickangle=-45,
+                )
+            else:
+                fig.update_xaxes(
+                    type="date",
+                    tickmode="auto",
+                    nticks=12,
+                    tickformat=self._axis_tickformat(),
+                    tickangle=-45,
+                )
         return fig
 
     def set_asset_type(self, value: str) -> None:
@@ -298,8 +307,11 @@ class DataViewerState(rx.State):
         customdata = [
             [self._format_ts(ts), row["volume"]] for ts, row in zip(timestamps, rows)
         ]
-        tickvals = timestamps
-        ticktext = [self._format_ts(ts) for ts in timestamps]
+        tickvals: list[object] = []
+        ticktext: list[str] = []
+        if len(timestamps) <= 400:
+            tickvals = timestamps
+            ticktext = [self._format_ts(ts) for ts in timestamps]
         return timestamps, customdata, tickvals, ticktext
 
     def _parse_ts(self, value: object) -> datetime:
