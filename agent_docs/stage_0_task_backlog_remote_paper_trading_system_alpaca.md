@@ -398,7 +398,70 @@ Display OHLC candlesticks with no visual gaps for overnight/weekends/holidays by
 
 ---
 
-## Task 0.5 — Minimal Strategy Implementation
+## Task 0.5 — Postgres Migration (No Data Carry-Over)
+
+**Purpose**  
+Enable concurrent streaming + trading workloads with a multi-connection, concurrent OLTP backend.
+
+**Scope**
+- Replace DuckDB as the authoritative event store with Postgres.
+- No data migration required (fresh schema only).
+- Maintain event semantics and idempotency guarantees.
+
+### Detailed Plan
+
+**1) Schema & Storage Layer**
+- Create Postgres DDL for all current event tables:
+  - `run_events`, `stock_bar_events`, `crypto_bar_events`, `signal_events`,
+    `order_events`, `fill_events`, `position_snapshots`, `config_kv`
+- Translate indexes/constraints to Postgres:
+  - PKs and unique indexes (e.g., `order_events.client_order_id`, `run_events.run_id`)
+  - Uniqueness for bar tables on `(symbol, timeframe, ts, source)`
+- Add migrations or bootstrap SQL that runs on startup.
+
+**2) Event Store Abstraction**
+- Introduce `PostgresEventStore` implementing `EventStore` (parity with DuckDB).
+- Ensure `record_event`, `record_run_start`, `record_run_finish`, `transaction`.
+- Use parameterized SQL and safe transactions.
+
+**3) Configuration**
+- Add environment variables:
+  - `PG_DSN` or `PG_HOST`, `PG_PORT`, `PG_DB`, `PG_USER`, `PG_PASSWORD`
+  - `EVENT_STORE=postgres|duckdb` (optional toggle during transition)
+- Update config loader and docs.
+
+**4) Data Access / Queries**
+- Update any direct DuckDB queries in the UI and data tools:
+  - UI data viewer queries to use Postgres (read-only connection).
+  - Backfill merge logic: replace DuckDB `MERGE` with `INSERT ... ON CONFLICT DO NOTHING` (or `DO UPDATE` if desired).
+- Ensure `market_data_backfill` uses Postgres staging only if needed; otherwise direct upsert.
+
+**5) Concurrency & Streaming**
+- Ensure the websocket streamer uses a separate Postgres connection pool from the trading loop.
+- Set sensible pool sizes and timeouts to avoid lock contention.
+
+**6) Tests**
+- Update tests to use Postgres:
+  - Use Docker/Postgres test container or local test database.
+  - Replace DuckDB assertions with Postgres queries.
+- Maintain unit tests for event store behavior + uniqueness constraints.
+
+**7) Docs & Runbook**
+- Update `docs/schema.md`, `docs/ops.md`, `docs/testing.md`, and `README.md`.
+- Provide new setup instructions:
+  - How to start Postgres locally
+  - How to initialize schema
+  - How to run app/tests against Postgres
+
+### Acceptance Criteria
+- All event writes/readbacks work against Postgres.
+- Concurrent streamer + trading cycle can write simultaneously without lock errors.
+- Tests pass against Postgres.
+- Docs updated with Postgres setup and operational guidance.
+
+---
+
+## Task 0.6 — Minimal Strategy Implementation
 
 **Purpose**  
 Generate deterministic trade intent.
@@ -417,7 +480,7 @@ Generate deterministic trade intent.
 
 ---
 
-## Task 0.6 — InternalPaperBroker (Deterministic Simulator)
+## Task 0.7 — InternalPaperBroker (Deterministic Simulator)
 
 **Purpose**  
 Provide deterministic execution for CI, testing, and fallback.
@@ -436,7 +499,7 @@ Provide deterministic execution for CI, testing, and fallback.
 
 ---
 
-## Task 0.7 — AlpacaPaperBroker Adapter
+## Task 0.8 — AlpacaPaperBroker Adapter
 
 **Purpose**  
 Execute real paper trades via Alpaca from the VPS with a well-defined, idempotent order lifecycle.
@@ -496,7 +559,7 @@ Implement:
 
 ---
 
-## Task 0.8 — Risk Management Layer
+## Task 0.9 — Risk Management Layer
 
 **Purpose**  
 Prevent catastrophic behaviour.
@@ -517,7 +580,7 @@ Prevent catastrophic behaviour.
 
 ---
 
-## Task 0.9 — Execution Orchestrator (Real-time + Once)
+## Task 0.10 — Execution Orchestrator (Real-time + Once)
 
 **Purpose**  
 Tie ingestion → strategy → risk → execution into a safe pipeline that can run:
@@ -571,7 +634,7 @@ Implement a `process_market_event()` pipeline that:
 
 ---
 
-## Task 0.10 — Health & Status API
+## Task 0.11 — Health & Status API
 
 **Purpose**  
 Enable remote monitoring and operations.
@@ -598,7 +661,7 @@ Enable remote monitoring and operations.
 
 ---
 
-## Task 0.11 — Containerisation & VPS Runtime
+## Task 0.12 — Containerisation & VPS Runtime
 
 **Purpose**  
 Run unattended in the cloud.

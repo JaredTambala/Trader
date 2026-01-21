@@ -167,3 +167,18 @@ Complete (local UI scaffolded; run with Reflex).
 - UI styles: `src/ui/assets/styles.css`.
 - Reflex config: `src/ui/rxconfig.py`.
 - README instructions: `README.md`.
+
+---
+
+## Task 0.5 — Postgres Migration (No Data Carry-Over)
+
+### Status
+Planned.
+
+### What is planned
+- Replace DuckDB with Postgres for concurrent streaming + trading workloads.
+- Fresh schema only (no data migration).
+- Postgres-backed `EventStore`, updated UI queries, and tests.
+
+### Evidence
+- Task definition in `agent_docs/stage_0_task_backlog_remote_paper_trading_system_alpaca.md`.
