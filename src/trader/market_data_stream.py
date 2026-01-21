@@ -15,7 +15,7 @@ from alpaca.data.live.stock import StockDataStream
 from dotenv import load_dotenv
 
 from .config import Config, load_config
-from .data import DuckDBEventStore, EventStore
+from .data import EventStore, build_event_store
 from .market_data import CryptoBarEvent, StockBarEvent
 
 
@@ -55,7 +55,7 @@ class MarketDataStreamRunner:
         self._asset_class = config.market_data_asset_class.lower()
         self._symbols = list(symbols) if symbols else list(config.market_data_symbols)
         self._stream = _build_stream(config)
-        self._event_store = event_store or DuckDBEventStore(config.db_path)
+        self._event_store = event_store or build_event_store(config)
         self._owns_event_store = event_store is None
         self._context = StreamContext(
             event_store=self._event_store,

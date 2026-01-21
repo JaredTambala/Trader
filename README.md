@@ -106,6 +106,44 @@ uv run python -m trader.market_data_backfill --symbols BTC/USD,ETH/USD --since 6
 uv run pytest
 ```
 
+## Postgres (local dev via Docker)
+
+Start a local Postgres instance for Task 0.5:
+
+```bash
+docker compose -f docker-compose.postgres.yml up -d
+```
+
+Stop and remove the container:
+
+```bash
+docker compose -f docker-compose.postgres.yml down
+```
+
+Restart:
+
+```bash
+docker compose -f docker-compose.postgres.yml restart
+```
+
+Defaults (override with env vars):
+- `PG_DB=trader`
+- `PG_USER=trader`
+- `PG_PASSWORD=traderpass`
+- `PG_HOST=localhost`
+- `PG_PORT=5432`
+
+Enable the Postgres-backed event store:
+
+```bash
+export EVENT_STORE=postgres
+export PG_HOST=localhost
+export PG_PORT=5432
+export PG_DB=trader
+export PG_USER=trader
+export PG_PASSWORD=traderpass
+```
+
 ## UI (Reflex data viewer)
 
 Install UI dependencies (includes Plotly for candlesticks) and run the viewer from `src/ui`:
@@ -116,4 +154,4 @@ cd src/ui
 uv run reflex run
 ```
 
-The UI reads `DB_PATH` to locate the DuckDB file and lets you filter by type, ticker, and timeframe.
+The UI reads `EVENT_STORE` to decide the backend. For Postgres, set `PG_HOST`, `PG_PORT`, `PG_DB`, `PG_USER`, and `PG_PASSWORD` (or `PG_DSN`). For DuckDB, it reads `DB_PATH`.

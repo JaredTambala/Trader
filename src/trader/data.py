@@ -6,8 +6,15 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Iterator, Mapping
+from typing import Any
 
 import duckdb
+try:
+    import psycopg
+    from psycopg import sql
+except ImportError:  # pragma: no cover - optional dependency
+    psycopg = None
+    sql = None
 
 
 class EventStore(ABC):
@@ -457,20 +464,263 @@ class DuckDBEventStore(EventStore):
         """Expose the underlying DuckDB connection for advanced operations."""
         return self._connection
 
+
+def build_event_store(config: object) -> EventStore:
+    """Create the configured event store."""
+    event_store = getattr(config, "event_store", "duckdb").lower()
+    if event_store == "postgres":
+        return PostgresEventStore(
+            dsn=getattr(config, "pg_dsn", None) or None,
+            host=getattr(config, "pg_host", None) or None,
+            port=getattr(config, "pg_port", None) or None,
+            dbname=getattr(config, "pg_db", None) or None,
+            user=getattr(config, "pg_user", None) or None,
+            password=getattr(config, "pg_password", None) or None,
+        )
+    return DuckDBEventStore(str(getattr(config, "db_path")))
+
+
+class PostgresEventStore(EventStore):
+    """Postgres-backed event store for concurrent workloads."""
+
+    def __init__(
+        self,
+        *,
+        dsn: str | None = None,
+        host: str | None = None,
+        port: int | None = None,
+        dbname: str | None = None,
+        user: str | None = None,
+        password: str | None = None,
+    ) -> None:
+        """Create a Postgres event store and initialize the schema."""
+        if psycopg is None:
+            raise ImportError("psycopg is required to use PostgresEventStore")
+        if dsn:
+            self._connection = psycopg.connect(dsn)
+        else:
+            self._connection = psycopg.connect(
+                host=host,
+                port=port,
+                dbname=dbname,
+                user=user,
+                password=password,
+            )
+        self._connection.autocommit = True
+        self._ensure_schema()
+
+    def _ensure_schema(self) -> None:
+        statements = [
+            """
+            CREATE TABLE IF NOT EXISTS run_events (
+                run_id TEXT PRIMARY KEY,
+                strategy_id TEXT,
+                mode TEXT,
+                decision_ts TIMESTAMPTZ,
+                started_at TIMESTAMPTZ,
+                finished_at TIMESTAMPTZ,
+                status TEXT,
+                error_message TEXT
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS stock_bar_events (
+                symbol TEXT,
+                timeframe TEXT,
+                ts TIMESTAMPTZ,
+                ingested_at TIMESTAMPTZ,
+                open DOUBLE PRECISION,
+                high DOUBLE PRECISION,
+                low DOUBLE PRECISION,
+                close DOUBLE PRECISION,
+                volume DOUBLE PRECISION,
+                trade_count DOUBLE PRECISION,
+                vwap DOUBLE PRECISION,
+                source TEXT
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS crypto_bar_events (
+                symbol TEXT,
+                timeframe TEXT,
+                ts TIMESTAMPTZ,
+                ingested_at TIMESTAMPTZ,
+                open DOUBLE PRECISION,
+                high DOUBLE PRECISION,
+                low DOUBLE PRECISION,
+                close DOUBLE PRECISION,
+                volume DOUBLE PRECISION,
+                trade_count DOUBLE PRECISION,
+                vwap DOUBLE PRECISION,
+                source TEXT
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS signal_events (
+                run_id TEXT,
+                symbol TEXT,
+                signal_value DOUBLE PRECISION,
+                target_qty DOUBLE PRECISION,
+                generated_at TIMESTAMPTZ
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS order_events (
+                client_order_id TEXT PRIMARY KEY,
+                run_id TEXT,
+                symbol TEXT,
+                side TEXT,
+                qty DOUBLE PRECISION,
+                order_type TEXT,
+                status TEXT,
+                broker_order_id TEXT,
+                created_at TIMESTAMPTZ
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS fill_events (
+                client_order_id TEXT,
+                fill_ts TIMESTAMPTZ,
+                fill_qty DOUBLE PRECISION,
+                fill_price DOUBLE PRECISION
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS position_snapshots (
+                asof_ts TIMESTAMPTZ,
+                symbol TEXT,
+                qty DOUBLE PRECISION,
+                avg_price DOUBLE PRECISION
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS config_kv (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+            """,
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS stock_bar_events_unique
+            ON stock_bar_events(symbol, timeframe, ts, source)
+            """,
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS crypto_bar_events_unique
+            ON crypto_bar_events(symbol, timeframe, ts, source)
+            """,
+        ]
+        with self.transaction():
+            for stmt in statements:
+                self._connection.execute(stmt)
+
+    def record_event(self, event_type: str, payload: Mapping[str, object]) -> None:
+        """Insert a payload into the requested event table."""
+        if event_type not in {
+            "run_events",
+            "stock_bar_events",
+            "crypto_bar_events",
+            "signal_events",
+            "order_events",
+            "fill_events",
+            "position_snapshots",
+            "config_kv",
+        }:
+            raise ValueError(f"Unknown event type: {event_type}")
+
+        columns = list(payload.keys())
+        query = sql.SQL("INSERT INTO {table} ({fields}) VALUES ({values})").format(
+            table=sql.Identifier(event_type),
+            fields=sql.SQL(", ").join(sql.Identifier(col) for col in columns),
+            values=sql.SQL(", ").join(sql.Placeholder() for _ in columns),
+        )
+        self._connection.execute(query, list(payload.values()))
+
+    def record_run_start(
+        self,
+        run_id: str,
+        strategy_id: str,
+        mode: str,
+        decision_ts: object,
+        started_at: object,
+    ) -> None:
+        """Insert a started run record if it does not already exist."""
+        self._connection.execute(
+            """
+            INSERT INTO run_events (
+                run_id,
+                strategy_id,
+                mode,
+                decision_ts,
+                started_at,
+                finished_at,
+                status,
+                error_message
+            )
+            VALUES (%s, %s, %s, %s, %s, NULL, 'started', NULL)
+            ON CONFLICT (run_id) DO NOTHING
+            """,
+            [run_id, strategy_id, mode, decision_ts, started_at],
+        )
+
+    def record_run_finish(
+        self,
+        run_id: str,
+        strategy_id: str,
+        mode: str,
+        decision_ts: object,
+        started_at: object,
+        finished_at: object,
+        status: str,
+        error_message: str | None,
+    ) -> None:
+        """Upsert the final run status record."""
+        self._connection.execute(
+            """
+            INSERT INTO run_events (
+                run_id,
+                strategy_id,
+                mode,
+                decision_ts,
+                started_at,
+                finished_at,
+                status,
+                error_message
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (run_id) DO UPDATE SET
+                finished_at = excluded.finished_at,
+                status = excluded.status,
+                error_message = excluded.error_message
+            """,
+            [
+                run_id,
+                strategy_id,
+                mode,
+                decision_ts,
+                started_at,
+                finished_at,
+                status,
+                error_message,
+            ],
+        )
+
+    def close(self) -> None:
+        """Close the Postgres connection."""
+        self._connection.close()
+
     @contextmanager
     def transaction(self) -> Iterator[None]:
-        """Wrap operations in an explicit DuckDB transaction.
-
-        Yields:
-            None.
-
-        Raises:
-            duckdb.Error: If begin/commit/rollback fails.
-        """
-        self._connection.execute("BEGIN")
+        """Wrap operations in an explicit Postgres transaction."""
+        previous_autocommit = self._connection.autocommit
+        self._connection.autocommit = False
         try:
             yield
-            self._connection.execute("COMMIT")
+            self._connection.commit()
         except Exception:
-            self._connection.execute("ROLLBACK")
+            self._connection.rollback()
             raise
+        finally:
+            self._connection.autocommit = previous_autocommit
+
+    def connection(self) -> Any:
+        """Expose the underlying Postgres connection for advanced operations."""
+        return self._connection

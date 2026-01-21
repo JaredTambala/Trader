@@ -84,6 +84,7 @@ def _config(tmp_path: Path, max_age_seconds: int = 60) -> Config:
         mode="once",
         strategy_id="probe",
         db_path=str(tmp_path / "events.duckdb"),
+        event_store="duckdb",
         market_data_source="noop",
         market_data_asset_class="stocks",
         market_data_stock_feed="iex",
@@ -92,6 +93,12 @@ def _config(tmp_path: Path, max_age_seconds: int = 60) -> Config:
         alpaca_api_key="",
         alpaca_secret_key="",
         alpaca_data_base_url="https://data.alpaca.markets",
+        pg_dsn="",
+        pg_host="",
+        pg_port=5432,
+        pg_db="",
+        pg_user="",
+        pg_password="",
     )
 
 

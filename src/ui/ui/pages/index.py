@@ -51,12 +51,56 @@ def _filter_card() -> rx.Component:
                         on_change=DataViewerState.set_limit,
                         type="number",
                         min_=1,
-                        max_=5000,
+                        max_=50000,
                         class_name="input",
                     ),
                     class_name="field",
                 ),
                 class_name="filter-row",
+            ),
+            rx.hstack(
+                rx.box(
+                    rx.text("Time range", class_name="field-label"),
+                    rx.vstack(
+                        rx.hstack(
+                            rx.text("Start", class_name="range-label"),
+                            rx.input(
+                                value=DataViewerState.start_date,
+                                on_change=DataViewerState.set_start_date,
+                                type="date",
+                                class_name="input",
+                            ),
+                            rx.input(
+                                value=DataViewerState.start_time,
+                                on_change=DataViewerState.set_start_time,
+                                type="time",
+                                step="60",
+                                class_name="input",
+                            ),
+                            class_name="range-inputs",
+                        ),
+                        rx.hstack(
+                            rx.text("End", class_name="range-label"),
+                            rx.input(
+                                value=DataViewerState.end_date,
+                                on_change=DataViewerState.set_end_date,
+                                type="date",
+                                class_name="input",
+                            ),
+                            rx.input(
+                                value=DataViewerState.end_time,
+                                on_change=DataViewerState.set_end_time,
+                                type="time",
+                                step="60",
+                                class_name="input",
+                            ),
+                            class_name="range-inputs",
+                        ),
+                        class_name="range-stack",
+                    ),
+                    class_name="field range-field",
+                ),
+                class_name="filter-row range-row",
             ),
         ),
         class_name="card",
@@ -128,6 +172,39 @@ def _axis_toggle() -> rx.Component:
     )
 
 
+def _drag_toggle() -> rx.Component:
+    return rx.hstack(
+        rx.text("Drag mode", class_name="field-label"),
+        rx.cond(
+            DataViewerState.drag_mode == "zoom",
+            rx.button(
+                "Zoom",
+                on_click=lambda: DataViewerState.set_drag_mode("zoom"),
+                class_name="toggle active",
+            ),
+            rx.button(
+                "Zoom",
+                on_click=lambda: DataViewerState.set_drag_mode("zoom"),
+                class_name="toggle",
+            ),
+        ),
+        rx.cond(
+            DataViewerState.drag_mode == "pan",
+            rx.button(
+                "Pan",
+                on_click=lambda: DataViewerState.set_drag_mode("pan"),
+                class_name="toggle active",
+            ),
+            rx.button(
+                "Pan",
+                on_click=lambda: DataViewerState.set_drag_mode("pan"),
+                class_name="toggle",
+            ),
+        ),
+        class_name="toggle-row axis-toggle",
+    )
+
+
 def _table_view() -> rx.Component:
     columns = [
         {"name": "ts", "id": "ts"},
@@ -152,10 +229,18 @@ def _chart_view() -> rx.Component:
     return rx.box(
         rx.cond(
             DataViewerState.chart_data,
-            rx.plotly(
-                data=DataViewerState.candlestick_figure,
-                config={"displayModeBar": False},
-                class_name="plotly-chart",
+            rx.box(
+                rx.plotly(
+                    data=DataViewerState.candlestick_figure,
+                    config={
+                        "displayModeBar": False,
+                        "responsive": False,
+                        "scrollZoom": True,
+                        "doubleClick": "reset",
+                    },
+                    class_name="plotly-chart",
+                ),
+                class_name="chart-scroll",
             ),
             rx.box(
                 rx.text("No chart data available for the current filters."),
@@ -174,7 +259,7 @@ def index() -> rx.Component:
                 rx.vstack(
                     rx.text("Market Data Viewer", class_name="title"),
                     rx.text(
-                        "Browse DuckDB bars by type, ticker, and timeframe.",
+                        "Browse market data bars by type, ticker, and timeframe.",
                         class_name="subtitle",
                     ),
                     spacing="2",
@@ -192,7 +277,11 @@ def index() -> rx.Component:
             ),
             _filter_card(),
             _view_toggle(),
-            rx.cond(DataViewerState.view_mode == "chart", _axis_toggle(), rx.box(height="0px")),
+            rx.cond(
+                DataViewerState.view_mode == "chart",
+                rx.vstack(_axis_toggle(), _drag_toggle(), spacing="2"),
+                rx.box(height="0px"),
+            ),
             rx.cond(DataViewerState.view_mode == "table", _table_view(), _chart_view()),
             spacing="6",
         ),
