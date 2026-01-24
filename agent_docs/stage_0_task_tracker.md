@@ -175,13 +175,15 @@ Complete (local UI scaffolded; run with Reflex).
 ## Task 0.5 — Postgres Migration (No Data Carry-Over)
 
 ### Status
-In progress (Postgres event store wired into ingestion/backfill; docs + deps updated).
+Complete (Postgres-only runtime, fresh schema, DuckDB limited to tests).
 
-### What is planned
-- Replace DuckDB with Postgres for concurrent streaming + trading workloads.
-- Fresh schema only (no data migration).
-- Postgres-backed `EventStore`, updated UI queries, and tests.
-- Docker compose bootstrap and runbook steps for local Postgres.
+### What was delivered
+- Postgres is now the default runtime store; DuckDB is only used in tests.
+- Fresh schema creation with a `runs` table (run sessions) and `run_events` (per-cycle).
+- `run_id` (session) and `cycle_id` fields added to signal/order/fill/position events.
+- Backtest + trader service now record run sessions and per-cycle events.
+- Schema/ER docs updated to reflect run sessions and cycle identifiers.
+- Docker Compose runbook for recreating Postgres locally.
 
 ### Evidence
 - Task definition in `agent_docs/stage_0_task_backlog_remote_paper_trading_system_alpaca.md`.
@@ -191,3 +193,81 @@ In progress (Postgres event store wired into ingestion/backfill; docs + deps upd
 - Dependency + tests updates: `pyproject.toml`, `tests/test_market_data.py`.
 - UI Postgres connectivity: `src/ui/ui/state.py`, `README.md`, `docs/ops.md`.
 - Runbook updates: `README.md`, `docs/ops.md`.
+- Run session schema + ER doc: `docs/schema.md`, `docs/er.md`, `docs/execution.md`.
+
+### Testing
+- `uv run pytest` failed due to `~/.cache/uv` permission error; re-run after fixing cache permissions.
+
+---
+
+## Task 0.6 — Minimal Strategy Implementation
+
+### Status
+Complete (strategy + backtest loop + portfolio/cash + docs delivered; remaining broker execution moved to Task 0.7).
+
+### What was delivered
+- SMA crossover strategy using `SmaCrossoverSignal` + `SimpleStrategy` (`strategy.type: sma`) with configurable windows and timeframe.
+- Signal/indicator primitives split into `signals/`, `indicators/`, and `signal_generators/` with in-memory generator for backtests.
+- `trader.cycle` persists `signal_events` and `run_events`, loads portfolio state, and records snapshots after order intents.
+- Portfolio primitives (`Portfolio`, `Position`, `PortfolioSnapshot`) now track **positions + cash** and update cash on buy/sell.
+- Backtest runner uses in-memory bars, avoids bar writes, and supports:
+  - `initial_positions` + `initial_cash` seeding
+  - equity curve + buy-and-hold baseline
+  - risk metrics (Sharpe/Sortino, drawdown, tracking error, alpha/beta)
+- Backtests now trigger cycles per-symbol when a new bar arrives (no forced timestamp alignment).
+- YAML-driven runtime configuration for cycle, backtest, stream, and trader service.
+- Event-driven trader service with Postgres LISTEN/NOTIFY triggers.
+- Postgres-only runtime event store; DuckDB limited to tests.
+- Selective event logging via YAML (`logging.persist`) for signals/orders/fills/positions.
+- Async per-bar processing pipeline for live mode (bars flow through signal → validation → submission via queues).
+- Indicator telemetry persisted to `indicator_events` with optional logging toggle.
+- Order lifecycle logging is append-only with rejection reasons captured on failed validation.
+- Market data stream now emits minimal NOTIFY payloads after DB writes; trader service reads bars from Postgres on notify.
+- Documentation updates for execution flow, schema, and backtesting metrics.
+- Data quality CLI for timestamp gap analysis with stock session-aware thresholds.
+- Per-symbol, per-timeframe session windows supported for data quality checks.
+
+### Evidence
+- Strategy + cycle: `src/trader/strategies/simple.py`, `src/trader/cycle.py`.
+- Signals/indicators: `src/trader/signals/`, `src/trader/indicators/`, `src/trader/signal_generators/`.
+- Portfolio + cash: `src/trader/portfolio.py`, `src/trader/data.py`.
+- Backtest runner: `src/trader/backtest.py`.
+- Trader service + notifications: `src/trader/trader_service.py`, `src/trader/notifications.py`.
+- Config + example: `src/trader/config.py`, `configs/example.yaml`.
+- Docs: `docs/execution.md`, `docs/backtesting.md`, `docs/schema.md`, `README.md`.
+- Data quality tooling: `src/trader/data_quality.py`, `docs/ops.md`, `configs/example.yaml`.
+- Tests: `tests/test_portfolio.py`, `tests/test_backtest.py`, `tests/test_cycle.py`.
+
+### Testing
+- `uv run pytest` failed due to `~/.cache/uv` permission error; re-run after fixing cache permissions.
+
+---
+
+## Task 0.7 — InternalPaperBroker (Deterministic Simulator)
+
+### Status
+In progress (indicator telemetry + order lifecycle events in simulation delivered).
+
+### What was delivered
+- Added `indicator_events` table to Postgres schema and DuckDB test store.
+- Signal generators now persist indicator telemetry (e.g., SMA short/long values) per `run_id`/`cycle_id`.
+- Added `log_indicator_events` config flag and YAML logging toggle (`logging.persist.indicators`).
+- Order lifecycle events are append-only: cycle records `created`, `validated`, `submitted`.
+- Broker responses now record `filled`/`error` events and `fill_events` through the cycle.
+- InternalPaperBroker now returns deterministic fill responses instead of writing events directly.
+- Risk validation now records `rejected` order events with a `rejection_reason` field.
+- Order handling is now asynchronous (bar → signal → validation → submission) via asyncio queues, with market data streamed into the queue as each bar is ingested.
+- Websocket stream notifications now carry full OHLCV payloads so trader_service can run cycles per bar without re-fetching.
+- Updated schema/ER docs to include indicator events and append-only order events.
+- README and example config updated to include indicator logging toggle.
+
+### Evidence
+- Schema + event store: `src/trader/data.py`, `tests/support/duckdb_store.py`.
+- Signal telemetry: `src/trader/signal_generators/simple_bars.py`, `src/trader/signal_generators/in_memory_bars.py`, `src/trader/signals/sma_crossover_signal.py`.
+- Lifecycle logging: `src/trader/cycle.py`, `src/trader/broker.py`.
+- Config/logging: `src/trader/config.py`, `configs/example.yaml`, `README.md`.
+- Docs: `docs/schema.md`, `docs/er.md`.
+- Tests: `tests/test_data.py` (schema list), config fixtures updated.
+
+### Testing
+- Not run in this environment; recommend `UV_CACHE_DIR=.uv-cache uv run pytest` after fixing cache permissions.

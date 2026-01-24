@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 import logging
-from typing import Iterable, Sequence
+from typing import AsyncIterator, Iterable, Sequence
 
 from .data import EventStore
 
@@ -32,10 +32,11 @@ class StockBarEvent:
 
     @property
     def table_name(self) -> str:
+        """Return the destination table name."""
         return "stock_bar_events"
 
     def to_payload(self) -> dict[str, object]:
-        """Convert the event to a DuckDB payload mapping.
+        """Convert the event to an event-store payload mapping.
 
         Returns:
             Dictionary with event fields suitable for insertion.
@@ -78,10 +79,11 @@ class CryptoBarEvent:
 
     @property
     def table_name(self) -> str:
+        """Return the destination table name."""
         return "crypto_bar_events"
 
     def to_payload(self) -> dict[str, object]:
-        """Convert the event to a DuckDB payload mapping.
+        """Convert the event to an event-store payload mapping.
 
         Returns:
             Dictionary with event fields suitable for insertion.
@@ -121,6 +123,11 @@ class MarketDataSource(ABC):
         Raises:
             Exception: Implementations may raise on network or parsing errors.
         """
+
+    async def stream(self) -> AsyncIterator[MarketDataEvent]:
+        """Yield market data events as they are available."""
+        for event in self.fetch():
+            yield event
 
 
 class NoOpMarketDataSource(MarketDataSource):
@@ -202,3 +209,20 @@ class MarketDataIngestor:
             )
         logger.info("Market data ingestion complete count=%s", len(events))
         return events
+
+    async def ingest_stream(self) -> AsyncIterator[MarketDataEvent]:
+        """Stream market data events, persisting each as it arrives."""
+        count = 0
+        async for event in self._source.stream():
+            self._event_store.record_event(event.table_name, event.to_payload())
+            logger.info(
+                "Market data ingested symbol=%s ts=%s close=%s volume=%s source=%s",
+                event.symbol,
+                event.ts.isoformat(),
+                event.close,
+                event.volume,
+                event.source,
+            )
+            count += 1
+            yield event
+        logger.info("Market data ingestion complete count=%s", count)

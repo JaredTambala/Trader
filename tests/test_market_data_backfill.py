@@ -9,13 +9,12 @@ from alpaca.data.timeframe import TimeFrameUnit
 
 from trader.market_data_backfill import (
     _build_bar_event,
-    _merge_events,
     _parse_timeframe,
     _resolve_since,
     _subtract_months,
 )
 from trader.market_data import CryptoBarEvent, StockBarEvent
-from trader.data import DuckDBEventStore
+from tests.support.duckdb_store import DuckDBEventStore, merge_events
 
 
 class FakeBar:
@@ -138,7 +137,8 @@ def test_merge_events_dedupes(tmp_path) -> None:
         vwap=None,
         source="test",
     )
-    _merge_events(store.connection(), "stock_bar_events", [event])
-    _merge_events(store.connection(), "stock_bar_events", [event])
-    count = store.connection().execute("SELECT COUNT(*) FROM stock_bar_events").fetchone()[0]
+    connection = store.connection()._connection
+    merge_events(connection, "stock_bar_events", [event.to_payload()])
+    merge_events(connection, "stock_bar_events", [event.to_payload()])
+    count = connection.execute("SELECT COUNT(*) FROM stock_bar_events").fetchone()[0]
     assert count == 1

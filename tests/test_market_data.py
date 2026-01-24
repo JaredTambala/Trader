@@ -10,9 +10,11 @@ import duckdb
 from trader.alpaca_market_data import AlpacaMarketDataSource, AlpacaRequestSpec
 from trader.config import Config
 from trader.cycle import run_cycle
-from trader.data import DuckDBEventStore, EventStore
+from trader.data import EventStore
+from tests.support.duckdb_store import DuckDBEventStore
 from trader.market_data import CryptoBarEvent, StaticMarketDataSource, StockBarEvent
-from trader.strategy import Strategy
+from trader.portfolio import Portfolio
+from trader.strategies import Strategy
 
 
 class RecordingEventStore(EventStore):
@@ -56,15 +58,16 @@ class ProbeStrategy(Strategy):
         """
         return "probe"
 
-    def generate_signals(self):
-        """Assert market data events exist before producing signals.
-
-        Returns:
-            Empty list of signals.
-
-        Raises:
-            AssertionError: If market data has not been recorded yet.
-        """
+    def generate_orders(
+        self,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+    ):
+        """Assert market data events exist before producing orders."""
         self.calls += 1
         assert any(event_type == "stock_bar_events" for event_type, _ in self._event_store.events)
         return []
@@ -82,9 +85,13 @@ def _config(tmp_path: Path, max_age_seconds: int = 60) -> Config:
     """
     return Config(
         mode="once",
+        strategy_type="noop",
         strategy_id="probe",
+        strategy_timeframe="1Min",
+        sma_short_window=10,
+        sma_long_window=20,
         db_path=str(tmp_path / "events.duckdb"),
-        event_store="duckdb",
+        event_store="postgres",
         market_data_source="noop",
         market_data_asset_class="stocks",
         market_data_stock_feed="iex",
@@ -99,6 +106,17 @@ def _config(tmp_path: Path, max_age_seconds: int = 60) -> Config:
         pg_db="",
         pg_user="",
         pg_password="",
+        buffered_event_store=False,
+        buffer_flush_interval_ms=250,
+        buffer_max_batch_size=500,
+        buffer_max_queue_size=10000,
+        buffer_block_on_full=True,
+        log_signal_events=True,
+        log_indicator_events=True,
+        log_order_events=True,
+        log_fill_events=True,
+        log_position_snapshots=True,
+        broker_type="noop",
     )
 
 

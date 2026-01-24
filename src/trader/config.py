@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+import yaml
+
+from .timeframes import normalize_timeframe
 
 
 def _parse_symbols(raw: str) -> tuple[str, ...]:
@@ -22,15 +28,38 @@ def _parse_symbols(raw: str) -> tuple[str, ...]:
     return tuple(symbols)
 
 
+def _parse_symbols_value(value: str | Sequence[object] | None) -> tuple[str, ...]:
+    """Parse a symbol list from YAML values.
+
+    Args:
+        value: None, comma-delimited string, or list of symbols.
+
+    Returns:
+        Tuple of normalized symbols.
+    """
+    if value is None:
+        return tuple()
+    if isinstance(value, str):
+        return _parse_symbols(value)
+    if isinstance(value, (list, tuple)):
+        symbols = [str(symbol).strip().upper() for symbol in value if str(symbol).strip()]
+        return tuple(symbols)
+    raise ValueError("market_data.symbols must be a string or list")
+
+
 @dataclass(frozen=True)
 class Config:
     """Typed configuration values for a trading cycle.
 
     Attributes:
         mode: Execution mode (once/loop/realtime).
+        strategy_type: Strategy implementation selector (noop/sma).
         strategy_id: Identifier for the active strategy version.
-        db_path: Path to the DuckDB event store.
-        event_store: Event store backend (duckdb/postgres).
+        strategy_timeframe: Timeframe used by strategy queries (e.g. 1Min).
+        sma_short_window: Short SMA window size for crossover signals.
+        sma_long_window: Long SMA window size for crossover signals.
+        db_path: Optional path for local event store (unused for Postgres).
+        event_store: Event store backend (postgres/noop).
         market_data_source: Source identifier for market data ingestion.
         market_data_asset_class: Asset class for market data (stocks/crypto).
         market_data_stock_feed: Alpaca stock data feed (iex/sip).
@@ -45,9 +74,19 @@ class Config:
         pg_db: Postgres database name.
         pg_user: Postgres user.
         pg_password: Postgres password.
+        log_signal_events: Whether to persist signal events.
+        log_indicator_events: Whether to persist indicator events.
+        log_order_events: Whether to persist order events.
+        log_fill_events: Whether to persist fill events.
+        log_position_snapshots: Whether to persist position snapshots.
+        broker_type: Broker selection (noop/internal/alpaca).
     """
     mode: str
+    strategy_type: str
     strategy_id: str
+    strategy_timeframe: str
+    sma_short_window: int
+    sma_long_window: int
     db_path: str
     event_store: str
     market_data_source: str
@@ -64,34 +103,147 @@ class Config:
     pg_db: str
     pg_user: str
     pg_password: str
+    buffered_event_store: bool
+    buffer_flush_interval_ms: int
+    buffer_max_batch_size: int
+    buffer_max_queue_size: int
+    buffer_block_on_full: bool
+    log_signal_events: bool
+    log_indicator_events: bool
+    log_order_events: bool
+    log_fill_events: bool
+    log_position_snapshots: bool
+    broker_type: str
 
 
-def load_config() -> Config:
-    """Load configuration from environment variables with safe defaults.
+def load_yaml_config(path: str | Path) -> dict[str, Any]:
+    """Load YAML configuration data from disk.
+
+    Args:
+        path: Relative or absolute path to the YAML configuration file.
 
     Returns:
-        Config populated from environment variables.
+        Parsed YAML mapping with environment variables expanded.
 
     Raises:
-        ValueError: If numeric environment values cannot be parsed.
+        FileNotFoundError: If the config file does not exist.
+        ValueError: If the YAML root is not a mapping.
     """
+    config_path = Path(path)
+    if not config_path.exists():
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+    data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(data, Mapping):
+        raise ValueError("Config YAML must be a mapping at the root")
+    expanded = _expand_env_values(data)
+    return dict(expanded)
+
+
+def build_config(data: Mapping[str, Any]) -> Config:
+    """Build a Config instance from parsed YAML data."""
+    runtime = _get_section(data, "runtime")
+    strategy = _get_section(data, "strategy")
+    market_data = _get_section(data, "market_data")
+    broker = _get_section(data, "broker")
+    database = _get_section(data, "database")
+    alpaca = _get_section(data, "alpaca")
+    pg = _get_section(database, "pg")
+
+    window_value = strategy.get("sma_long_window", strategy.get("sma_window", 20))
+    fallback_window = _as_int(window_value, 20)
+    default_short = _as_int(strategy.get("sma_short_window"), max(1, fallback_window // 2))
+
+    buffering = _get_section(database, "buffering")
+    logging_cfg = _get_section(data, "logging")
+    persist_cfg = _get_section(logging_cfg, "persist")
     return Config(
-        mode=os.getenv("MODE", "once"),
-        strategy_id=os.getenv("STRATEGY_ID", "noop"),
-        db_path=os.getenv("DB_PATH", "events.duckdb"),
-        event_store=os.getenv("EVENT_STORE", "duckdb"),
-        market_data_source=os.getenv("MARKET_DATA_SOURCE", "alpaca"),
-        market_data_asset_class=os.getenv("MARKET_DATA_ASSET_CLASS", "stocks"),
-        market_data_stock_feed=os.getenv("MARKET_DATA_STOCK_FEED", "iex"),
-        market_data_symbols=_parse_symbols(os.getenv("MARKET_DATA_SYMBOLS", "")),
-        market_data_max_age_seconds=int(os.getenv("MARKET_DATA_MAX_AGE_SECONDS", "60")),
-        alpaca_api_key=os.getenv("ALPACA_API_KEY", ""),
-        alpaca_secret_key=os.getenv("ALPACA_SECRET_KEY", ""),
-        alpaca_data_base_url=os.getenv("ALPACA_DATA_BASE_URL", "https://data.alpaca.markets"),
-        pg_dsn=os.getenv("PG_DSN", ""),
-        pg_host=os.getenv("PG_HOST", ""),
-        pg_port=int(os.getenv("PG_PORT", "5432")),
-        pg_db=os.getenv("PG_DB", ""),
-        pg_user=os.getenv("PG_USER", ""),
-        pg_password=os.getenv("PG_PASSWORD", ""),
+        mode=str(runtime.get("mode", "once")),
+        strategy_type=str(strategy.get("type", "noop")),
+        strategy_id=str(strategy.get("id", strategy.get("type", "noop"))),
+        strategy_timeframe=normalize_timeframe(str(strategy.get("timeframe", "1Min"))),
+        sma_short_window=default_short,
+        sma_long_window=fallback_window,
+        db_path=str(database.get("db_path", "")),
+        event_store=str(database.get("event_store", "postgres")),
+        market_data_source=str(market_data.get("source", "alpaca")),
+        market_data_asset_class=str(market_data.get("asset_class", "stocks")),
+        market_data_stock_feed=str(market_data.get("stock_feed", "iex")),
+        market_data_symbols=_parse_symbols_value(market_data.get("symbols")),
+        market_data_max_age_seconds=_as_int(market_data.get("max_age_seconds"), 60),
+        alpaca_api_key=str(alpaca.get("api_key", "")),
+        alpaca_secret_key=str(alpaca.get("secret_key", "")),
+        alpaca_data_base_url=str(alpaca.get("data_base_url", "https://data.alpaca.markets")),
+        pg_dsn=str(database.get("pg_dsn", pg.get("dsn", ""))),
+        pg_host=str(database.get("pg_host", pg.get("host", ""))),
+        pg_port=_as_int(database.get("pg_port", pg.get("port", 5432)), 5432),
+        pg_db=str(database.get("pg_db", pg.get("db", ""))),
+        pg_user=str(database.get("pg_user", pg.get("user", ""))),
+        pg_password=str(database.get("pg_password", pg.get("password", ""))),
+        buffered_event_store=_as_bool(buffering.get("enabled"), False),
+        buffer_flush_interval_ms=_as_int(buffering.get("flush_interval_ms"), 250),
+        buffer_max_batch_size=_as_int(buffering.get("max_batch_size"), 500),
+        buffer_max_queue_size=_as_int(buffering.get("max_queue_size"), 10000),
+        buffer_block_on_full=_as_bool(buffering.get("block_on_full"), True),
+        log_signal_events=_as_bool(persist_cfg.get("signals"), True),
+        log_indicator_events=_as_bool(persist_cfg.get("indicators"), True),
+        log_order_events=_as_bool(persist_cfg.get("orders"), True),
+        log_fill_events=_as_bool(persist_cfg.get("fills"), True),
+        log_position_snapshots=_as_bool(persist_cfg.get("positions"), True),
+        broker_type=str(broker.get("type", "noop")),
     )
+
+
+def resolve_log_level(data: Mapping[str, Any]) -> str:
+    """Resolve the configured log level from YAML data."""
+    logging_cfg = _get_section(data, "logging")
+    value = logging_cfg.get("level")
+    if value:
+        return str(value).upper()
+    return os.getenv("LOG_LEVEL", "INFO").upper()
+
+
+def _get_section(data: Mapping[str, Any], key: str) -> Mapping[str, Any]:
+    """Return section."""
+    value = data.get(key, {})
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise ValueError(f"Config section '{key}' must be a mapping")
+    return value
+
+
+def _expand_env_values(value: Any) -> Any:
+    """Handle expand env values."""
+    if isinstance(value, str):
+        return os.path.expandvars(value)
+    if isinstance(value, Mapping):
+        return {key: _expand_env_values(val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [_expand_env_values(val) for val in value]
+    return value
+
+
+def _as_int(value: Any, default: int) -> int:
+    """Coerce a value into an integer."""
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Expected integer value, got {value!r}") from exc
+
+
+def _as_bool(value: Any, default: bool) -> bool:
+    """Coerce a value into a boolean."""
+    if value is None or value == "":
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "y", "on"}:
+        return True
+    if text in {"0", "false", "no", "n", "off"}:
+        return False
+    raise ValueError(f"Expected boolean value, got {value!r}")

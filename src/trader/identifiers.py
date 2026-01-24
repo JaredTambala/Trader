@@ -1,4 +1,4 @@
-"""Deterministic identifiers for runs and orders."""
+"""Deterministic identifiers for runs, cycles, and orders."""
 
 from __future__ import annotations
 
@@ -43,26 +43,49 @@ def _normalize_qty(qty: float | str | Decimal) -> str:
     return format(decimal_qty, "f")
 
 
-def deterministic_run_id(strategy_id: str, decision_ts: datetime) -> str:
-    """Create a deterministic run identifier from strategy and decision timestamp.
+def deterministic_cycle_id(strategy_id: str, decision_ts: datetime) -> str:
+    """Create a deterministic cycle identifier from strategy and decision timestamp.
 
     Args:
         strategy_id: Strategy identifier.
         decision_ts: Decision timestamp used to seed the run ID.
 
     Returns:
-        Deterministic run identifier string.
+        Deterministic cycle identifier string.
 
     Raises:
         None.
     """
     normalized_ts = _normalize_timestamp(decision_ts)
     payload = f"{strategy_id}:{normalized_ts.isoformat()}"
+    return f"cycle_{sha256(payload.encode('utf-8')).hexdigest()}"
+
+
+def deterministic_run_id(strategy_id: str, decision_ts: datetime) -> str:
+    """Backward-compatible alias for deterministic cycle identifiers."""
+    return deterministic_cycle_id(strategy_id, decision_ts)
+
+
+def deterministic_run_session_id(run_type: str, started_at: datetime) -> str:
+    """Create a deterministic run session identifier from run type and wall clock.
+
+    Args:
+        run_type: Run type label (backtest/trading).
+        started_at: Wall-clock start timestamp.
+
+    Returns:
+        Deterministic run session identifier string.
+
+    Raises:
+        None.
+    """
+    normalized_ts = _normalize_timestamp(started_at)
+    payload = f"{run_type}:{normalized_ts.isoformat()}"
     return f"run_{sha256(payload.encode('utf-8')).hexdigest()}"
 
 
 def deterministic_client_order_id(
-    run_id: str,
+    cycle_id: str,
     symbol: str,
     side: str,
     target_qty: float | str | Decimal,
@@ -70,7 +93,7 @@ def deterministic_client_order_id(
     """Create a deterministic order identifier from order intent fields.
 
     Args:
-        run_id: Deterministic run identifier.
+        cycle_id: Deterministic cycle identifier.
         symbol: Trading symbol.
         side: Order side.
         target_qty: Target quantity.
@@ -84,5 +107,5 @@ def deterministic_client_order_id(
     normalized_symbol = symbol.upper()
     normalized_side = side.lower()
     normalized_qty = _normalize_qty(target_qty)
-    payload = f"{run_id}:{normalized_symbol}:{normalized_side}:{normalized_qty}"
+    payload = f"{cycle_id}:{normalized_symbol}:{normalized_side}:{normalized_qty}"
     return f"order_{sha256(payload.encode('utf-8')).hexdigest()}"
