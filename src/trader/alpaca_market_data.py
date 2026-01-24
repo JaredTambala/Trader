@@ -86,6 +86,13 @@ class AlpacaMarketDataSource(MarketDataSource):
 
         window_end = datetime.now(timezone.utc)
         window_start = window_end - timedelta(minutes=5)
+        logger.info(
+            "Alpaca fetch start asset_class=%s symbols=%s timeframe=%s limit=%s",
+            self._asset_class,
+            ",".join(self._symbols),
+            self._request_spec.timeframe,
+            self._request_spec.limit,
+        )
         request = self._request_spec.request_builder(
             self._symbols,
             window_start,
@@ -142,6 +149,7 @@ class AlpacaMarketDataSource(MarketDataSource):
             else:
                 events.append(StockBarEvent(timeframe=timeframe_label, **common))
 
+        logger.info("Alpaca fetch complete count=%s", len(events))
         return events
 
 

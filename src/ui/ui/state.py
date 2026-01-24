@@ -6,10 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 import os
-from pathlib import Path
 from typing import Sequence
 
-import duckdb
 import plotly.graph_objects as go
 import psycopg
 from psycopg import sql
@@ -143,6 +141,7 @@ class DataViewerState(rx.State):
         return base_width
 
     def _chart_title(self) -> str:
+        """Handle chart title."""
         asset_label = "Stock" if self.asset_type == "stock" else "Crypto"
         symbol = self.symbol or "Unknown"
         timeframe = self.timeframe or "Unknown"
@@ -208,21 +207,8 @@ class DataViewerState(rx.State):
         self.end_time = value
         self._refresh_data()
 
-    def _db_path(self) -> str:
-        configured = os.getenv("UI_DB_PATH") or os.getenv("DB_PATH")
-        if configured:
-            path = Path(configured)
-            if path.is_absolute():
-                return str(path)
-            root = Path(__file__).resolve().parents[3]
-            return str(root / path)
-        root = Path(__file__).resolve().parents[3]
-        return str(root / "events.duckdb")
-
-    def _event_store_backend(self) -> str:
-        return (os.getenv("UI_EVENT_STORE") or os.getenv("EVENT_STORE") or "duckdb").lower()
-
     def _pg_connection(self) -> psycopg.Connection:
+        """Handle pg connection."""
         dsn = os.getenv("UI_PG_DSN") or os.getenv("PG_DSN")
         if dsn:
             return psycopg.connect(dsn, autocommit=True)
@@ -243,60 +229,34 @@ class DataViewerState(rx.State):
         )
 
     def _table_name(self) -> str:
+        """Handle table name."""
         return "stock_bar_events" if self.asset_type == "stock" else "crypto_bar_events"
 
     def _load_options(self) -> None:
+        """Load options."""
         self.error = ""
         try:
-            if self._event_store_backend() == "postgres":
-                table = self._table_name()
-                with self._pg_connection() as conn, conn.cursor() as cursor:
-                    cursor.execute(
-                        sql.SQL("SELECT DISTINCT symbol FROM {table} ORDER BY symbol").format(
-                            table=sql.Identifier(table)
-                        )
+            table = self._table_name()
+            with self._pg_connection() as conn, conn.cursor() as cursor:
+                cursor.execute(
+                    sql.SQL("SELECT DISTINCT symbol FROM {table} ORDER BY symbol").format(
+                        table=sql.Identifier(table)
                     )
-                    symbols = [row[0] for row in cursor.fetchall()]
-                    if self._has_timeframe_column_postgres(cursor, table):
-                        cursor.execute(
-                            sql.SQL(
-                                """
-                                SELECT DISTINCT COALESCE(timeframe, '1Min')
-                                FROM {table}
-                                ORDER BY 1
-                                """
-                            ).format(table=sql.Identifier(table))
-                        )
-                        timeframes = [row[0] for row in cursor.fetchall()]
-                    else:
-                        timeframes = ["1Min"]
-            else:
-                db_path = self._db_path()
-                if not os.path.exists(db_path):
-                    self._reset_state(f"DB not found at {db_path}")
-                    return
-                conn = duckdb.connect(db_path, read_only=True)
-                table = self._table_name()
-                symbols = [
-                    row[0]
-                    for row in conn.execute(
-                        f"SELECT DISTINCT symbol FROM {table} ORDER BY symbol"
-                    ).fetchall()
-                ]
-                if self._has_timeframe_column_duckdb(conn, table):
-                    timeframes = [
-                        row[0]
-                        for row in conn.execute(
-                            f"""
+                )
+                symbols = [row[0] for row in cursor.fetchall()]
+                if self._has_timeframe_column_postgres(cursor, table):
+                    cursor.execute(
+                        sql.SQL(
+                            """
                             SELECT DISTINCT COALESCE(timeframe, '1Min')
                             FROM {table}
                             ORDER BY 1
                             """
-                        ).fetchall()
-                    ]
+                        ).format(table=sql.Identifier(table))
+                    )
+                    timeframes = [row[0] for row in cursor.fetchall()]
                 else:
                     timeframes = ["1Min"]
-                conn.close()
         except Exception as exc:
             self._reset_state(f"DB query failed: {exc}")
             return
@@ -309,6 +269,7 @@ class DataViewerState(rx.State):
             self.timeframe = timeframes[0] if timeframes else ""
 
     def _refresh_data(self) -> None:
+        """Handle refresh data."""
         if not self.symbol or not self.timeframe:
             self.rows = []
             self.chart_data = []
@@ -317,10 +278,35 @@ class DataViewerState(rx.State):
         try:
             table = self._table_name()
             start_ts, end_ts = self._normalized_time_range()
-            if self._event_store_backend() == "postgres":
-                with self._pg_connection() as conn, conn.cursor() as cursor:
-                    where_clauses = ["symbol = %s", "COALESCE(timeframe, '1Min') = %s"]
-                    params: list[object] = [self.symbol, self.timeframe]
+            with self._pg_connection() as conn, conn.cursor() as cursor:
+                where_clauses = ["symbol = %s", "COALESCE(timeframe, '1Min') = %s"]
+                params: list[object] = [self.symbol, self.timeframe]
+                if start_ts:
+                    where_clauses.append("ts >= %s")
+                    params.append(start_ts)
+                if end_ts:
+                    where_clauses.append("ts <= %s")
+                    params.append(end_ts)
+                where_sql = " AND ".join(where_clauses)
+                if self._has_timeframe_column_postgres(cursor, table):
+                    cursor.execute(
+                        sql.SQL(
+                            """
+                            SELECT ts, open, high, low, close, volume, vwap, trade_count
+                            FROM {table}
+                            WHERE {where_sql}
+                            ORDER BY ts DESC
+                            LIMIT %s
+                            """
+                        ).format(
+                            table=sql.Identifier(table),
+                            where_sql=sql.SQL(where_sql),
+                        ),
+                        [*params, self.limit],
+                    )
+                else:
+                    where_clauses = ["symbol = %s"]
+                    params = [self.symbol]
                     if start_ts:
                         where_clauses.append("ts >= %s")
                         params.append(start_ts)
@@ -328,92 +314,22 @@ class DataViewerState(rx.State):
                         where_clauses.append("ts <= %s")
                         params.append(end_ts)
                     where_sql = " AND ".join(where_clauses)
-                    if self._has_timeframe_column_postgres(cursor, table):
-                        cursor.execute(
-                            sql.SQL(
-                                """
-                                SELECT ts, open, high, low, close, volume, vwap, trade_count
-                                FROM {table}
-                                WHERE {where_sql}
-                                ORDER BY ts DESC
-                                LIMIT %s
-                                """
-                            ).format(
-                                table=sql.Identifier(table),
-                                where_sql=sql.SQL(where_sql),
-                            ),
-                            [*params, self.limit],
-                        )
-                    else:
-                        where_clauses = ["symbol = %s"]
-                        params = [self.symbol]
-                        if start_ts:
-                            where_clauses.append("ts >= %s")
-                            params.append(start_ts)
-                        if end_ts:
-                            where_clauses.append("ts <= %s")
-                            params.append(end_ts)
-                        where_sql = " AND ".join(where_clauses)
-                        cursor.execute(
-                            sql.SQL(
-                                """
-                                SELECT ts, open, high, low, close, volume, vwap, trade_count
-                                FROM {table}
-                                WHERE {where_sql}
-                                ORDER BY ts DESC
-                                LIMIT %s
-                                """
-                            ).format(
-                                table=sql.Identifier(table),
-                                where_sql=sql.SQL(where_sql),
-                            ),
-                            [*params, self.limit],
-                        )
-                    rows = cursor.fetchall()
-            else:
-                db_path = self._db_path()
-                if not os.path.exists(db_path):
-                    self._reset_state(f"DB not found at {db_path}")
-                    return
-                conn = duckdb.connect(db_path, read_only=True)
-                if self._has_timeframe_column_duckdb(conn, table):
-                    rows = conn.execute(
-                        f"""
-                        SELECT ts, open, high, low, close, volume, vwap, trade_count
-                        FROM {table}
-                        WHERE symbol = ? AND COALESCE(timeframe, '1Min') = ?
-                        {"AND ts >= ?" if start_ts else ""}
-                        {"AND ts <= ?" if end_ts else ""}
-                        ORDER BY ts DESC
-                        LIMIT ?
-                        """,
-                        [
-                            self.symbol,
-                            self.timeframe,
-                            *([start_ts] if start_ts else []),
-                            *([end_ts] if end_ts else []),
-                            self.limit,
-                        ],
-                    ).fetchall()
-                else:
-                    rows = conn.execute(
-                        f"""
-                        SELECT ts, open, high, low, close, volume, vwap, trade_count
-                        FROM {table}
-                        WHERE symbol = ?
-                        {"AND ts >= ?" if start_ts else ""}
-                        {"AND ts <= ?" if end_ts else ""}
-                        ORDER BY ts DESC
-                        LIMIT ?
-                        """,
-                        [
-                            self.symbol,
-                            *([start_ts] if start_ts else []),
-                            *([end_ts] if end_ts else []),
-                            self.limit,
-                        ],
-                    ).fetchall()
-                conn.close()
+                    cursor.execute(
+                        sql.SQL(
+                            """
+                            SELECT ts, open, high, low, close, volume, vwap, trade_count
+                            FROM {table}
+                            WHERE {where_sql}
+                            ORDER BY ts DESC
+                            LIMIT %s
+                            """
+                        ).format(
+                            table=sql.Identifier(table),
+                            where_sql=sql.SQL(where_sql),
+                        ),
+                        [*params, self.limit],
+                    )
+                rows = cursor.fetchall()
         except Exception as exc:
             self._reset_state(f"DB query failed: {exc}")
             return
@@ -427,6 +343,7 @@ class DataViewerState(rx.State):
             self.error = "No rows returned for the current filters."
 
     def _format_row(self, row: Sequence[object]) -> dict[str, object]:
+        """Format row."""
         ts_value = row[0]
         if isinstance(ts_value, datetime):
             ts_value = ts_value.isoformat()
@@ -442,6 +359,7 @@ class DataViewerState(rx.State):
         }
 
     def _reset_state(self, message: str) -> None:
+        """Handle reset state."""
         self.error = message
         self.rows = []
         self.chart_data = []
@@ -452,11 +370,8 @@ class DataViewerState(rx.State):
         self.end_date = ""
         self.end_time = ""
 
-    def _has_timeframe_column_duckdb(self, conn: duckdb.DuckDBPyConnection, table: str) -> bool:
-        columns = [row[1] for row in conn.execute(f"PRAGMA table_info('{table}')").fetchall()]
-        return "timeframe" in columns
-
     def _has_timeframe_column_postgres(self, cursor: psycopg.Cursor, table: str) -> bool:
+        """Handle has timeframe column postgres."""
         cursor.execute(
             """
             SELECT 1
@@ -468,6 +383,7 @@ class DataViewerState(rx.State):
         return cursor.fetchone() is not None
 
     def _normalized_time_range(self) -> tuple[datetime | None, datetime | None]:
+        """Handle normalized time range."""
         start = self._parse_input_datetime(self.start_date, self.start_time, is_end=False)
         end = self._parse_input_datetime(self.end_date, self.end_time, is_end=True)
         if start and end and start > end:
@@ -481,6 +397,7 @@ class DataViewerState(rx.State):
         *,
         is_end: bool,
     ) -> datetime | None:
+        """Parse input datetime."""
         if not date_value:
             return None
         try:
@@ -506,12 +423,14 @@ class DataViewerState(rx.State):
         return local_ts.astimezone(timezone.utc)
 
     def _default_axis_mode(self) -> str:
+        """Handle default axis mode."""
         return "session" if self.asset_type == "stock" else "real"
 
     def _build_axis(
         self,
         rows: list[dict[str, object]],
     ) -> tuple[list[object], list[list[object]]]:
+        """Build axis."""
         row_count = len(rows)
         if self.axis_mode == "session":
             customdata = [[self._format_ts(self._parse_ts(row["ts"])), row["volume"]] for row in rows]
@@ -522,6 +441,7 @@ class DataViewerState(rx.State):
         return timestamps, customdata
 
     def _parse_ts(self, value: object) -> datetime:
+        """Parse ts."""
         if isinstance(value, datetime):
             ts = value
         else:
@@ -531,6 +451,7 @@ class DataViewerState(rx.State):
         return ts
 
     def _format_ts(self, ts: datetime) -> str:
+        """Format ts."""
         if self.asset_type == "stock":
             ts = ts.astimezone(ZoneInfo("America/New_York"))
         else:
@@ -540,6 +461,7 @@ class DataViewerState(rx.State):
         return ts.strftime("%Y-%m-%d %H:%M")
 
     def _is_daily_or_higher(self) -> bool:
+        """Return whether daily or higher."""
         tf = self.timeframe.lower()
         if "day" in tf or "week" in tf or "month" in tf:
             return True
@@ -550,6 +472,7 @@ class DataViewerState(rx.State):
         return False
 
     def _axis_tickformat(self) -> str:
+        """Handle axis tickformat."""
         if self._is_daily_or_higher():
             return "%Y-%m-%d"
         return "%Y-%m-%d %H:%M"

@@ -8,6 +8,7 @@ from ..state import DataViewerState
 
 
 def _filter_card() -> rx.Component:
+    """Filter card."""
     return rx.box(
         rx.vstack(
             rx.text("Filters", class_name="section-title"),
@@ -108,6 +109,7 @@ def _filter_card() -> rx.Component:
 
 
 def _view_toggle() -> rx.Component:
+    """Handle view toggle."""
     return rx.hstack(
         rx.cond(
             DataViewerState.view_mode == "table",
@@ -140,6 +142,7 @@ def _view_toggle() -> rx.Component:
 
 
 def _axis_toggle() -> rx.Component:
+    """Handle axis toggle."""
     return rx.hstack(
         rx.text("Axis mode", class_name="field-label"),
         rx.cond(
@@ -173,6 +176,7 @@ def _axis_toggle() -> rx.Component:
 
 
 def _drag_toggle() -> rx.Component:
+    """Handle drag toggle."""
     return rx.hstack(
         rx.text("Drag mode", class_name="field-label"),
         rx.cond(
@@ -206,6 +210,7 @@ def _drag_toggle() -> rx.Component:
 
 
 def _table_view() -> rx.Component:
+    """Handle table view."""
     columns = [
         {"name": "ts", "id": "ts"},
         {"name": "open", "id": "open"},
@@ -226,6 +231,7 @@ def _table_view() -> rx.Component:
 
 
 def _chart_view() -> rx.Component:
+    """Handle chart view."""
     return rx.box(
         rx.cond(
             DataViewerState.chart_data,
@@ -253,6 +259,7 @@ def _chart_view() -> rx.Component:
 
 @rx.page(route="/", title="Trader Data Viewer", on_load=DataViewerState.on_load)
 def index() -> rx.Component:
+    """Handle index."""
     return rx.box(
         rx.vstack(
             rx.hstack(

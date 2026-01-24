@@ -14,9 +14,11 @@ from alpaca.data.live.crypto import CryptoDataStream
 from alpaca.data.live.stock import StockDataStream
 from dotenv import load_dotenv
 
-from .config import Config, load_config
+from .config import Config, build_config, load_yaml_config, resolve_log_level
 from .data import EventStore, build_event_store
 from .market_data import CryptoBarEvent, StockBarEvent
+from .notifications import notify_market_data
+from .timeframes import normalize_timeframe
 
 
 logger = logging.getLogger(__name__)
@@ -30,16 +32,20 @@ class StreamContext:
     asset_class: str
     source: str
     timeframe: str
+    notify_channel: str | None = None
 
 
 class MarketDataStreamRunner:
-    """Run Alpaca websocket streaming and persist bars to DuckDB."""
+    """Run Alpaca websocket streaming and persist bars to the event store."""
 
     def __init__(
         self,
         config: Config,
         event_store: EventStore | None = None,
         symbols: Sequence[str] | None = None,
+        asset_class: str | None = None,
+        timeframe: str | None = None,
+        notify_channel: str | None = None,
     ) -> None:
         """Initialize the streaming runner.
 
@@ -47,21 +53,25 @@ class MarketDataStreamRunner:
             config: Loaded configuration values.
             event_store: Optional event store override.
             symbols: Optional symbol override for streaming.
+            asset_class: Optional asset class override.
+            timeframe: Optional timeframe label override.
+            notify_channel: Optional Postgres notify channel override.
 
         Raises:
             ValueError: If config contains unsupported values.
         """
         self._config = config
-        self._asset_class = config.market_data_asset_class.lower()
+        self._asset_class = (asset_class or config.market_data_asset_class).lower()
         self._symbols = list(symbols) if symbols else list(config.market_data_symbols)
-        self._stream = _build_stream(config)
+        self._stream = _build_stream(config, self._asset_class)
         self._event_store = event_store or build_event_store(config)
         self._owns_event_store = event_store is None
         self._context = StreamContext(
             event_store=self._event_store,
             asset_class=self._asset_class,
             source="alpaca",
-            timeframe="1Min",
+            timeframe=timeframe or "1Min",
+            notify_channel=notify_channel,
         )
 
     def run(self) -> None:
@@ -80,7 +90,12 @@ class MarketDataStreamRunner:
             if self._owns_event_store:
                 self._event_store.close()
             return
-
+        logger.info(
+            "Streaming init asset_class=%s symbols=%s timeframe=%s",
+            self._asset_class,
+            ",".join(self._symbols),
+            self._context.timeframe,
+        )
         self._stream.subscribe_bars(self._handle_bar, *self._symbols)
         _install_signal_handlers(self._stream)
         logger.info(
@@ -112,6 +127,24 @@ class MarketDataStreamRunner:
         except Exception as exc:
             logger.exception("Failed to persist market data bar: %s", exc)
             return
+        notify_payload = {
+            "symbol": event.symbol,
+            "timeframe": event.timeframe,
+            "ts": event.ts.isoformat(),
+            "asset_class": self._asset_class,
+            "source": "stream",
+        }
+        try:
+            notified = notify_market_data(
+                self._event_store,
+                notify_payload,
+                channel=self._context.notify_channel,
+            )
+        except Exception as exc:
+            logger.exception("Failed to notify market data bar: %s", exc)
+            notified = False
+        if notified:
+            logger.debug("Market data notify sent symbol=%s ts=%s", event.symbol, event.ts.isoformat())
         logger.info(
             "Market data streamed symbol=%s ts=%s close=%s volume=%s source=%s",
             event.symbol,
@@ -122,7 +155,7 @@ class MarketDataStreamRunner:
         )
 
 
-def _build_stream(config: Config) -> StockDataStream | CryptoDataStream:
+def _build_stream(config: Config, asset_class: str) -> StockDataStream | CryptoDataStream:
     """Construct the Alpaca websocket stream client.
 
     Args:
@@ -134,7 +167,7 @@ def _build_stream(config: Config) -> StockDataStream | CryptoDataStream:
     Raises:
         ValueError: If required credentials or asset class are missing.
     """
-    asset_class = config.market_data_asset_class.lower()
+    asset_class = asset_class.lower()
     if not config.alpaca_api_key or not config.alpaca_secret_key:
         raise ValueError("Alpaca API key and secret are required for streaming")
     if asset_class in {"stocks", "stock"}:
@@ -163,6 +196,7 @@ def _install_signal_handlers(stream: object) -> None:
         None.
     """
     def _handle_signal(signum: int, _frame: object) -> None:
+        """Handle shutdown signals and stop the service."""
         logger.info("Shutdown signal received (%s); stopping stream", signum)
         stream.stop()
         stream.close()
@@ -289,37 +323,71 @@ def _normalize_stock_feed(feed: str | None) -> DataFeed:
     return DataFeed.IEX
 
 
-def _parse_symbols_arg(value: str) -> list[str]:
-    """Parse a comma-delimited symbol list for CLI overrides.
-
-    Args:
-        value: Comma-separated string of symbols.
-
-    Returns:
-        List of normalized symbols.
-    """
-    symbols = [symbol.strip().upper() for symbol in value.split(",") if symbol.strip()]
-    return symbols
-
-
 def _parse_args() -> argparse.Namespace:
     """Parse command-line arguments for the stream runner."""
     parser = argparse.ArgumentParser(description="Stream Alpaca market data bars.")
-    parser.add_argument(
-        "--symbols",
-        help="Comma-separated symbols to stream (overrides MARKET_DATA_SYMBOLS).",
-    )
+    parser.add_argument("config", help="Path to the YAML configuration file.")
     return parser.parse_args()
+
+
+def _parse_symbols_value(value: object | None) -> list[str] | None:
+    """Parse symbols value."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        symbols = [symbol.strip().upper() for symbol in value.split(",") if symbol.strip()]
+        return symbols or None
+    if isinstance(value, (list, tuple)):
+        symbols = [str(symbol).strip().upper() for symbol in value if str(symbol).strip()]
+        return symbols or None
+    raise ValueError("stream.symbols must be a string or list")
+
+
+def _configure_logging(level_name: str | None = None) -> None:
+    """Configure logging from config defaults."""
+    level_name = (level_name or "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    logger.info("Logging configured level=%s", level_name)
 
 
 def main() -> None:
     """Module entry point for market data streaming."""
     load_dotenv(".env")
-    logging.basicConfig(level=logging.INFO)
     args = _parse_args()
-    config = load_config()
-    symbols = _parse_symbols_arg(args.symbols) if args.symbols else None
-    runner = MarketDataStreamRunner(config, symbols=symbols)
+    config_data = load_yaml_config(args.config)
+    _configure_logging(resolve_log_level(config_data))
+    config = build_config(config_data)
+
+    stream = config_data.get("stream", {})
+    if stream is None:
+        stream = {}
+    if not isinstance(stream, Mapping):
+        raise ValueError("stream section must be a mapping")
+
+    service_cfg = config_data.get("trader_service", {})
+    if service_cfg is None:
+        service_cfg = {}
+    if not isinstance(service_cfg, Mapping):
+        raise ValueError("trader_service section must be a mapping")
+
+    symbols = _parse_symbols_value(stream.get("symbols"))
+    asset_class = stream.get("asset_class")
+    timeframe = stream.get("timeframe")
+    if timeframe:
+        timeframe = normalize_timeframe(str(timeframe))
+    notify_channel = service_cfg.get("notify_channel")
+    runner = MarketDataStreamRunner(
+        config,
+        symbols=symbols,
+        asset_class=str(asset_class) if asset_class else None,
+        timeframe=str(timeframe) if timeframe else None,
+        notify_channel=str(notify_channel) if notify_channel else None,
+    )
     runner.run()
 
 

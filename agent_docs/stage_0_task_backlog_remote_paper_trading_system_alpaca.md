@@ -96,8 +96,9 @@ Implementation implications:
 - `error` — internal error/unknown outcome (must trigger reconciliation)
 
 ### Required invariants
-- `client_order_id` is deterministic and **unique** in DuckDB.
+- `client_order_id` is deterministic per order intent; `order_event_id` is unique per event.
 - A given `client_order_id` may transition states forward, but must never create a second broker order.
+- `order_events` are append-only; multiple rows per `client_order_id` are allowed.
 - If submission outcome is uncertain, state becomes `error` and the system must reconcile before retrying.
 
 ### Reconciliation (Stage 0)
@@ -204,7 +205,8 @@ Create the authoritative execution/event log with a schema that supports **high-
 - `generated_at` (TIMESTAMP)
 
 **order_events**
-- `client_order_id` (TEXT, PK)
+- `order_event_id` (TEXT, PK)
+- `client_order_id` (TEXT)
 - `run_id` (TEXT)
 - `symbol` (TEXT)
 - `side` (TEXT)
@@ -238,13 +240,13 @@ Create the authoritative execution/event log with a schema that supports **high-
 
 - Enforce constraints:
   - primary keys where appropriate
-  - unique `client_order_id`
+  - unique `order_event_id`
   - (recommended) uniqueness on `(symbol, ts, source)` for market data events if applicable
 - Transaction helpers (atomic cycle execution)
 
 **Acceptance Criteria**
 - DB auto-initialises
-- Duplicate `client_order_id` insertion fails
+- Duplicate `client_order_id` insertion is allowed (append-only order events)
 - Schema supports fast append at 1s cadence without schema contention
 - Tests validate schema and constraints (including a simple high-frequency insert test)
 - Documentation updated:
@@ -415,7 +417,7 @@ Enable concurrent streaming + trading workloads with a multi-connection, concurr
   - `run_events`, `stock_bar_events`, `crypto_bar_events`, `signal_events`,
     `order_events`, `fill_events`, `position_snapshots`, `config_kv`
 - Translate indexes/constraints to Postgres:
-  - PKs and unique indexes (e.g., `order_events.client_order_id`, `run_events.run_id`)
+  - PKs and unique indexes (e.g., `order_events.order_event_id`, `run_events.run_id`)
   - Uniqueness for bar tables on `(symbol, timeframe, ts, source)`
 - Add migrations or bootstrap SQL that runs on startup.
 
@@ -464,19 +466,19 @@ Enable concurrent streaming + trading workloads with a multi-connection, concurr
 ## Task 0.6 — Minimal Strategy Implementation
 
 **Purpose**  
-Generate deterministic trade intent.
+Establish the end-to-end strategy + backtest loop with deterministic signals, portfolio state, and cash tracking.
 
 **Scope**
-- Implement a simple strategy:
-  - small fixed universe
-  - deterministic logic
-- Output target positions or signals
-- Persist signal events with `run_id`
+- Signal/indicator primitives with SMA crossover strategy.
+- YAML-driven configuration for strategy + backtest runs.
+- Portfolio snapshots persisted per cycle (positions + cash).
+- Backtest runner with in-memory bars and equity curve metrics.
 
 **Acceptance Criteria**
-- Strategy deterministic for same inputs
-- Signals persisted correctly
-- Tests validate signal generation
+- Strategy deterministic for same inputs.
+- Signals + portfolio snapshots persisted correctly.
+- Backtest produces equity curve + benchmark metrics.
+- Tests validate strategy, portfolio, and backtest plumbing.
 
 ---
 
@@ -491,11 +493,40 @@ Provide deterministic execution for CI, testing, and fallback.
   - order events
   - fill events
   - position snapshots
+- Persist indicator telemetry for run interrogation:
+  - `indicator_events` with `run_id`, `cycle_id`, `symbol`, `indicator_name`, `value`, `bar_ts`
+  - Record which bar timestamp each indicator was computed from
+- Persist a `runs.config_snapshot` (full YAML payload) at run start
+- Record `order_events` for every generated order (created/validated/submitted/filled) even in simulation
+- Backtest performance summary (strategy vs buy-and-hold), including:
+  - total return, CAGR, volatility
+  - Sharpe/Sortino, max drawdown, Calmar
+  - hit rate, profit factor, expectancy, avg win/loss
+  - trade count, exposure %, turnover
+  - tracking error, information ratio, alpha/beta
+  - equity curve and buy-and-hold benchmark curve
+  - note required inputs (cash ledger, fills, and benchmark series)
+
+
+### Subtasks
+- Define deterministic InternalPaperBroker behavior and lifecycle events.
+- Add `indicator_events` schema (run_id, cycle_id, symbol, indicator_name, value, bar_ts).
+- Persist `runs.config_snapshot` for backtest and trading sessions.
+- Emit order lifecycle events (created/validated/submitted/filled) in simulation.
+- Emit fill events and update position snapshots idempotently.
+- Persist indicator values during signal generation per cycle.
+- Expand backtest summary metrics (hit rate, profit factor, expectancy, avg win/loss, turnover, exposure %).
+- Update docs: `docs/schema.md`, `docs/er.md`, `docs/execution.md`, `docs/backtesting.md`.
+- Add tests for broker determinism/idempotency and indicator event persistence.
+- Validate Task 0.7 DoD with updated acceptance criteria.
 
 **Acceptance Criteria**
 - Orders → fills → positions consistent
 - Deterministic behaviour
 - Idempotency preserved on rerun
+- Indicator series are queryable per `run_id`/`cycle_id`
+- Run config snapshot stored for audit/replay
+- Backtest summary reports strategy vs buy-and-hold metrics with clear inputs and assumptions
 
 ---
 

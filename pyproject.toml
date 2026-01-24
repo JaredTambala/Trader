@@ -13,11 +13,11 @@ authors = [{name = "Trader"}]
 dependencies = [
     "alpaca-py>=0.31.0",
     "dotenv>=0.9.9",
-    "duckdb>=1.4.3",
     "fastapi>=0.128.0",
     "plotly>=6.5.2",
     "psycopg[binary]>=3.2.1",
     "pytest>=9.0.2",
+    "pyyaml>=6.0.2",
     "reflex>=0.8.26",
 ]
 
@@ -37,6 +37,7 @@ addopts = "-q"
 
 [dependency-groups]
 dev = [
+    "duckdb>=1.4.3",
     "pytest>=9.0.2",
     "pytest-mock>=3.15.1",
 ]

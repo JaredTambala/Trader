@@ -1,60 +1,17 @@
-"""Strategy interface and no-op implementation."""
+"""Compatibility exports for trading primitives.
 
-from __future__ import annotations
+This module remains as a stable import surface for signal/indicator primitives.
+"""
 
-from abc import ABC, abstractmethod
-from typing import Iterable, Mapping
+from trader.signals import Bar, Signal, SmaCrossoverSignal
+from trader.signal_generators.signal_generator import SignalGenerator
+from trader.indicators import Indicator, SmaIndicator
 
-
-class Strategy(ABC):
-    """Generates trading signals for a defined universe."""
-
-    @property
-    @abstractmethod
-    def strategy_id(self) -> str:
-        """Unique identifier for the strategy version.
-
-        Returns:
-            Strategy identifier string.
-
-        Raises:
-            None.
-        """
-
-    @abstractmethod
-    def generate_signals(self) -> Iterable[Mapping[str, object]]:
-        """Return signal payloads to be validated and routed.
-
-        Returns:
-            Iterable of signal payload mappings.
-
-        Raises:
-            Exception: Implementations may raise on data or logic errors.
-        """
-
-
-class NoOpStrategy(Strategy):
-    """Strategy that produces no signals."""
-
-    @property
-    def strategy_id(self) -> str:
-        """Return the no-op strategy identifier.
-
-        Returns:
-            Strategy identifier string.
-
-        Raises:
-            None.
-        """
-        return "noop"
-
-    def generate_signals(self) -> Iterable[Mapping[str, object]]:
-        """Return an empty signal list.
-
-        Returns:
-            Empty iterable.
-
-        Raises:
-            None.
-        """
-        return []
+__all__ = [
+    "Bar",
+    "Signal",
+    "SmaCrossoverSignal",
+    "SignalGenerator",
+    "Indicator",
+    "SmaIndicator",
+]

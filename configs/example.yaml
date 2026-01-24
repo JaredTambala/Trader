@@ -1,0 +1,127 @@
+runtime:
+  mode: once
+
+logging:
+  level: INFO
+  persist:
+    signals: false
+    indicators: false
+    orders: false
+    fills: false
+    positions: false
+
+strategy:
+  type: sma
+  id: sma
+  timeframe: 1Min
+  sma_short_window: 2
+  sma_long_window: 5
+
+broker:
+  type: internal
+
+market_data:
+  source: alpaca
+  asset_class: crypto
+  stock_feed: iex
+  symbols:
+    - BTC/USD
+  max_age_seconds: 604800
+
+database:
+  event_store: postgres
+  pg:
+    host: ${PG_HOST}
+    port: ${PG_PORT}
+    db: ${PG_DB}
+    user: ${PG_USER}
+    password: ${PG_PASSWORD}
+  buffering:
+    enabled: false
+    flush_interval_ms: 1000
+    max_batch_size: 5000
+    max_queue_size: 10000
+    block_on_full: true
+
+alpaca:
+  api_key: ${ALPACA_API_KEY}
+  secret_key: ${ALPACA_SECRET_KEY}
+  data_base_url: https://data.alpaca.markets
+
+backfill:
+  since: 40d
+  timeframe: 1Min
+  symbols:
+    - ETH/USD
+    - BTC/USD
+  asset_class: crypto
+  limit: null
+
+stream:
+  symbols:
+    - BTC/USD
+  asset_class: crypto
+  timeframe: 1Min
+
+trader_service:
+  mode: real_time
+  cadence_seconds: 1.0
+  min_trigger_interval_ms: 200
+  notify_channel: market_data
+  max_iterations: null
+  initial_cash: 100000
+  initial_positions:
+    - symbol: BTC/USD
+      qty: 0.5
+    - symbol: ETH/USD
+      qty: 0.5
+
+replay:
+  asset_class: crypto
+  symbols:
+    - BTC/USD
+    - ETH/USD
+  timeframe: 1Min
+  start: "2026-01-20T00:00:00Z"
+  end: "2026-01-21T00:00:00Z"
+  cadence_seconds: 0.2
+  notify_channel: market_data
+  limit: null
+
+backtest:
+  start: "2025-12-01T00:00:00Z"
+  end: "2026-01-21T00:00:00Z"
+  timeframe: 1Min
+  symbols:
+    - BTC/USD
+  asset_class: stock
+  max_runs: null
+  log_cycle_details: true
+  initial_cash: 1000000
+  initial_positions:
+    - symbol: BTC/USD
+      qty: 10
+
+data_quality:
+  symbols:
+    - MSFT
+  asset_class: stocks
+  timeframe: 1Min
+  start: "2025-01-01T00:00:00Z"
+  end: "2026-01-21T00:00:00Z"
+  max_gap_logs: 25
+  gap_multipliers:
+    minute: 5
+    hour: 2
+    day: 1
+  sessions:
+    - symbol: AAPL
+      timeframe: 1Min
+      timezone: America/New_York
+      start_time: "09:30"
+      end_time: "20:59"
+    - symbol: MSFT
+      timeframe: 1Min
+      timezone: America/New_York
+      start_time: "09:30"
+      end_time: "20:59"

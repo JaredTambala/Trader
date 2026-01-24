@@ -8,18 +8,19 @@ from datetime import datetime, timedelta, timezone
 import calendar
 import logging
 import re
-import uuid
 from typing import Mapping, Sequence
 
 from alpaca.data.enums import DataFeed
 from alpaca.data.historical import CryptoHistoricalDataClient, StockHistoricalDataClient
 from alpaca.data.requests import CryptoBarsRequest, StockBarsRequest
-from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+from alpaca.data.timeframe import TimeFrame
 from dotenv import load_dotenv
 
-from .config import Config, load_config
-from .data import DuckDBEventStore, EventStore, PostgresEventStore, build_event_store
+from .config import Config, build_config, load_yaml_config, resolve_log_level
+from .data import EventStore, PostgresEventStore, build_event_store
 from .market_data import CryptoBarEvent, StockBarEvent
+from .notifications import notify_market_data
+from .timeframes import parse_timeframe
 
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ class BackfillSpec:
 
 
 class MarketDataBackfillRunner:
-    """Run a historical backfill and persist Alpaca bars to DuckDB."""
+    """Run a historical backfill and persist Alpaca bars to the event store."""
 
     def __init__(
         self,
@@ -45,6 +46,7 @@ class MarketDataBackfillRunner:
         symbols: Sequence[str] | None = None,
         asset_class: str | None = None,
         event_store: EventStore | None = None,
+        notify_channel: str | None = None,
     ) -> None:
         """Initialize the backfill runner.
 
@@ -54,6 +56,7 @@ class MarketDataBackfillRunner:
             symbols: Optional symbol override.
             asset_class: Optional asset class override.
             event_store: Optional event store override.
+            notify_channel: Optional Postgres notify channel override.
 
         Raises:
             ValueError: If the asset class is unsupported.
@@ -65,6 +68,7 @@ class MarketDataBackfillRunner:
         self._event_store = event_store or build_event_store(config)
         self._owns_event_store = event_store is None
         self._client = _build_client(self._asset_class, config)
+        self._notify_channel = notify_channel
 
     def run(self) -> int:
         """Execute the backfill and persist bars.
@@ -80,6 +84,14 @@ class MarketDataBackfillRunner:
             if self._owns_event_store:
                 self._event_store.close()
             return 0
+        logger.info(
+            "Backfill start asset_class=%s symbols=%s timeframe=%s start=%s end=%s",
+            self._asset_class,
+            ",".join(self._symbols),
+            self._spec.timeframe,
+            self._spec.start.isoformat(),
+            self._spec.end.isoformat(),
+        )
         if self._spec.limit is None:
             logger.info("Backfill running without a total limit; all pages will be fetched")
         else:
@@ -116,18 +128,17 @@ class MarketDataBackfillRunner:
             logger.info("Backfill staged symbol=%s count=%s", symbol, symbol_count)
 
         with self._event_store.transaction():
-            if isinstance(self._event_store, DuckDBEventStore):
+            if isinstance(self._event_store, PostgresEventStore):
                 connection = self._event_store.connection()
                 for table_name, events in events_by_table.items():
-                    _merge_events(connection, table_name, events)
-            elif isinstance(self._event_store, PostgresEventStore):
-                connection = self._event_store.connection()
-                for table_name, events in events_by_table.items():
+                    logger.info("Backfill upsert table=%s count=%s", table_name, len(events))
                     _upsert_events_postgres(connection, table_name, events)
             else:
                 for events in events_by_table.values():
                     for event in events:
                         self._event_store.record_event(event.table_name, event.to_payload())
+
+        self._notify_backfill(events_by_table)
 
         if self._owns_event_store:
             self._event_store.close()
@@ -140,6 +151,38 @@ class MarketDataBackfillRunner:
             self._spec.timeframe,
         )
         return count
+
+    def _notify_backfill(
+        self,
+        events_by_table: Mapping[str, Sequence[StockBarEvent | CryptoBarEvent]],
+    ) -> None:
+        """Send a notification for the latest bar per symbol."""
+        latest_by_symbol: dict[str, datetime] = {}
+        for events in events_by_table.values():
+            for event in events:
+                current = latest_by_symbol.get(event.symbol)
+                if current is None or event.ts > current:
+                    latest_by_symbol[event.symbol] = event.ts
+
+        if not latest_by_symbol:
+            return
+
+        notified_count = 0
+        for symbol, ts in latest_by_symbol.items():
+            if notify_market_data(
+                self._event_store,
+                {
+                    "symbol": symbol,
+                "timeframe": str(self._spec.timeframe),
+                "ts": ts.isoformat(),
+                "asset_class": self._asset_class,
+                "source": "backfill",
+            },
+            channel=self._notify_channel,
+        ):
+                notified_count += 1
+        if notified_count:
+            logger.debug("Backfill notifications sent count=%s", notified_count)
 
 
 def _build_client(asset_class: str, config: Config) -> object:
@@ -251,51 +294,6 @@ def _build_bar_event(
     return StockBarEvent(timeframe=timeframe, **common)
 
 
-def _merge_events(
-    connection: object,
-    table_name: str,
-    events: Sequence[StockBarEvent | CryptoBarEvent],
-) -> None:
-    """Merge staged events into the target table with deduplication.
-
-    Args:
-        connection: DuckDB connection.
-        table_name: Destination table.
-        events: Events to merge.
-
-    Raises:
-        Exception: Propagates DuckDB execution errors.
-    """
-    if not events:
-        return
-    payloads = [event.to_payload() for event in events]
-    columns = list(payloads[0].keys())
-    staging_table = f"staging_{table_name}_{uuid.uuid4().hex}"
-    connection.execute(
-        f"CREATE TEMP TABLE {staging_table} AS SELECT {', '.join(columns)} FROM {table_name} WHERE 1=0"
-    )
-    placeholders = ", ".join(["?"] * len(columns))
-    connection.executemany(
-        f"INSERT INTO {staging_table} ({', '.join(columns)}) VALUES ({placeholders})",
-        [list(payload.values()) for payload in payloads],
-    )
-    insert_columns = ", ".join(columns)
-    source_columns = ", ".join([f"source.{col}" for col in columns])
-    connection.execute(
-        f"""
-        MERGE INTO {table_name} AS target
-        USING {staging_table} AS source
-        ON target.symbol = source.symbol
-            AND target.timeframe = source.timeframe
-            AND target.ts = source.ts
-            AND target.source = source.source
-        WHEN NOT MATCHED THEN
-            INSERT ({insert_columns}) VALUES ({source_columns})
-        """
-    )
-    connection.execute(f"DROP TABLE {staging_table}")
-
-
 def _upsert_events_postgres(
     connection: object,
     table_name: str,
@@ -367,89 +365,60 @@ def _normalize_stock_feed(feed: str | None) -> DataFeed:
 
 def _parse_timeframe(value: str) -> TimeFrame:
     """Parse Alpaca timeframe strings like 5Min, 15T, 1Hour, 1Day, 1Week, 3Month."""
-    match = re.match(r"^(\d+)\s*([a-zA-Z]+)$", value.strip())
-    if not match:
-        raise ValueError(f"Invalid timeframe: {value}")
-    amount = int(match.group(1))
-    unit_raw = match.group(2).lower()
-    if amount <= 0:
-        raise ValueError(f"Invalid timeframe amount: {amount}")
-    if unit_raw in {"min", "mins", "minute", "minutes", "t"}:
-        if amount > 59:
-            raise ValueError("Minute timeframe must be 1-59")
-        unit = TimeFrameUnit.Minute
-    elif unit_raw in {"hour", "hours", "hr", "h"}:
-        if amount > 23:
-            raise ValueError("Hour timeframe must be 1-23")
-        unit = TimeFrameUnit.Hour
-    elif unit_raw in {"day", "days", "d"}:
-        if amount != 1:
-            raise ValueError("Day timeframe must be 1Day or 1D")
-        unit = TimeFrameUnit.Day
-    elif unit_raw in {"week", "weeks", "w"}:
-        if amount != 1:
-            raise ValueError("Week timeframe must be 1Week or 1W")
-        unit = TimeFrameUnit.Week
-    elif unit_raw in {"month", "months", "m"}:
-        if amount not in {1, 2, 3, 4, 6, 12}:
-            raise ValueError("Month timeframe must be 1,2,3,4,6,12")
-        unit = TimeFrameUnit.Month
-    else:
-        raise ValueError(f"Invalid timeframe unit: {unit_raw}")
-    return TimeFrame(amount=amount, unit=unit)
-
-
-def _parse_symbols_arg(value: str) -> list[str]:
-    """Parse a comma-delimited symbol list for CLI overrides."""
-    symbols = [symbol.strip().upper() for symbol in value.split(",") if symbol.strip()]
-    return symbols
+    return parse_timeframe(value)
 
 
 def _parse_args() -> argparse.Namespace:
     """Parse CLI arguments for a backfill run."""
     parser = argparse.ArgumentParser(description="Backfill Alpaca market data bars.")
-    parser.add_argument(
-        "--symbols",
-        help="Comma-separated symbols to backfill (overrides MARKET_DATA_SYMBOLS).",
-    )
-    parser.add_argument(
-        "--asset-class",
-        choices=["stocks", "stock", "crypto", "cryptocurrency"],
-        help="Asset class override (stocks or crypto).",
-    )
-    parser.add_argument(
-        "--timeframe",
-        default="1Min",
-        help="Bar timeframe (e.g. 5Min, 15T, 1Hour, 1Day, 1Week, 3Month).",
-    )
-    parser.add_argument(
-        "--limit",
-        type=int,
-        default=None,
-        help="Optional total cap on returned bars; omit to fetch all pages.",
-    )
-    parser.add_argument(
-        "--since",
-        default="60m",
-        help="Backfill window (e.g. 90m, 6h, 14d, 6mo).",
-    )
+    parser.add_argument("config", help="Path to the YAML configuration file.")
     return parser.parse_args()
 
 
-def _resolve_window(args: argparse.Namespace, now: datetime) -> tuple[datetime, datetime]:
-    """Resolve the backfill window from CLI arguments.
+def _configure_logging(level_name: str | None = None) -> None:
+    """Configure logging from config defaults."""
+    level_name = (level_name or "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    logger.info("Logging configured level=%s", level_name)
 
-    Args:
-        args: Parsed CLI arguments.
-        now: End timestamp for the window.
 
-    Returns:
-        Tuple of (start, end) timestamps.
+def _parse_symbols_value(value: object | None) -> list[str] | None:
+    """Parse symbols value."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        symbols = [symbol.strip().upper() for symbol in value.split(",") if symbol.strip()]
+        return symbols or None
+    if isinstance(value, (list, tuple)):
+        symbols = [str(symbol).strip().upper() for symbol in value if str(symbol).strip()]
+        return symbols or None
+    raise ValueError("backfill.symbols must be a string or list")
 
-    Raises:
-        ValueError: If provided values are invalid.
-    """
-    return _resolve_since(args.since, now)
+
+def _parse_datetime(value: str) -> datetime:
+    """Parse datetime."""
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
+    return datetime.fromisoformat(value)
+
+
+def _resolve_window_from_config(backfill: Mapping[str, object], now: datetime) -> tuple[datetime, datetime]:
+    """Resolve the backfill window from YAML configuration."""
+    start_value = backfill.get("start")
+    end_value = backfill.get("end")
+    if start_value or end_value:
+        if not start_value:
+            raise ValueError("backfill.start is required when backfill.end is provided")
+        start = _parse_datetime(str(start_value))
+        end = _parse_datetime(str(end_value)) if end_value else now
+        return start, end
+    since = str(backfill.get("since", "60m"))
+    return _resolve_since(since, now)
 
 
 def _resolve_since(value: str, now: datetime) -> tuple[datetime, datetime]:
@@ -507,24 +476,42 @@ def _subtract_months(value: datetime, months: int) -> datetime:
 def main() -> None:
     """Module entry point for running a historical backfill."""
     load_dotenv(".env")
-    logging.basicConfig(level=logging.INFO)
     args = _parse_args()
-    config = load_config()
+    config_data = load_yaml_config(args.config)
+    _configure_logging(resolve_log_level(config_data))
+    config = build_config(config_data)
+
+    backfill = config_data.get("backfill", {})
+    if backfill is None:
+        backfill = {}
+    if not isinstance(backfill, Mapping):
+        raise ValueError("backfill section must be a mapping")
+    service_cfg = config_data.get("trader_service", {})
+    if service_cfg is None:
+        service_cfg = {}
+    if not isinstance(service_cfg, Mapping):
+        raise ValueError("trader_service section must be a mapping")
 
     end = datetime.now(timezone.utc)
-    start, end = _resolve_window(args, end)
+    start, end = _resolve_window_from_config(backfill, end)
+    timeframe_value = backfill.get("timeframe", config.strategy_timeframe)
+    limit_value = backfill.get("limit")
+    limit = int(limit_value) if limit_value is not None else None
     spec = BackfillSpec(
         start=start,
         end=end,
-        timeframe=_parse_timeframe(args.timeframe),
-        limit=args.limit,
+        timeframe=_parse_timeframe(str(timeframe_value)),
+        limit=limit,
     )
-    symbols = _parse_symbols_arg(args.symbols) if args.symbols else None
+    symbols = _parse_symbols_value(backfill.get("symbols"))
+    asset_class = backfill.get("asset_class")
+    notify_channel = service_cfg.get("notify_channel")
     runner = MarketDataBackfillRunner(
         config,
         spec,
         symbols=symbols,
-        asset_class=args.asset_class,
+        asset_class=str(asset_class) if asset_class else None,
+        notify_channel=str(notify_channel) if notify_channel else None,
     )
     runner.run()
 
