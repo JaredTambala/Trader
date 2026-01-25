@@ -5,13 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-import os
 from typing import Sequence
+import os
+import time
 
 import plotly.graph_objects as go
 import psycopg
 from psycopg import sql
 import reflex as rx
+import requests
 
 
 @dataclass(frozen=True)
@@ -45,6 +47,146 @@ class DataViewerState(rx.State):
     end_date: str = ""
     end_time: str = ""
     error: str = ""
+    backtest_symbols: str = ""
+    backtest_timeframe: str = "1Min"
+    backtest_asset_class: str = "stocks"
+    backtest_start: str = ""
+    backtest_end: str = ""
+    backtest_initial_cash: str = "100000"
+    backtest_strategy_params: str = "{}"
+    backtest_status_message: str = "Backtest runner idle"
+    backtest_progress: str = ""
+    backtest_run_id: str = ""
+    backtest_result: dict[str, object] | None = None
+    backtest_polling_active: bool = False
+    BACKEND_URL: str = os.environ.get("BACKEND_BASE_URL", "http://localhost:8000")
+
+    def set_backtest_result(self, result: dict[str, object]) -> None:
+        """Store the fetched backtest result payload."""
+        self.backtest_result = result
+
+    @rx.var
+    def backtest_equity_figure(self) -> go.Figure:
+        """Build a Plotly chart for the backtest and benchmark curves."""
+        fig = go.Figure()
+        result = self.backtest_result or {}
+        equity_curve = result.get("equity_curve") or []
+        benchmark_curve = result.get("benchmark_curve") or []
+        if equity_curve:
+            fig.add_trace(
+                go.Scatter(
+                    x=[point["ts"] for point in equity_curve],
+                    y=[point["equity"] for point in equity_curve],
+                    mode="lines",
+                    name="Equity",
+                    line=dict(color="#2f9e44"),
+                )
+            )
+        if benchmark_curve:
+            fig.add_trace(
+                go.Scatter(
+                    x=[point["ts"] for point in benchmark_curve],
+                    y=[point["equity"] for point in benchmark_curve],
+                    mode="lines",
+                    name="Benchmark",
+                    line=dict(color="#495057", dash="dash"),
+                )
+            )
+        fig.update_layout(
+            margin=dict(l=40, r=20, t=40, b=40),
+            xaxis=dict(title="Time"),
+            yaxis=dict(title="Equity"),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            template="simple_white",
+        )
+        return fig
+
+    @rx.var
+    def backtest_has_result(self) -> bool:
+        """Return True when a backtest result is available."""
+        return self.backtest_result is not None
+
+    @rx.var
+    def backtest_result_run_id(self) -> str:
+        """Return the run_id from the result (or the last submitted run_id)."""
+        result = self.backtest_result or {}
+        run_id = result.get("run_id") or self.backtest_run_id
+        return str(run_id) if run_id is not None else ""
+
+    @rx.var
+    def backtest_metric_total_return(self) -> str:
+        """Formatted total return for the latest backtest."""
+        stats = (self.backtest_result or {}).get("strategy_performance") or {}
+        return f"{stats.get('total_return', 0.0):.2%}"
+
+    @rx.var
+    def backtest_metric_sharpe(self) -> str:
+        """Formatted Sharpe ratio for the latest backtest."""
+        stats = (self.backtest_result or {}).get("strategy_performance") or {}
+        return f"{stats.get('sharpe', 0.0):.2f}"
+
+    @rx.var
+    def backtest_metric_max_drawdown(self) -> str:
+        """Formatted max drawdown for the latest backtest."""
+        stats = (self.backtest_result or {}).get("strategy_performance") or {}
+        return f"{stats.get('max_drawdown', 0.0):.2%}"
+
+    @rx.var
+    def backtest_positions_table(self) -> list[dict[str, object]]:
+        """Prepare a formatted positions table for the backtest result."""
+        positions = (self.backtest_result or {}).get("positions") or []
+        rows: list[dict[str, object]] = []
+        for pos in positions:
+            rows.append(
+                {
+                    "symbol": pos.get("symbol"),
+                    "qty": f"{pos.get('qty', 0):.4f}",
+                    "avg_price": f"{pos.get('avg_price', 0.0):.2f}",
+                    "market_value": f"{pos.get('market_value', 0.0):.2f}",
+                    "unrealized_pnl": f"{pos.get('unrealized_pnl', 0.0):.2f}",
+                }
+            )
+        return rows
+
+    @rx.event
+    def poll_backtest_progress(self) -> None:
+        """Poll the backtest progress endpoint for the active run."""
+        if not self.backtest_polling_active or not self.backtest_run_id:
+            return
+        run_id = self.backtest_run_id
+        try:
+            resp = requests.get(f"{self.BACKEND_URL}/backtest/progress", params={"run_id": run_id}, timeout=5)
+            resp.raise_for_status()
+            data = resp.json()
+            progress = data.get("progress") or {}
+            percent = progress.get("percent", 0.0)
+            self.backtest_progress = f"{percent:.1f}%"
+            status = data.get("status", "unknown")
+            self.backtest_status_message = f"Backtest {run_id} {status}"
+            if status in {"completed", "failed"}:
+                self.backtest_polling_active = False
+                if status == "completed":
+                    self.fetch_backtest_result(run_id)
+                else:
+                    error = data.get("error")
+                    if error:
+                        self.backtest_status_message = f"Backtest {run_id} failed: {error}"
+        except Exception as exc:
+            self.backtest_status_message = f"Progress poll failed: {exc}"
+            self.backtest_polling_active = False
+
+    @rx.event
+    def fetch_backtest_result(self, run_id: str) -> None:
+        """Fetch the completed backtest result and store it in state."""
+        try:
+            resp = requests.get(f"{self.BACKEND_URL}/backtest/result", params={"run_id": run_id}, timeout=5)
+            resp.raise_for_status()
+            data = resp.json()
+            result = data.get("result") or {}
+            self.set_backtest_result(result)
+            self.backtest_status_message = f"Backtest {run_id} completed"
+        except Exception as exc:
+            self.backtest_status_message = f"Result fetch failed: {exc}"
 
     def on_load(self) -> None:
         """Initial load for options and data."""
@@ -206,6 +348,107 @@ class DataViewerState(rx.State):
         """Set the end time filter."""
         self.end_time = value
         self._refresh_data()
+
+    def set_backtest_symbols(self, value: str) -> None:
+        """Set the symbols string used by the backtest form."""
+        self.backtest_symbols = value
+
+    def set_backtest_timeframe(self, value: str) -> None:
+        """Set the backtest timeframe."""
+        self.backtest_timeframe = value
+
+    def set_backtest_asset_class(self, value: str) -> None:
+        """Set the backtest asset class."""
+        self.backtest_asset_class = value
+
+    def set_backtest_start(self, value: str) -> None:
+        """Set the starting timestamp for backtests."""
+        self.backtest_start = value
+
+    def set_backtest_end(self, value: str) -> None:
+        """Set the ending timestamp for backtests."""
+        self.backtest_end = value
+
+    def set_backtest_initial_cash(self, value: str) -> None:
+        """Update the initial cash value for the backtest."""
+        self.backtest_initial_cash = value
+
+    def set_backtest_strategy_params(self, value: str) -> None:
+        """Set the strategy parameter JSON for the backtest."""
+        self.backtest_strategy_params = value
+
+    @rx.event
+    def start_backtest(self) -> None:
+        """Record a UI-driven backtest submission."""
+        self.backtest_status_message = "Submitting backtest..."
+        self.backtest_progress = ""
+        self.backtest_run_id = ""
+        self.backtest_result = None
+        yield
+        symbols = [symbol.strip().upper() for symbol in self.backtest_symbols.split(",") if symbol.strip()]
+        if not symbols:
+            self.backtest_status_message = "Failed to start backtest: symbols required"
+            yield
+            return
+        if not self.backtest_start or not self.backtest_end:
+            self.backtest_status_message = "Failed to start backtest: start/end required"
+            yield
+            return
+        try:
+            initial_cash = float(self.backtest_initial_cash or 0.0)
+        except ValueError:
+            self.backtest_status_message = "Failed to start backtest: initial cash must be a number"
+            yield
+            return
+        strategy_params: object | None
+        if not self.backtest_strategy_params.strip():
+            strategy_params = None
+        else:
+            try:
+                strategy_params = json.loads(self.backtest_strategy_params)
+            except json.JSONDecodeError as exc:
+                self.backtest_status_message = f"Failed to start backtest: invalid strategy JSON ({exc})"
+                yield
+                return
+        asset_class = self.backtest_asset_class or "stocks"
+        asset_class = asset_class.strip().lower()
+        if asset_class in {"stock", "stocks"}:
+            asset_class = "stocks"
+        elif asset_class in {"crypto", "cryptocurrency"}:
+            asset_class = "crypto"
+        payload = {
+            "symbols": symbols,
+            "timeframe": self.backtest_timeframe,
+            "start": self.backtest_start,
+            "end": self.backtest_end,
+            "initial_cash": initial_cash,
+            "strategy_params": strategy_params,
+            "asset_class": asset_class,
+        }
+        try:
+            response = requests.post(f"{self.BACKEND_URL}/backtest", json=payload, timeout=5)
+            response.raise_for_status()
+            run_id = response.json()["run_id"]
+        except requests.HTTPError as exc:
+            detail = ""
+            try:
+                detail = response.text
+            except Exception:
+                detail = ""
+            suffix = f" ({detail})" if detail else ""
+            self.backtest_status_message = f"Failed to start backtest: {exc}{suffix}"
+            yield
+            return
+        except Exception as exc:
+            self.backtest_status_message = f"Failed to start backtest: {exc}"
+            yield
+            return
+        self.backtest_run_id = run_id
+        self.backtest_progress = "0%"
+        self.backtest_status_message = f"Backtest {run_id} queued"
+        self.backtest_polling_active = True
+        yield
+
 
     def _pg_connection(self) -> psycopg.Connection:
         """Handle pg connection."""

@@ -271,7 +271,15 @@ def index() -> rx.Component:
                     ),
                     spacing="2",
                 ),
-                rx.badge("Stage 0", class_name="badge"),
+                rx.hstack(
+                    rx.link(
+                        rx.button("Run backtest", class_name="link-button"),
+                        href="/backtest",
+                        class_name="backtest-link",
+                    ),
+                    rx.badge("Stage 0", class_name="badge"),
+                    spacing="2",
+                ),
                 class_name="header",
             ),
             rx.cond(

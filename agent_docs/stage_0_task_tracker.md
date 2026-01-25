@@ -312,6 +312,51 @@ Planned (subtasks captured; implementation pending).
 ## Task 0.8b — UI Backtest Runner
 
 ### Status
+In progress (form, backend/API, persistence, results page, and endpoint tests implemented).
+
+### What was delivered
+- Chunk 1: Reflex backtest form renders on `/backtest`, bound to `DataViewerState` inputs and a CTA that triggers `start_backtest`.
+- Chunk 2: `POST /backtest` FastAPI endpoint creates deterministic `run_id`, enqueues `_run_backtest_worker`, and immediately replies with the run ID.
+- Chunk 3: Progress polling endpoint (`GET /backtest/progress`) reports `status`, processed/total counts, percent, and errors.
+- Chunk 4: Backtest result persistence via `persist_backtest_result` writing the serialized `BacktestResult` into `metrics_snapshots`.
+- Chunk 5: `GET /backtest/result` returns cached results or the persisted snapshot (404 when missing).
+- Chunk 6: Result page at `/backtest/result` shows summary metrics, the equity/benchmark chart, and a final positions table; UI state now keeps progress + chart data.
+- Chunk 9: `tests/test_backtest_api.py` exercises the new API with fixtures that stub the worker/threads and assert POST/progress/result behavior.
+- API loads `.env` on startup to resolve `${PG_*}` placeholders.
+- UI backtest submission now validates inputs and parses `strategy_params` JSON before POST.
+- Asset class selector added to backtest form (stocks/crypto) and payload normalization.
+- Progress polling moved to an explicit “Refresh progress” action (Reflex lacks `rx.interval`).
+- “Load results” + “View results” affordances added to the backtest form.
+- Result page rendering now uses computed state vars to avoid Var bool coercion.
+- Backtest result styles updated for readable colors and metric cards.
+- Removed duplicate page registration warnings and disabled sitemap plugin in Reflex config.
+- Fixed API result fetch crash (`build_event_store` import) and config snapshot datetime serialization.
+
+### Evidence
+- Form & UI: `src/ui/ui/pages/backtest.py`, `src/ui/ui/pages/backtest_result.py`, `src/ui/ui/state.py`, `src/ui/ui/ui.py`.
+- Backend: `src/trader/api.py`.
+- Persistence helper: `src/trader/backtest.py`.
+- Tests: `tests/test_backtest_api.py`.
+- UI styles/config: `src/ui/assets/styles.css`, `src/ui/rxconfig.py`.
+- Serialization fixes: `src/trader/data.py`.
+
+### Next steps
+- Consider automatic polling (requires a supported timer pattern in Reflex or a JS hook).
+- Improve UX around loading state/spinner and automatic navigation to results on completion.
+- Document the UI backtest workflow in README/ops with port configuration and env requirements.
+
+### Testing
+- `uv run pytest tests/test_backtest_api.py` ✅ (fastapi test client + stubbed worker)
+
+### Open Questions
+- Should UI progress polling push updates to the home page or reside exclusively on the results page?.
+- Will the API need rate limiting/progress dedup checks in high-concurrency runs?
+
+---
+
+## Task 0.8b — UI Backtest Runner
+
+### Status
 Planned (UI orchestration only).
 
 ### Scope

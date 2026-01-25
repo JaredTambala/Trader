@@ -156,3 +156,13 @@ backtest:
   log_cycle_details: true
 ```
 Timeframes are normalized, so `1h`, `1Hour`, and `1H` are treated the same.
+
+## UI-paced backtests
+
+The new UI backtest runner can trigger the same historical logic from the Reflex app:
+
+- Run `uv run python -m trader.api configs/example.yaml` to start the FastAPI backend that executes `BacktestRunner`.
+- Set `BACKEND_BASE_URL=http://localhost:8000` (or your host/port) before running the UI so it knows where to POST/poll.
+- Open `/backtest` in the UI (`uv run python -m src.ui.ui`) and submit your desired symbols/timeframe/cash/strategy JSON.
+- The UI polls `/backtest/progress` every 5 seconds, updates the progress banner, and automatically navigates to `/backtest/result` when the run completes.
+- Results are persisted to `metrics_snapshots`, so you can also query the table directly if needed.

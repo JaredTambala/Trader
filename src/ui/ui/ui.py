@@ -5,8 +5,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 import reflex as rx
 
-from .pages.index import index
-
 
 load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
@@ -20,4 +18,8 @@ app = rx.App(
         font_family="Space Grotesk",
     ),
 )
-app.add_page(index)
+
+# Import pages after app creation so @rx.page decorators register with this app.
+from .pages.backtest import backtest  # noqa: F401,E402
+from .pages.backtest_result import backtest_result_page  # noqa: F401,E402
+from .pages.index import index  # noqa: F401,E402
