@@ -38,6 +38,74 @@ body {
   font-size: 14px;
 }
 
+.status-message {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.primary-link,
+.secondary-link {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.secondary-link {
+  opacity: 0.9;
+}
+
+.primary-link:hover,
+.secondary-link:hover {
+  text-decoration: underline;
+}
+
+.metric-card {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px 14px;
+  min-width: 160px;
+}
+
+.metric-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.metric-value {
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.positions-table {
+  color: var(--ink);
+}
+
+.positions-table * {
+  color: var(--ink);
+}
+
+.result-page {
+  color: var(--ink);
+}
+
+.form-actions {
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.secondary-button {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .badge {
   background: var(--accent-soft);
   color: var(--accent);

@@ -5,10 +5,11 @@ from __future__ import annotations
 import argparse
 from bisect import bisect_left
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
+import json
 import logging
-from typing import Iterator, Mapping, Sequence
+from typing import Any, Callable, Iterator, Mapping, Sequence
 
 from dotenv import load_dotenv
 
@@ -230,7 +231,12 @@ class BacktestRunner:
             strategy_timeframe=spec.timeframe,
         )
 
-    def run(self, *, log_cycle_details: bool = False) -> BacktestResult:
+    def run(
+        self,
+        *,
+        log_cycle_details: bool = False,
+        progress_callback: Callable[[int, int, datetime | None], None] | None = None,
+    ) -> BacktestResult:
         """Run the backtest and return an aggregated summary."""
         if not self._symbols:
             logger.warning("No symbols configured for backtest")
@@ -414,6 +420,9 @@ class BacktestRunner:
                 len(seeded_positions),
                 self._initial_cash,
             )
+        total_bars = sum(len(symbol_schedule[ts]) for ts in timestamps)
+        effective_limit = min(total_bars, limit) if limit is not None else total_bars
+
         data_sources_by_symbol = _build_data_sources(
             bars_by_symbol=bars_by_symbol,
             asset_class=self._asset_class,
@@ -455,6 +464,8 @@ class BacktestRunner:
                             run_type="backtest",
                         )
                         count += 1
+                        if progress_callback:
+                            progress_callback(count, effective_limit or total_bars, ts if symbol_schedule else ts)
                         if limit is not None and count >= limit:
                             stop = True
                             break
@@ -1761,6 +1772,42 @@ def _seed_positions(
         run_id=run_id,
     )
     snapshot.persist(event_store)
+
+
+def _sanitize_value(value: Any) -> Any:
+    """Recursively normalize values for JSON serialization."""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {k: _sanitize_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_value(v) for v in value]
+    if isinstance(value, tuple):
+        return tuple(_sanitize_value(v) for v in value)
+    return value
+
+
+def _serialize_backtest_result(result: BacktestResult) -> Mapping[str, Any]:
+    """Prepare backtest result for storage/transmission."""
+    raw = asdict(result)
+    return _sanitize_value(raw)
+
+
+def persist_backtest_result(run_id: str, result: BacktestResult, config: Config) -> None:
+    """Persist the aggregated backtest result to the metrics table."""
+    event_store = build_event_store(config)
+    try:
+        event_store.record_event(
+            "metrics_snapshots",
+            {
+                "ts": datetime.now(timezone.utc),
+                "run_id": run_id,
+                "cycle_id": None,
+                "payload": json.dumps(_serialize_backtest_result(result)),
+            },
+        )
+    finally:
+        event_store.close()
 
 
 if __name__ == "__main__":

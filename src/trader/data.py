@@ -1065,7 +1065,8 @@ class PostgresEventStore(EventStore):
         end_ts: object | None = None,
     ) -> None:
         """Insert a started run session record if it does not already exist."""
-        snapshot_json = json.dumps(config_snapshot) if config_snapshot is not None else None
+        # config_snapshot may contain datetimes (e.g. UI-submitted payloads).
+        snapshot_json = json.dumps(config_snapshot, default=str) if config_snapshot is not None else None
         self._connection.execute(
             """
             INSERT INTO runs (
@@ -1117,7 +1118,8 @@ class PostgresEventStore(EventStore):
         end_ts: object | None = None,
     ) -> None:
         """Upsert the final run session status record."""
-        snapshot_json = json.dumps(config_snapshot) if config_snapshot is not None else None
+        # config_snapshot may contain datetimes (e.g. UI-submitted payloads).
+        snapshot_json = json.dumps(config_snapshot, default=str) if config_snapshot is not None else None
         self._connection.execute(
             """
             INSERT INTO runs (

@@ -84,3 +84,14 @@ trader_service:
 - Trader service logs show `Trader service start` and `Cycle start`.
 - Backfill/stream logs show `Market data ...` entries and (for Postgres) `NOTIFY` events.
 - Event store tables populate: `stock_bar_events`/`crypto_bar_events`, `signal_events`, `position_snapshots`.
+
+## UI Backtest Runner Ops
+
+- **Backend service:** `uv run python -m trader.api configs/example.yaml`
+  - Exposes `POST /backtest`, `GET /backtest/progress`, and `GET /backtest/result`.
+  - The same YAML config as the rest of the system is used for event store and runner settings.
+- **UI:** Run `uv run python -m src.ui.ui` (Reflex) after setting `BACKEND_BASE_URL=http://localhost:8000` in `.env`.
+  - Fill the `/backtest` form, submit, and monitor the status banner/progress label.
+  - The UI polls the progress endpoint every 5 s, updates `backtest_progress`, and auto-fetches `/backtest/result` when the run completes.
+- **Result persistence:** `BacktestResult` summaries are serialized to `metrics_snapshots` with `run_id`, making them queryable via the API or directly in Postgres.
+- **Errors:** Backend errors mark the run `failed`, and the UI displays `Backtest {run_id} failed` along with the failure message.

@@ -120,6 +120,43 @@ Set `trader_service.mode` to `loop` or `realtime`, then:
 uv run python -m trader.trader_service configs/example.yaml
 ```
 
+## UI Backtest Runner
+
+The Reflex UI now ships with a UI backtest runner (Task 0.8b). It consists of:
+
+- A `/backtest` form that accepts symbols, timeframe, start/end, initial cash, and strategy JSON before POSTing to the backend.
+- A FastAPI worker (`src/trader/api.py`) that launches `BacktestRunner`, tracks progress, and persists metrics to `metrics_snapshots`.
+- Manual progress refresh and result loading (use the buttons on the form).
+- A `/backtest/result` page showing return, Sharpe, max drawdown, an equity vs benchmark chart, and final positions.
+- Asset class selector on the backtest form (stocks/crypto).
+
+Note: `strategy_params` is stored with the run for auditability but does not yet override strategy behavior.
+
+### Running the backend
+
+The FastAPI service requires the same YAML config as the rest of the system:
+
+```bash
+uv run python -m trader.api configs/example.yaml --port 8100
+```
+
+Set the UI environment variable `BACKEND_BASE_URL` (e.g., in `.env`) so the Reflex UI knows where to POST/poll:
+
+```
+BACKEND_BASE_URL=http://localhost:8100
+```
+
+The UI form will display run IDs, status, and progress. Use “Refresh progress” and “Load results” to pull updates,
+then click “View results” to open the results page.
+
+### Testing
+
+The API is covered by `tests/test_backtest_api.py`:
+
+```bash
+uv run pytest tests/test_backtest_api.py
+```
+
 ### Realtime replay (DB-driven)
 
 To simulate the realtime pipeline without Alpaca, replay stored bars and emit NOTIFY events:
