@@ -246,18 +246,20 @@ Complete (strategy + backtest loop + portfolio/cash + docs delivered; remaining 
 ## Task 0.7 — InternalPaperBroker (Deterministic Simulator)
 
 ### Status
-In progress (indicator telemetry + order lifecycle events in simulation delivered).
+In progress (indicator telemetry, order lifecycle, metrics snapshots, and backtest trade metrics delivered).
 
 ### What was delivered
 - Added `indicator_events` table to Postgres schema and DuckDB test store.
 - Signal generators now persist indicator telemetry (e.g., SMA short/long values) per `run_id`/`cycle_id`.
 - Added `log_indicator_events` config flag and YAML logging toggle (`logging.persist.indicators`).
-- Order lifecycle events are append-only: cycle records `created`, `validated`, `submitted`.
-- Broker responses now record `filled`/`error` events and `fill_events` through the cycle.
+- Order lifecycle events are append-only: cycle records `created`, `validated`, `submitted`, `rejected`, and broker `filled`/`error` events.
+- Broker responses now record `fill_events` through the cycle.
 - InternalPaperBroker now returns deterministic fill responses instead of writing events directly.
 - Risk validation now records `rejected` order events with a `rejection_reason` field.
 - Order handling is now asynchronous (bar → signal → validation → submission) via asyncio queues, with market data streamed into the queue as each bar is ingested.
-- Websocket stream notifications now carry full OHLCV payloads so trader_service can run cycles per bar without re-fetching.
+- Websocket stream notifications now carry a minimal payload (symbol/timeframe/ts/asset_class); trader_service re-reads bars from Postgres on notify.
+- Metrics snapshots persisted as schema-less JSON (`metrics_snapshots`) for both backtest and trading cycles.
+- Backtest performance summary expanded with trade metrics (hit rate, profit factor, expectancy, avg win/loss, turnover).
 - Updated schema/ER docs to include indicator events and append-only order events.
 - README and example config updated to include indicator logging toggle.
 
@@ -265,9 +267,86 @@ In progress (indicator telemetry + order lifecycle events in simulation delivere
 - Schema + event store: `src/trader/data.py`, `tests/support/duckdb_store.py`.
 - Signal telemetry: `src/trader/signal_generators/simple_bars.py`, `src/trader/signal_generators/in_memory_bars.py`, `src/trader/signals/sma_crossover_signal.py`.
 - Lifecycle logging: `src/trader/cycle.py`, `src/trader/broker.py`.
+- Metrics + summaries: `src/trader/metrics.py`, `src/trader/backtest.py`, `src/trader/cycle.py`.
 - Config/logging: `src/trader/config.py`, `configs/example.yaml`, `README.md`.
 - Docs: `docs/schema.md`, `docs/er.md`.
-- Tests: `tests/test_data.py` (schema list), config fixtures updated.
+- Tests: `tests/test_data.py` (schema list), `tests/test_cycle_events.py`.
 
 ### Testing
 - Not run in this environment; recommend `UV_CACHE_DIR=.uv-cache uv run pytest` after fixing cache permissions.
+
+---
+
+## Task 0.8 — AlpacaPaperBroker Adapter
+
+### Status
+Planned (subtasks captured; implementation pending).
+
+### Subtasks
+- Implement `AlpacaPaperBroker` using `alpaca-py` trading client with:
+  - `get_positions()`
+  - `place_orders(orders)`
+  - `get_order_by_id(broker_order_id)`
+  - `list_orders(since_ts)` for reconciliation
+  - optional `get_account()`
+- Add canonical status mapping and persist **every** transition as append-only `order_events`.
+- Enforce idempotent submission:
+  - always send deterministic `client_order_id`
+  - skip resubmits when `order_events` already show `submitted|accepted|partially_filled|filled`
+  - reconcile on `error` before retrying
+- Add reconciliation flow to update statuses for open orders.
+- Add bounded retries and “uncertain submission → error → reconcile” handling.
+- Update `docs/execution.md` with mapping, reconciliation, and idempotency guarantees.
+- Add integration tests with mocked Alpaca responses covering:
+  - idempotent resubmission prevention
+  - uncertain submission → `error` → reconcile
+
+### Additional requirements
+- Add tunable `InternalPaperBroker` parameters to simulate:
+  - time-to-fill distribution
+  - average order size distribution
+  - probability of rejection
+
+---
+
+## Task 0.8b — UI Backtest Runner
+
+### Status
+Planned (UI orchestration only).
+
+### Scope
+- UI submission of backtest configurations (YAML or form-based payload).
+- Trigger backtest runs from the UI (server-side invocation).
+- Stream or poll backtest progress (bars processed, % complete, elapsed time).
+- Display result summaries and equity/benchmark curves in a results view.
+
+### Deliverables
+- UI form for backtest configuration (symbols, timeframe, window, cash/positions).
+- Backend endpoint / handler to execute a backtest run with the submitted config.
+- Progress reporting channel (polling or server events).
+- Result window with summary metrics + chart/table outputs.
+
+### Implementation details
+- **Config submission**
+  - Add a UI form that maps to the existing YAML schema (`backtest.*`).
+  - Serialize the form into a JSON payload (or YAML) and submit to a backend handler.
+  - Persist submitted configs to `runs.config_snapshot` for auditability.
+- **Backtest execution**
+  - Add a UI-triggered backend action that launches `BacktestRunner` in-process.
+  - Ensure the handler accepts the config payload + optional overrides (symbols, time window).
+  - Return a `run_id` immediately so the UI can track progress.
+- **Progress tracking**
+  - During backtest execution, emit progress updates:
+    - total bars, processed bars, % complete, elapsed time, last_ts.
+  - Persist progress checkpoints to a lightweight table or `config_kv` entries keyed by `run_id`.
+  - UI polls `/progress?run_id=...` every N seconds (or uses server events if available).
+- **Result delivery**
+  - On completion, fetch the `BacktestResult` summary + curves.
+  - Persist summary to `metrics_snapshots` (JSON payload) with `run_id`.
+  - UI displays:
+    - summary metrics table (strategy vs benchmark)
+    - equity/benchmark curves chart
+    - positions table (final holdings).
+- **Error handling**
+  - If execution errors, record `runs.status=failed` and expose error message in the UI.
+  - UI should surface a failure banner with a link to logs / details.

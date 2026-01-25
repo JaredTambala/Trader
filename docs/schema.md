@@ -108,6 +108,12 @@ Notes:
 - `run_id` (TEXT)
 - `cycle_id` (TEXT, nullable)
 
+### `metrics_snapshots`
+- `ts` (TIMESTAMP)
+- `run_id` (TEXT, nullable)
+- `cycle_id` (TEXT, nullable)
+- `payload` (TEXT, JSON-encoded)
+
 ### `config_kv`
 - `key` (TEXT, PK)
 - `value` (TEXT)
@@ -147,6 +153,7 @@ Notes:
 - `order_events` stores the canonical order lifecycle events.
 - `fill_events` records executions tied to `client_order_id`.
 - `position_snapshots` records portfolio state over time.
+- `metrics_snapshots` stores schema-less metrics as JSON text.
 - `config_kv` stores operational flags (e.g. `halt=true`).
 
 ## Recommended Query Patterns

@@ -1006,6 +1006,18 @@ class PostgresEventStore(EventStore):
             CREATE INDEX IF NOT EXISTS position_snapshots_run_id_idx
             ON position_snapshots(run_id)
             """,
+            """
+            CREATE TABLE IF NOT EXISTS metrics_snapshots (
+                ts TIMESTAMPTZ,
+                run_id TEXT,
+                cycle_id TEXT,
+                payload TEXT
+            )
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS metrics_snapshots_run_id_idx
+            ON metrics_snapshots(run_id)
+            """,
         ]
         with self.transaction():
             for stmt in statements:
@@ -1024,6 +1036,7 @@ class PostgresEventStore(EventStore):
             "fill_events",
             "position_snapshots",
             "config_kv",
+            "metrics_snapshots",
         }:
             raise ValueError(f"Unknown event type: {event_type}")
 

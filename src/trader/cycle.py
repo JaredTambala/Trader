@@ -7,6 +7,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 import uuid
+import json
 from typing import AsyncIterator, Mapping, Sequence
 
 from dotenv import load_dotenv
@@ -147,6 +148,7 @@ def run_cycle(
         )
         stream_mode = config.mode.lower() != "backtest"
         processed_orders: Sequence[Mapping[str, object]] = []
+        market_data_events: Sequence[MarketDataEvent] = []
         price_lookup: Mapping[str, float] = {}
         if ingest_market_data and stream_mode:
             event_counter = {"count": 0}
@@ -221,6 +223,22 @@ def run_cycle(
                         max_age_seconds=config.market_data_max_age_seconds,
                         enforce_staleness=False,
                     )
+                )
+
+        if config.metrics_enable_snapshots:
+            snapshot_ts = decision_ts if config.mode.lower() == "backtest" else datetime.now(timezone.utc)
+            if not price_lookup and market_data_events:
+                price_lookup = _build_price_lookup(market_data_events)
+            if price_lookup:
+                _record_metrics_snapshot(
+                    event_store=event_store,
+                    portfolio=portfolio,
+                    price_lookup=price_lookup,
+                    asof_ts=snapshot_ts,
+                    run_id=run_id,
+                    cycle_id=cycle_id,
+                    asset_class=config.market_data_asset_class,
+                    symbols=config.market_data_symbols,
                 )
 
         if processed_orders:
@@ -741,6 +759,48 @@ def _record_portfolio_snapshot(
     snapshot = portfolio.snapshot(asof_ts=asof_ts, run_id=run_id, cycle_id=cycle_id)
     snapshot.persist(event_store)
     logger.info("Portfolio snapshot recorded count=%s", len(snapshot.positions))
+
+
+def _record_metrics_snapshot(
+    *,
+    event_store: EventStore,
+    portfolio: Portfolio,
+    price_lookup: Mapping[str, float],
+    asof_ts: datetime,
+    run_id: str,
+    cycle_id: str | None,
+    asset_class: str,
+    symbols: Sequence[str],
+) -> None:
+    """Persist a schema-less metrics snapshot as JSON text."""
+    equity = portfolio.cash_balance
+    net = 0.0
+    gross = 0.0
+    for position in portfolio.positions.values():
+        price = price_lookup.get(position.symbol)
+        if price is None:
+            continue
+        notional = position.qty * price
+        equity += notional
+        net += notional
+        gross += abs(notional)
+    payload = {
+        "equity": equity,
+        "cash": portfolio.cash_balance,
+        "net_exposure": net,
+        "gross_exposure": gross,
+        "asset_class": asset_class,
+        "symbols": list(symbols),
+    }
+    event_store.record_event(
+        "metrics_snapshots",
+        {
+            "ts": asof_ts,
+            "run_id": run_id,
+            "cycle_id": cycle_id,
+            "payload": json.dumps(payload),
+        },
+    )
 
 
 def _log_startup_config(config: Config) -> None:

@@ -80,6 +80,9 @@ class Config:
         log_fill_events: Whether to persist fill events.
         log_position_snapshots: Whether to persist position snapshots.
         broker_type: Broker selection (noop/internal/alpaca).
+        metrics_interval_seconds: Realtime metrics sampling interval (0 disables).
+        metrics_window_seconds: Optional rolling window size for metrics.
+        metrics_enable_snapshots: Whether to persist metrics snapshots.
     """
     mode: str
     strategy_type: str
@@ -114,6 +117,9 @@ class Config:
     log_fill_events: bool
     log_position_snapshots: bool
     broker_type: str
+    metrics_interval_seconds: int = 0
+    metrics_window_seconds: int | None = None
+    metrics_enable_snapshots: bool = False
 
 
 def load_yaml_config(path: str | Path) -> dict[str, Any]:
@@ -156,6 +162,9 @@ def build_config(data: Mapping[str, Any]) -> Config:
     buffering = _get_section(database, "buffering")
     logging_cfg = _get_section(data, "logging")
     persist_cfg = _get_section(logging_cfg, "persist")
+    metrics_cfg = _get_section(data, "metrics")
+    window_seconds_raw = metrics_cfg.get("window_seconds")
+    window_seconds = None if window_seconds_raw in (None, "") else _as_int(window_seconds_raw, 0)
     return Config(
         mode=str(runtime.get("mode", "once")),
         strategy_type=str(strategy.get("type", "noop")),
@@ -190,6 +199,9 @@ def build_config(data: Mapping[str, Any]) -> Config:
         log_fill_events=_as_bool(persist_cfg.get("fills"), True),
         log_position_snapshots=_as_bool(persist_cfg.get("positions"), True),
         broker_type=str(broker.get("type", "noop")),
+        metrics_interval_seconds=_as_int(metrics_cfg.get("interval_seconds"), 0),
+        metrics_window_seconds=window_seconds,
+        metrics_enable_snapshots=_as_bool(metrics_cfg.get("enable_snapshots"), False),
     )
 
 
