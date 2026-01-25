@@ -131,6 +131,17 @@ uv run python -m trader.market_data_replay configs/example.yaml
 This reads bars from Postgres and emits the same NOTIFY payloads the websocket streamer
 produces, so the trader service runs the real realtime path deterministically.
 
+### Metrics snapshots
+
+Enable schema-less metrics snapshots (JSON payloads) during runs:
+
+```yaml
+metrics:
+  enable_snapshots: true
+  interval_seconds: 30
+  window_seconds: null
+```
+
 To seed an initial in-memory paper trading portfolio for realtime runs, add
 `initial_cash` and optional `initial_positions` under `trader_service`:
 

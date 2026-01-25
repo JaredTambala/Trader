@@ -180,6 +180,17 @@ class DuckDBEventStore(EventStore):
                 )
                 """,
             ),
+            SchemaTable(
+                name="metrics_snapshots",
+                create_sql="""
+                CREATE TABLE IF NOT EXISTS metrics_snapshots (
+                    ts TIMESTAMP,
+                    run_id TEXT,
+                    cycle_id TEXT,
+                    payload TEXT
+                )
+                """,
+            ),
         )
 
         for table in tables:
@@ -210,6 +221,7 @@ class DuckDBEventStore(EventStore):
             "fill_events",
             "position_snapshots",
             "config_kv",
+            "metrics_snapshots",
         }:
             raise ValueError(f"Unknown event type: {event_type}")
 

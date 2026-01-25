@@ -88,13 +88,18 @@ replay:
   notify_channel: market_data
   limit: null
 
+metrics:
+  enable_snapshots: true
+  interval_seconds: 30
+  window_seconds: null
+
 backtest:
-  start: "2025-12-01T00:00:00Z"
+  start: "2026-01-20T00:00:00Z"
   end: "2026-01-21T00:00:00Z"
   timeframe: 1Min
   symbols:
     - BTC/USD
-  asset_class: stock
+  asset_class: crypto
   max_runs: null
   log_cycle_details: true
   initial_cash: 1000000

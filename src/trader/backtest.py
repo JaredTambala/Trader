@@ -108,6 +108,24 @@ class PerformanceSummary:
     avg_net_exposure: float | None
     avg_gross_exposure: float | None
     avg_invested_pct: float | None
+    trade_count: int | None
+    hit_rate: float | None
+    profit_factor: float | None
+    expectancy: float | None
+    avg_win: float | None
+    avg_loss: float | None
+    turnover: float | None
+
+
+@dataclass(frozen=True)
+class _TradeStats:
+    trade_count: int
+    hit_rate: float | None
+    profit_factor: float | None
+    expectancy: float | None
+    avg_win: float | None
+    avg_loss: float | None
+    turnover: float | None
 
 
 class BacktestMarketDataSource(MarketDataSource):
@@ -232,6 +250,13 @@ class BacktestRunner:
                 avg_net_exposure=None,
                 avg_gross_exposure=None,
                 avg_invested_pct=None,
+                trade_count=None,
+                hit_rate=None,
+                profit_factor=None,
+                expectancy=None,
+                avg_win=None,
+                avg_loss=None,
+                turnover=None,
             )
             return BacktestResult(
                 total_runs=0,
@@ -293,6 +318,13 @@ class BacktestRunner:
                 avg_net_exposure=None,
                 avg_gross_exposure=None,
                 avg_invested_pct=None,
+                trade_count=None,
+                hit_rate=None,
+                profit_factor=None,
+                expectancy=None,
+                avg_win=None,
+                avg_loss=None,
+                turnover=None,
             )
             return BacktestResult(
                 total_runs=0,
@@ -399,6 +431,7 @@ class BacktestRunner:
             for symbol in self._symbols
         }
         portfolio = _build_initial_portfolio(seeded_positions, cash_balance=self._initial_cash)
+        trade_stats: _TradeStats | None = None
         try:
             with _cycle_log_suppression(enabled=not log_cycle_details):
                 for ts in timestamps:
@@ -459,6 +492,7 @@ class BacktestRunner:
                 portfolio=portfolio,
                 bars_by_symbol=bars_by_symbol,
             )
+            trade_stats = _compute_trade_stats(self._event_store, run_id, equity_curve)
             if self._owns_event_store:
                 self._event_store.close()
 
@@ -467,11 +501,13 @@ class BacktestRunner:
             equity_curve,
             self._spec.timeframe,
             exposure_samples=exposure_samples,
+            trade_stats=trade_stats,
         )
         benchmark_summary = _build_performance_summary(
             benchmark_curve,
             self._spec.timeframe,
             exposure_samples=None,
+            trade_stats=None,
         )
         comparison = _build_relative_metrics(
             strategy_curve=equity_curve,
@@ -795,11 +831,152 @@ def _compute_holdings_equity(holdings: _Holdings, prices: Mapping[str, float]) -
     return equity
 
 
+def _compute_trade_stats(
+    event_store: EventStore,
+    run_id: str,
+    equity_curve: Sequence[EquityPoint],
+) -> _TradeStats | None:
+    """Compute trade-level statistics from fill events."""
+    connection = getattr(event_store, "connection", lambda: None)()
+    if connection is None or not hasattr(connection, "cursor"):
+        return None
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT client_order_id, symbol, side
+            FROM order_events
+            WHERE run_id = %s AND client_order_id IS NOT NULL AND side IS NOT NULL
+            """,
+            [run_id],
+        )
+        order_rows = cursor.fetchall()
+        order_lookup: dict[str, tuple[str, str]] = {}
+        for client_order_id, symbol, side in order_rows:
+            if client_order_id and client_order_id not in order_lookup:
+                order_lookup[str(client_order_id)] = (str(symbol), str(side).lower())
+
+        cursor.execute(
+            """
+            SELECT client_order_id, fill_ts, fill_qty, fill_price
+            FROM fill_events
+            WHERE run_id = %s
+            ORDER BY fill_ts ASC
+            """,
+            [run_id],
+        )
+        fill_rows = cursor.fetchall()
+
+    if not fill_rows:
+        return _TradeStats(
+            trade_count=0,
+            hit_rate=None,
+            profit_factor=None,
+            expectancy=None,
+            avg_win=None,
+            avg_loss=None,
+            turnover=None,
+        )
+
+    positions: dict[str, tuple[float, float | None]] = {}
+    realized_pnls: list[float] = []
+    traded_notional = 0.0
+
+    for client_order_id, _fill_ts, fill_qty, fill_price in fill_rows:
+        if client_order_id is None:
+            continue
+        order = order_lookup.get(str(client_order_id))
+        if order is None:
+            continue
+        symbol, side = order
+        qty = float(fill_qty or 0.0)
+        price = float(fill_price or 0.0)
+        if qty <= 0 or price <= 0:
+            continue
+        traded_notional += abs(qty * price)
+        sign = 1.0 if side == "buy" else -1.0
+        current_qty, avg_price = positions.get(symbol, (0.0, None))
+        delta = sign * qty
+
+        if current_qty == 0 or avg_price is None:
+            new_qty = current_qty + delta
+            if abs(new_qty) < 1e-12:
+                positions.pop(symbol, None)
+            else:
+                positions[symbol] = (new_qty, price)
+            continue
+
+        if current_qty > 0 and delta < 0:
+            close_qty = min(current_qty, qty)
+            realized_pnls.append((price - avg_price) * close_qty)
+            remaining = current_qty - close_qty
+            if qty > close_qty:
+                positions[symbol] = (-(qty - close_qty), price)
+            elif abs(remaining) < 1e-12:
+                positions.pop(symbol, None)
+            else:
+                positions[symbol] = (remaining, avg_price)
+            continue
+
+        if current_qty < 0 and delta > 0:
+            close_qty = min(abs(current_qty), qty)
+            realized_pnls.append((avg_price - price) * close_qty)
+            remaining = abs(current_qty) - close_qty
+            if qty > close_qty:
+                positions[symbol] = (qty - close_qty, price)
+            elif abs(remaining) < 1e-12:
+                positions.pop(symbol, None)
+            else:
+                positions[symbol] = (-remaining, avg_price)
+            continue
+
+        new_qty = current_qty + delta
+        if new_qty == 0:
+            positions.pop(symbol, None)
+        else:
+            avg_price_new = ((current_qty * avg_price) + (delta * price)) / new_qty
+            positions[symbol] = (new_qty, avg_price_new)
+
+    trade_count = len(realized_pnls)
+    wins = [pnl for pnl in realized_pnls if pnl > 0]
+    losses = [pnl for pnl in realized_pnls if pnl < 0]
+    hit_rate = None
+    if trade_count:
+        hit_rate = len(wins) / trade_count
+    avg_win = _mean(wins) if wins else None
+    avg_loss = _mean(losses) if losses else None
+    profit_factor = None
+    gross_loss = abs(sum(losses)) if losses else 0.0
+    if gross_loss > 0:
+        profit_factor = sum(wins) / gross_loss if wins else 0.0
+    expectancy = None
+    if trade_count:
+        win_rate = hit_rate or 0.0
+        loss_rate = 1.0 - win_rate
+        expectancy = (win_rate * (avg_win or 0.0)) + (loss_rate * (avg_loss or 0.0))
+
+    avg_equity = _mean([point.equity for point in equity_curve]) if equity_curve else 0.0
+    turnover = None
+    if avg_equity:
+        turnover = traded_notional / avg_equity
+
+    return _TradeStats(
+        trade_count=trade_count,
+        hit_rate=hit_rate,
+        profit_factor=profit_factor,
+        expectancy=expectancy,
+        avg_win=avg_win,
+        avg_loss=avg_loss,
+        turnover=turnover,
+    )
+
+
 def _build_performance_summary(
     equity_curve: Sequence[EquityPoint],
     timeframe: str,
     *,
     exposure_samples: Sequence[tuple[float, float, float | None]] | None,
+    trade_stats: "_TradeStats | None" = None,
 ) -> PerformanceSummary:
     """Build performance summary."""
     if len(equity_curve) < 2:
@@ -818,6 +995,13 @@ def _build_performance_summary(
             avg_net_exposure=None,
             avg_gross_exposure=None,
             avg_invested_pct=None,
+            trade_count=None,
+            hit_rate=None,
+            profit_factor=None,
+            expectancy=None,
+            avg_win=None,
+            avg_loss=None,
+            turnover=None,
         )
     start_equity = equity_curve[0].equity
     end_equity = equity_curve[-1].equity
@@ -860,6 +1044,13 @@ def _build_performance_summary(
         avg_net_exposure=avg_net,
         avg_gross_exposure=avg_gross,
         avg_invested_pct=avg_invested,
+        trade_count=trade_stats.trade_count if trade_stats else None,
+        hit_rate=trade_stats.hit_rate if trade_stats else None,
+        profit_factor=trade_stats.profit_factor if trade_stats else None,
+        expectancy=trade_stats.expectancy if trade_stats else None,
+        avg_win=trade_stats.avg_win if trade_stats else None,
+        avg_loss=trade_stats.avg_loss if trade_stats else None,
+        turnover=trade_stats.turnover if trade_stats else None,
     )
 
 

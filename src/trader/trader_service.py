@@ -7,6 +7,7 @@ import json
 import logging
 import signal
 import time
+import threading
 from datetime import datetime, timezone
 from dataclasses import replace
 from typing import Iterable, Mapping
@@ -21,6 +22,8 @@ from .identifiers import deterministic_run_session_id
 from .market_data import NoOpMarketDataSource
 from .portfolio import Portfolio, Position
 from .strategies.base import Strategy
+from .portfolio import load_latest_positions, load_latest_cash
+from .metrics import MetricsWorker
 
 
 logger = logging.getLogger(__name__)
@@ -53,6 +56,7 @@ class TraderService:
         self._config_snapshot = config_snapshot
         self._strategy_cache: dict[tuple[str, str, str], Strategy] = {}
         self._stop = False
+        self._metrics_worker: MetricsWorker | None = None
 
     def run(self) -> None:
         """Run the trading service based on the configured mode."""
@@ -76,6 +80,7 @@ class TraderService:
             self._config_snapshot,
             run_id=run_id,
         )
+        self._start_metrics_worker(run_id=run_id)
         logger.info(
             "Trader service start mode=%s cadence_seconds=%s min_trigger_interval_ms=%s",
             mode,
@@ -107,10 +112,12 @@ class TraderService:
             )
             if self._owns_event_store:
                 self._event_store.close()
+            self._stop_metrics_worker()
 
     def stop(self) -> None:
         """Request the service to stop."""
         self._stop = True
+        self._stop_metrics_worker()
 
     def _run_once(self, *, run_id: str) -> None:
         """Handle run once."""
@@ -251,6 +258,31 @@ class TraderService:
         strategy = _build_strategy(config, self._event_store)
         self._strategy_cache[key] = strategy
         return strategy
+
+    def _start_metrics_worker(self, *, run_id: str) -> None:
+        """Start background metrics sampling if configured."""
+        interval = getattr(self._config, "metrics_interval_seconds", 0)
+        window = getattr(self._config, "metrics_window_seconds", None)
+        enable_snapshots = getattr(self._config, "metrics_enable_snapshots", False)
+        if interval is None or interval <= 0:
+            return
+        self._metrics_worker = MetricsWorker(
+            event_store=self._event_store,
+            symbols=tuple(self._config.market_data_symbols or ()),
+            asset_class=self._config.market_data_asset_class,
+            interval_seconds=float(interval),
+            window_seconds=float(window) if window else None,
+            run_id=run_id,
+            persist_snapshots=enable_snapshots,
+        )
+        self._metrics_worker.start()
+
+    def _stop_metrics_worker(self) -> None:
+        """Stop the metrics worker if running."""
+        if self._metrics_worker is not None:
+            self._metrics_worker.stop()
+            self._metrics_worker.join(timeout=2.0)
+            self._metrics_worker = None
 
 
 def _safe_run_cycle(
