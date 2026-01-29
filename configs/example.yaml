@@ -38,6 +38,10 @@ logging:
 
 strategy:
   type: toggle   # or flip/pingpong
+  # Optional: external strategy implementation
+  # class_path: "my_bot.strategy:MyStrategy"
+  # params:
+  #   some_param: some_value
   toggle:
     order_qty: 0.01
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -54,6 +54,8 @@ class Config:
     Attributes:
         mode: Execution mode (once/loop/realtime).
         strategy_type: Strategy implementation selector (noop/sma).
+        strategy_class_path: Optional external strategy class path (module:Class).
+        strategy_params: Optional mapping of constructor parameters for external strategy.
         strategy_id: Identifier for the active strategy version.
         strategy_timeframe: Timeframe used by strategy queries (e.g. 1Min).
         sma_short_window: Short SMA window size for crossover signals.
@@ -140,6 +142,8 @@ class Config:
     metrics_interval_seconds: int = 0
     metrics_window_seconds: int | None = None
     metrics_enable_snapshots: bool = False
+    strategy_class_path: str = ""
+    strategy_params: Mapping[str, Any] = field(default_factory=dict)
 
 
 def load_yaml_config(path: str | Path) -> dict[str, Any]:
@@ -191,6 +195,8 @@ def build_config(data: Mapping[str, Any]) -> Config:
     return Config(
         mode=str(runtime.get("mode", "once")),
         strategy_type=str(strategy.get("type", "noop")),
+        strategy_class_path=str(strategy.get("class_path", "")),
+        strategy_params=_get_section(strategy, "params"),
         strategy_id=str(strategy.get("id", strategy.get("type", "noop"))),
         strategy_timeframe=normalize_timeframe(str(strategy.get("timeframe", "1Min"))),
         sma_short_window=default_short,

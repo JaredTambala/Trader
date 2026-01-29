@@ -330,7 +330,7 @@ Complete (session table + session_id tagging wired end-to-end).
 ## Task 0.8e — Strategy Externalization (User-Provided Code)
 
 ### Status
-Planned.
+Complete.
 
 ### Scope
 - Stabilize `Strategy` and `RiskManager` interfaces for external consumers.
@@ -339,6 +339,14 @@ Planned.
 - Prefer external strategy/risk manager in `run_cycle` when provided.
 - Optional strategy state persistence keyed by `session_id`.
 - Docs + example external strategy repo layout.
+
+### Evidence
+- Dynamic loader: `src/trader/loader.py`.
+- External strategy wiring: `src/trader/cycle.py`, `src/trader/config.py`, `src/trader/strategy.py`.
+- Example config + demo: `configs/external_strategy_demo.yaml`, `external_strategy_demo.py`.
+
+### Testing
+- `uv run python external_strategy_demo.py`
 
 ---
 

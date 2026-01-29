@@ -7,7 +7,10 @@ from typing import Iterable, Mapping, Sequence, Tuple
 
 
 class RiskManager(ABC):
-    """Validates candidate orders against risk limits."""
+    """Validates candidate orders against risk limits.
+
+    External risk managers should subclass this and implement ``validate``.
+    """
 
     @abstractmethod
     def validate(self, orders: Iterable[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:

@@ -1133,6 +1133,18 @@ def _build_strategy(config: Config, event_store: EventStore) -> Strategy:
     Returns:
         Strategy instance.
     """
+    strategy_class_path = (getattr(config, "strategy_class_path", "") or "").strip()
+    if strategy_class_path:
+        params = dict(getattr(config, "strategy_params", {}) or {})
+        try:
+            from trader.loader import instantiate
+            from trader.strategies.base import Strategy as StrategyBase
+
+            instance = instantiate(strategy_class_path, base_cls=StrategyBase, **params)
+        except Exception as exc:  # pragma: no cover - dynamic import
+            raise ValueError(f"Failed to load strategy class '{strategy_class_path}': {exc}") from exc
+        return instance
+
     strategy_type = (getattr(config, "strategy_type", "noop") or "noop").lower()
     if strategy_type == "sma":
         generator = SimpleBarsSignalGenerator(
@@ -1165,6 +1177,12 @@ def _build_strategy(config: Config, event_store: EventStore) -> Strategy:
             order_qty=getattr(config, "toggle_order_qty", 1.0),
         )
     return NoOpStrategy()
+
+
+def _build_risk_manager(config: Config) -> RiskManager:
+    """Construct a risk manager from config or strategy default."""
+    # Placeholder for future external risk manager loading
+    return NoOpRiskManager()
 
 
 def main() -> None:
