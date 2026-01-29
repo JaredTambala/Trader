@@ -60,6 +60,7 @@ def _base_config(db_path: str) -> Config:
         alpaca_api_key="",
         alpaca_secret_key="",
         alpaca_data_base_url="https://data.alpaca.markets",
+        alpaca_base_url="https://paper-api.alpaca.markets",
         pg_dsn="",
         pg_host="",
         pg_port=5432,

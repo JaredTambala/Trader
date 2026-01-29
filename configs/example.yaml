@@ -2,23 +2,56 @@ runtime:
   mode: once
 
 logging:
-  level: INFO
+  level: DEBUG
   persist:
     signals: false
     indicators: false
-    orders: false
-    fills: false
-    positions: false
+    orders: true
+    fills: true
+    positions: true
+
+# strategy:
+#   type: sma
+#   id: sma
+#   timeframe: 1Min
+#   sma_short_window: 2
+#   sma_long_window: 5
+  
+
+# broker:
+#   type: internal
+#   internal:
+#     reject_probability: 0.0
+#     fill_delay_ms_mean: 0
+#     fill_delay_ms_stddev: 0
+#     fill_qty_fraction_mean: 1.0
+#     fill_qty_fraction_stddev: 0.0
+#     rng_seed: null
+
+# strategy:
+#   type: random
+#   random:
+#     seed: 123
+#     order_qty: 0.001
+#     buy_probability: 0.98
+#     sell_probability: 0.02
 
 strategy:
-  type: sma
-  id: sma
-  timeframe: 1Min
-  sma_short_window: 2
-  sma_long_window: 5
+  type: toggle   # or flip/pingpong
+  toggle:
+    order_qty: 0.01
+
 
 broker:
-  type: internal
+  type: alpaca
+  time_in_force: gtc
+
+alpaca:
+  api_key: ${ALPACA_API_KEY}
+  secret_key: ${ALPACA_SECRET_KEY}
+  base_url: ${ALPACA_BASE_URL}
+  data_base_url: https://data.alpaca.markets
+
 
 market_data:
   source: alpaca
@@ -43,11 +76,6 @@ database:
     max_queue_size: 10000
     block_on_full: true
 
-alpaca:
-  api_key: ${ALPACA_API_KEY}
-  secret_key: ${ALPACA_SECRET_KEY}
-  data_base_url: https://data.alpaca.markets
-
 backfill:
   since: 40d
   timeframe: 1Min
@@ -69,12 +97,12 @@ trader_service:
   min_trigger_interval_ms: 200
   notify_channel: market_data
   max_iterations: null
+  portfolio_source: alpaca
   initial_cash: 100000
   initial_positions:
     - symbol: BTC/USD
-      qty: 0.5
-    - symbol: ETH/USD
-      qty: 0.5
+      qty: 0
+
 
 replay:
   asset_class: crypto

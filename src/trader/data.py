@@ -41,6 +41,7 @@ class EventStore(ABC):
         started_at: object,
         *,
         status: str = "started",
+        strategy_id: str | None = None,
         config_snapshot: object | None = None,
         mode: str | None = None,
         symbols: Sequence[str] | None = None,
@@ -82,6 +83,24 @@ class EventStore(ABC):
                 "end_ts": end_ts,
             },
         )
+        if run_type == "trading":
+            self.record_event(
+                "trading_sessions",
+                {
+                    "session_id": run_id,
+                    "strategy_id": strategy_id,
+                    "started_at": started_at,
+                    "finished_at": None,
+                    "status": status,
+                    "error_message": None,
+                    "config_snapshot": config_snapshot,
+                    "mode": mode,
+                    "symbols": list(symbols) if symbols is not None else None,
+                    "timeframe": timeframe,
+                    "start_ts": start_ts,
+                    "end_ts": end_ts,
+                },
+            )
 
     def record_run_session_finish(
         self,
@@ -92,6 +111,7 @@ class EventStore(ABC):
         status: str,
         error_message: str | None,
         *,
+        strategy_id: str | None = None,
         config_snapshot: object | None = None,
         mode: str | None = None,
         symbols: Sequence[str] | None = None,
@@ -135,6 +155,24 @@ class EventStore(ABC):
                 "end_ts": end_ts,
             },
         )
+        if run_type == "trading":
+            self.record_event(
+                "trading_sessions",
+                {
+                    "session_id": run_id,
+                    "strategy_id": strategy_id,
+                    "started_at": started_at,
+                    "finished_at": finished_at,
+                    "status": status,
+                    "error_message": error_message,
+                    "config_snapshot": config_snapshot,
+                    "mode": mode,
+                    "symbols": list(symbols) if symbols is not None else None,
+                    "timeframe": timeframe,
+                    "start_ts": start_ts,
+                    "end_ts": end_ts,
+                },
+            )
 
     def record_cycle_start(
         self,
@@ -151,6 +189,7 @@ class EventStore(ABC):
             {
                 "cycle_id": cycle_id,
                 "run_id": run_id,
+                "session_id": run_id,
                 "strategy_id": strategy_id,
                 "mode": mode,
                 "decision_ts": decision_ts,
@@ -179,6 +218,7 @@ class EventStore(ABC):
             {
                 "cycle_id": cycle_id,
                 "run_id": run_id,
+                "session_id": run_id,
                 "strategy_id": strategy_id,
                 "mode": mode,
                 "decision_ts": decision_ts,
@@ -293,6 +333,7 @@ class FilteredEventStore(EventStore):
         started_at: object,
         *,
         status: str = "started",
+        strategy_id: str | None = None,
         config_snapshot: object | None = None,
         mode: str | None = None,
         symbols: Sequence[str] | None = None,
@@ -306,6 +347,7 @@ class FilteredEventStore(EventStore):
             run_type=run_type,
             started_at=started_at,
             status=status,
+            strategy_id=strategy_id,
             config_snapshot=config_snapshot,
             mode=mode,
             symbols=symbols,
@@ -323,6 +365,7 @@ class FilteredEventStore(EventStore):
         status: str,
         error_message: str | None,
         *,
+        strategy_id: str | None = None,
         config_snapshot: object | None = None,
         mode: str | None = None,
         symbols: Sequence[str] | None = None,
@@ -338,6 +381,7 @@ class FilteredEventStore(EventStore):
             finished_at=finished_at,
             status=status,
             error_message=error_message,
+            strategy_id=strategy_id,
             config_snapshot=config_snapshot,
             mode=mode,
             symbols=symbols,
@@ -507,6 +551,7 @@ class BufferedEventStore(EventStore):
         started_at: object,
         *,
         status: str = "started",
+        strategy_id: str | None = None,
         config_snapshot: object | None = None,
         mode: str | None = None,
         symbols: Sequence[str] | None = None,
@@ -524,6 +569,7 @@ class BufferedEventStore(EventStore):
                 "finished_at": None,
                 "status": status,
                 "error_message": None,
+                "strategy_id": strategy_id,
                 "config_snapshot": config_snapshot,
                 "mode": mode,
                 "symbols": list(symbols) if symbols is not None else None,
@@ -542,6 +588,7 @@ class BufferedEventStore(EventStore):
         status: str,
         error_message: str | None,
         *,
+        strategy_id: str | None = None,
         config_snapshot: object | None = None,
         mode: str | None = None,
         symbols: Sequence[str] | None = None,
@@ -559,6 +606,7 @@ class BufferedEventStore(EventStore):
                 "finished_at": finished_at,
                 "status": status,
                 "error_message": error_message,
+                "strategy_id": strategy_id,
                 "config_snapshot": config_snapshot,
                 "mode": mode,
                 "symbols": list(symbols) if symbols is not None else None,
@@ -583,6 +631,7 @@ class BufferedEventStore(EventStore):
             {
                 "run_id": run_id,
                 "cycle_id": cycle_id,
+                "session_id": run_id,
                 "strategy_id": strategy_id,
                 "mode": mode,
                 "decision_ts": decision_ts,
@@ -611,6 +660,7 @@ class BufferedEventStore(EventStore):
             {
                 "run_id": run_id,
                 "cycle_id": cycle_id,
+                "session_id": run_id,
                 "strategy_id": strategy_id,
                 "mode": mode,
                 "decision_ts": decision_ts,
@@ -683,6 +733,7 @@ class BufferedEventStore(EventStore):
                 run_type=str(payload["run_type"]),
                 started_at=payload["started_at"],
                 status=str(payload["status"]),
+                strategy_id=payload.get("strategy_id"),
                 config_snapshot=payload.get("config_snapshot"),
                 mode=payload.get("mode"),
                 symbols=payload.get("symbols"),
@@ -699,6 +750,7 @@ class BufferedEventStore(EventStore):
                 finished_at=payload["finished_at"],
                 status=str(payload["status"]),
                 error_message=payload.get("error_message"),
+                strategy_id=payload.get("strategy_id"),
                 config_snapshot=payload.get("config_snapshot"),
                 mode=payload.get("mode"),
                 symbols=payload.get("symbols"),
@@ -782,6 +834,22 @@ class PostgresEventStore(EventStore):
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS trading_sessions (
+                session_id TEXT PRIMARY KEY,
+                strategy_id TEXT,
+                started_at TIMESTAMPTZ,
+                finished_at TIMESTAMPTZ,
+                status TEXT,
+                error_message TEXT,
+                config_snapshot JSONB,
+                mode TEXT,
+                symbols TEXT[],
+                timeframe TEXT,
+                start_ts TIMESTAMPTZ,
+                end_ts TIMESTAMPTZ
+            )
+            """,
+            """
             ALTER TABLE IF EXISTS run_events
             DROP CONSTRAINT IF EXISTS run_events_pkey
             """,
@@ -789,6 +857,7 @@ class PostgresEventStore(EventStore):
             CREATE TABLE IF NOT EXISTS run_events (
                 cycle_id TEXT PRIMARY KEY,
                 run_id TEXT,
+                session_id TEXT,
                 strategy_id TEXT,
                 mode TEXT,
                 decision_ts TIMESTAMPTZ,
@@ -805,6 +874,10 @@ class PostgresEventStore(EventStore):
             """
             ALTER TABLE IF EXISTS run_events
             ADD COLUMN IF NOT EXISTS run_id TEXT
+            """,
+            """
+            ALTER TABLE IF EXISTS run_events
+            ADD COLUMN IF NOT EXISTS session_id TEXT
             """,
             """
             ALTER TABLE IF EXISTS run_events
@@ -869,6 +942,7 @@ class PostgresEventStore(EventStore):
             """
             CREATE TABLE IF NOT EXISTS signal_events (
                 run_id TEXT,
+                session_id TEXT,
                 cycle_id TEXT,
                 symbol TEXT,
                 signal_value DOUBLE PRECISION,
@@ -879,6 +953,7 @@ class PostgresEventStore(EventStore):
             """
             CREATE TABLE IF NOT EXISTS indicator_events (
                 run_id TEXT,
+                session_id TEXT,
                 cycle_id TEXT,
                 symbol TEXT,
                 indicator_name TEXT,
@@ -887,10 +962,19 @@ class PostgresEventStore(EventStore):
             )
             """,
             """
+            ALTER TABLE signal_events
+            ADD COLUMN IF NOT EXISTS session_id TEXT
+            """,
+            """
+            ALTER TABLE indicator_events
+            ADD COLUMN IF NOT EXISTS session_id TEXT
+            """,
+            """
             CREATE TABLE IF NOT EXISTS order_events (
                 order_event_id TEXT PRIMARY KEY,
                 client_order_id TEXT,
                 run_id TEXT,
+                session_id TEXT,
                 cycle_id TEXT,
                 symbol TEXT,
                 side TEXT,
@@ -905,6 +989,10 @@ class PostgresEventStore(EventStore):
             """
             ALTER TABLE order_events
             ADD COLUMN IF NOT EXISTS rejection_reason TEXT
+            """,
+            """
+            ALTER TABLE order_events
+            ADD COLUMN IF NOT EXISTS session_id TEXT
             """,
             """
             ALTER TABLE order_events
@@ -931,11 +1019,16 @@ class PostgresEventStore(EventStore):
             CREATE TABLE IF NOT EXISTS fill_events (
                 client_order_id TEXT,
                 run_id TEXT,
+                session_id TEXT,
                 cycle_id TEXT,
                 fill_ts TIMESTAMPTZ,
                 fill_qty DOUBLE PRECISION,
                 fill_price DOUBLE PRECISION
             )
+            """,
+            """
+            ALTER TABLE fill_events
+            ADD COLUMN IF NOT EXISTS session_id TEXT
             """,
             """
             CREATE TABLE IF NOT EXISTS position_snapshots (
@@ -945,6 +1038,7 @@ class PostgresEventStore(EventStore):
                 avg_price DOUBLE PRECISION,
                 cash_balance DOUBLE PRECISION,
                 run_id TEXT,
+                session_id TEXT,
                 cycle_id TEXT
             )
             """,
@@ -961,6 +1055,10 @@ class PostgresEventStore(EventStore):
             """
             ALTER TABLE position_snapshots
             ADD COLUMN IF NOT EXISTS run_id TEXT
+            """,
+            """
+            ALTER TABLE position_snapshots
+            ADD COLUMN IF NOT EXISTS session_id TEXT
             """,
             """
             ALTER TABLE position_snapshots
@@ -983,16 +1081,32 @@ class PostgresEventStore(EventStore):
             ON run_events(run_id)
             """,
             """
+            CREATE INDEX IF NOT EXISTS run_events_session_id_idx
+            ON run_events(session_id)
+            """,
+            """
             CREATE INDEX IF NOT EXISTS signal_events_run_id_idx
             ON signal_events(run_id)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS signal_events_session_id_idx
+            ON signal_events(session_id)
             """,
             """
             CREATE INDEX IF NOT EXISTS indicator_events_run_id_idx
             ON indicator_events(run_id)
             """,
             """
+            CREATE INDEX IF NOT EXISTS indicator_events_session_id_idx
+            ON indicator_events(session_id)
+            """,
+            """
             CREATE INDEX IF NOT EXISTS order_events_run_id_idx
             ON order_events(run_id)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS order_events_session_id_idx
+            ON order_events(session_id)
             """,
             """
             CREATE INDEX IF NOT EXISTS order_events_client_order_id_idx
@@ -1003,20 +1117,37 @@ class PostgresEventStore(EventStore):
             ON fill_events(run_id)
             """,
             """
+            CREATE INDEX IF NOT EXISTS fill_events_session_id_idx
+            ON fill_events(session_id)
+            """,
+            """
             CREATE INDEX IF NOT EXISTS position_snapshots_run_id_idx
             ON position_snapshots(run_id)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS position_snapshots_session_id_idx
+            ON position_snapshots(session_id)
             """,
             """
             CREATE TABLE IF NOT EXISTS metrics_snapshots (
                 ts TIMESTAMPTZ,
                 run_id TEXT,
+                session_id TEXT,
                 cycle_id TEXT,
                 payload TEXT
             )
             """,
             """
+            ALTER TABLE metrics_snapshots
+            ADD COLUMN IF NOT EXISTS session_id TEXT
+            """,
+            """
             CREATE INDEX IF NOT EXISTS metrics_snapshots_run_id_idx
             ON metrics_snapshots(run_id)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS metrics_snapshots_session_id_idx
+            ON metrics_snapshots(session_id)
             """,
         ]
         with self.transaction():
@@ -1027,6 +1158,7 @@ class PostgresEventStore(EventStore):
         """Insert a payload into the requested event table."""
         if event_type not in {
             "runs",
+            "trading_sessions",
             "run_events",
             "stock_bar_events",
             "crypto_bar_events",
@@ -1057,6 +1189,7 @@ class PostgresEventStore(EventStore):
         started_at: object,
         *,
         status: str = "started",
+        strategy_id: str | None = None,
         config_snapshot: object | None = None,
         mode: str | None = None,
         symbols: Sequence[str] | None = None,
@@ -1100,6 +1233,40 @@ class PostgresEventStore(EventStore):
                 end_ts,
             ],
         )
+        if run_type == "trading":
+            self._connection.execute(
+                """
+                INSERT INTO trading_sessions (
+                    session_id,
+                    strategy_id,
+                    started_at,
+                    finished_at,
+                    status,
+                    error_message,
+                    config_snapshot,
+                    mode,
+                    symbols,
+                    timeframe,
+                    start_ts,
+                    end_ts
+                )
+                VALUES (%s, %s, %s, NULL, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (session_id) DO NOTHING
+                """,
+                [
+                    run_id,
+                    strategy_id,
+                    started_at,
+                    status,
+                    None,
+                    snapshot_json,
+                    mode,
+                    list(symbols) if symbols is not None else None,
+                    timeframe,
+                    start_ts,
+                    end_ts,
+                ],
+            )
 
     def record_run_session_finish(
         self,
@@ -1110,6 +1277,7 @@ class PostgresEventStore(EventStore):
         status: str,
         error_message: str | None,
         *,
+        strategy_id: str | None = None,
         config_snapshot: object | None = None,
         mode: str | None = None,
         symbols: Sequence[str] | None = None,
@@ -1157,6 +1325,44 @@ class PostgresEventStore(EventStore):
                 end_ts,
             ],
         )
+        if run_type == "trading":
+            self._connection.execute(
+                """
+                INSERT INTO trading_sessions (
+                    session_id,
+                    strategy_id,
+                    started_at,
+                    finished_at,
+                    status,
+                    error_message,
+                    config_snapshot,
+                    mode,
+                    symbols,
+                    timeframe,
+                    start_ts,
+                    end_ts
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (session_id) DO UPDATE SET
+                    finished_at = excluded.finished_at,
+                    status = excluded.status,
+                    error_message = excluded.error_message
+                """,
+                [
+                    run_id,
+                    strategy_id,
+                    started_at,
+                    finished_at,
+                    status,
+                    error_message,
+                    snapshot_json,
+                    mode,
+                    list(symbols) if symbols is not None else None,
+                    timeframe,
+                    start_ts,
+                    end_ts,
+                ],
+            )
 
     def record_cycle_start(
         self,
@@ -1173,6 +1379,7 @@ class PostgresEventStore(EventStore):
             INSERT INTO run_events (
                 cycle_id,
                 run_id,
+                session_id,
                 strategy_id,
                 mode,
                 decision_ts,
@@ -1181,10 +1388,10 @@ class PostgresEventStore(EventStore):
                 status,
                 error_message
             )
-            VALUES (%s, %s, %s, %s, %s, %s, NULL, 'started', NULL)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, NULL, 'started', NULL)
             ON CONFLICT (cycle_id) DO NOTHING
             """,
-            [cycle_id, run_id, strategy_id, mode, decision_ts, started_at],
+            [cycle_id, run_id, run_id, strategy_id, mode, decision_ts, started_at],
         )
 
     def record_cycle_finish(
@@ -1205,6 +1412,7 @@ class PostgresEventStore(EventStore):
             INSERT INTO run_events (
                 cycle_id,
                 run_id,
+                session_id,
                 strategy_id,
                 mode,
                 decision_ts,
@@ -1213,7 +1421,7 @@ class PostgresEventStore(EventStore):
                 status,
                 error_message
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (cycle_id) DO UPDATE SET
                 finished_at = excluded.finished_at,
                 status = excluded.status,
@@ -1221,6 +1429,7 @@ class PostgresEventStore(EventStore):
             """,
             [
                 cycle_id,
+                run_id,
                 run_id,
                 strategy_id,
                 mode,

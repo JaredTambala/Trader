@@ -280,32 +280,89 @@ In progress (indicator telemetry, order lifecycle, metrics snapshots, and backte
 ## Task 0.8 — AlpacaPaperBroker Adapter
 
 ### Status
-Planned (subtasks captured; implementation pending).
+Complete (AlpacaPaperBroker implemented with idempotency, reconciliation, and tests).
 
-### Subtasks
-- Implement `AlpacaPaperBroker` using `alpaca-py` trading client with:
-  - `get_positions()`
-  - `place_orders(orders)`
-  - `get_order_by_id(broker_order_id)`
-  - `list_orders(since_ts)` for reconciliation
-  - optional `get_account()`
-- Add canonical status mapping and persist **every** transition as append-only `order_events`.
-- Enforce idempotent submission:
-  - always send deterministic `client_order_id`
-  - skip resubmits when `order_events` already show `submitted|accepted|partially_filled|filled`
-  - reconcile on `error` before retrying
-- Add reconciliation flow to update statuses for open orders.
-- Add bounded retries and “uncertain submission → error → reconcile” handling.
-- Update `docs/execution.md` with mapping, reconciliation, and idempotency guarantees.
-- Add integration tests with mocked Alpaca responses covering:
-  - idempotent resubmission prevention
-  - uncertain submission → `error` → reconcile
+### What was delivered
+- `AlpacaPaperBroker` implemented with Alpaca SDK integration and bounded retries.
+- Canonical status mapping + append-only order lifecycle persistence.
+- Idempotent submission by deterministic `client_order_id` and event-store lookup.
+- Reconciliation helper (`reconcile_orders`) that appends status transitions and fill events.
+- Internal paper broker tunables for latency, rejection probability, and fill fraction.
+- Pipeline updates to respect broker responses (skip rejected/error, apply fill qty/price).
+- Docs + README updated with Alpaca mapping/reconciliation and broker config.
+- Integration tests covering idempotency, reconciliation, and status mapping.
 
-### Additional requirements
-- Add tunable `InternalPaperBroker` parameters to simulate:
-  - time-to-fill distribution
-  - average order size distribution
-  - probability of rejection
+### Evidence
+- Broker implementation: `src/trader/broker.py`, `src/trader/cycle.py`.
+- Config + example YAML: `src/trader/config.py`, `configs/example.yaml`.
+- Exports: `src/trader/__init__.py`.
+- Documentation: `docs/execution.md`, `README.md`.
+- Tests: `tests/test_alpaca_broker.py`.
+
+### Testing
+- `uv run pytest tests/test_alpaca_broker.py`
+
+---
+
+## Task 0.8d — Trading Sessions & Session-Scoped Event Tagging
+
+### Status
+Complete (session table + session_id tagging wired end-to-end).
+
+### What was delivered
+- Introduced `trading_sessions` table and `session_id` columns across event tables for stable joins.
+- `run_id` now doubles as the session key and is written into `session_id` for runs, signals, indicators, orders, fills, position snapshots, and metrics.
+- Portfolio snapshots now persist `session_id`; backtest/metrics snapshots include `session_id`.
+- Postgres schema updates applied via event-store initialization.
+- DuckDB test store schema updated to mirror session columns and session start/finish behavior.
+
+### Evidence
+- Schema changes: `src/trader/data.py`, `tests/support/duckdb_store.py`.
+- Event tagging: `src/trader/cycle.py`, `src/trader/strategies/simple.py`,
+  `src/trader/signal_generators/simple_bars.py`, `src/trader/signal_generators/in_memory_bars.py`,
+  `src/trader/broker.py`, `src/trader/metrics.py`, `src/trader/portfolio.py`, `src/trader/backtest.py`.
+
+### Testing
+- Postgres schema init: `uv run python - <<'PY' ... build_event_store ... PY`
+
+---
+
+## Task 0.8e — Strategy Externalization (User-Provided Code)
+
+### Status
+Planned.
+
+### Scope
+- Stabilize `Strategy` and `RiskManager` interfaces for external consumers.
+- Add dynamic loader for `module:Class` paths.
+- Extend YAML config with `strategy.class_path`/`strategy.params` and `risk_manager.*`.
+- Prefer external strategy/risk manager in `run_cycle` when provided.
+- Optional strategy state persistence keyed by `session_id`.
+- Docs + example external strategy repo layout.
+
+---
+
+## Task 0.8f — Analytics via Apache Superset
+
+### Status
+Planned.
+
+### Scope
+- Add Superset deployment and DB connection.
+- Define datasets for runs/sessions/orders/fills/positions/metrics.
+- Provide example dashboards and setup docs.
+
+---
+
+## Task 0.8g — Split UI into `trader-core` and `trader-ui`
+
+### Status
+Planned.
+
+### Scope
+- Separate packages and dependencies (core vs UI).
+- Update UI imports to consume core via install.
+- Document install/run flow for both packages.
 
 ---
 
@@ -340,9 +397,44 @@ In progress (form, backend/API, persistence, results page, and endpoint tests im
 - UI styles/config: `src/ui/assets/styles.css`, `src/ui/rxconfig.py`.
 - Serialization fixes: `src/trader/data.py`.
 
+---
+
+## Task 0.10 — Execution Orchestrator (Real-time + Once)
+
+**Status**
+Complete (single-flight trader service + cycle implementation).
+
+**Evidence**
+- `TraderService` supports loop/realtime/once, listens for `NOTIFY`, and coalesces pending triggers via the min-triggger interval.
+- `run_cycle` implements ingestion → signals → risk → broker → fill persistence → run/position snapshots with freshness/staleness guards.
+- `docs/execution.md` and README describe the orchestrator, LISTEN/NOTIFY flow, and staleness policy.
 ### Next steps
 - Consider automatic polling (requires a supported timer pattern in Reflex or a JS hook).
 - Improve UX around loading state/spinner and automatic navigation to results on completion.
+
+---
+
+## Task 0.8c — Statistical Fill Model for Internal Broker
+
+**Status**
+Planned.
+
+**Scope**
+- Add latency/rejection/fill fraction/slippage distribution knobs to `internal.broker.fill_model` and pass them through `Config`.
+- Update `InternalPaperBroker` to sample from log-normal (latency), beta (fill fraction), t-distribution (slippage), and conditional rejection.
+- Ensure deterministic seeds keep behavior repeatable for tests.
+- Document the new knobs and provide example configs.
+- Write tests verifying seeded samples and reject/fill outcomes.
+
+**Evidence**
+- Personality handles tuned behavior in `src/trader/broker.py` once implemented.
+- Config + docs updates in `src/trader/config.py`, `configs/example.yaml`, `docs/execution.md`.
+- Tests verifying deterministic fill behavior (placeholder `tests/test_internal_broker_fill_model.py`).
+
+**Next steps**
+- Define distribution parameters/schema and add parsing helpers in `Config`.
+- Implement sampling helpers and incorporate them into `InternalPaperBroker.submit_orders`.
+- Add deterministic tests with seeded RNG.
 - Document the UI backtest workflow in README/ops with port configuration and env requirements.
 
 ### Testing

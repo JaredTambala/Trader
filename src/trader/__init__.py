@@ -1,6 +1,6 @@
 """Trading system package for Stage 0 skeleton."""
 
-from .broker import Broker, InternalPaperBroker, NoOpBroker
+from .broker import AlpacaPaperBroker, Broker, InternalPaperBroker, NoOpBroker
 from .config import Config, build_config, load_yaml_config, resolve_log_level
 from .alpaca_market_data import AlpacaMarketDataSource
 from .data import EventStore, NoOpEventStore, PostgresEventStore
@@ -24,11 +24,12 @@ from .market_data_backfill import MarketDataBackfillRunner
 from .backtest import BacktestResult, BacktestRunner, PositionSummary
 from .portfolio import Portfolio, PortfolioSnapshot, Position
 from .risk import RiskManager, NoOpRiskManager
-from .strategies import Strategy, NoOpStrategy
+from .strategies import Strategy, NoOpStrategy, RandomStrategy, ToggleUnitStrategy
 from .trader_service import TraderService
 
 __all__ = [
     "Broker",
+    "AlpacaPaperBroker",
     "InternalPaperBroker",
     "NoOpBroker",
     "Config",
@@ -62,5 +63,7 @@ __all__ = [
     "NoOpRiskManager",
     "Strategy",
     "NoOpStrategy",
+    "RandomStrategy",
+    "ToggleUnitStrategy",
     "TraderService",
 ]

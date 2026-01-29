@@ -68,6 +68,7 @@ class Config:
         alpaca_api_key: Alpaca API key for data access.
         alpaca_secret_key: Alpaca secret key for data access.
         alpaca_data_base_url: Base URL for Alpaca data API.
+        alpaca_base_url: Base URL for Alpaca trading API.
         pg_dsn: Optional Postgres DSN.
         pg_host: Postgres host.
         pg_port: Postgres port.
@@ -80,9 +81,15 @@ class Config:
         log_fill_events: Whether to persist fill events.
         log_position_snapshots: Whether to persist position snapshots.
         broker_type: Broker selection (noop/internal/alpaca).
+        broker_time_in_force: Default time-in-force for broker orders.
         metrics_interval_seconds: Realtime metrics sampling interval (0 disables).
         metrics_window_seconds: Optional rolling window size for metrics.
         metrics_enable_snapshots: Whether to persist metrics snapshots.
+        random_seed: Seed for random strategy (optional).
+        random_order_qty: Default order size for random strategy.
+        random_buy_probability: Probability of emitting a buy order.
+        random_sell_probability: Probability of emitting a sell order.
+        toggle_order_qty: Unit size for toggle strategy orders.
     """
     mode: str
     strategy_type: str
@@ -100,6 +107,7 @@ class Config:
     alpaca_api_key: str
     alpaca_secret_key: str
     alpaca_data_base_url: str
+    alpaca_base_url: str
     pg_dsn: str
     pg_host: str
     pg_port: int
@@ -117,6 +125,18 @@ class Config:
     log_fill_events: bool
     log_position_snapshots: bool
     broker_type: str
+    internal_broker_reject_probability: float = 0.0
+    internal_broker_fill_delay_ms_mean: float = 0.0
+    internal_broker_fill_delay_ms_stddev: float = 0.0
+    internal_broker_fill_qty_fraction_mean: float = 1.0
+    internal_broker_fill_qty_fraction_stddev: float = 0.0
+    internal_broker_rng_seed: int | None = None
+    broker_time_in_force: str = "day"
+    random_seed: int | None = None
+    random_order_qty: float = 0.001
+    random_buy_probability: float = 0.45
+    random_sell_probability: float = 0.45
+    toggle_order_qty: float = 1.0
     metrics_interval_seconds: int = 0
     metrics_window_seconds: int | None = None
     metrics_enable_snapshots: bool = False
@@ -163,6 +183,9 @@ def build_config(data: Mapping[str, Any]) -> Config:
     logging_cfg = _get_section(data, "logging")
     persist_cfg = _get_section(logging_cfg, "persist")
     metrics_cfg = _get_section(data, "metrics")
+    internal_cfg = _get_section(broker, "internal")
+    random_cfg = _get_section(strategy, "random")
+    toggle_cfg = _get_section(strategy, "toggle")
     window_seconds_raw = metrics_cfg.get("window_seconds")
     window_seconds = None if window_seconds_raw in (None, "") else _as_int(window_seconds_raw, 0)
     return Config(
@@ -182,6 +205,7 @@ def build_config(data: Mapping[str, Any]) -> Config:
         alpaca_api_key=str(alpaca.get("api_key", "")),
         alpaca_secret_key=str(alpaca.get("secret_key", "")),
         alpaca_data_base_url=str(alpaca.get("data_base_url", "https://data.alpaca.markets")),
+        alpaca_base_url=str(alpaca.get("base_url", "https://paper-api.alpaca.markets")),
         pg_dsn=str(database.get("pg_dsn", pg.get("dsn", ""))),
         pg_host=str(database.get("pg_host", pg.get("host", ""))),
         pg_port=_as_int(database.get("pg_port", pg.get("port", 5432)), 5432),
@@ -199,6 +223,18 @@ def build_config(data: Mapping[str, Any]) -> Config:
         log_fill_events=_as_bool(persist_cfg.get("fills"), True),
         log_position_snapshots=_as_bool(persist_cfg.get("positions"), True),
         broker_type=str(broker.get("type", "noop")),
+        internal_broker_reject_probability=_as_float(internal_cfg.get("reject_probability"), 0.0),
+        internal_broker_fill_delay_ms_mean=_as_float(internal_cfg.get("fill_delay_ms_mean"), 0.0),
+        internal_broker_fill_delay_ms_stddev=_as_float(internal_cfg.get("fill_delay_ms_stddev"), 0.0),
+        internal_broker_fill_qty_fraction_mean=_as_float(internal_cfg.get("fill_qty_fraction_mean"), 1.0),
+        internal_broker_fill_qty_fraction_stddev=_as_float(internal_cfg.get("fill_qty_fraction_stddev"), 0.0),
+        internal_broker_rng_seed=_as_optional_int(internal_cfg.get("rng_seed")),
+        broker_time_in_force=str(broker.get("time_in_force", "day")),
+        random_seed=_as_optional_int(random_cfg.get("seed")),
+        random_order_qty=_as_float(random_cfg.get("order_qty"), 0.001),
+        random_buy_probability=_as_float(random_cfg.get("buy_probability"), 0.45),
+        random_sell_probability=_as_float(random_cfg.get("sell_probability"), 0.45),
+        toggle_order_qty=_as_float(toggle_cfg.get("order_qty"), 1.0),
         metrics_interval_seconds=_as_int(metrics_cfg.get("interval_seconds"), 0),
         metrics_window_seconds=window_seconds,
         metrics_enable_snapshots=_as_bool(metrics_cfg.get("enable_snapshots"), False),
@@ -233,6 +269,23 @@ def _expand_env_values(value: Any) -> Any:
     if isinstance(value, list):
         return [_expand_env_values(val) for val in value]
     return value
+
+
+def _as_float(value: Any, default: float) -> float:
+    """Parse float value with fallback."""
+    if value in (None, ""):
+        return float(default)
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Expected float value, got {value!r}") from exc
+
+
+def _as_optional_int(value: Any) -> int | None:
+    """Parse optional int value."""
+    if value in (None, ""):
+        return None
+    return _as_int(value, 0)
 
 
 def _as_int(value: Any, default: int) -> int:

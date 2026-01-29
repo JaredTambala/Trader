@@ -10,7 +10,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Mapping, Sequence
 import json
 
-from .portfolio import load_latest_positions, load_latest_cash
+from .portfolio import Position, load_latest_positions, load_latest_cash
+from .broker import Broker
 from .data import EventStore
 
 
@@ -43,6 +44,7 @@ class MetricsWorker(threading.Thread):
         *,
         run_id: str | None = None,
         persist_snapshots: bool = False,
+        broker: Broker | None = None,
     ) -> None:
         super().__init__(daemon=True)
         self._event_store = event_store
@@ -55,6 +57,7 @@ class MetricsWorker(threading.Thread):
         self._peak_equity: float | None = None
         self._run_id = run_id
         self._persist_snapshots = persist_snapshots
+        self._broker = broker
 
     def stop(self) -> None:
         """Request the worker to stop."""
@@ -90,8 +93,7 @@ class MetricsWorker(threading.Thread):
 
     def _sample(self) -> MetricsSample | None:
         """Compute a metrics snapshot."""
-        positions = load_latest_positions(self._event_store)
-        cash = load_latest_cash(self._event_store) or 0.0
+        positions, cash = self._load_positions_and_cash()
         if not positions and cash == 0.0:
             return None
 
@@ -130,6 +132,42 @@ class MetricsWorker(threading.Thread):
             drawdown=dd,
         )
 
+    def _load_positions_and_cash(self) -> tuple[Sequence[Position], float]:
+        """Load positions/cash from broker when available, else from event store."""
+        if self._broker is None:
+            return load_latest_positions(self._event_store), load_latest_cash(self._event_store) or 0.0
+
+        try:
+            account = self._broker.get_account()
+            cash_raw = account.get("cash", 0.0) if isinstance(account, Mapping) else 0.0
+            cash = float(cash_raw) if cash_raw is not None else 0.0
+            positions_raw = self._broker.get_positions() or []
+        except Exception as exc:  # pragma: no cover - broker calls
+            logger.warning("Metrics broker load failed; using event store: %s", exc)
+            return load_latest_positions(self._event_store), load_latest_cash(self._event_store) or 0.0
+
+        positions: list[Position] = []
+        for position in positions_raw:
+            if not isinstance(position, Mapping):
+                continue
+            symbol = str(position.get("symbol", "")).strip().upper()
+            if not symbol:
+                continue
+            qty_raw = position.get("qty", 0.0)
+            try:
+                qty = float(qty_raw)
+            except (TypeError, ValueError):
+                qty = 0.0
+            side = str(position.get("side", "")).lower().strip()
+            if side == "short" and qty > 0:
+                qty = -qty
+            if abs(qty) < 1e-12:
+                continue
+            avg_raw = position.get("avg_entry_price")
+            avg_price = float(avg_raw) if avg_raw is not None else None
+            positions.append(Position(symbol=symbol, qty=qty, avg_price=avg_price))
+        return positions, cash
+
     def _latest_prices(self) -> Mapping[str, float]:
         """Fetch the latest bar close per symbol from the event store."""
         connection = getattr(self._event_store, "connection", lambda: None)()
@@ -159,6 +197,7 @@ class MetricsWorker(threading.Thread):
         payload = {
             "ts": sample.ts,
             "run_id": self._run_id,
+            "session_id": self._run_id,
             "cycle_id": None,
             "payload": json.dumps(
                 {

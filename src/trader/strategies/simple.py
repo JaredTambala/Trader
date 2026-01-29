@@ -181,6 +181,7 @@ class SimpleStrategy(Strategy):
                 "signal_events",
                 {
                     "run_id": run_id,
+                    "session_id": run_id,
                     "cycle_id": cycle_id,
                     "symbol": symbol,
                     "signal_value": float(value),

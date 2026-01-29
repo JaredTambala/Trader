@@ -46,11 +46,31 @@ class DuckDBEventStore(EventStore):
                 """,
             ),
             SchemaTable(
+                name="trading_sessions",
+                create_sql="""
+                CREATE TABLE IF NOT EXISTS trading_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    strategy_id TEXT,
+                    started_at TIMESTAMP,
+                    finished_at TIMESTAMP,
+                    status TEXT,
+                    error_message TEXT,
+                    config_snapshot TEXT,
+                    mode TEXT,
+                    symbols TEXT[],
+                    timeframe TEXT,
+                    start_ts TIMESTAMP,
+                    end_ts TIMESTAMP
+                )
+                """,
+            ),
+            SchemaTable(
                 name="run_events",
                 create_sql="""
                 CREATE TABLE IF NOT EXISTS run_events (
                     cycle_id TEXT PRIMARY KEY,
                     run_id TEXT,
+                    session_id TEXT,
                     strategy_id TEXT,
                     mode TEXT,
                     decision_ts TIMESTAMP,
@@ -104,6 +124,7 @@ class DuckDBEventStore(EventStore):
                 create_sql="""
                 CREATE TABLE IF NOT EXISTS signal_events (
                     run_id TEXT,
+                    session_id TEXT,
                     cycle_id TEXT,
                     symbol TEXT,
                     signal_value DOUBLE,
@@ -117,6 +138,7 @@ class DuckDBEventStore(EventStore):
                 create_sql="""
                 CREATE TABLE IF NOT EXISTS indicator_events (
                     run_id TEXT,
+                    session_id TEXT,
                     cycle_id TEXT,
                     symbol TEXT,
                     indicator_name TEXT,
@@ -132,6 +154,7 @@ class DuckDBEventStore(EventStore):
                     order_event_id TEXT PRIMARY KEY,
                     client_order_id TEXT,
                     run_id TEXT,
+                    session_id TEXT,
                     cycle_id TEXT,
                     symbol TEXT,
                     side TEXT,
@@ -150,6 +173,7 @@ class DuckDBEventStore(EventStore):
                 CREATE TABLE IF NOT EXISTS fill_events (
                     client_order_id TEXT,
                     run_id TEXT,
+                    session_id TEXT,
                     cycle_id TEXT,
                     fill_ts TIMESTAMP,
                     fill_qty DOUBLE,
@@ -167,6 +191,7 @@ class DuckDBEventStore(EventStore):
                     avg_price DOUBLE,
                     cash_balance DOUBLE,
                     run_id TEXT,
+                    session_id TEXT,
                     cycle_id TEXT
                 )
                 """,
@@ -186,6 +211,7 @@ class DuckDBEventStore(EventStore):
                 CREATE TABLE IF NOT EXISTS metrics_snapshots (
                     ts TIMESTAMP,
                     run_id TEXT,
+                    session_id TEXT,
                     cycle_id TEXT,
                     payload TEXT
                 )
@@ -222,6 +248,7 @@ class DuckDBEventStore(EventStore):
             "position_snapshots",
             "config_kv",
             "metrics_snapshots",
+            "trading_sessions",
         }:
             raise ValueError(f"Unknown event type: {event_type}")
 
@@ -237,6 +264,7 @@ class DuckDBEventStore(EventStore):
         started_at: object,
         *,
         status: str = "started",
+        strategy_id: str | None = None,
         config_snapshot: object | None = None,
         mode: str | None = None,
         symbols: Sequence[str] | None = None,
@@ -276,6 +304,39 @@ class DuckDBEventStore(EventStore):
                 end_ts,
             ],
         )
+        if run_type == "trading":
+            self._connection.execute(
+                """
+                INSERT INTO trading_sessions (
+                    session_id,
+                    strategy_id,
+                    started_at,
+                    finished_at,
+                    status,
+                    error_message,
+                    config_snapshot,
+                    mode,
+                    symbols,
+                    timeframe,
+                    start_ts,
+                    end_ts
+                )
+                VALUES (?, ?, ?, NULL, ?, NULL, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (session_id) DO NOTHING
+                """,
+                [
+                    run_id,
+                    strategy_id,
+                    started_at,
+                    status,
+                    config_snapshot,
+                    mode,
+                    list(symbols) if symbols is not None else None,
+                    timeframe,
+                    start_ts,
+                    end_ts,
+                ],
+            )
 
     def record_run_session_finish(
         self,
@@ -286,6 +347,7 @@ class DuckDBEventStore(EventStore):
         status: str,
         error_message: str | None,
         *,
+        strategy_id: str | None = None,
         config_snapshot: object | None = None,
         mode: str | None = None,
         symbols: Sequence[str] | None = None,
@@ -330,6 +392,44 @@ class DuckDBEventStore(EventStore):
                 end_ts,
             ],
         )
+        if run_type == "trading":
+            self._connection.execute(
+                """
+                INSERT INTO trading_sessions (
+                    session_id,
+                    strategy_id,
+                    started_at,
+                    finished_at,
+                    status,
+                    error_message,
+                    config_snapshot,
+                    mode,
+                    symbols,
+                    timeframe,
+                    start_ts,
+                    end_ts
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (session_id) DO UPDATE SET
+                    finished_at = excluded.finished_at,
+                    status = excluded.status,
+                    error_message = excluded.error_message
+                """,
+                [
+                    run_id,
+                    strategy_id,
+                    started_at,
+                    finished_at,
+                    status,
+                    error_message,
+                    config_snapshot,
+                    mode,
+                    list(symbols) if symbols is not None else None,
+                    timeframe,
+                    start_ts,
+                    end_ts,
+                ],
+            )
 
     def record_cycle_start(
         self,

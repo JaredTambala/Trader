@@ -384,6 +384,7 @@ class BacktestRunner:
             run_id=run_id,
             run_type="backtest",
             started_at=started_at,
+            strategy_id=self._config.strategy_id,
             config_snapshot=self._config_snapshot,
             mode=self._config.mode,
             symbols=self._symbols,
@@ -490,6 +491,7 @@ class BacktestRunner:
                 finished_at=datetime.now(timezone.utc),
                 status=run_status,
                 error_message=run_error,
+                strategy_id=self._config.strategy_id,
                 mode=self._config.mode,
                 symbols=self._symbols,
                 timeframe=self._spec.timeframe,
@@ -1770,6 +1772,7 @@ def _seed_positions(
         positions=tuple(positions),
         cash_balance=cash_balance,
         run_id=run_id,
+        session_id=run_id,
     )
     snapshot.persist(event_store)
 
@@ -1802,6 +1805,7 @@ def persist_backtest_result(run_id: str, result: BacktestResult, config: Config)
             {
                 "ts": datetime.now(timezone.utc),
                 "run_id": run_id,
+                "session_id": run_id,
                 "cycle_id": None,
                 "payload": json.dumps(_serialize_backtest_result(result)),
             },
