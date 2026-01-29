@@ -11,7 +11,7 @@ import json
 from typing import AsyncIterator, Mapping, Sequence
 
 from dotenv import load_dotenv
-from .broker import Broker, InternalPaperBroker, NoOpBroker
+from .broker import AlpacaPaperBroker, Broker, InternalPaperBroker, NoOpBroker
 from .config import Config, build_config, load_yaml_config, resolve_log_level
 from .data import EventStore, FilteredEventStore, build_event_store
 from .identifiers import (
@@ -28,11 +28,11 @@ from .market_data import (
     CryptoBarEvent,
     StockBarEvent,
 )
-from .portfolio import Portfolio
+from .portfolio import Portfolio, Position
 from .signal_generators import SimpleBarsSignalGenerator
 from .signals import SmaCrossoverSignal
 from .indicators import SmaIndicator
-from .strategies import NoOpStrategy, SimpleStrategy, Strategy
+from .strategies import NoOpStrategy, SimpleStrategy, Strategy, RandomStrategy, ToggleUnitStrategy
 
 
 logger = logging.getLogger(__name__)
@@ -93,13 +93,13 @@ def run_cycle(
         ",".join(config.market_data_symbols) if config.market_data_symbols else "<none>",
         config.strategy_timeframe,
     )
-    broker = broker or _build_broker(config, event_store)
-
     owns_event_store = False
     if event_store is None:
         event_store = build_event_store(config)
         owns_event_store = True
         logger.info("Event store initialized backend=%s", config.event_store.lower())
+
+    broker = broker or _build_broker(config, event_store)
 
     decision_ts = decision_ts or datetime.now(timezone.utc)
     if decision_ts.tzinfo is None:
@@ -107,12 +107,30 @@ def run_cycle(
 
     event_store = _apply_event_filters(event_store, config)
     event_store.flush()
-    if portfolio is None:
+
+    broker_kind = config.broker_type.lower()
+
+    # Refresh portfolio from broker each cycle for Alpaca to avoid stale DB state.
+    if broker_kind == "alpaca":
+        portfolio = _load_portfolio_from_broker(
+            broker=broker,
+            event_store=event_store,
+            run_id=run_id or "",
+            cycle_id=None,
+            decision_ts=decision_ts,
+        )
+        logger.info(
+            "Portfolio loaded from Alpaca positions=%s cash=%s",
+            len(portfolio.positions),
+            portfolio.cash_balance,
+        )
+    elif portfolio is None:
         portfolio_asof = decision_ts if config.mode.lower() == "backtest" else None
         portfolio = Portfolio.from_event_store(event_store, asof_ts=portfolio_asof)
         logger.info("Portfolio loaded positions=%s", len(portfolio.positions))
     else:
         logger.info("Portfolio override positions=%s", len(portfolio.positions))
+
     strategy = strategy or _build_strategy(config, event_store)
 
     if market_data_source is None:
@@ -130,6 +148,7 @@ def run_cycle(
             run_id=run_id,
             run_type=run_type,
             started_at=started_at,
+            strategy_id=config.strategy_id,
             config_snapshot=config_snapshot,
             mode=config.mode,
             symbols=config.market_data_symbols,
@@ -147,6 +166,8 @@ def run_cycle(
             started_at=started_at,
         )
         stream_mode = config.mode.lower() != "backtest"
+        broker_kind = config.broker_type.lower()
+        sync_portfolio_on_fill = broker_kind in {"alpaca", "internal"}
         processed_orders: Sequence[Mapping[str, object]] = []
         market_data_events: Sequence[MarketDataEvent] = []
         price_lookup: Mapping[str, float] = {}
@@ -166,6 +187,10 @@ def run_cycle(
                     ),
                     max_age_seconds=config.market_data_max_age_seconds,
                     enforce_staleness=True,
+                    asset_class=config.market_data_asset_class,
+                    time_in_force=config.broker_time_in_force,
+                    sync_portfolio_on_fill=sync_portfolio_on_fill,
+                    broker_type=broker_kind,
                 )
             )
             if event_counter["count"] == 0:
@@ -190,6 +215,10 @@ def run_cycle(
                             event_stream=_event_stream_from_list(market_data_events),
                             max_age_seconds=config.market_data_max_age_seconds,
                             enforce_staleness=False,
+                            asset_class=config.market_data_asset_class,
+                            time_in_force=config.broker_time_in_force,
+                            sync_portfolio_on_fill=sync_portfolio_on_fill,
+                            broker_type=broker_kind,
                         )
                     )
         else:
@@ -222,6 +251,10 @@ def run_cycle(
                         event_stream=_event_stream_from_list(market_data_events),
                         max_age_seconds=config.market_data_max_age_seconds,
                         enforce_staleness=False,
+                        asset_class=config.market_data_asset_class,
+                        time_in_force=config.broker_time_in_force,
+                        sync_portfolio_on_fill=sync_portfolio_on_fill,
+                        broker_type=broker_kind,
                     )
                 )
 
@@ -242,17 +275,30 @@ def run_cycle(
                 )
 
         if processed_orders:
-            snapshot_ts = decision_ts if config.mode.lower() == "backtest" else datetime.now(timezone.utc)
-            _record_portfolio_snapshot(
-                event_store=event_store,
-                portfolio=portfolio,
-                orders=processed_orders,
-                market_data_events=[],
-                asof_ts=snapshot_ts,
-                run_id=run_id,
-                cycle_id=cycle_id,
-                price_lookup=price_lookup,
-            )
+            if sync_portfolio_on_fill and broker_kind == "alpaca":
+                logger.info("Portfolio snapshot skipped; alpaca fills sync portfolio state")
+            elif sync_portfolio_on_fill and broker_kind == "internal":
+                snapshot_ts = decision_ts if config.mode.lower() == "backtest" else datetime.now(timezone.utc)
+                snapshot = portfolio.snapshot(
+                    asof_ts=snapshot_ts,
+                    run_id=run_id,
+                    cycle_id=cycle_id,
+                    session_id=run_id,
+                )
+                snapshot.persist(event_store)
+                logger.info("Portfolio snapshot recorded (broker fills) count=%s", len(snapshot.positions))
+            else:
+                snapshot_ts = decision_ts if config.mode.lower() == "backtest" else datetime.now(timezone.utc)
+                _record_portfolio_snapshot(
+                    event_store=event_store,
+                    portfolio=portfolio,
+                    orders=processed_orders,
+                    market_data_events=[],
+                    asof_ts=snapshot_ts,
+                    run_id=run_id,
+                    cycle_id=cycle_id,
+                    price_lookup=price_lookup,
+                )
 
             finished_at = datetime.now(timezone.utc)
             event_store.record_cycle_finish(
@@ -291,6 +337,7 @@ def run_cycle(
                 finished_at=datetime.now(timezone.utc),
                 status=run_session_status,
                 error_message=run_session_error,
+                strategy_id=config.strategy_id,
                 mode=config.mode,
                 symbols=config.market_data_symbols,
                 timeframe=config.strategy_timeframe,
@@ -356,7 +403,21 @@ def _build_broker(config: Config, event_store: EventStore) -> Broker:
     """Build broker."""
     broker_type = (getattr(config, "broker_type", "noop") or "noop").lower()
     if broker_type in {"internal", "paper", "sim"}:
-        return InternalPaperBroker()
+        return InternalPaperBroker(
+            reject_probability=getattr(config, "internal_broker_reject_probability", 0.0),
+            fill_delay_ms_mean=getattr(config, "internal_broker_fill_delay_ms_mean", 0.0),
+            fill_delay_ms_stddev=getattr(config, "internal_broker_fill_delay_ms_stddev", 0.0),
+            fill_qty_fraction_mean=getattr(config, "internal_broker_fill_qty_fraction_mean", 1.0),
+            fill_qty_fraction_stddev=getattr(config, "internal_broker_fill_qty_fraction_stddev", 0.0),
+            rng_seed=getattr(config, "internal_broker_rng_seed", None),
+        )
+    if broker_type in {"alpaca", "alpaca-paper", "alpaca_paper"}:
+        return AlpacaPaperBroker(
+            api_key=config.alpaca_api_key,
+            secret_key=config.alpaca_secret_key,
+            base_url=getattr(config, "alpaca_base_url", None),
+            event_store=event_store,
+        )
     return NoOpBroker()
 
 
@@ -377,6 +438,8 @@ def _attach_order_metadata(
     run_id: str,
     cycle_id: str,
     price_lookup: Mapping[str, float],
+    asset_class: str,
+    time_in_force: str,
 ) -> Sequence[Mapping[str, object]]:
     """Attach run metadata to order payloads."""
     timestamp = datetime.now(timezone.utc)
@@ -397,10 +460,13 @@ def _attach_order_metadata(
                 **order,
                 "symbol": symbol,
                 "run_id": run_id,
+                "session_id": run_id,
                 "cycle_id": cycle_id,
                 "client_order_id": client_order_id,
                 "price": price,
                 "created_at": order.get("created_at") or timestamp,
+                "asset_class": asset_class,
+                "time_in_force": order.get("time_in_force", time_in_force),
             }
         )
     return enriched
@@ -417,12 +483,14 @@ def _record_order_events(
     """Persist order lifecycle events for candidate orders."""
     timestamp = event_ts or datetime.now(timezone.utc)
     for order in orders:
+        session_id = order.get("session_id") or order.get("run_id")
         event_store.record_event(
             "order_events",
             {
                 "order_event_id": f"order_evt_{uuid.uuid4().hex}",
                 "client_order_id": order.get("client_order_id"),
                 "run_id": order.get("run_id"),
+                "session_id": session_id,
                 "cycle_id": order.get("cycle_id"),
                 "symbol": order.get("symbol"),
                 "side": order.get("side"),
@@ -453,14 +521,16 @@ def _record_broker_responses(
             continue
         status = str(response.get("status", "submitted"))
         broker_order_id = response.get("broker_order_id")
+        rejection_reason = response.get("rejection_reason")
+        order_payload = order if rejection_reason is None else {**order, "rejection_reason": rejection_reason}
         _record_order_events(
             event_store,
-            [order],
+            [order_payload],
             status=status,
             broker_order_id=broker_order_id,
             event_ts=response.get("fill_ts") or datetime.now(timezone.utc),
         )
-        if status == "filled":
+        if status in {"filled", "partially_filled"}:
             fill_qty = response.get("fill_qty", order.get("qty"))
             fill_price = response.get("fill_price", order.get("price"))
             if fill_qty is None or fill_price is None:
@@ -474,6 +544,7 @@ def _record_broker_responses(
                 {
                     "client_order_id": client_order_id,
                     "run_id": order.get("run_id"),
+                    "session_id": order.get("session_id") or order.get("run_id"),
                     "cycle_id": order.get("cycle_id"),
                     "fill_ts": response.get("fill_ts") or datetime.now(timezone.utc),
                     "fill_qty": float(fill_qty),
@@ -493,6 +564,10 @@ async def _process_market_stream_async(
     event_stream: AsyncIterator[MarketDataEvent],
     max_age_seconds: int,
     enforce_staleness: bool,
+    asset_class: str,
+    time_in_force: str,
+    sync_portfolio_on_fill: bool,
+    broker_type: str,
 ) -> tuple[Sequence[Mapping[str, object]], Mapping[str, float]]:
     """Process market data events through the async pipeline."""
     event_queue: asyncio.Queue[MarketDataEvent | None] = asyncio.Queue()
@@ -534,6 +609,8 @@ async def _process_market_stream_async(
                     run_id=run_id,
                     cycle_id=cycle_id,
                     price_lookup={symbol: float(event.close)},
+                    asset_class=asset_class,
+                    time_in_force=time_in_force,
                 )[0]
                 _record_order_events(event_store, [enriched], status="created")
                 await order_queue.put(enriched)
@@ -561,7 +638,47 @@ async def _process_market_stream_async(
             _record_order_events(event_store, [order], status="submitted")
             responses = await asyncio.to_thread(broker.submit_orders, [order])
             _record_broker_responses(event_store, [order], responses)
-            processed.append(order)
+            processed_order = order
+            if responses:
+                response = responses[0]
+                status = str(response.get("status", "submitted"))
+                if status in {"rejected", "canceled", "expired", "error"}:
+                    continue
+                if sync_portfolio_on_fill and status in {"filled", "partially_filled"}:
+                    fill_ts = response.get("fill_ts") or datetime.now(timezone.utc)
+                    if broker_type == "alpaca":
+                        _sync_portfolio_from_broker(
+                            event_store=event_store,
+                            broker=broker,
+                            portfolio=portfolio,
+                            run_id=run_id,
+                            cycle_id=cycle_id,
+                            asof_ts=fill_ts,
+                        )
+                    elif broker_type == "internal":
+                        _apply_fill_to_portfolio(
+                            portfolio=portfolio,
+                            order=order,
+                            response=response,
+                        )
+                        snapshot = portfolio.snapshot(
+                            asof_ts=fill_ts,
+                            run_id=run_id,
+                            cycle_id=cycle_id,
+                            session_id=run_id,
+                        )
+                        snapshot.persist(event_store)
+                        logger.info(
+                            "Portfolio snapshot recorded (internal fill) count=%s",
+                            len(snapshot.positions),
+                        )
+                fill_qty = response.get("fill_qty")
+                fill_price = response.get("fill_price")
+                if fill_qty is not None:
+                    processed_order = {**processed_order, "qty": float(fill_qty)}
+                if fill_price is not None:
+                    processed_order = {**processed_order, "price": float(fill_price)}
+            processed.append(processed_order)
 
     await asyncio.gather(producer(), signal_worker(), validator(), submitter())
     return processed, {symbol: price for symbol, (_, price) in latest_prices.items()}
@@ -756,9 +873,154 @@ def _record_portfolio_snapshot(
     logger.debug("Portfolio pricing lookup symbols=%s", ",".join(price_lookup.keys()) or "<none>")
 
     portfolio.apply_orders(orders, price_lookup=price_lookup)
-    snapshot = portfolio.snapshot(asof_ts=asof_ts, run_id=run_id, cycle_id=cycle_id)
+    snapshot = portfolio.snapshot(
+        asof_ts=asof_ts,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        session_id=run_id,
+    )
     snapshot.persist(event_store)
     logger.info("Portfolio snapshot recorded count=%s", len(snapshot.positions))
+
+
+def _apply_fill_to_portfolio(
+    *,
+    portfolio: Portfolio,
+    order: Mapping[str, object],
+    response: Mapping[str, object],
+) -> None:
+    """Apply a single fill to the in-memory portfolio (for internal broker)."""
+    fill_qty = response.get("fill_qty", order.get("qty"))
+    fill_price = response.get("fill_price", order.get("price"))
+    symbol = str(order.get("symbol", "")).strip()
+    side = str(order.get("side", "")).lower().strip()
+    if not symbol or side not in {"buy", "sell"}:
+        return
+    try:
+        qty = float(fill_qty) if fill_qty is not None else 0.0
+    except (TypeError, ValueError):
+        qty = 0.0
+    if qty <= 0:
+        return
+    price_lookup = {symbol: float(fill_price)} if fill_price is not None else {}
+    portfolio.apply_orders(
+        [
+            {
+                "symbol": symbol,
+                "side": side,
+                "qty": qty,
+                "price": fill_price,
+            }
+        ],
+        price_lookup=price_lookup,
+    )
+
+
+def _load_portfolio_from_broker(
+    *,
+    broker: Broker,
+    event_store: EventStore,
+    run_id: str,
+    cycle_id: str | None,
+    decision_ts: datetime,
+) -> Portfolio:
+    """Load portfolio state from a broker (Alpaca) each cycle."""
+    get_account = getattr(broker, "get_account", None)
+    get_positions = getattr(broker, "get_positions", None)
+    if not callable(get_account) or not callable(get_positions):
+        logger.warning("Broker portfolio load skipped; broker lacks account/position access")
+        return Portfolio.from_event_store(event_store)
+
+    try:
+        account = get_account()
+        cash_raw = account.get("cash", 0.0) if isinstance(account, Mapping) else 0.0
+        cash = float(cash_raw) if cash_raw is not None else 0.0
+        positions_raw = get_positions() or []
+        positions: dict[str, Position] = {}
+        for position in positions_raw:
+            if not isinstance(position, Mapping):
+                continue
+            symbol = str(position.get("symbol", "")).strip().upper()
+            if not symbol:
+                continue
+            qty_raw = position.get("qty", 0.0)
+            try:
+                qty = float(qty_raw)
+            except (TypeError, ValueError):
+                qty = 0.0
+            side = str(position.get("side", "")).lower().strip()
+            if side == "short" and qty > 0:
+                qty = -qty
+            if abs(qty) < 1e-12:
+                continue
+            avg_raw = position.get("avg_entry_price")
+            avg_price = float(avg_raw) if avg_raw is not None else None
+            positions[symbol] = Position(symbol=symbol, qty=qty, avg_price=avg_price)
+        portfolio = Portfolio(positions=positions, cash_balance=cash)
+        snapshot = portfolio.snapshot(
+            asof_ts=decision_ts,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            session_id=run_id,
+        )
+        snapshot.persist(event_store)
+        return portfolio
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.warning("Broker portfolio load failed; falling back to DB: %s", exc)
+        return Portfolio.from_event_store(event_store)
+
+
+def _sync_portfolio_from_broker(
+    *,
+    event_store: EventStore,
+    broker: Broker,
+    portfolio: Portfolio,
+    run_id: str,
+    cycle_id: str | None,
+    asof_ts: datetime,
+) -> None:
+    """Refresh portfolio state from the broker after fills."""
+    get_account = getattr(broker, "get_account", None)
+    get_positions = getattr(broker, "get_positions", None)
+    if not callable(get_account) or not callable(get_positions):
+        logger.warning("Portfolio sync skipped; broker lacks account/position access")
+        return
+
+    account = get_account()
+    cash_raw = account.get("cash", 0.0) if isinstance(account, Mapping) else 0.0
+    cash = float(cash_raw) if cash_raw is not None else 0.0
+    positions_raw = get_positions() or []
+    positions: dict[str, Position] = {}
+    for position in positions_raw:
+        if not isinstance(position, Mapping):
+            continue
+        symbol = str(position.get("symbol", "")).strip().upper()
+        if not symbol:
+            continue
+        qty_raw = position.get("qty", 0.0)
+        try:
+            qty = float(qty_raw)
+        except (TypeError, ValueError):
+            qty = 0.0
+        side = str(position.get("side", "")).lower().strip()
+        if side == "short" and qty > 0:
+            qty = -qty
+        if abs(qty) < 1e-12:
+            continue
+        avg_raw = position.get("avg_entry_price")
+        avg_price = float(avg_raw) if avg_raw is not None else None
+        positions[symbol] = Position(symbol=symbol, qty=qty, avg_price=avg_price)
+
+    portfolio.positions = positions
+    portfolio.cash_balance = cash
+    snapshot = portfolio.snapshot(
+        asof_ts=asof_ts,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        session_id=run_id,
+    )
+    snapshot.persist(event_store)
+    logger.info("Portfolio synced from broker positions=%s cash=%s", len(positions), cash)
 
 
 def _record_metrics_snapshot(
@@ -797,6 +1059,7 @@ def _record_metrics_snapshot(
         {
             "ts": asof_ts,
             "run_id": run_id,
+            "session_id": run_id,
             "cycle_id": cycle_id,
             "payload": json.dumps(payload),
         },
@@ -887,6 +1150,19 @@ def _build_strategy(config: Config, event_store: EventStore) -> Strategy:
         return SimpleStrategy(
             signal_generator=generator,
             primary_signal="sma_crossover",
+        )
+    if strategy_type in {"random", "smoke"}:
+        return RandomStrategy(
+            symbols=config.market_data_symbols,
+            order_qty=getattr(config, "random_order_qty", 0.001),
+            buy_probability=getattr(config, "random_buy_probability", 0.45),
+            sell_probability=getattr(config, "random_sell_probability", 0.45),
+            rng_seed=getattr(config, "random_seed", None),
+        )
+    if strategy_type in {"toggle", "flip", "pingpong"}:
+        return ToggleUnitStrategy(
+            symbols=config.market_data_symbols,
+            order_qty=getattr(config, "toggle_order_qty", 1.0),
         )
     return NoOpStrategy()
 

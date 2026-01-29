@@ -31,9 +31,11 @@ class PortfolioSnapshot:
     cash_balance: float
     run_id: str | None = None
     cycle_id: str | None = None
+    session_id: str | None = None
 
     def persist(self, event_store: EventStore) -> None:
         """Persist the snapshot to the event store."""
+        session_id = self.session_id or self.run_id
         if not self.positions:
             event_store.record_event(
                 "position_snapshots",
@@ -45,6 +47,7 @@ class PortfolioSnapshot:
                     "cash_balance": self.cash_balance,
                     "run_id": self.run_id,
                     "cycle_id": self.cycle_id,
+                    "session_id": session_id,
                 },
             )
             return
@@ -59,6 +62,7 @@ class PortfolioSnapshot:
                     "cash_balance": self.cash_balance,
                     "run_id": self.run_id,
                     "cycle_id": self.cycle_id,
+                    "session_id": session_id,
                 },
             )
 
@@ -154,6 +158,7 @@ class Portfolio:
         asof_ts: datetime | None = None,
         run_id: str | None = None,
         cycle_id: str | None = None,
+        session_id: str | None = None,
     ) -> PortfolioSnapshot:
         """Create a snapshot of the current portfolio state.
 
@@ -171,6 +176,7 @@ class Portfolio:
             cash_balance=self.cash_balance,
             run_id=run_id,
             cycle_id=cycle_id,
+            session_id=session_id or run_id,
         )
 
 

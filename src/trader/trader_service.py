@@ -21,6 +21,7 @@ from .data import EventStore, build_event_store
 from .identifiers import deterministic_run_session_id
 from .market_data import NoOpMarketDataSource
 from .portfolio import Portfolio, Position
+from .broker import AlpacaPaperBroker
 from .strategies.base import Strategy
 from .portfolio import load_latest_positions, load_latest_cash
 from .metrics import MetricsWorker
@@ -70,13 +71,21 @@ class TraderService:
             run_id=run_id,
             run_type="trading",
             started_at=started_at,
+            strategy_id=self._config.strategy_id,
             config_snapshot=self._config_snapshot,
             mode=self._config.mode,
             symbols=self._config.market_data_symbols,
             timeframe=self._config.strategy_timeframe,
         )
+        _maybe_sync_portfolio_from_alpaca(
+            self._event_store,
+            self._config,
+            self._config_snapshot,
+            run_id=run_id,
+        )
         _maybe_seed_portfolio(
             self._event_store,
+            self._config,
             self._config_snapshot,
             run_id=run_id,
         )
@@ -106,6 +115,7 @@ class TraderService:
                 finished_at=datetime.now(timezone.utc),
                 status=run_status,
                 error_message=run_error,
+                strategy_id=self._config.strategy_id,
                 mode=self._config.mode,
                 symbols=self._config.market_data_symbols,
                 timeframe=self._config.strategy_timeframe,
@@ -266,6 +276,13 @@ class TraderService:
         enable_snapshots = getattr(self._config, "metrics_enable_snapshots", False)
         if interval is None or interval <= 0:
             return
+        broker = None
+        if self._config.broker_type.lower() == "alpaca":
+            broker = AlpacaPaperBroker(
+                api_key=self._config.alpaca_api_key,
+                secret_key=self._config.alpaca_secret_key,
+                base_url=self._config.alpaca_base_url,
+            )
         self._metrics_worker = MetricsWorker(
             event_store=self._event_store,
             symbols=tuple(self._config.market_data_symbols or ()),
@@ -274,6 +291,7 @@ class TraderService:
             window_seconds=float(window) if window else None,
             run_id=run_id,
             persist_snapshots=enable_snapshots,
+            broker=broker,
         )
         self._metrics_worker.start()
 
@@ -296,7 +314,7 @@ def _safe_run_cycle(
     """Run a cycle and log failures without crashing the service."""
     try:
         portfolio = Portfolio.from_event_store(event_store)
-        logger.info("Trader service portfolio positions=%s", len(portfolio.positions))
+        _log_portfolio_state(portfolio)
         run_cycle(
             event_store=event_store,
             config=config,
@@ -321,7 +339,7 @@ def _safe_run_cycle_for_notify(
     """Handle safe run cycle for notify."""
     try:
         portfolio = Portfolio.from_event_store(event_store)
-        logger.info("Trader service portfolio positions=%s", len(portfolio.positions))
+        _log_portfolio_state(portfolio)
         symbol = notify_data.get("symbol")
         timeframe = notify_data.get("timeframe")
         asset_class = notify_data.get("asset_class")
@@ -377,13 +395,38 @@ def _parse_market_data_notify(payload: str) -> Mapping[str, object] | None:
     }
 
 
+def _log_portfolio_state(portfolio: Portfolio) -> None:
+    """Log portfolio cash and per-symbol position details."""
+    if not portfolio.positions:
+        logger.info("Trader service portfolio cash=%s positions=0", portfolio.cash_balance)
+        return
+    positions = [
+        {
+            "symbol": position.symbol,
+            "qty": position.qty,
+            "avg_price": position.avg_price,
+        }
+        for position in portfolio.positions.values()
+    ]
+    logger.info(
+        "Trader service portfolio cash=%s positions=%s detail=%s",
+        portfolio.cash_balance,
+        len(portfolio.positions),
+        positions,
+    )
+
+
 def _maybe_seed_portfolio(
     event_store: EventStore,
+    config: Config,
     config_snapshot: Mapping[str, object] | None,
     *,
     run_id: str,
 ) -> None:
     """Seed an initial portfolio for realtime trading when configured."""
+    if _resolve_portfolio_source(config, config_snapshot) == "alpaca":
+        logger.info("Portfolio seed skipped; portfolio_source=alpaca")
+        return
     if not config_snapshot or not isinstance(config_snapshot, Mapping):
         return
     service_cfg = config_snapshot.get("trader_service", {})
@@ -407,9 +450,101 @@ def _maybe_seed_portfolio(
         positions={position.symbol: position for position in positions},
         cash_balance=cash,
     )
-    snapshot = portfolio.snapshot(asof_ts=datetime.now(timezone.utc), run_id=run_id)
+    snapshot = portfolio.snapshot(
+        asof_ts=datetime.now(timezone.utc),
+        run_id=run_id,
+        session_id=run_id,
+    )
     snapshot.persist(event_store)
     logger.info("Seeded initial portfolio positions=%s cash=%s", len(positions), cash)
+
+
+def _maybe_sync_portfolio_from_alpaca(
+    event_store: EventStore,
+    config: Config,
+    config_snapshot: Mapping[str, object] | None,
+    *,
+    run_id: str,
+) -> None:
+    """Sync portfolio state from Alpaca when configured."""
+    source = _resolve_portfolio_source(config, config_snapshot)
+    if source != "alpaca":
+        return
+    if config.broker_type.lower() != "alpaca":
+        logger.warning("Portfolio source alpaca ignored; broker_type=%s", config.broker_type)
+        return
+    try:
+        broker = AlpacaPaperBroker(
+            api_key=config.alpaca_api_key,
+            secret_key=config.alpaca_secret_key,
+            base_url=config.alpaca_base_url,
+        )
+        account = broker.get_account()
+        cash_raw = account.get("cash", 0.0)
+        cash = float(cash_raw) if cash_raw is not None else 0.0
+        positions_raw = broker.get_positions()
+        _clear_position_snapshots(event_store)
+        positions: list[Position] = []
+        for position in positions_raw:
+            symbol = str(position.get("symbol", "")).strip().upper()
+            if not symbol:
+                continue
+            qty_raw = position.get("qty", 0.0)
+            try:
+                qty = float(qty_raw)
+            except (TypeError, ValueError):
+                qty = 0.0
+            side = str(position.get("side", "")).lower().strip()
+            if side == "short" and qty > 0:
+                qty = -qty
+            if abs(qty) < 1e-12:
+                continue
+            avg_price_raw = position.get("avg_entry_price")
+            avg_price = float(avg_price_raw) if avg_price_raw is not None else None
+            positions.append(Position(symbol=symbol, qty=qty, avg_price=avg_price))
+        portfolio = Portfolio(
+            positions={position.symbol: position for position in positions},
+            cash_balance=cash,
+        )
+        snapshot = portfolio.snapshot(
+            asof_ts=datetime.now(timezone.utc),
+            run_id=run_id,
+            session_id=run_id,
+        )
+        snapshot.persist(event_store)
+        logger.info("Synced Alpaca portfolio positions=%s cash=%s", len(positions), cash)
+    except Exception as exc:  # pragma: no cover - external dependency
+        logger.exception("Failed to sync Alpaca portfolio: %s", exc)
+
+
+def _resolve_portfolio_source(config: Config, config_snapshot: Mapping[str, object] | None) -> str:
+    """Determine which source to use for realtime portfolio state."""
+    source = None
+    if config_snapshot and isinstance(config_snapshot, Mapping):
+        service_cfg = config_snapshot.get("trader_service", {})
+        if isinstance(service_cfg, Mapping):
+            source = service_cfg.get("portfolio_source")
+    if source:
+        return str(source).strip().lower()
+    if config.broker_type.lower() == "alpaca":
+        return "alpaca"
+    return "db"
+
+
+def _clear_position_snapshots(event_store: EventStore) -> None:
+    """Remove existing position snapshots before syncing external portfolio state."""
+    connection = getattr(event_store, "connection", lambda: None)()
+    if connection is None:
+        logger.warning("Position snapshot reset skipped; event store has no connection")
+        return
+    try:
+        if hasattr(connection, "cursor"):
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM position_snapshots")
+        else:
+            connection.execute("DELETE FROM position_snapshots")
+    except Exception as exc:  # pragma: no cover - depends on storage
+        logger.warning("Failed to clear position snapshots: %s", exc)
 
 
 def _parse_initial_positions(value: object | None) -> list[Position]:

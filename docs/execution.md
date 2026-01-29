@@ -80,7 +80,7 @@ Errors during a cycle are captured in `run_events.error_message` and the cycle i
 These IDs ensure retries do not create duplicate orders. The canonical formats are documented in
 `docs/schema.md`.
 
-## Order Lifecycle (Planned)
+## Order Lifecycle (Implemented)
 
 The canonical order state machine for Stage 0:
 
@@ -89,21 +89,40 @@ The canonical order state machine for Stage 0:
 
 `error` indicates an uncertain broker outcome and must trigger reconciliation before retrying.
 
-## Reconciliation (Planned)
+### Alpaca status mapping
 
-On each trigger (or a dedicated reconciliation step), the system should:
+Alpaca order statuses are mapped into canonical states by `AlpacaPaperBroker`:
+
+| Alpaca status | Canonical status |
+| --- | --- |
+| `new`, `pending_new`, `pending_replace`, `replaced` | `submitted` |
+| `accepted`, `accepted_for_bidding` | `accepted` |
+| `partially_filled` | `partially_filled` |
+| `filled`, `done_for_day` | `filled` |
+| `canceled`, `pending_cancel` | `canceled` |
+| `expired` | `expired` |
+| `rejected` | `rejected` |
+| `held`, `suspended`, `stopped` | `error` |
+
+## Reconciliation (Implemented)
+
+`AlpacaPaperBroker.reconcile_orders(since_ts=...)` refreshes open orders and appends any status
+transitions to `order_events`. When an order transitions to `filled` (or `partially_filled`), a
+matching `fill_events` record is written as well.
+
+The reconciliation flow:
 
 - Fetch broker order status for recent `submitted|accepted|partially_filled|error` orders.
 - Persist status transitions as append-only `order_events`.
 - Record fills in `fill_events`.
-- Update `position_snapshots`.
+- (Positions are still derived from order intents in Stage 0; fill-driven positions are a later task.)
 
 ## Status
 
 The deterministic run lifecycle and staleness checks are implemented in `trader.cycle`.
 The trader process is implemented in `trader.trader_service` (loop and realtime modes).
 Task 0.6 introduces a real strategy implementation (SMA) with configurable window size.
-The full broker lifecycle and reconciliation will be completed in Tasks 0.7–0.8.
+The full broker lifecycle and reconciliation are implemented in Task 0.8 via `AlpacaPaperBroker`.
 
 ---
 
@@ -182,7 +201,7 @@ and realtime modalities.
 ### Order filling
 
 **Primary classes**
-- `InternalPaperBroker`: immediate fills (single fill per order in Stage 0).
+- `InternalPaperBroker`: paper fills with optional tunables (latency, rejection rate, fill fraction).
 - `NoOpBroker`: dry‑run mode, no fills.
 
 **Flow**
@@ -274,8 +293,9 @@ broker-ready **order intents**. Strategies are responsible for:
 3) **Execution orchestration**  
    The trader process and trigger mechanism (LISTEN/NOTIFY) are defined but not implemented.
 
-4) **Order lifecycle & reconciliation**  
-   The broker lifecycle (accepted/filled/canceled) and reconciliation logic are still pending.
+4) **Fill-driven positions**  
+   Order lifecycle + reconciliation are implemented, but position snapshots are still derived from
+   order intents. We still need fill-driven positions and open order tracking.
 
 5) **Signal metadata & diagnostics**  
    We currently store only `signal_value` and `target_qty`. Diagnostics like signal inputs,
@@ -297,8 +317,9 @@ broker-ready **order intents**. Strategies are responsible for:
    - Implemented via `trader.trader_service` using `LISTEN`/`NOTIFY`.
    - Enforces single-flight execution and coalescing.
 
-4) **Order lifecycle + reconciliation**
-   - Implement broker order state transitions and periodic reconciliation.
+4) **Fill-driven positions**
+   - Use fills (not intents) to update positions and cash.
+   - Track open orders separately from positions.
 
 5) **Signal metadata enrichment**
    - Extend `signal_events` to store signal diagnostics (optional).

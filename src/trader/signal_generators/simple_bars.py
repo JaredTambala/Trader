@@ -219,6 +219,7 @@ def _record_indicator_events(
             "indicator_events",
             {
                 "run_id": run_id,
+                "session_id": run_id,
                 "cycle_id": cycle_id,
                 "symbol": symbol,
                 "indicator_name": indicator_name,

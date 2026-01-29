@@ -590,6 +590,106 @@ Implement:
 
 ---
 
+## Task 0.8d — Trading Sessions & Session-Scoped Event Tagging
+
+**Purpose**  
+Introduce a stable trading-session join key so live runs can be analyzed independently of the persistent Alpaca account state.
+
+**Scope**
+- Add `trading_sessions` table to persist session metadata (strategy_id, mode, symbols, timeframe, status).
+- Add `session_id` columns to `run_events`, `signal_events`, `indicator_events`, `order_events`, `fill_events`,
+  `position_snapshots`, and `metrics_snapshots`.
+- Use the `run_id` as the session key for trading sessions (stable join key for all events in the run).
+- Tag all emitted events with `session_id` and include in portfolio/metrics snapshots.
+- Ensure Postgres schema creation/migration includes the new table and columns.
+
+**Acceptance Criteria**
+- All event tables contain `session_id` and are populated for live trading runs.
+- `trading_sessions` entries are created/updated on run start/finish with strategy metadata.
+- Queries can join all events for a session using `session_id=run_id`.
+
+---
+
+## Task 0.8e — Strategy Externalization (User-Provided Code)
+
+**Purpose**  
+Allow users to author strategies and risk managers in their own codebases while importing trader interfaces from this repo.
+
+**Scope**
+- Stabilize `Strategy` and `RiskManager` interfaces in `trader.strategy` / `trader.risk` with clear method contracts.
+- Add a dynamic loader that imports user classes via `module:Class` strings.
+- Extend YAML schema with:
+  - `strategy.class_path` + `strategy.params`
+  - `risk_manager.class_path` + `risk_manager.params`
+- Wire `run_cycle` to prefer external implementations when `class_path` is provided; fall back to internal strategy types otherwise.
+- Add strategy state persistence keyed by `session_id` for realtime parity (opt-in at first).
+- Document a minimal external strategy template and “how to run” flow.
+
+**Acceptance Criteria**
+- A user can `pip install trader`, subclass `Strategy` in their own repo, and run it by setting `strategy.class_path`.
+- `run_cycle` successfully loads external strategies and risk managers with params.
+- Clear errors are surfaced when class paths are invalid or do not conform to the interface.
+- Docs include an external strategy example and YAML config snippet.
+
+---
+
+## Task 0.8f — Analytics via Apache Superset
+
+**Purpose**  
+Provide a dedicated analytics UI over the Postgres event store for run/session analysis.
+
+**Scope**
+- Add a Superset service (docker-compose) and connect it to the Postgres DB.
+- Create a minimal set of datasets: runs, trading_sessions, run_events, order_events, fill_events, position_snapshots, metrics_snapshots.
+- Provide example dashboards: session PnL, equity curve, fill rate, order lifecycle funnel.
+- Document setup and environment variables for Superset.
+
+**Acceptance Criteria**
+- Superset starts locally and can connect to Postgres with read-only credentials.
+- Example dashboards load and query live data.
+- Docs include setup + basic dashboard steps.
+
+---
+
+## Task 0.8g — Split UI into `trader-core` and `trader-ui`
+
+**Purpose**  
+Decouple the Reflex UI from the core trading library to allow separate installation and release cadence.
+
+**Scope**
+- Create a `trader-core` package for core classes (cycle, broker, data, config, strategy, risk, metrics, backtest).
+- Create a `trader-ui` package (existing Reflex app) with its own dependencies and run scripts.
+- Update imports so UI depends on core via package install, not relative paths.
+- Add build/install docs for both packages.
+- Ensure API endpoints live in core (or a separate `trader-api` module) and UI consumes them via HTTP.
+
+**Acceptance Criteria**
+- `pip install trader-core` works without UI deps.
+- `pip install trader-ui` brings UI + HTTP client deps only.
+- UI runs against a core API server as a separate process.
+
+---
+
+## Task 0.8c — Statistical Fill Model for Internal Broker
+
+**Purpose**
+Enrich the `InternalPaperBroker` simulation with tunable statistical parameters so latency, rejection, partial fills, and slippage mimic real execution behavior.
+
+**Scope**
+- Add new `internal.broker.fill_model` config values (latency distribution, fill fraction Beta parameters, slippage scale, rejection logistic).
+- Extend `Config` to expose these parameters and pass them into `InternalPaperBroker`.
+- Update the broker to sample latency/log-normal, fill fraction/Beta, slippage/t-distribution, and conditional rejection, defaulting to deterministic seeds for testability.
+- Document the configuration knobs and their effect on fills.
+- Add tests ensuring deterministic output when seeding the RNG and verifying reject/fill behavior.
+
+**Acceptance Criteria**
+- Configuration exposes latency/fill/slippage/reject parameters for the internal broker.
+- `InternalPaperBroker` samples from the specified distributions and respects the reproducible RNG seed.
+- Docs mention Task 0.8c and describe how to tune the simulation.
+- Tests confirm behavior for deterministic seeds and validate distribution wiring.
+
+---
+
 ## Task 0.9 — Risk Management Layer
 
 **Purpose**  
@@ -613,51 +713,23 @@ Prevent catastrophic behaviour.
 
 ## Task 0.10 — Execution Orchestrator (Real-time + Once)
 
-**Purpose**  
-Tie ingestion → strategy → risk → execution into a safe pipeline that can run:
-- **real-time** on new market data events (`MODE=realtime`)
-- as a **single cycle** for tests/manual runs (`MODE=once`)
+**Status**
+Complete (trader_service loop/realtime, cycle orchestration, idempotent flow).
 
-**Scope**
+**Summary**
+- `trader_service` already provides loop/realtime/once modes that enqueue `run_cycle` with single-flight safeguards via LISTEN/NOTIFY and pending coalescing.
+- `run_cycle` implements the pipeline (persist market data, signals, risk, broker, fills, positions, run events).
+- `TraderService._run_realtime` listens on `notify_channel`, retries on missing data, and respects min trigger interval.
+- `cycle.py`, `api.py`, and docs already describe staleness handling and run lifecycle.
 
-### Core pipeline (single-flight)
-Implement a `process_market_event()` pipeline that:
-1. persists the market data event
-2. generates signals/targets
-3. applies risk checks
-4. generates order intents
-5. persists `created` / `validated` order events
-6. submits via selected broker
-7. persists `submitted` and later status transitions
-8. reconciles open orders and updates positions
-9. records run status (`run_events`) for observability
-
-### Real-time mode
-- Implement a long-running listener (websocket or poller) that:
-  - calls `process_market_event()` on each new market datum
-  - enforces **single-flight** execution
-  - coalesces bursts using `MIN_TRIGGER_INTERVAL_MS`
-  - sets a `pending` flag if new events arrive mid-flight
-
-### Once mode
-- Implement `python -m trader.cycle` to run one pass using latest available market data.
-
-### Staleness handling
-- Define and enforce:
-  - max allowable age of latest market data before trading
-  - if stale: record run event and skip trading
-
-### Documentation
-- Update `docs/execution.md` describing:
-  - real-time event-driven flow
-  - single-flight/pending behaviour
-  - coalescing and staleness policy
+**Evidence**
+- Code: `src/trader/trader_service.py`, `src/trader/cycle.py`.
+- Docs: `docs/execution.md`, `README.md`.
+- Tests: existing cycle/backtest tests exercise the pipeline indirectly.
 
 **Acceptance Criteria**
-- End-to-end pipeline works with:
-  - `BROKER=internal`
-  - `BROKER=alpaca`
-- Runs correctly in:
+- Runs work with `BROKER=internal` and `BROKER=alpaca` (0.8 implemented).
+- `python -m trader.cycle` executes a single pass with freshness checks.
   - `MODE=once`
   - `MODE=realtime` (smoke test)
 - No overlapping executions (single-flight enforced)

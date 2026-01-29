@@ -21,8 +21,61 @@ Broker selection is configured in YAML:
 
 ```yaml
 broker:
-  type: internal  # noop|internal (alpaca comes in Task 0.8)
+  type: internal  # noop|internal|alpaca
+  time_in_force: day
+  internal:
+    reject_probability: 0.0
+    fill_delay_ms_mean: 0
+    fill_delay_ms_stddev: 0
+    fill_qty_fraction_mean: 1.0
+    fill_qty_fraction_stddev: 0.0
+    rng_seed: null
 ```
+
+To use Alpaca paper trading, set:
+
+```yaml
+broker:
+  type: alpaca
+
+alpaca:
+  api_key: ${ALPACA_API_KEY}
+  secret_key: ${ALPACA_SECRET_KEY}
+  base_url: ${ALPACA_BASE_URL}  # defaults to paper if omitted
+```
+
+Use `broker.time_in_force` to control order TIF (e.g., `day`, `gtc`, `ioc`). Crypto requires
+`gtc`/`ioc`/`fok`, so `day` will be rejected.
+
+### Random smoke-test strategy (paper only)
+
+If you just want to validate the broker pipeline without indicators, use the random strategy:
+
+```yaml
+strategy:
+  type: random  # or smoke
+  random:
+    seed: 123
+    order_qty: 0.001
+    buy_probability: 0.45
+    sell_probability: 0.45
+```
+
+This strategy emits small buy/sell orders based purely on RNG. Use it only with paper trading.
+
+### Toggle unit strategy (paper only)
+
+For a deterministic connectivity test, use the toggle strategy:
+
+```yaml
+strategy:
+  type: toggle  # or flip/pingpong
+  toggle:
+    order_qty: 1.0
+```
+
+This emits a buy for one unit when flat, and a sell for one unit when long. Use it with a single
+symbol to avoid conflicting orders.
 
 ## Run a no-op cycle
 
@@ -191,6 +244,11 @@ trader_service:
       qty: 0.5
       avg_price: 90000
 ```
+
+For Alpaca paper trading, you can sync the starting portfolio directly from
+Alpaca by setting `trader_service.portfolio_source: alpaca` (this is the default
+when `broker.type` is `alpaca`). To use the latest DB snapshots instead, set
+`trader_service.portfolio_source: db`.
 
 Example: run backfill while the trader service executes (two terminals):
 
