@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import os
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -53,9 +53,7 @@ class Config:
 
     Attributes:
         mode: Execution mode (once/loop/realtime).
-        strategy_type: Strategy implementation selector (noop/sma).
-        strategy_class_path: Optional external strategy class path (module:Class).
-        strategy_params: Optional mapping of constructor parameters for external strategy.
+        strategy_type: Strategy metadata/type label for logging and fallback metadata.
         strategy_id: Identifier for the active strategy version.
         strategy_timeframe: Timeframe used by strategy queries (e.g. 1Min).
         sma_short_window: Short SMA window size for crossover signals.
@@ -92,6 +90,7 @@ class Config:
         random_buy_probability: Probability of emitting a buy order.
         random_sell_probability: Probability of emitting a sell order.
         toggle_order_qty: Unit size for toggle strategy orders.
+        trader_service_startup_recovery_mode: Startup recovery policy for live trading (resume/fail_closed).
     """
     mode: str
     strategy_type: str
@@ -142,8 +141,7 @@ class Config:
     metrics_interval_seconds: int = 0
     metrics_window_seconds: int | None = None
     metrics_enable_snapshots: bool = False
-    strategy_class_path: str = ""
-    strategy_params: Mapping[str, Any] = field(default_factory=dict)
+    trader_service_startup_recovery_mode: str = "resume"
 
 
 def load_yaml_config(path: str | Path) -> dict[str, Any]:
@@ -187,17 +185,19 @@ def build_config(data: Mapping[str, Any]) -> Config:
     logging_cfg = _get_section(data, "logging")
     persist_cfg = _get_section(logging_cfg, "persist")
     metrics_cfg = _get_section(data, "metrics")
+    trader_service_cfg = _get_section(data, "trader_service")
     internal_cfg = _get_section(broker, "internal")
     random_cfg = _get_section(strategy, "random")
     toggle_cfg = _get_section(strategy, "toggle")
     window_seconds_raw = metrics_cfg.get("window_seconds")
     window_seconds = None if window_seconds_raw in (None, "") else _as_int(window_seconds_raw, 0)
+    strategy_type = str(strategy.get("type", strategy.get("id", "custom")))
+    strategy_id = str(strategy.get("id", strategy_type))
+
     return Config(
         mode=str(runtime.get("mode", "once")),
-        strategy_type=str(strategy.get("type", "noop")),
-        strategy_class_path=str(strategy.get("class_path", "")),
-        strategy_params=_get_section(strategy, "params"),
-        strategy_id=str(strategy.get("id", strategy.get("type", "noop"))),
+        strategy_type=strategy_type,
+        strategy_id=strategy_id,
         strategy_timeframe=normalize_timeframe(str(strategy.get("timeframe", "1Min"))),
         sma_short_window=default_short,
         sma_long_window=fallback_window,
@@ -244,7 +244,8 @@ def build_config(data: Mapping[str, Any]) -> Config:
         metrics_interval_seconds=_as_int(metrics_cfg.get("interval_seconds"), 0),
         metrics_window_seconds=window_seconds,
         metrics_enable_snapshots=_as_bool(metrics_cfg.get("enable_snapshots"), False),
-    )
+        trader_service_startup_recovery_mode=str(trader_service_cfg.get("startup_recovery_mode", "resume")),
+)
 
 
 def resolve_log_level(data: Mapping[str, Any]) -> str:

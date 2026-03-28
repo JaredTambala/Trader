@@ -326,6 +326,13 @@ class FilteredEventStore(EventStore):
             return
         self._inner.record_event(event_type, payload)
 
+    def connection(self) -> Any:
+        """Expose the inner connection for read-only queries."""
+        connector = getattr(self._inner, "connection", None)
+        if connector is None:
+            return None
+        return connector()
+
     def record_run_session_start(
         self,
         run_id: str,

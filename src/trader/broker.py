@@ -23,6 +23,7 @@ except Exception:  # pragma: no cover - alpaca not installed in test env
 
 from .data import EventStore
 from .identifiers import deterministic_client_order_id
+from .symbols import canonicalize_symbol, normalize_asset_class
 
 _ALPACA_STATUS_MAP = {
     "new": "submitted",
@@ -234,13 +235,9 @@ class AlpacaPaperBroker(Broker):
         results: list[Mapping[str, object]] = []
         for position in positions or []:
             symbol = str(getattr(position, "symbol", "") or "").strip().upper()
-            if symbol and "/" not in symbol:
-                for quote in ("USDT", "USDC", "USD"):
-                    if symbol.endswith(quote) and len(symbol) > len(quote):
-                        base = symbol[: -len(quote)]
-                        if base:
-                            symbol = f"{base}/{quote}"
-                        break
+            raw_asset_class = str(getattr(position, "asset_class", "") or "").strip()
+            asset_class = normalize_asset_class(raw_asset_class)
+            symbol = canonicalize_symbol(symbol, asset_class=asset_class)
             qty_raw = getattr(position, "qty", 0) or 0
             avg_entry_price = getattr(position, "avg_entry_price", None)
             side = getattr(position, "side", None)
@@ -251,6 +248,7 @@ class AlpacaPaperBroker(Broker):
             results.append(
                 {
                     "symbol": symbol,
+                    "asset_class": asset_class,
                     "qty": qty,
                     "avg_entry_price": float(avg_entry_price) if avg_entry_price is not None else None,
                     "side": str(side) if side is not None else ("long" if qty >= 0 else "short"),
@@ -333,6 +331,13 @@ class AlpacaPaperBroker(Broker):
             "equity": getattr(account, "equity", None),
         }
 
+    def cancel_order(self, broker_order_id: str) -> None:
+        """Cancel a single broker order by id."""
+        canceler = getattr(self._client, "cancel_order_by_id", None)
+        if canceler is None:
+            raise AttributeError("Trading client does not support cancel_order_by_id")
+        self._with_retries(canceler, broker_order_id)
+
     def reconcile_orders(self, since_ts: datetime | None = None) -> Sequence[Mapping[str, object]]:
         """Reconcile open orders and persist status transitions."""
         if not self._event_store:
@@ -364,8 +369,25 @@ class AlpacaPaperBroker(Broker):
                         client_order_id,
                         exc,
                     )
-                    continue
+                    broker_order = None
             if not broker_order:
+                payload = {
+                    "order_event_id": f"order_evt_{uuid.uuid4().hex}",
+                    "client_order_id": client_order_id,
+                    "run_id": event.get("run_id"),
+                    "session_id": event.get("session_id") or event.get("run_id"),
+                    "cycle_id": event.get("cycle_id"),
+                    "symbol": event.get("symbol"),
+                    "side": event.get("side"),
+                    "qty": event.get("qty"),
+                    "order_type": event.get("order_type", "market"),
+                    "status": "canceled",
+                    "broker_order_id": event.get("broker_order_id"),
+                    "rejection_reason": "reconciled_missing",
+                    "created_at": datetime.now(timezone.utc),
+                }
+                self._event_store.record_event("order_events", payload)
+                updates.append(payload)
                 continue
             status = str(broker_order.get("status", ""))
             if not status or status == event["status"]:
@@ -496,18 +518,36 @@ class AlpacaPaperBroker(Broker):
             or self._coerce_value(response, "reject_reason")
             or self._coerce_value(response, "rejected_reason")
         )
+        raw_symbol = self._coerce_value(response, "symbol") or order.get("symbol")
+        raw_asset_class = self._coerce_value(response, "asset_class") or order.get("asset_class")
+        asset_class = normalize_asset_class(str(raw_asset_class) if raw_asset_class is not None else "")
+        symbol = canonicalize_symbol(str(raw_symbol) if raw_symbol is not None else "", asset_class=asset_class)
+        side = self._coerce_enumish(self._coerce_value(response, "side") or order.get("side"))
+        order_type = self._coerce_enumish(
+            self._coerce_value(response, "order_type")
+            or self._coerce_value(response, "type")
+            or order.get("order_type")
+        )
+        qty_raw = self._coerce_value(response, "qty") or order.get("qty")
         response_client_id = self._coerce_value(response, "client_order_id")
         client_order_id = response_client_id or order.get("client_order_id")
-        fill_ts = self._coerce_value(response, "filled_at") or self._coerce_value(response, "updated_at")
-        if isinstance(fill_ts, str):
-            try:
-                fill_ts = datetime.fromisoformat(fill_ts.replace("Z", "+00:00"))
-            except ValueError:
-                fill_ts = None
+        fill_ts = self._parse_timestamp(self._coerce_value(response, "filled_at") or self._coerce_value(response, "updated_at"))
+        created_at = self._parse_timestamp(
+            self._coerce_value(response, "submitted_at")
+            or self._coerce_value(response, "created_at")
+            or self._coerce_value(response, "updated_at")
+            or order.get("created_at")
+        )
         return {
             "client_order_id": client_order_id,
             "status": status,
             "broker_order_id": broker_order_id,
+            "symbol": symbol,
+            "asset_class": asset_class,
+            "side": side,
+            "qty": float(qty_raw) if qty_raw is not None else None,
+            "order_type": order_type,
+            "created_at": created_at,
             "fill_qty": float(filled_qty) if filled_qty is not None else None,
             "fill_price": float(filled_avg_price) if filled_avg_price is not None else None,
             "fill_ts": fill_ts,
@@ -526,6 +566,27 @@ class AlpacaPaperBroker(Broker):
             return source.get(key)
         if hasattr(source, key):
             return getattr(source, key)
+        return None
+
+    def _coerce_enumish(self, value: object | None) -> str | None:
+        """Convert Alpaca enum-like objects into lowercase strings."""
+        if value is None:
+            return None
+        raw = getattr(value, "value", value)
+        text = str(raw).strip()
+        return text.lower() if text else None
+
+    def _parse_timestamp(self, value: object | None) -> datetime | None:
+        """Normalize response timestamps into timezone-aware datetimes."""
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                return None
         return None
 
     def _find_existing_order(self, client_order_id: str) -> Mapping[str, object] | None:
@@ -569,10 +630,6 @@ class AlpacaPaperBroker(Broker):
         try:
             if broker_order_id:
                 return self.get_order_by_id(str(broker_order_id))
-            orders = self.list_orders()
-            for order in orders:
-                if str(order.get("client_order_id")) == client_order_id:
-                    return order
         except Exception as exc:  # pragma: no cover - relies on Alpaca
             self._logger.warning(
                 "Order reconciliation failed client_order_id=%s: %s",

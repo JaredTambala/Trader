@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
 import signal
@@ -13,18 +12,20 @@ from dataclasses import replace
 from typing import Iterable, Mapping
 import re
 
-from dotenv import load_dotenv
-
-from .config import Config, build_config, load_yaml_config, resolve_log_level
-from .cycle import _build_strategy, run_cycle
+from .config import Config
+from .cycle import run_cycle
 from .data import EventStore, build_event_store
 from .identifiers import deterministic_run_session_id
 from .market_data import NoOpMarketDataSource
 from .portfolio import Portfolio, Position
-from .broker import AlpacaPaperBroker
+from .broker import AlpacaPaperBroker, Broker, InternalPaperBroker, NoOpBroker
 from .strategies.base import Strategy
+from .risk import RiskManager
 from .portfolio import load_latest_positions, load_latest_cash
 from .metrics import MetricsWorker
+from .order_recovery import run_startup_recovery
+from .strategy_metadata import resolve_strategy_id
+from .symbols import configured_symbol_set, find_unmatched_positions, normalize_broker_positions
 
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,8 @@ class TraderService:
         self,
         config: Config,
         *,
+        strategy: Strategy,
+        risk_manager: RiskManager,
         event_store: EventStore | None = None,
         cadence_seconds: float | None = None,
         min_trigger_interval_ms: int | None = None,
@@ -55,54 +58,96 @@ class TraderService:
         self._notify_channel = _resolve_channel(notify_channel or "market_data")
         self._max_iterations = max_iterations
         self._config_snapshot = config_snapshot
-        self._strategy_cache: dict[tuple[str, str, str], Strategy] = {}
+        if strategy is None:
+            raise ValueError("TraderService requires an injected strategy instance.")
+        if risk_manager is None:
+            raise ValueError("TraderService requires an injected risk manager instance.")
+        self._strategy = strategy
+        self._risk_manager = risk_manager
+        self._broker = _build_runtime_broker(self._config, self._event_store)
         self._stop = False
         self._metrics_worker: MetricsWorker | None = None
 
     def run(self) -> None:
         """Run the trading service based on the configured mode."""
         _install_signal_handlers(self)
+        strategy = self._strategy
+        risk_manager = self._risk_manager
+        strategy_id = resolve_strategy_id(strategy, self._config.strategy_id)
         mode = self._config.mode.lower()
         started_at = datetime.now(timezone.utc)
         run_id = deterministic_run_session_id("trading", started_at)
         run_status = "success"
         run_error: str | None = None
-        self._event_store.record_run_session_start(
-            run_id=run_id,
-            run_type="trading",
-            started_at=started_at,
-            strategy_id=self._config.strategy_id,
-            config_snapshot=self._config_snapshot,
-            mode=self._config.mode,
-            symbols=self._config.market_data_symbols,
-            timeframe=self._config.strategy_timeframe,
-        )
-        _maybe_sync_portfolio_from_alpaca(
-            self._event_store,
-            self._config,
-            self._config_snapshot,
-            run_id=run_id,
-        )
-        _maybe_seed_portfolio(
-            self._event_store,
-            self._config,
-            self._config_snapshot,
-            run_id=run_id,
-        )
-        self._start_metrics_worker(run_id=run_id)
         logger.info(
-            "Trader service start mode=%s cadence_seconds=%s min_trigger_interval_ms=%s",
+            "Initializing trader service run_id=%s mode=%s broker=%s strategy=%s symbols=%s timeframe=%s",
+            run_id,
             mode,
-            self._cadence_seconds,
-            self._min_trigger_interval_ms,
+            self._broker.__class__.__name__,
+            strategy.__class__.__name__,
+            ",".join(self._config.market_data_symbols) if self._config.market_data_symbols else "<none>",
+            self._config.strategy_timeframe,
         )
+        if self._config.trader_service_startup_recovery_mode not in {"resume", "fail_closed"}:
+            raise ValueError(
+                "TraderService startup recovery mode must be 'resume' or 'fail_closed'. "
+                "Use run_order_recovery.py clean-start for local event-store cleanup."
+            )
         try:
+            self._event_store.record_run_session_start(
+                run_id=run_id,
+                run_type="trading",
+                started_at=started_at,
+                strategy_id=strategy_id,
+                config_snapshot=self._config_snapshot,
+                mode=self._config.mode,
+                symbols=self._config.market_data_symbols,
+                timeframe=self._config.strategy_timeframe,
+            )
+            recovery = run_startup_recovery(
+                event_store=self._event_store,
+                broker=self._broker,
+                configured_symbols=self._config.market_data_symbols,
+                configured_asset_class=self._config.market_data_asset_class,
+                mode=self._config.trader_service_startup_recovery_mode,
+                run_id=run_id,
+            )
+            logger.info(
+                "Startup recovery mode=%s local_open_before=%s local_closed_missing=%s local_updated_from_broker=%s adopted_broker_open=%s broker_open_in_scope=%s broker_open_out_of_scope=%s",
+                recovery.mode,
+                recovery.local_open_before,
+                recovery.local_closed_missing,
+                recovery.local_updated_from_broker,
+                recovery.adopted_broker_open,
+                recovery.broker_open_in_scope,
+                recovery.broker_open_out_of_scope,
+            )
+            _maybe_sync_portfolio_from_alpaca(
+                self._event_store,
+                self._config,
+                self._config_snapshot,
+                run_id=run_id,
+                broker=self._broker,
+            )
+            _maybe_seed_portfolio(
+                self._event_store,
+                self._config,
+                self._config_snapshot,
+                run_id=run_id,
+            )
+            self._start_metrics_worker(run_id=run_id)
+            logger.info(
+                "Trader service start mode=%s cadence_seconds=%s min_trigger_interval_ms=%s",
+                mode,
+                self._cadence_seconds,
+                self._min_trigger_interval_ms,
+            )
             if mode == "once":
-                self._run_once(run_id=run_id)
+                self._run_once(run_id=run_id, strategy=strategy, risk_manager=risk_manager)
             elif mode in {"realtime", "real_time", "real-time"}:
-                self._run_realtime(run_id=run_id)
+                self._run_realtime(run_id=run_id, strategy=strategy, risk_manager=risk_manager)
             else:
-                self._run_loop(run_id=run_id)
+                self._run_loop(run_id=run_id, strategy=strategy, risk_manager=risk_manager)
         except Exception as exc:
             run_status = "failed"
             run_error = str(exc)
@@ -115,7 +160,7 @@ class TraderService:
                 finished_at=datetime.now(timezone.utc),
                 status=run_status,
                 error_message=run_error,
-                strategy_id=self._config.strategy_id,
+                strategy_id=strategy_id,
                 mode=self._config.mode,
                 symbols=self._config.market_data_symbols,
                 timeframe=self._config.strategy_timeframe,
@@ -129,21 +174,21 @@ class TraderService:
         self._stop = True
         self._stop_metrics_worker()
 
-    def _run_once(self, *, run_id: str) -> None:
+    def _run_once(self, *, run_id: str, strategy: Strategy, risk_manager: RiskManager) -> None:
         """Handle run once."""
         logger.info("Trader service executing single cycle")
-        strategy = self._get_strategy()
         _safe_run_cycle(
             self._event_store,
             self._config,
             run_id=run_id,
             run_type="trading",
             strategy=strategy,
+            risk_manager=risk_manager,
+            broker=self._broker,
         )
 
-    def _run_loop(self, *, run_id: str) -> None:
+    def _run_loop(self, *, run_id: str, strategy: Strategy, risk_manager: RiskManager) -> None:
         """Handle run loop."""
-        strategy = self._get_strategy()
         iterations = 0
         while not self._stop:
             _safe_run_cycle(
@@ -152,6 +197,8 @@ class TraderService:
                 run_id=run_id,
                 run_type="trading",
                 strategy=strategy,
+                risk_manager=risk_manager,
+                broker=self._broker,
             )
             iterations += 1
             if self._max_iterations is not None and iterations >= self._max_iterations:
@@ -159,19 +206,19 @@ class TraderService:
                 break
             time.sleep(self._cadence_seconds)
 
-    def _run_realtime(self, *, run_id: str) -> None:
+    def _run_realtime(self, *, run_id: str, strategy: Strategy, risk_manager: RiskManager) -> None:
         """Handle run realtime."""
         connection = getattr(self._event_store, "connection", lambda: None)()
         if connection is None or not hasattr(connection, "notifies"):
             logger.warning("Realtime mode requires Postgres LISTEN/NOTIFY; falling back to loop")
-            self._run_loop(run_id=run_id)
+            self._run_loop(run_id=run_id, strategy=strategy, risk_manager=risk_manager)
             return
 
         try:
             connection.execute(f"LISTEN {self._notify_channel}")
         except Exception as exc:  # pragma: no cover - depends on Postgres
             logger.warning("Failed to LISTEN on channel=%s: %s", self._notify_channel, exc)
-            self._run_loop(run_id=run_id)
+            self._run_loop(run_id=run_id, strategy=strategy, risk_manager=risk_manager)
             return
 
         iterations = 0
@@ -203,11 +250,6 @@ class TraderService:
                                     )
                                     continue
                                 last_seen[key] = ts
-                            strategy = self._get_strategy(
-                                symbol=notify_data.get("symbol"),
-                                timeframe=notify_data.get("timeframe"),
-                                asset_class=notify_data.get("asset_class"),
-                            )
                             _safe_run_cycle_for_notify(
                                 self._event_store,
                                 self._config,
@@ -215,6 +257,8 @@ class TraderService:
                                 run_id=run_id,
                                 run_type="trading",
                                 strategy=strategy,
+                                risk_manager=risk_manager,
+                                broker=self._broker,
                             )
                             iterations += 1
                             if self._max_iterations is not None and iterations >= self._max_iterations:
@@ -230,7 +274,9 @@ class TraderService:
                         self._config,
                         run_id=run_id,
                         run_type="trading",
-                        strategy=self._get_strategy(),
+                        strategy=strategy,
+                        risk_manager=risk_manager,
+                        broker=self._broker,
                     )
                     last_run = time.monotonic()
                     pending = False
@@ -242,33 +288,6 @@ class TraderService:
             logger.info("Realtime loop interrupted; stopping service")
             self.stop()
 
-    def _get_strategy(
-        self,
-        *,
-        symbol: str | None = None,
-        timeframe: str | None = None,
-        asset_class: str | None = None,
-    ) -> Strategy:
-        """Return a cached strategy instance keyed by symbol/timeframe/asset class."""
-        asset_class_value = (asset_class or self._config.market_data_asset_class).lower()
-        symbol_value = (symbol or "__all__").upper()
-        timeframe_value = timeframe or self._config.strategy_timeframe
-        key = (symbol_value, timeframe_value, asset_class_value)
-        cached = self._strategy_cache.get(key)
-        if cached is not None:
-            return cached
-        config = self._config
-        if symbol and timeframe:
-            config = replace(
-                config,
-                market_data_symbols=(symbol,),
-                market_data_asset_class=asset_class_value,
-                strategy_timeframe=timeframe_value,
-            )
-        strategy = _build_strategy(config, self._event_store)
-        self._strategy_cache[key] = strategy
-        return strategy
-
     def _start_metrics_worker(self, *, run_id: str) -> None:
         """Start background metrics sampling if configured."""
         interval = getattr(self._config, "metrics_interval_seconds", 0)
@@ -276,13 +295,7 @@ class TraderService:
         enable_snapshots = getattr(self._config, "metrics_enable_snapshots", False)
         if interval is None or interval <= 0:
             return
-        broker = None
-        if self._config.broker_type.lower() == "alpaca":
-            broker = AlpacaPaperBroker(
-                api_key=self._config.alpaca_api_key,
-                secret_key=self._config.alpaca_secret_key,
-                base_url=self._config.alpaca_base_url,
-            )
+        broker = self._broker if hasattr(self._broker, "get_account") and hasattr(self._broker, "get_positions") else None
         self._metrics_worker = MetricsWorker(
             event_store=self._event_store,
             symbols=tuple(self._config.market_data_symbols or ()),
@@ -310,17 +323,24 @@ def _safe_run_cycle(
     run_id: str,
     run_type: str,
     strategy: Strategy | None = None,
+    risk_manager: RiskManager | None = None,
+    broker: Broker | None = None,
 ) -> None:
     """Run a cycle and log failures without crashing the service."""
     try:
         portfolio = Portfolio.from_event_store(event_store)
-        _log_portfolio_state(portfolio)
+        if _resolve_portfolio_source(config, None) == "alpaca":
+            logger.info("Trader service cached portfolio state positions=%s cash=%s", len(portfolio.positions), portfolio.cash_balance)
+        else:
+            _log_portfolio_state(portfolio)
         run_cycle(
             event_store=event_store,
             config=config,
             run_id=run_id,
             run_type=run_type,
             strategy=strategy,
+            risk_manager=risk_manager,
+            broker=broker,
             portfolio=portfolio,
         )
     except Exception as exc:
@@ -335,11 +355,16 @@ def _safe_run_cycle_for_notify(
     run_id: str,
     run_type: str,
     strategy: Strategy | None = None,
+    risk_manager: RiskManager | None = None,
+    broker: Broker | None = None,
 ) -> None:
     """Handle safe run cycle for notify."""
     try:
         portfolio = Portfolio.from_event_store(event_store)
-        _log_portfolio_state(portfolio)
+        if _resolve_portfolio_source(config, None) == "alpaca":
+            logger.info("Trader service cached portfolio state positions=%s cash=%s", len(portfolio.positions), portfolio.cash_balance)
+        else:
+            _log_portfolio_state(portfolio)
         symbol = notify_data.get("symbol")
         timeframe = notify_data.get("timeframe")
         asset_class = notify_data.get("asset_class")
@@ -360,6 +385,8 @@ def _safe_run_cycle_for_notify(
             ingest_market_data=False,
             portfolio=portfolio,
             strategy=strategy,
+            risk_manager=risk_manager,
+            broker=broker,
         )
     except Exception as exc:
         logger.exception("Trading cycle failed for market data notify: %s", exc)
@@ -465,6 +492,7 @@ def _maybe_sync_portfolio_from_alpaca(
     config_snapshot: Mapping[str, object] | None,
     *,
     run_id: str,
+    broker: Broker | None = None,
 ) -> None:
     """Sync portfolio state from Alpaca when configured."""
     source = _resolve_portfolio_source(config, config_snapshot)
@@ -474,34 +502,46 @@ def _maybe_sync_portfolio_from_alpaca(
         logger.warning("Portfolio source alpaca ignored; broker_type=%s", config.broker_type)
         return
     try:
-        broker = AlpacaPaperBroker(
-            api_key=config.alpaca_api_key,
-            secret_key=config.alpaca_secret_key,
-            base_url=config.alpaca_base_url,
-        )
+        if broker is None:
+            broker = _build_runtime_broker(config, event_store)
         account = broker.get_account()
         cash_raw = account.get("cash", 0.0)
         cash = float(cash_raw) if cash_raw is not None else 0.0
         positions_raw = broker.get_positions()
+        normalized_positions = normalize_broker_positions(positions_raw)
+        mismatches = find_unmatched_positions(
+            normalized_positions,
+            configured_symbols=config.market_data_symbols,
+            configured_asset_class=config.market_data_asset_class,
+        )
+        configured_symbols = configured_symbol_set(
+            config.market_data_symbols,
+            asset_class=config.market_data_asset_class,
+        )
+        matched_positions = [position for position in normalized_positions if position not in mismatches]
+        logger.info(
+            "Broker account summary cash=%s configured_symbols=%s matched_positions=%s mismatched_positions=%s",
+            cash,
+            ",".join(sorted(configured_symbols)) if configured_symbols else "<none>",
+            [
+                {"symbol": position.symbol, "asset_class": position.asset_class, "qty": position.qty}
+                for position in matched_positions
+            ],
+            [
+                {
+                    "symbol": position.symbol,
+                    "asset_class": position.asset_class,
+                    "raw_symbol": position.raw_symbol,
+                    "raw_asset_class": position.raw_asset_class,
+                    "qty": position.qty,
+                }
+                for position in mismatches
+            ],
+        )
         _clear_position_snapshots(event_store)
         positions: list[Position] = []
-        for position in positions_raw:
-            symbol = str(position.get("symbol", "")).strip().upper()
-            if not symbol:
-                continue
-            qty_raw = position.get("qty", 0.0)
-            try:
-                qty = float(qty_raw)
-            except (TypeError, ValueError):
-                qty = 0.0
-            side = str(position.get("side", "")).lower().strip()
-            if side == "short" and qty > 0:
-                qty = -qty
-            if abs(qty) < 1e-12:
-                continue
-            avg_price_raw = position.get("avg_entry_price")
-            avg_price = float(avg_price_raw) if avg_price_raw is not None else None
-            positions.append(Position(symbol=symbol, qty=qty, avg_price=avg_price))
+        for position in normalized_positions:
+            positions.append(Position(symbol=position.symbol, qty=position.qty, avg_price=position.avg_entry_price))
         portfolio = Portfolio(
             positions={position.symbol: position for position in positions},
             cash_balance=cash,
@@ -512,9 +552,42 @@ def _maybe_sync_portfolio_from_alpaca(
             session_id=run_id,
         )
         snapshot.persist(event_store)
+        logger.info("Reset local portfolio snapshot from Alpaca positions=%s cash=%s", len(positions), cash)
+        if mismatches:
+            raise ValueError(
+                "Broker portfolio mismatch with configured trading universe: "
+                + ", ".join(
+                    "%s/%s qty=%s"
+                    % (position.raw_symbol, position.raw_asset_class or "<none>", position.qty)
+                    for position in mismatches
+                )
+            )
         logger.info("Synced Alpaca portfolio positions=%s cash=%s", len(positions), cash)
     except Exception as exc:  # pragma: no cover - external dependency
         logger.exception("Failed to sync Alpaca portfolio: %s", exc)
+        raise
+
+
+def _build_runtime_broker(config: Config, event_store: EventStore) -> Broker:
+    """Construct one broker instance for the lifetime of a trader service."""
+    broker_type = (getattr(config, "broker_type", "noop") or "noop").lower()
+    if broker_type in {"internal", "paper", "sim"}:
+        return InternalPaperBroker(
+            reject_probability=getattr(config, "internal_broker_reject_probability", 0.0),
+            fill_delay_ms_mean=getattr(config, "internal_broker_fill_delay_ms_mean", 0.0),
+            fill_delay_ms_stddev=getattr(config, "internal_broker_fill_delay_ms_stddev", 0.0),
+            fill_qty_fraction_mean=getattr(config, "internal_broker_fill_qty_fraction_mean", 1.0),
+            fill_qty_fraction_stddev=getattr(config, "internal_broker_fill_qty_fraction_stddev", 0.0),
+            rng_seed=getattr(config, "internal_broker_rng_seed", None),
+        )
+    if broker_type in {"alpaca", "alpaca-paper", "alpaca_paper"}:
+        return AlpacaPaperBroker(
+            api_key=config.alpaca_api_key,
+            secret_key=config.alpaca_secret_key,
+            base_url=config.alpaca_base_url,
+            event_store=event_store,
+        )
+    return NoOpBroker()
 
 
 def _resolve_portfolio_source(config: Config, config_snapshot: Mapping[str, object] | None) -> str:
@@ -545,6 +618,8 @@ def _clear_position_snapshots(event_store: EventStore) -> None:
             connection.execute("DELETE FROM position_snapshots")
     except Exception as exc:  # pragma: no cover - depends on storage
         logger.warning("Failed to clear position snapshots: %s", exc)
+
+
 
 
 def _parse_initial_positions(value: object | None) -> list[Position]:
@@ -594,56 +669,8 @@ def _install_signal_handlers(service: TraderService) -> None:
     signal.signal(signal.SIGTERM, _handle_signal)
 
 
-def _configure_logging(level_name: str | None = None) -> None:
-    """Configure module logging defaults."""
-    level_name = (level_name or "INFO").upper()
-    level = getattr(logging, level_name, logging.INFO)
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    logger.info("Logging configured level=%s", level_name)
-
-
-def _parse_args() -> argparse.Namespace:
-    """Parse CLI arguments for this module."""
-    parser = argparse.ArgumentParser(description="Run the trader service.")
-    parser.add_argument("config", help="Path to the YAML configuration file.")
-    return parser.parse_args()
-
-
-def main() -> None:
-    """Module entry point for the trader service."""
-    load_dotenv(".env")
-    args = _parse_args()
-    config_data = load_yaml_config(args.config)
-    _configure_logging(resolve_log_level(config_data))
-    config = build_config(config_data)
-
-    service_cfg = config_data.get("trader_service", {})
-    if service_cfg is None:
-        service_cfg = {}
-    if not isinstance(service_cfg, Mapping):
-        raise ValueError("trader_service section must be a mapping")
-
-    mode = service_cfg.get("mode", config.mode)
-    config = replace(config, mode=str(mode))
-
-    cadence_seconds = service_cfg.get("cadence_seconds")
-    min_trigger_interval_ms = service_cfg.get("min_trigger_interval_ms")
-    notify_channel = service_cfg.get("notify_channel")
-    max_iterations = service_cfg.get("max_iterations")
-    service = TraderService(
-        config,
-        cadence_seconds=float(cadence_seconds) if cadence_seconds is not None else None,
-        min_trigger_interval_ms=int(min_trigger_interval_ms) if min_trigger_interval_ms is not None else None,
-        notify_channel=str(notify_channel) if notify_channel else None,
-        max_iterations=int(max_iterations) if max_iterations is not None else None,
-        config_snapshot=config_data,
-    )
-    service.run()
-
-
 if __name__ == "__main__":
-    main()
+    raise SystemExit(
+        "trader.trader_service is a library module. "
+        "Use run_trader_service.py (external entrypoint) to start the service."
+    )

@@ -16,7 +16,7 @@ This allows users to install and run the core system without UI dependencies and
 - Create `trader-core/pyproject.toml` with core dependencies only.
 - Ensure entrypoints:
   - `python -m trader.api` (FastAPI)
-  - `python -m trader.trader_service` (runtime)
+  - `python run_trader_service.py` (runtime)
 
 2) **Create `trader-ui/` package**
 - Move UI from `src/ui/` → `trader-ui/src/ui/`.

@@ -2,13 +2,8 @@ runtime:
   mode: once
 
 strategy:
-  type: noop
   id: external_demo
   timeframe: 1Min
-  class_path: "external_strategy_demo:ExternalDemoStrategy"
-  params:
-    symbol: AAPL
-    qty: 1.0
 
 broker:
   type: noop

@@ -5,8 +5,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 from trader.backtest import BacktestRunner, BacktestSpec
 from trader.config import Config
+from trader.risk import NoOpRiskManager
+from trader.strategies.noop import NoOpStrategy
 from tests.support.duckdb_store import DuckDBEventStore
 
 
@@ -90,7 +94,26 @@ def test_backtest_runner_replays_timestamps(monkeypatch, tmp_path: Path) -> None
         symbols=["AAPL"],
         asset_class="stocks",
         event_store=store,
+        strategy=NoOpStrategy(),
+        risk_manager=NoOpRiskManager(),
     )
     runner.run()
 
     assert recorder.decision_times == timestamps
+
+
+def test_backtest_runner_requires_injected_risk_manager(tmp_path: Path) -> None:
+    spec = BacktestSpec(
+        start=datetime(2026, 1, 21, 12, 0, tzinfo=timezone.utc),
+        end=datetime(2026, 1, 21, 12, 1, tzinfo=timezone.utc),
+        timeframe="1Min",
+    )
+    with pytest.raises(TypeError):
+        BacktestRunner(
+            _config(tmp_path),
+            spec,
+            symbols=["AAPL"],
+            asset_class="stocks",
+            event_store=DuckDBEventStore(str(tmp_path / "events.duckdb")),
+            strategy=NoOpStrategy(),
+        )

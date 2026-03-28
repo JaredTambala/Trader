@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import argparse
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 import logging
 from typing import Iterable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
-from dotenv import load_dotenv
-
-from .config import build_config, load_yaml_config, resolve_log_level
+from .config import build_config
 from .data import EventStore, build_event_store
 from .timeframes import normalize_timeframe, parse_timeframe
 
@@ -52,31 +49,8 @@ class SessionWindow:
     timezone: ZoneInfo
 
 
-def _configure_logging(level_name: str | None = None) -> None:
-    """Configure module logging defaults."""
-    level_name = (level_name or "INFO").upper()
-    level = getattr(logging, level_name, logging.INFO)
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    logger.info("Logging configured level=%s", level_name)
-
-
-def _parse_args() -> argparse.Namespace:
-    """Parse CLI arguments for this module."""
-    parser = argparse.ArgumentParser(description="Check market data timestamp gaps.")
-    parser.add_argument("config", help="Path to the YAML configuration file.")
-    return parser.parse_args()
-
-
-def main() -> None:
-    """Module entry point for data quality checks."""
-    load_dotenv(".env")
-    args = _parse_args()
-    config_data = load_yaml_config(args.config)
-    _configure_logging(resolve_log_level(config_data))
+def run_data_quality(config_data: Mapping[str, object]) -> None:
+    """Run data quality checks using a parsed config mapping."""
     config = build_config(config_data)
     quality = _get_section(config_data, "data_quality")
     symbols = _parse_symbols(quality.get("symbols") or config.market_data_symbols)
@@ -501,4 +475,7 @@ def _normalize_timestamp(value: datetime) -> datetime:
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(
+        "trader.data_quality is a library module. "
+        "Use run_data_quality.py (external entrypoint) to run checks."
+    )

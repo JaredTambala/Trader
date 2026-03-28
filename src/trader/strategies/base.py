@@ -8,20 +8,15 @@ from typing import AsyncIterator, Mapping, Sequence
 
 from trader.data import EventStore
 from trader.portfolio import Portfolio
-from trader.risk import NoOpRiskManager, RiskManager
 
 
 class Strategy(ABC):
-    """Produces broker-ready orders from data, signals, and risk rules."""
+    """Produces broker-ready orders from data, signals, and portfolio state."""
 
     @property
     @abstractmethod
     def strategy_id(self) -> str:
         """Unique identifier for the strategy version."""
-
-    def get_risk_manager(self) -> RiskManager:
-        """Return the risk manager used to validate candidate orders."""
-        return NoOpRiskManager()
 
     @abstractmethod
     def generate_orders(
@@ -33,18 +28,7 @@ class Strategy(ABC):
         event_store: EventStore,
         portfolio: Portfolio,
     ) -> Sequence[Mapping[str, object]]:
-        """Generate broker-ready order intents for the current decision point.
-
-        Args:
-            run_id: Run session identifier.
-            cycle_id: Deterministic cycle identifier.
-            decision_ts: Wall-clock decision timestamp for this run.
-            event_store: Event store used for reads/writes during decision making.
-            portfolio: Current portfolio snapshot for position-aware decisions.
-
-        Returns:
-            Sequence of order intent mappings.
-        """
+        """Generate broker-ready order intents for the current decision point."""
 
     def generate_orders_for_symbol(
         self,

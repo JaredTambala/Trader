@@ -6,19 +6,15 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import logging
 import signal
-import argparse
 from typing import Mapping, Sequence
 
 from alpaca.data.enums import CryptoFeed, DataFeed
 from alpaca.data.live.crypto import CryptoDataStream
 from alpaca.data.live.stock import StockDataStream
-from dotenv import load_dotenv
-
-from .config import Config, build_config, load_yaml_config, resolve_log_level
+from .config import Config
 from .data import EventStore, build_event_store
 from .market_data import CryptoBarEvent, StockBarEvent
 from .notifications import notify_market_data
-from .timeframes import normalize_timeframe
 
 
 logger = logging.getLogger(__name__)
@@ -323,13 +319,6 @@ def _normalize_stock_feed(feed: str | None) -> DataFeed:
     return DataFeed.IEX
 
 
-def _parse_args() -> argparse.Namespace:
-    """Parse command-line arguments for the stream runner."""
-    parser = argparse.ArgumentParser(description="Stream Alpaca market data bars.")
-    parser.add_argument("config", help="Path to the YAML configuration file.")
-    return parser.parse_args()
-
-
 def _parse_symbols_value(value: object | None) -> list[str] | None:
     """Parse symbols value."""
     if value is None:
@@ -343,53 +332,8 @@ def _parse_symbols_value(value: object | None) -> list[str] | None:
     raise ValueError("stream.symbols must be a string or list")
 
 
-def _configure_logging(level_name: str | None = None) -> None:
-    """Configure logging from config defaults."""
-    level_name = (level_name or "INFO").upper()
-    level = getattr(logging, level_name, logging.INFO)
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    logger.info("Logging configured level=%s", level_name)
-
-
-def main() -> None:
-    """Module entry point for market data streaming."""
-    load_dotenv(".env")
-    args = _parse_args()
-    config_data = load_yaml_config(args.config)
-    _configure_logging(resolve_log_level(config_data))
-    config = build_config(config_data)
-
-    stream = config_data.get("stream", {})
-    if stream is None:
-        stream = {}
-    if not isinstance(stream, Mapping):
-        raise ValueError("stream section must be a mapping")
-
-    service_cfg = config_data.get("trader_service", {})
-    if service_cfg is None:
-        service_cfg = {}
-    if not isinstance(service_cfg, Mapping):
-        raise ValueError("trader_service section must be a mapping")
-
-    symbols = _parse_symbols_value(stream.get("symbols"))
-    asset_class = stream.get("asset_class")
-    timeframe = stream.get("timeframe")
-    if timeframe:
-        timeframe = normalize_timeframe(str(timeframe))
-    notify_channel = service_cfg.get("notify_channel")
-    runner = MarketDataStreamRunner(
-        config,
-        symbols=symbols,
-        asset_class=str(asset_class) if asset_class else None,
-        timeframe=str(timeframe) if timeframe else None,
-        notify_channel=str(notify_channel) if notify_channel else None,
-    )
-    runner.run()
-
-
 if __name__ == "__main__":
-    main()
+    raise SystemExit(
+        "trader.market_data_stream is a library module. "
+        "Use run_market_data_stream.py (external entrypoint) to start streaming."
+    )
