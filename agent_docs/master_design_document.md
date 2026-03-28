@@ -1,368 +1,183 @@
-# Trading System Roadmap — Functional & Non-Functional Requirements
+# Trading System Roadmap — Functional and Non-Functional Requirements
 
-This document summarises the **functional requirements (what the system must do)** and **non-functional requirements (how the system must behave)** for each stage of the trading system roadmap.
+This document defines the roadmap at a phase level. The active roadmap is now centered on a **core trading engine**, not a frontend-heavy or deployment-heavy platform.
 
-The roadmap is explicitly **value-driven**:
-- early stages prioritise *real execution, traceability, and safety*
-- later stages add *research scale, experimentation, and advanced data infrastructure*
-- infrastructure complexity is introduced only when it unlocks new capability
+## Global Definition of Done
 
+A phase, feature, or task is considered done only when all of the following are true:
 
----
-## Global Definition of Done (applies to all stages)
+### Engineering and Quality
 
-A stage, feature, or task is considered done only when all of the following are true:
+- the functionality works as specified
+- automated tests exist or are updated where applicable
+- public interfaces and contracts are intentional and stable
 
-# Engineering & Quality
-- The functionality is fully implemented and works as specified
-- Automated tests are added or updated where applicable
-- All tests pass in CI (pytest or equivalent)
-- Public interfaces and contracts are stable and intentional
+### Documentation
 
-# Documentation (Mandatory)
+- relevant documentation is updated as part of the change
+- what was built, why it exists, and how to run it are documented
+- schema or interface changes update the relevant docs
 
-- Relevant documentation is updated as part of the change, not after:
-- what was built
-- why it exists
-- how to run it
-- how to validate correctness
-- Any change to data models, schemas, or interfaces includes an explicit documentation update
+### Traceability and Auditability
 
-# Traceability & Auditability
+- introduced behavior is observable through logs, events, or persisted state
+- identifiers, versions, and assumptions are explicit
 
-- All behaviour introduced by the change is traceable via logs, events, or persisted state
-- Identifiers, versions, and assumptions are explicit and discoverable
+### Safety and Operations
 
-# Safety & Operations
+- failure modes default to safe behavior
+- operational expectations are documented for the scope of the active phase
 
-- Failure modes default to safe behaviour (no trading, no corruption)
-- Operational procedures (start, stop, halt, recover) are documented
+### Stage Integrity
 
-# Stage Integrity
-
-- The change does not introduce future-stage infrastructure prematurely
-- Complexity added is justified by the current stage’s goals
+- work does not pull later-phase concerns into the current phase without a clear reason
 
 ---
 
-## Stage 0 — Remote Paper Trading Skeleton (Execution Exists)
+## Phase 1 — Core Trading Engine
 
 ### Purpose
-Establish a **remotely deployed, always-on paper trading bot** that operates independently of the developer machine and provides full traceability of all actions.
 
-This stage proves that:
-> *“I can run a real trading system in the cloud, safely, and observe it.”*
+Establish a **core trading engine** that can be run, tested, and reasoned about without depending on a frontend application.
 
----
+This phase proves:
+
+> “I can ingest market data, run strategies and risk, backtest them truthfully, and execute paper trades through Alpaca with an auditable runtime.”
 
 ### Functional Requirements
 
-#### Execution & Deployment
-- The system **must run remotely** (e.g. VPS or cloud container).
-- The system **must not require the developer PC** to be running.
-- The trading loop must be executable as a **single-cycle run** (scheduled or triggered).
-- Deployment must be reproducible and documented.
+#### Event-Sourced Runtime Foundation
+
+- The runtime must persist market data, signals, orders, fills, positions, run sessions, and metrics.
+- The authoritative runtime store must be **Postgres**.
+- Test and support workflows may still use DuckDB, but DuckDB is not the active runtime target.
 
 #### Market Data Ingestion
-- The system must ingest live or near-live market data:
-  - polling or websocket (“streaming-lite”) is sufficient
-- Raw market data events must be persisted before signal generation.
 
-#### Strategy & Signal Generation
-- The system must support at least one trading strategy.
-- The strategy must operate on a defined trading universe.
-- The strategy must produce explicit signals or target positions.
+- The system must ingest live or near-live market data.
+- The system must support:
+  - websocket or polling-based live ingestion
+  - historical backfill
+  - replay of stored bars into the realtime execution path
+- Market data must be persisted before strategy evaluation.
+
+#### Strategy Execution
+
+- The system must support at least one working strategy path.
+- Strategies must be loadable via a stable external interface.
+- Users must be able to provide strategy implementations from outside the core codebase.
 
 #### Risk Management
-- The system must enforce:
-  - a global halt switch
-  - maximum orders per run
-  - maximum gross exposure
-  - maximum per-symbol exposure
-- Risk checks must run **before** order placement.
 
-#### Order Execution (Paper)
-- The system must place paper orders via:
-  - an internal paper broker or
-  - a broker-provided paper environment
-- Orders must follow a deterministic lifecycle:
-  - created → submitted → filled/rejected
+- Candidate orders must pass through a dedicated risk layer before broker submission.
+- Risk logic must have access to:
+  - current positions
+  - open orders
+  - relevant prices
+  - run/session metadata
+- Risk behavior must be configurable and composable.
 
-#### Idempotency
-- All execution must be **idempotent**:
-  - re-running the same cycle must not duplicate orders
-- Deterministic identifiers must exist for:
-  - runs
-  - orders
+#### Backtesting
 
-#### State & Traceability
-- All operations must be traceable via persistent storage:
-  - market data events
-  - signals / targets
-  - orders
-  - fills
-  - positions
-  - run outcomes
-- Storage must support transactional guarantees (DuckDB chosen).
-
-#### Observability
-- The system must expose:
-  - `/health` endpoint
-  - `/status` endpoint
-- Operators must be able to determine:
-  - whether the bot is running
-  - whether it is safe
-  - what it last did
-
----
-
-### Non-Functional Requirements
-
-- **Reliability:**  
-  The system must survive restarts and crashes without corrupting state.
-
-- **Simplicity:**  
-  Single-node, single-process architecture preferred.
-
-- **Safety-first:**  
-  Failure modes must default to *not trading*.
-
-- **Traceability:**  
-  Every decision must be explainable post-hoc.
-
-- **Low operational overhead:**  
-  No managed services required at this stage.
-
----
-
-## Stage 1 — Execution-Aligned Backtesting
-
-### Purpose
-Ensure that backtests are **truthful** by reusing the same execution logic as live trading.
-
----
-
-### Functional Requirements
-
-- Backtests must reuse:
-  - strategy logic
-  - risk checks
-  - order generation logic
-- A simulated broker must model:
-  - fills
-  - costs
-  - slippage
-- Backtests must support walk-forward or rolling evaluation.
-- Backtest outputs must include:
+- Backtests must reuse the same core execution concepts as live trading.
+- Backtests must persist or expose sufficient outputs to analyze:
   - trades
-  - PnL
-  - drawdowns
+  - equity curve
+  - drawdown
   - turnover
-- Backtests must be reproducible from stored inputs.
+  - benchmark comparison
 
----
+#### Live Paper Execution via Alpaca
+
+- The engine must support paper order submission through Alpaca.
+- Order submission must be idempotent.
+- Reconciliation must update runtime state when broker-side outcomes change.
+- Portfolio state must remain aligned with broker fills and account state.
+
+#### Runtime Orchestration
+
+- The runtime must support single-cycle, loop, and realtime-triggered execution.
+- The runtime must avoid overlapping execution for the same service loop.
+- Freshness and staleness checks must prevent unsafe trading.
+
+#### Minimal Runtime Observability
+
+- The phase should include the minimum health/status capabilities required to operate the engine safely.
+- Runtime metrics and event traces must allow post-hoc inspection of what the engine did.
 
 ### Non-Functional Requirements
 
-- **Determinism:**  
-  Same inputs must produce identical results.
-
-- **Consistency:**  
-  Live and backtest execution paths must not diverge.
-
-- **Auditability:**  
-  Backtest decisions must be traceable like live decisions.
+- **Safety-first:** failures default to not trading.
+- **Determinism where needed:** backtests and identity generation must be reproducible.
+- **Traceability:** runtime decisions must be explainable through persisted state.
+- **Operational simplicity:** keep the active phase focused on engine behavior, not interface or deployment productization.
 
 ---
 
-## Stage 2 — Experiment Tracking (MLflow for Research)
+## Phase 2 — Interfaces and Operational Surfaces
 
 ### Purpose
-Enable **transparent, repeatable experimentation** and comparison of strategies.
+
+Add human-facing and operator-facing interfaces around the core engine once the engine scope is stable.
+
+### Example capabilities
+
+- frontend or UI workflows
+- HTTP APIs built specifically for interface consumers
+- richer health/status surfaces
+- packaging splits such as `trader-core` and `trader-ui`
+- deployment packaging and runtime ergonomics
+
+### Non-Functional Theme
+
+- **Separation of concerns:** interfaces should depend on the engine, not reshape it.
 
 ---
 
-### Functional Requirements
-
-- Backtests must log to an experiment tracking system (MLflow):
-  - parameters
-  - metrics
-  - artifacts
-  - dataset identifiers
-- Experiments must be comparable across runs.
-- Strategy versions must be identifiable and reproducible.
-
----
-
-### Non-Functional Requirements
-
-- **Isolation:**  
-  Live trading must not depend on MLflow availability.
-
-- **Reproducibility:**  
-  Experiments must be reconstructable from logged metadata.
-
-- **Clarity:**  
-  Results must be interpretable without reading code.
-
----
-
-## Stage 3 — Strategy-as-Model Packaging & Promotion Contract
+## Phase 3 — Analytics and Research Tooling
 
 ### Purpose
-Treat a strategy as a **deployable, versioned artifact** that can be promoted to live trading.
+
+Add richer analytics and experiment visibility on top of the stable engine and runtime data model.
+
+### Example capabilities
+
+- Apache Superset dashboards
+- research-oriented analytics views
+- experiment tracking and comparison tooling
+
+### Non-Functional Theme
+
+- **Interpretability:** results should be understandable without reading runtime internals.
 
 ---
 
-### Functional Requirements
-
-- Strategies must be packageable as deployable models:
-  - including logic, configuration, and metadata
-- A model registry must exist with:
-  - clear versioning
-  - promotion semantics (e.g. candidate → production)
-- Compatibility checks must validate:
-  - feature schemas
-  - universe definitions
-  - risk constraints
-
----
-
-### Non-Functional Requirements
-
-- **Governance:**  
-  Promotion to live must be explicit and auditable.
-
-- **Decoupling:**  
-  Strategy promotion must not require code redeployment.
-
----
-
-## Stage 4 — Live Consumption of Promoted Models
+## Phase 4 — Packaging, Promotion, and Advanced Deployment
 
 ### Purpose
-Allow the live trading bot to **load strategies dynamically** based on registry state.
+
+Treat strategies and runtime configurations as promotable artifacts and mature the system into a cleaner deployable platform.
+
+### Example capabilities
+
+- strategy packaging/promotion contracts
+- runtime loading of promoted artifacts
+- more formal deployment topologies and release separation
+
+### Non-Functional Theme
+
+- **Governance and isolation:** promotion and deployment should become explicit, auditable operations.
 
 ---
 
-### Functional Requirements
+## Current Roadmap Interpretation
 
-- Live bot must load the currently promoted strategy by alias/stage.
-- The system must support:
-  - fallback to last-known-good model
-  - safe halting on validation failure
-- All live decisions must be tagged with:
-  - model version
-  - feature version
-
----
-
-### Non-Functional Requirements
-
-- **Resilience:**  
-  Live trading must tolerate registry outages.
-
-- **Traceability:**  
-  Every trade must be attributable to a specific model version.
-
----
-
-## Stage 5 — Out-of-Sample Monitoring & Retraining Triggers
-
-### Purpose
-Turn live paper performance into **actionable feedback**.
-
----
-
-### Functional Requirements
-
-- Continuous out-of-sample metrics must be computed:
-  - performance
-  - risk
-  - execution quality
-- Retraining triggers must be defined:
-  - performance degradation
-  - drawdown breaches
-  - time-based retraining
-  - drift indicators
-- Retraining requests must be explicitly recorded.
-
----
-
-### Non-Functional Requirements
-
-- **Separation of concerns:**  
-  Monitoring and retraining logic must not block live trading.
-
-- **Explainability:**  
-  Retraining decisions must be reviewable.
-
----
-
-## Stage 6 — Automated Retraining & Promotion Gates
-
-### Purpose
-Make retraining **systematic, repeatable, and safe**.
-
----
-
-### Functional Requirements
-
-- Automated pipelines must:
-  - rebuild datasets
-  - retrain models
-  - backtest candidates
-  - log results
-- Promotion gates must enforce:
-  - performance thresholds
-  - stability checks
-  - risk sanity checks
-- Optional shadow or canary evaluation must be supported.
-
----
-
-### Non-Functional Requirements
-
-- **Determinism:**  
-  Retraining runs must be reproducible.
-
-- **Governance:**  
-  Promotions must leave an audit trail.
-
----
-
-## Stage 7 — Data Lake, Tick Data & Microstructure Research
-
-### Purpose
-Support **high-resolution data and advanced research** without destabilising execution.
-
----
-
-### Functional Requirements
-
-- Object storage for large datasets.
-- Columnar formats (e.g. Parquet) for analytical access.
-- Table formats (e.g. Iceberg) for large-scale querying.
-- Separate research environment for tick / order book data.
-
----
-
-### Non-Functional Requirements
-
-- **Isolation:**  
-  Research infrastructure must not compromise live execution.
-
-- **Scalability:**  
-  Data and compute must scale independently.
-
-- **Extensibility:**  
-  Architecture must accommodate thesis-driven microstructure research.
-
----
-
-## Final Architectural Constraint
-
-> **The execution event store is always authoritative.**  
-> Analytical systems, lakes, and research tooling are *derived*, never primary.
-
-This constraint allows the system to grow from a lean paper trader into a serious research and execution platform without collapsing under its own complexity.
+- The **active phase** is Phase 1.
+- The current codebase already contains some deferred interface work, but that does not make it active-phase work.
+- When there is a conflict between older Stage 0 wording and current runtime reality, the current runtime reality wins:
+  - Postgres-first runtime
+  - core-engine focus
+  - frontend deferred
+- The Phase 1 architecture review artifacts live in:
+  - `docs/system_architecture.md`
+  - `docs/runtime_hot_path_and_reconciliation.md`

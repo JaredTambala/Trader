@@ -1,4 +1,4 @@
-"""Trading system package for Stage 0 skeleton."""
+"""Core trading engine package."""
 
 from .broker import AlpacaPaperBroker, Broker, InternalPaperBroker, NoOpBroker
 from .config import Config, build_config, load_yaml_config, resolve_log_level
@@ -23,8 +23,17 @@ from .market_data_stream import MarketDataStreamRunner
 from .market_data_backfill import MarketDataBackfillRunner
 from .backtest import BacktestResult, BacktestRunner, PositionSummary
 from .portfolio import Portfolio, PortfolioSnapshot, Position
-from .risk import RiskManager, NoOpRiskManager
-from .strategies import Strategy, NoOpStrategy, RandomStrategy, ToggleUnitStrategy
+from .risk import (
+    HaltRiskManager,
+    MaxGrossExposureRiskManager,
+    MaxOrdersPerRunRiskManager,
+    MaxPositionUsdPerSymbolRiskManager,
+    NoOpRiskManager,
+    OpenBuyOrderLimitRiskManager,
+    RiskManager,
+    RiskPipeline,
+)
+from .strategies import Strategy, NoOpStrategy, RandomStrategy
 from .trader_service import TraderService
 
 __all__ = [
@@ -61,9 +70,14 @@ __all__ = [
     "MarketDataIngestor",
     "RiskManager",
     "NoOpRiskManager",
+    "RiskPipeline",
+    "HaltRiskManager",
+    "MaxOrdersPerRunRiskManager",
+    "MaxGrossExposureRiskManager",
+    "MaxPositionUsdPerSymbolRiskManager",
+    "OpenBuyOrderLimitRiskManager",
     "Strategy",
     "NoOpStrategy",
     "RandomStrategy",
-    "ToggleUnitStrategy",
     "TraderService",
 ]

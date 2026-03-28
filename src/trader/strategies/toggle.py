@@ -8,8 +8,6 @@ from typing import Mapping, Sequence
 
 from trader.data import EventStore
 from trader.portfolio import Portfolio
-from trader.risk import NoOpRiskManager, RiskManager
-
 from .base import Strategy
 
 
@@ -24,20 +22,14 @@ class ToggleUnitStrategy(Strategy):
         *,
         symbols: Sequence[str],
         order_qty: float = 1.0,
-        risk_manager: RiskManager | None = None,
     ) -> None:
         self._symbols = tuple(symbols)
         self._order_qty = max(0.0, float(order_qty))
-        self._risk_manager = risk_manager or NoOpRiskManager()
 
     @property
     def strategy_id(self) -> str:
         """Return the strategy identifier."""
         return "toggle"
-
-    def get_risk_manager(self) -> RiskManager:
-        """Return the risk manager used by this strategy."""
-        return self._risk_manager
 
     def generate_orders(
         self,

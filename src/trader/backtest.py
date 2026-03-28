@@ -17,12 +17,12 @@ from .config import Config, build_config, load_yaml_config, resolve_log_level
 from .cycle import run_cycle
 from .data import EventStore, build_event_store
 from .identifiers import deterministic_run_session_id
-from .indicators import SmaIndicator
 from .market_data import CryptoBarEvent, MarketDataEvent, MarketDataSource, StockBarEvent
 from .portfolio import Portfolio, PortfolioSnapshot, Position
-from .signal_generators import InMemoryBarsSignalGenerator
-from .signals import Bar, SmaCrossoverSignal
-from .strategies import NoOpStrategy, SimpleStrategy, Strategy
+from .signals import Bar
+from .strategies import Strategy
+from .risk import RiskManager
+from .strategy_metadata import resolve_strategy_id
 from .timeframes import normalize_timeframe
 
 
@@ -205,6 +205,8 @@ class BacktestRunner:
         config: Config,
         spec: BacktestSpec,
         *,
+        strategy: Strategy,
+        risk_manager: RiskManager,
         symbols: Sequence[str] | None = None,
         asset_class: str | None = None,
         event_store: EventStore | None = None,
@@ -222,6 +224,12 @@ class BacktestRunner:
         self._initial_positions = list(initial_positions) if initial_positions else []
         self._initial_cash = float(initial_cash) if initial_cash is not None else 0.0
         self._config_snapshot = config_snapshot
+        if strategy is None:
+            raise ValueError("BacktestRunner requires an injected strategy instance.")
+        if risk_manager is None:
+            raise ValueError("BacktestRunner requires an injected risk manager instance.")
+        self._strategy = strategy
+        self._risk_manager = risk_manager
         self._config = replace(
             config,
             mode="backtest",
@@ -294,7 +302,7 @@ class BacktestRunner:
         if self._spec.start > self._spec.end:
             raise ValueError("Backtest start must be <= end")
 
-        lookback = _signal_lookback_window(self._config)
+        lookback = _signal_lookback_window(self._strategy)
         bars_by_symbol = _load_bars(
             self._event_store,
             self._asset_class,
@@ -378,13 +386,16 @@ class BacktestRunner:
         )
         started_at = datetime.now(timezone.utc)
         run_id = deterministic_run_session_id("backtest", started_at)
+        strategy = self._strategy
+        risk_manager = self._risk_manager
+        strategy_id = resolve_strategy_id(strategy, self._config.strategy_id)
         run_status = "success"
         run_error: str | None = None
         self._event_store.record_run_session_start(
             run_id=run_id,
             run_type="backtest",
             started_at=started_at,
-            strategy_id=self._config.strategy_id,
+            strategy_id=strategy_id,
             config_snapshot=self._config_snapshot,
             mode=self._config.mode,
             symbols=self._symbols,
@@ -430,12 +441,6 @@ class BacktestRunner:
             timeframe=self._spec.timeframe,
             symbols=self._symbols,
         )
-        strategies_by_symbol = _build_backtest_strategies(
-            self._config,
-            bars_by_symbol,
-            self._symbols,
-            event_store=self._event_store,
-        )
         configs_by_symbol = {
             symbol: replace(self._config, market_data_symbols=(symbol,))
             for symbol in self._symbols
@@ -448,9 +453,8 @@ class BacktestRunner:
                     stop = False
                     for symbol in sorted(symbol_schedule.get(ts, [])):
                         data_source = data_sources_by_symbol.get(symbol)
-                        strategy = strategies_by_symbol.get(symbol)
                         config = configs_by_symbol.get(symbol)
-                        if data_source is None or strategy is None or config is None:
+                        if data_source is None or config is None:
                             continue
                         data_source.set_as_of(ts)
                         run_cycle(
@@ -459,6 +463,7 @@ class BacktestRunner:
                             decision_ts=ts,
                             market_data_source=data_source,
                             strategy=strategy,
+                            risk_manager=risk_manager,
                             portfolio=portfolio,
                             ingest_market_data=False,
                             run_id=run_id,
@@ -491,7 +496,7 @@ class BacktestRunner:
                 finished_at=datetime.now(timezone.utc),
                 status=run_status,
                 error_message=run_error,
-                strategy_id=self._config.strategy_id,
+                strategy_id=strategy_id,
                 mode=self._config.mode,
                 symbols=self._symbols,
                 timeframe=self._spec.timeframe,
@@ -1317,45 +1322,16 @@ def _build_symbol_schedule(
     return schedule
 
 
-def _build_backtest_strategies(
-    config: Config,
-    bars_by_symbol: Mapping[str, Sequence[Bar]],
-    symbols: Sequence[str],
-    *,
-    event_store: EventStore,
-) -> dict[str, Strategy]:
-    """Build backtest strategies."""
-    strategies: dict[str, Strategy] = {}
-    strategy_type = (getattr(config, "strategy_type", "noop") or "noop").lower()
-    for symbol in symbols:
-        if strategy_type == "sma":
-            generator = InMemoryBarsSignalGenerator(
-                bars_by_symbol=bars_by_symbol,
-                symbols=(symbol,),
-                timeframe=config.strategy_timeframe,
-                event_store=event_store,
-                signals=[
-                    SmaCrossoverSignal(
-                        short=SmaIndicator(period=config.sma_short_window),
-                        long=SmaIndicator(period=config.sma_long_window),
-                    )
-                ],
-            )
-            strategies[symbol] = SimpleStrategy(signal_generator=generator, primary_signal="sma_crossover")
-        elif strategy_type == "noop":
-            strategies[symbol] = NoOpStrategy()
-        else:
-            logger.warning("Unknown backtest strategy_type=%s; falling back to noop", strategy_type)
-            strategies[symbol] = NoOpStrategy()
-    return strategies
-
-
-def _signal_lookback_window(config: Config) -> int:
-    """Handle signal lookback window."""
-    strategy_type = (getattr(config, "strategy_type", "noop") or "noop").lower()
-    if strategy_type == "sma":
-        return max(int(config.sma_short_window), int(config.sma_long_window)) + 1
-    return 0
+def _signal_lookback_window(strategy: Strategy) -> int:
+    """Infer bar lookback needs from the injected strategy object."""
+    signal_generator = getattr(strategy, "signal_generator", None)
+    signals = getattr(signal_generator, "signals", ())
+    windows: list[int] = []
+    for signal in signals or ():
+        window = getattr(signal, "window", None)
+        if isinstance(window, int) and window > 0:
+            windows.append(window)
+    return max(windows, default=0)
 
 
 def _build_initial_portfolio(positions: Sequence[Position], *, cash_balance: float) -> Portfolio:
@@ -1590,42 +1566,11 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Module entry point for backtests."""
-    load_dotenv(".env")
-    args = _parse_args()
-    config_data = load_yaml_config(args.config)
-    _configure_logging(resolve_log_level(config_data))
-    config = build_config(config_data)
-
-    backtest = config_data.get("backtest", {})
-    if backtest is None:
-        backtest = {}
-    if not isinstance(backtest, Mapping):
-        raise ValueError("backtest section must be a mapping")
-
-    start_value = backtest.get("start")
-    end_value = backtest.get("end")
-    if not start_value or not end_value:
-        raise ValueError("backtest.start and backtest.end are required")
-    spec = BacktestSpec(
-        start=_parse_datetime(str(start_value)),
-        end=_parse_datetime(str(end_value)),
-        timeframe=normalize_timeframe(str(backtest.get("timeframe", config.strategy_timeframe))),
-        max_runs=int(backtest.get("max_runs")) if backtest.get("max_runs") is not None else None,
+    """Reject direct module execution in favor of injected wrapper scripts."""
+    raise SystemExit(
+        "trader.backtest is a library module. "
+        "Construct a Strategy and RiskManager in your own wrapper script and call BacktestRunner(...)."
     )
-    log_cycle_details = _as_bool(backtest.get("log_cycle_details"), False)
-    initial_positions = _parse_initial_positions(backtest.get("initial_positions"))
-    initial_cash = _parse_initial_cash(backtest.get("initial_cash"))
-    runner = BacktestRunner(
-        config,
-        spec,
-        symbols=_parse_symbols_value(backtest.get("symbols")),
-        asset_class=str(backtest.get("asset_class")) if backtest.get("asset_class") else None,
-        initial_positions=initial_positions,
-        initial_cash=initial_cash,
-        config_snapshot=config_data,
-    )
-    runner.run(log_cycle_details=log_cycle_details)
 
 
 @contextmanager

@@ -10,41 +10,17 @@ logging:
     fills: true
     positions: true
 
-# strategy:
-#   type: sma
-#   id: sma
-#   timeframe: 1Min
-#   sma_short_window: 2
-#   sma_long_window: 5
-  
-
-# broker:
-#   type: internal
-#   internal:
-#     reject_probability: 0.0
-#     fill_delay_ms_mean: 0
-#     fill_delay_ms_stddev: 0
-#     fill_qty_fraction_mean: 1.0
-#     fill_qty_fraction_stddev: 0.0
-#     rng_seed: null
-
-# strategy:
-#   type: random
-#   random:
-#     seed: 123
-#     order_qty: 0.001
-#     buy_probability: 0.98
-#     sell_probability: 0.02
-
 strategy:
-  type: toggle   # or flip/pingpong
-  # Optional: external strategy implementation
-  # class_path: "my_bot.strategy:MyStrategy"
-  # params:
-  #   some_param: some_value
+  id: toggle
+  timeframe: 1Min
   toggle:
     order_qty: 0.01
 
+risk:
+  max_orders_per_run: 10
+  max_gross_usd: 250000
+  max_pos_usd_per_symbol: 100000
+  max_open_buy_orders_per_symbol: 1
 
 broker:
   type: alpaca
@@ -97,6 +73,7 @@ stream:
 
 trader_service:
   mode: real_time
+  startup_recovery_mode: resume
   cadence_seconds: 1.0
   min_trigger_interval_ms: 200
   notify_channel: market_data

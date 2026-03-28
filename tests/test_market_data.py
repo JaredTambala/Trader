@@ -15,6 +15,8 @@ from tests.support.duckdb_store import DuckDBEventStore
 from trader.market_data import CryptoBarEvent, StaticMarketDataSource, StockBarEvent
 from trader.portfolio import Portfolio
 from trader.strategies import Strategy
+from trader.strategies.noop import NoOpStrategy
+from trader.risk import NoOpRiskManager
 
 
 class RecordingEventStore(EventStore):
@@ -152,6 +154,7 @@ def test_market_data_ingested_before_strategy(tmp_path: Path) -> None:
     run_cycle(
         event_store=event_store,
         strategy=strategy,
+        risk_manager=NoOpRiskManager(),
         market_data_source=StaticMarketDataSource(events),
         config=_config(tmp_path),
         decision_ts=now,
@@ -190,6 +193,7 @@ def test_stale_market_data_skips_strategy(tmp_path: Path) -> None:
     run_cycle(
         event_store=event_store,
         strategy=strategy,
+        risk_manager=NoOpRiskManager(),
         market_data_source=StaticMarketDataSource(events),
         config=_config(tmp_path, max_age_seconds=60),
         decision_ts=stale_ts,
@@ -226,8 +230,11 @@ def test_market_data_persisted_to_duckdb(tmp_path: Path) -> None:
         )
     ]
 
+    strategy = NoOpStrategy()
     run_cycle(
         event_store=store,
+        strategy=strategy,
+        risk_manager=NoOpRiskManager(),
         market_data_source=StaticMarketDataSource(events),
         config=_config(tmp_path),
         decision_ts=now,

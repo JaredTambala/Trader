@@ -11,6 +11,7 @@ from trader.market_data import StaticMarketDataSource, StockBarEvent
 from trader.portfolio import Portfolio
 from trader.strategies import SimpleStrategy, Strategy
 from trader.signal_generators import InMemoryBarsSignalGenerator
+from trader.risk import NoOpRiskManager
 from trader.signals import Bar, SmaCrossoverSignal
 from trader.indicators import SmaIndicator
 from tests.support.duckdb_store import DuckDBEventStore
@@ -120,6 +121,7 @@ def test_indicator_events_persisted(tmp_path) -> None:
     run_cycle(
         event_store=store,
         strategy=strategy,
+        risk_manager=NoOpRiskManager(),
         market_data_source=StaticMarketDataSource([event]),
         config=config,
         decision_ts=base_ts,
@@ -156,9 +158,11 @@ def test_order_lifecycle_and_fill_events(tmp_path) -> None:
         mode="backtest",
     )
 
+    strategy = SingleOrderStrategy()
     run_cycle(
         event_store=store,
-        strategy=SingleOrderStrategy(),
+        strategy=strategy,
+        risk_manager=NoOpRiskManager(),
         market_data_source=StaticMarketDataSource([event]),
         config=config,
         decision_ts=now,

@@ -1,18 +1,23 @@
-# Execution (Stage 0)
+# Execution (Phase 1)
 
 This document describes the execution loop semantics, idempotency rules, and order lifecycle
-expectations for Stage 0.
+expectations for Phase 1.
+
+For architecture-level review, this operational reference is complemented by:
+
+- `docs/system_architecture.md`
+- `docs/runtime_hot_path_and_reconciliation.md`
 
 ## Architecture (Two Processes)
 
 Stage 0 runs as two long-lived processes:
 
-1) **Market data streamer** (`python -m trader.market_data_stream configs/example.yaml`)
+1) **Market data streamer** (`uv run python run_market_data_stream.py configs/example.yaml`)
    - Connects to Alpaca websocket feeds.
    - Persists incoming bars to the event store (idempotent).
    - Emits a trigger that “new market data is available”.
 
-2) **Trader** (`python -m trader.trader_service configs/example.yaml`)
+2) **Trader** (`uv run python examples/run_injected_trader_service.py`)
    - Subscribes to triggers and runs the trading cycle single-flight.
    - Generates signals, applies risk checks, and submits orders (paper).
    - Persists all events (signals, orders, fills, positions, runs).
@@ -31,7 +36,11 @@ This avoids shared in-process state and supports separate container/process life
 
 ## Real Trading Execution Loop
 
-The entry point is `python -m trader.cycle configs/example.yaml`, which performs a single cycle:
+The lowest-level execution primitive is `run_cycle(...)`. In supported Phase 1 usage, it is called
+from an injected runtime such as `TraderService`, where the strategy and risk manager are supplied
+directly from user code.
+
+A single cycle performs:
 
 1) Ensure a `runs` session exists (`status=started`).
 2) Record `run_events` cycle start (`status=started`).
@@ -48,15 +57,15 @@ The entry point is `python -m trader.cycle configs/example.yaml`, which performs
 
 ## Backtest Execution Loop
 
-`python -m trader.backtest configs/example.yaml` replays cycles over a timestamp window using in-memory bars
-loaded from the event store. It does **not** ingest or mutate bar data during the run.
+`BacktestRunner` replays cycles over a timestamp window using in-memory bars loaded from the event
+store. It does **not** ingest or mutate bar data during the run.
 
 1) Load bars for the requested symbols/timeframe into memory (including indicator lookback bars).
 2) Optionally seed `initial_positions` into `position_snapshots` at `backtest.start`.
-3) Build an in-memory market data source and signal generator.
+3) Build an in-memory market data source.
 4) For each timestamp in the window:
    - Run `run_cycle` **per symbol that has a bar at that timestamp** with `decision_ts=ts`,
-     `ingest_market_data=false`, and an in-memory portfolio.
+     `ingest_market_data=false`, an in-memory portfolio, and the injected strategy/risk manager.
    - Fetch the bar for that symbol/timestamp from memory (not from Alpaca or Postgres).
    - Generate signals for that symbol and apply order intents in memory.
    - Persist trading events (`run_events`, `signal_events`, `order_events`, `position_snapshots`).
@@ -67,7 +76,7 @@ Errors during a cycle are captured in `run_events.error_message` and the cycle i
 
 - **Data source**: backtest uses historical bars from Postgres loaded into memory; live cycles use Alpaca (or streamer/backfill) as the source of truth.
 - **Bar writes**: backtest does not write bar events; live cycles persist bar events as they arrive.
-- **Portfolio state**: backtest keeps portfolio state in memory during the run; live cycles reload from snapshots each cycle.
+- **Portfolio state**: backtest keeps portfolio state in memory during the run; live Alpaca cycles refresh portfolio state from the broker and persist snapshots for auditability.
 - **Time semantics**: backtest uses deterministic `decision_ts`; live cycles use wall-clock time for freshness checks.
 - **External side effects**: backtest does not talk to brokers; live cycles submit orders to the broker.
 
@@ -104,24 +113,50 @@ Alpaca order statuses are mapped into canonical states by `AlpacaPaperBroker`:
 | `rejected` | `rejected` |
 | `held`, `suspended`, `stopped` | `error` |
 
-## Reconciliation (Implemented)
+## Startup Recovery and Reconciliation (Implemented)
 
-`AlpacaPaperBroker.reconcile_orders(since_ts=...)` refreshes open orders and appends any status
-transitions to `order_events`. When an order transitions to `filled` (or `partially_filled`), a
-matching `fill_events` record is written as well.
+The primary runtime reconciliation flow is now service startup, not an ad hoc broker method call.
 
-The reconciliation flow:
+`TraderService` runs startup recovery before beginning the live loop. The supported startup recovery
+modes are:
 
-- Fetch broker order status for recent `submitted|accepted|partially_filled|error` orders.
-- Persist status transitions as append-only `order_events`.
-- Record fills in `fill_events`.
-- (Positions are still derived from order intents in Stage 0; fill-driven positions are a later task.)
+- `resume`: inspect broker-open orders, repair local `order_events`, adopt in-scope broker-open
+  orders into local state, and close stale local-open orders as `reconciled_missing`
+- `fail_closed`: perform the same inspection but abort if broker-open orders remain in the configured universe
+
+Startup recovery is local-state reconciliation against the broker. It is not a broker-execution mode.
+
+The runtime behavior is:
+
+- read local open `order_events`
+- read broker open orders for the configured universe
+- append status transitions to `order_events`
+- append `fill_events` when reconciliation reveals fills
+- adopt broker-open orders into local state when they are in scope and missing locally
+- close stale local-open orders that no longer exist broker-side
+
+`run_order_recovery.py clean-start` is a separate operator tool that closes local open orders in the
+configured universe. It does not cancel broker orders.
+
+## Live Portfolio Semantics
+
+For Alpaca-backed live trading:
+
+- Alpaca is the source of truth for portfolio state.
+- Startup sync resets local `position_snapshots` from Alpaca before mismatch validation.
+- If the broker account contains positions outside the configured symbols or asset class, the runtime
+  fails closed.
+- When fills occur, the runtime refreshes portfolio state from the broker rather than applying local
+  intent-based portfolio mutations.
+
+Equivalent Alpaca forms such as `BTCUSD` and enum-style asset classes like `assetclass.crypto` are
+normalized into the canonical runtime model before validation.
 
 ## Status
 
 The deterministic run lifecycle and staleness checks are implemented in `trader.cycle`.
-The trader process is implemented in `trader.trader_service` (loop and realtime modes).
-Task 0.6 introduces a real strategy implementation (SMA) with configurable window size.
+The runtime service is implemented in `trader.trader_service` (once, loop, and realtime modes).
+The supported integration model is direct strategy/risk injection from user-owned wrapper scripts.
 The full broker lifecycle and reconciliation are implemented in Task 0.8 via `AlpacaPaperBroker`.
 
 ---
@@ -170,9 +205,8 @@ and realtime modalities.
 - `NoOpStrategy`: produces no orders.
 
 **Instantiation**
-- **Backtest**: `BacktestRunner` constructs one `Strategy` per symbol and reuses it across all cycles.
-- **Realtime**: `TraderService` caches `Strategy` instances by `(symbol, timeframe, asset_class)` and
-  reuses them per NOTIFY trigger.
+- User code instantiates `Strategy` and `RiskManager` objects directly and injects
+  them into `run_cycle`, `TraderService`, or `BacktestRunner`.
 
 ### Signal generation & indicators
 
@@ -195,8 +229,9 @@ and realtime modalities.
 
 **Flow**
 1) Strategy emits candidate orders.
-2) Risk manager validates each order (rejects include `rejection_reason`).
+2) Risk managers filter those orders through a `RiskPipeline` (rejects include `rejection_reason`).
 3) Broker submission returns responses; `order_events` and `fill_events` are appended.
+4) Runtime logs make the path explicit: created, validated, rejected, submitted, broker response.
 
 ### Order filling
 
@@ -215,9 +250,9 @@ and realtime modalities.
 
 **Cycle steps**
 1) Load all required bars into memory (including lookback windows).
-2) Build per‑symbol `Strategy` instances (persistent for the run).
+2) Reuse the injected `Strategy` and `RiskManager` for the run.
 3) For each timestamp and symbol with a bar:
-   - Call `run_cycle` with `ingest_market_data=false` and the persistent `Strategy`.
+   - Call `run_cycle` with `ingest_market_data=false` and the injected runtime objects.
    - Signals and orders are generated against in‑memory bars.
 4) Persist run/cycle events and optional trading events.
 
@@ -233,11 +268,11 @@ and realtime modalities.
 **Cycle steps**
 1) Stream writes bar → emits NOTIFY.
 2) Trader service de‑duplicates NOTIFY events per symbol/timeframe/asset class.
-3) Trader service calls `run_cycle` with `ingest_market_data=false` and cached `Strategy`.
+3) Trader service calls `run_cycle` with `ingest_market_data=false` and the injected runtime objects.
 4) `run_cycle` reads the latest bars from the event store and processes signals/orders.
 
 **State**
-- Strategy is cached per symbol/timeframe/asset class.
+- Strategy and risk manager are persistent injected runtime objects for the service lifetime.
 - Portfolio is loaded from snapshots each cycle (seeded once if configured).
 - Bars are written by the stream process, not the trader service.
 
@@ -247,7 +282,7 @@ and realtime modalities.
 
 - **Triggering**: backtest is timestamp‑driven; realtime is NOTIFY‑driven.
 - **Bar sourcing**: backtest uses in‑memory bars; realtime reads from Postgres after streaming writes.
-- **Strategy lifetime**: both now persist strategy instances (per symbol in backtest, cached in realtime).
+- **Strategy lifetime**: both backtest and realtime reuse injected runtime objects supplied by user code.
 - **Portfolio state**: backtest uses in‑memory portfolio; realtime reloads snapshots each cycle.
 - **Latency**: realtime includes DB write/notify/read overhead; backtest is compute‑bound.
 
@@ -266,12 +301,12 @@ Examples:
 values per symbol. It does not decide trades; it only computes signal values.
 
 ### Strategy
-`Strategy` consumes SignalGenerator outputs (and, in future, portfolio state) to produce
-broker-ready **order intents**. Strategies are responsible for:
+`Strategy` consumes SignalGenerator outputs and market context to produce broker-ready
+**order intents**. Strategies are responsible for:
 - Choosing which signals matter (e.g., a primary signal).
 - Translating signal values into order intents (side/qty/type).
 - Recording `signal_events` for traceability.
-- Applying risk rules (currently embedded via a RiskManager instance).
+- Leaving risk filtering to the separate `RiskManager` / `RiskPipeline` layer.
 
 `SimpleStrategy` is the current minimal implementation:
 - If the primary signal > 0 ⇒ emit a **buy** market order.
@@ -280,46 +315,23 @@ broker-ready **order intents**. Strategies are responsible for:
 
 ---
 
-## What is Missing (Design Gaps)
+## Remaining Gaps
 
-1) **Portfolio context**  
-   The portfolio primitive now tracks positions + cash, but strategies still lack open orders and
-   realized PnL. Snapshots are currently based on order intents and latest prices.
+1) **Health/status runtime surface**  
+   The health/status API remains incomplete and still needs runtime-backed endpoints.
 
-2) **Risk model separation**  
-   Risk rules are embedded in SimpleStrategy via a RiskManager instance. We need a clearer
-   boundary that allows portfolio-aware risk checks (stop-loss, max drawdown, position limits).
+2) **Backtest execution realism**  
+   Internal broker realism is present, but richer statistical fill modeling is tracked separately.
 
-3) **Execution orchestration**  
-   The trader process and trigger mechanism (LISTEN/NOTIFY) are defined but not implemented.
+3) **Fill-driven accounting depth**  
+   Fill-driven synchronization is implemented for Alpaca runtime flows, but portfolio/performance
+   accounting can still be tightened further across all execution modes.
 
-4) **Fill-driven positions**  
-   Order lifecycle + reconciliation are implemented, but position snapshots are still derived from
-   order intents. We still need fill-driven positions and open order tracking.
+4) **Interface/deployment work**  
+   UI, Superset, package split, and deployment productization are intentionally out of Phase 1.
 
-5) **Signal metadata & diagnostics**  
-   We currently store only `signal_value` and `target_qty`. Diagnostics like signal inputs,
-   thresholds, or confidence are not captured.
+## Follow-Up Focus
 
----
-
-## Proposed Next Tasks
-
-1) **Portfolio enrichment**
-   - Add open orders and realized PnL.
-   - Derive positions from fills instead of order intents.
-
-2) **Explicit RiskManager phase**
-   - Move risk checks out of SimpleStrategy into a dedicated risk pipeline.
-   - Add guardrails like max position size and max exposure.
-
-3) **Trader service (event-driven)**
-   - Implemented via `trader.trader_service` using `LISTEN`/`NOTIFY`.
-   - Enforces single-flight execution and coalescing.
-
-4) **Fill-driven positions**
-   - Use fills (not intents) to update positions and cash.
-   - Track open orders separately from positions.
-
-5) **Signal metadata enrichment**
-   - Extend `signal_events` to store signal diagnostics (optional).
+1) Keep extending the direct-injection library workflow.
+2) Finish the retained execution/runtime safety work.
+3) Keep deferred UI and deployment concerns out of the active Phase 1 path.

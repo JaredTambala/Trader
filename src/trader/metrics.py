@@ -13,6 +13,7 @@ import json
 from .portfolio import Position, load_latest_positions, load_latest_cash
 from .broker import Broker
 from .data import EventStore
+from .symbols import normalize_broker_positions
 
 
 logger = logging.getLogger(__name__)
@@ -147,25 +148,8 @@ class MetricsWorker(threading.Thread):
             return load_latest_positions(self._event_store), load_latest_cash(self._event_store) or 0.0
 
         positions: list[Position] = []
-        for position in positions_raw:
-            if not isinstance(position, Mapping):
-                continue
-            symbol = str(position.get("symbol", "")).strip().upper()
-            if not symbol:
-                continue
-            qty_raw = position.get("qty", 0.0)
-            try:
-                qty = float(qty_raw)
-            except (TypeError, ValueError):
-                qty = 0.0
-            side = str(position.get("side", "")).lower().strip()
-            if side == "short" and qty > 0:
-                qty = -qty
-            if abs(qty) < 1e-12:
-                continue
-            avg_raw = position.get("avg_entry_price")
-            avg_price = float(avg_raw) if avg_raw is not None else None
-            positions.append(Position(symbol=symbol, qty=qty, avg_price=avg_price))
+        for position in normalize_broker_positions(positions_raw):
+            positions.append(Position(symbol=position.symbol, qty=position.qty, avg_price=position.avg_entry_price))
         return positions, cash
 
     def _latest_prices(self) -> Mapping[str, float]:

@@ -16,6 +16,7 @@ from trader.signals import SmaCrossoverSignal
 from trader.indicators import SmaIndicator
 from trader.portfolio import Portfolio
 from trader.strategies import SimpleStrategy
+from trader.risk import NoOpRiskManager
 
 
 def _config(tmp_path: Path) -> Config:
@@ -154,8 +155,25 @@ def test_cycle_persists_sma_signals(tmp_path: Path) -> None:
             source="test",
         )
     ]
+    strategy = SimpleStrategy(
+        signal_generator=SimpleBarsSignalGenerator(
+            event_store=store,
+            symbols=["AAPL"],
+            asset_class="stocks",
+            timeframe="1Min",
+            signals=[
+                SmaCrossoverSignal(
+                    short=SmaIndicator(period=config.sma_short_window),
+                    long=SmaIndicator(period=config.sma_long_window),
+                )
+            ],
+        ),
+        primary_signal="sma_crossover",
+    )
     run_cycle(
         event_store=store,
+        strategy=strategy,
+        risk_manager=NoOpRiskManager(),
         config=config,
         decision_ts=now,
         market_data_source=StaticMarketDataSource(events),

@@ -15,7 +15,6 @@ from typing import AsyncIterator, Mapping, Sequence
 
 from trader.data import EventStore
 from trader.portfolio import Portfolio
-from trader.risk import NoOpRiskManager, RiskManager
 from trader.signal_generators import SignalGenerator
 
 from .base import Strategy
@@ -31,16 +30,11 @@ class SimpleStrategy(Strategy):
     signal_generator: SignalGenerator
     primary_signal: str
     target_qty_when_positive: float = 1.0
-    risk_manager: RiskManager = NoOpRiskManager()
 
     @property
     def strategy_id(self) -> str:
         """Return the strategy identifier."""
         return "simple"
-
-    def get_risk_manager(self) -> RiskManager:
-        """Return the risk manager used by this strategy."""
-        return self.risk_manager
 
     def generate_orders(
         self,

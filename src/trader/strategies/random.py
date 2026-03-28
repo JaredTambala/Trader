@@ -9,8 +9,6 @@ from typing import Mapping, Sequence
 
 from trader.data import EventStore
 from trader.portfolio import Portfolio
-from trader.risk import NoOpRiskManager, RiskManager
-
 from .base import Strategy
 
 
@@ -28,7 +26,6 @@ class RandomStrategy(Strategy):
         buy_probability: float = 0.45,
         sell_probability: float = 0.45,
         rng_seed: int | None = None,
-        risk_manager: RiskManager | None = None,
     ) -> None:
         self._symbols = tuple(symbols)
         self._order_qty = max(0.0, float(order_qty))
@@ -44,16 +41,11 @@ class RandomStrategy(Strategy):
                 self._sell_probability,
             )
         self._rng = random.Random(rng_seed)
-        self._risk_manager = risk_manager or NoOpRiskManager()
 
     @property
     def strategy_id(self) -> str:
         """Return the strategy identifier."""
         return "random"
-
-    def get_risk_manager(self) -> RiskManager:
-        """Return the risk manager used by this strategy."""
-        return self._risk_manager
 
     def generate_orders(
         self,

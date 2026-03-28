@@ -10,9 +10,8 @@ import uuid
 import json
 from typing import AsyncIterator, Mapping, Sequence
 
-from dotenv import load_dotenv
 from .broker import AlpacaPaperBroker, Broker, InternalPaperBroker, NoOpBroker
-from .config import Config, build_config, load_yaml_config, resolve_log_level
+from .config import Config
 from .data import EventStore, FilteredEventStore, build_event_store
 from .identifiers import (
     deterministic_client_order_id,
@@ -29,10 +28,15 @@ from .market_data import (
     StockBarEvent,
 )
 from .portfolio import Portfolio, Position
-from .signal_generators import SimpleBarsSignalGenerator
-from .signals import SmaCrossoverSignal
-from .indicators import SmaIndicator
-from .strategies import NoOpStrategy, SimpleStrategy, Strategy, RandomStrategy, ToggleUnitStrategy
+from .strategies import Strategy
+from .risk import (
+    OpenBuyOrderLimitRiskManager,
+    RiskContext,
+    RiskManager,
+    RiskPipeline,
+)
+from .strategy_metadata import resolve_strategy_id, resolve_strategy_type
+from .symbols import find_unmatched_positions, normalize_broker_positions
 
 
 logger = logging.getLogger(__name__)
@@ -45,9 +49,43 @@ class CycleResult:
     status: str
 
 
+def _log_order_status(
+    status: str,
+    order: Mapping[str, object],
+    *,
+    run_id: str,
+    cycle_id: str,
+    extra: str | None = None,
+) -> None:
+    """Emit a concise runtime log for order lifecycle state."""
+    message = (
+        "Order %s symbol=%s side=%s qty=%s run_id=%s cycle_id=%s client_order_id=%s"
+        % (
+            status,
+            order.get("symbol"),
+            order.get("side"),
+            order.get("qty"),
+            run_id,
+            cycle_id,
+            order.get("client_order_id"),
+        )
+    )
+    if extra:
+        message = f"{message} {extra}"
+    logger.info(message)
+
+
+def _iter_risk_managers(risk_manager: RiskManager) -> Sequence[RiskManager]:
+    """Expand a risk manager into ordered components for logging."""
+    if isinstance(risk_manager, RiskPipeline):
+        return tuple(risk_manager.managers)
+    return (risk_manager,)
+
+
 def run_cycle(
+    strategy: Strategy,
+    risk_manager: RiskManager,
     event_store: EventStore | None = None,
-    strategy: Strategy | None = None,
     broker: Broker | None = None,
     config: Config | None = None,
     config_snapshot: Mapping[str, object] | None = None,
@@ -63,7 +101,7 @@ def run_cycle(
     Args:
         event_store: Optional event store; defaults to the configured backend.
         strategy: Strategy used to generate signals.
-        risk_manager: Risk manager applied to candidate orders.
+        risk_manager: Risk manager pipeline used to validate candidate orders.
         broker: Broker used to submit orders.
         config: Configuration for the cycle.
         config_snapshot: Optional YAML configuration snapshot for run auditing.
@@ -82,11 +120,13 @@ def run_cycle(
     """
     if config is None:
         raise ValueError("config is required; load it from YAML and pass it in")
+    strategy_id = resolve_strategy_id(strategy, config.strategy_id)
+    strategy_type = resolve_strategy_type(strategy, config.strategy_type)
     logger.info(
         "Cycle start mode=%s strategy_type=%s strategy_id=%s event_store=%s market_data_source=%s asset_class=%s symbols=%s timeframe=%s",
         config.mode,
-        config.strategy_type,
-        config.strategy_id,
+        strategy_type,
+        strategy_id,
         config.event_store,
         config.market_data_source,
         config.market_data_asset_class,
@@ -118,6 +158,7 @@ def run_cycle(
             run_id=run_id or "",
             cycle_id=None,
             decision_ts=decision_ts,
+            config=config,
         )
         logger.info(
             "Portfolio loaded from Alpaca positions=%s cash=%s",
@@ -131,13 +172,11 @@ def run_cycle(
     else:
         logger.info("Portfolio override positions=%s", len(portfolio.positions))
 
-    strategy = strategy or _build_strategy(config, event_store)
-
     if market_data_source is None:
         market_data_source = _build_market_data_source(config)
 
     run_type = (run_type or ("backtest" if config.mode.lower() == "backtest" else "trading")).lower()
-    cycle_id = deterministic_cycle_id(config.strategy_id, decision_ts)
+    cycle_id = deterministic_cycle_id(strategy_id, decision_ts)
     started_at = datetime.now(timezone.utc)
     owns_run_session = False
     run_session_status = "success"
@@ -148,7 +187,7 @@ def run_cycle(
             run_id=run_id,
             run_type=run_type,
             started_at=started_at,
-            strategy_id=config.strategy_id,
+            strategy_id=strategy_id,
             config_snapshot=config_snapshot,
             mode=config.mode,
             symbols=config.market_data_symbols,
@@ -160,7 +199,7 @@ def run_cycle(
         event_store.record_cycle_start(
             run_id=run_id,
             cycle_id=cycle_id,
-            strategy_id=config.strategy_id,
+            strategy_id=strategy_id,
             mode=config.mode,
             decision_ts=decision_ts,
             started_at=started_at,
@@ -191,6 +230,8 @@ def run_cycle(
                     time_in_force=config.broker_time_in_force,
                     sync_portfolio_on_fill=sync_portfolio_on_fill,
                     broker_type=broker_kind,
+                    config=config,
+                    risk_manager=risk_manager,
                 )
             )
             if event_counter["count"] == 0:
@@ -219,6 +260,8 @@ def run_cycle(
                             time_in_force=config.broker_time_in_force,
                             sync_portfolio_on_fill=sync_portfolio_on_fill,
                             broker_type=broker_kind,
+                            config=config,
+                            risk_manager=risk_manager,
                         )
                     )
         else:
@@ -255,6 +298,8 @@ def run_cycle(
                         time_in_force=config.broker_time_in_force,
                         sync_portfolio_on_fill=sync_portfolio_on_fill,
                         broker_type=broker_kind,
+                        config=config,
+                        risk_manager=risk_manager,
                     )
                 )
 
@@ -304,7 +349,7 @@ def run_cycle(
             event_store.record_cycle_finish(
                 run_id=run_id,
                 cycle_id=cycle_id,
-                strategy_id=config.strategy_id,
+                strategy_id=strategy_id,
                 mode=config.mode,
                 decision_ts=decision_ts,
                 started_at=started_at,
@@ -317,7 +362,7 @@ def run_cycle(
         event_store.record_cycle_finish(
             run_id=run_id,
             cycle_id=cycle_id,
-            strategy_id=config.strategy_id,
+            strategy_id=strategy_id,
             mode=config.mode,
             decision_ts=decision_ts,
             started_at=started_at,
@@ -337,7 +382,7 @@ def run_cycle(
                 finished_at=datetime.now(timezone.utc),
                 status=run_session_status,
                 error_message=run_session_error,
-                strategy_id=config.strategy_id,
+                strategy_id=strategy_id,
                 mode=config.mode,
                 symbols=config.market_data_symbols,
                 timeframe=config.strategy_timeframe,
@@ -568,6 +613,8 @@ async def _process_market_stream_async(
     time_in_force: str,
     sync_portfolio_on_fill: bool,
     broker_type: str,
+    config: Config,
+    risk_manager: RiskManager,
 ) -> tuple[Sequence[Mapping[str, object]], Mapping[str, float]]:
     """Process market data events through the async pipeline."""
     event_queue: asyncio.Queue[MarketDataEvent | None] = asyncio.Queue()
@@ -575,6 +622,13 @@ async def _process_market_stream_async(
     validated_queue: asyncio.Queue[Mapping[str, object] | None] = asyncio.Queue()
     processed: list[Mapping[str, object]] = []
     latest_prices: dict[str, tuple[datetime, float]] = {}
+    counters = {
+        "orders_emitted": 0,
+        "orders_rejected_locally": 0,
+        "orders_validated": 0,
+        "orders_submitted": 0,
+        "broker_responses": 0,
+    }
 
     async def producer() -> None:
         """Handle producer."""
@@ -613,21 +667,73 @@ async def _process_market_stream_async(
                     time_in_force=time_in_force,
                 )[0]
                 _record_order_events(event_store, [enriched], status="created")
+                _log_order_status("created", enriched, run_id=run_id, cycle_id=cycle_id)
+                counters["orders_emitted"] += 1
                 await order_queue.put(enriched)
 
     async def validator() -> None:
         """Handle validator."""
-        risk_manager = strategy.get_risk_manager()
+        # Global safety check: don't allow concurrent open buy orders per symbol.
+        open_buy_guard = OpenBuyOrderLimitRiskManager(max_open_buy_orders_per_symbol=1)
         while True:
             order = await order_queue.get()
             if order is None:
                 await validated_queue.put(None)
                 break
-            approved, rejected = risk_manager.evaluate([order])
-            _record_order_events(event_store, approved, status="validated")
-            _record_order_events(event_store, rejected, status="rejected")
-            if approved:
-                await validated_queue.put(approved[0])
+            symbol = str(order.get("symbol", "")).strip().upper()
+            order_price = order.get("price")
+            price_lookup = {sym: price for sym, (_, price) in latest_prices.items()}
+            if symbol and order_price is not None:
+                price_lookup[symbol] = float(order_price)
+            context = RiskContext(
+                positions=portfolio.positions,
+                open_orders=_load_latest_order_events(event_store),
+                price_lookup=price_lookup,
+                run_id=run_id,
+                cycle_id=cycle_id,
+                decision_ts=order.get("created_at") or datetime.now(timezone.utc),
+                halted=_load_halt_flag(event_store),
+            )
+
+            approved_a, rejected_a = open_buy_guard.evaluate([order], context)
+            if rejected_a:
+                for rejected in rejected_a:
+                    counters["orders_rejected_locally"] += 1
+                    _log_order_status(
+                        "rejected",
+                        rejected,
+                        run_id=run_id,
+                        cycle_id=cycle_id,
+                        extra="reason=%s manager=%s"
+                        % (rejected.get("rejection_reason"), open_buy_guard.__class__.__name__),
+                    )
+                _record_order_events(event_store, rejected_a, status="rejected")
+                continue
+
+            approved_orders = list(approved_a)
+            rejected_orders: list[Mapping[str, object]] = []
+            for manager in _iter_risk_managers(risk_manager):
+                approved_orders, rejected = manager.evaluate(approved_orders, context)
+                if rejected:
+                    for rejected_order in rejected:
+                        counters["orders_rejected_locally"] += 1
+                        _log_order_status(
+                            "rejected",
+                            rejected_order,
+                            run_id=run_id,
+                            cycle_id=cycle_id,
+                            extra="reason=%s manager=%s"
+                            % (rejected_order.get("rejection_reason"), manager.__class__.__name__),
+                        )
+                    rejected_orders.extend(rejected)
+                if not approved_orders:
+                    break
+            _record_order_events(event_store, rejected_orders, status="rejected")
+            if approved_orders:
+                _record_order_events(event_store, approved_orders, status="validated")
+                _log_order_status("validated", approved_orders[0], run_id=run_id, cycle_id=cycle_id)
+                counters["orders_validated"] += len(approved_orders)
+                await validated_queue.put(approved_orders[0])
 
     async def submitter() -> None:
         """Handle submitter."""
@@ -636,12 +742,23 @@ async def _process_market_stream_async(
             if order is None:
                 break
             _record_order_events(event_store, [order], status="submitted")
+            _log_order_status("submitted", order, run_id=run_id, cycle_id=cycle_id)
+            counters["orders_submitted"] += 1
             responses = await asyncio.to_thread(broker.submit_orders, [order])
             _record_broker_responses(event_store, [order], responses)
+            counters["broker_responses"] += len(responses)
             processed_order = order
             if responses:
                 response = responses[0]
                 status = str(response.get("status", "submitted"))
+                _log_order_status(
+                    f"broker_response status={status}",
+                    order,
+                    run_id=run_id,
+                    cycle_id=cycle_id,
+                    extra="broker_order_id=%s reason=%s"
+                    % (response.get("broker_order_id"), response.get("rejection_reason")),
+                )
                 if status in {"rejected", "canceled", "expired", "error"}:
                     continue
                 if sync_portfolio_on_fill and status in {"filled", "partially_filled"}:
@@ -654,6 +771,7 @@ async def _process_market_stream_async(
                             run_id=run_id,
                             cycle_id=cycle_id,
                             asof_ts=fill_ts,
+                            config=config,
                         )
                     elif broker_type == "internal":
                         _apply_fill_to_portfolio(
@@ -681,6 +799,16 @@ async def _process_market_stream_async(
             processed.append(processed_order)
 
     await asyncio.gather(producer(), signal_worker(), validator(), submitter())
+    logger.info(
+        "Cycle order summary run_id=%s cycle_id=%s orders_emitted=%s orders_rejected_locally=%s orders_validated=%s orders_submitted=%s broker_responses=%s",
+        run_id,
+        cycle_id,
+        counters["orders_emitted"],
+        counters["orders_rejected_locally"],
+        counters["orders_validated"],
+        counters["orders_submitted"],
+        counters["broker_responses"],
+    )
     return processed, {symbol: price for symbol, (_, price) in latest_prices.items()}
 
 
@@ -710,6 +838,72 @@ def _apply_event_filters(event_store: EventStore, config: Config) -> EventStore:
     if config.log_position_snapshots:
         allowed.add("position_snapshots")
     return FilteredEventStore(event_store, allowed_event_types=allowed)
+
+
+def _load_latest_order_events(event_store: EventStore) -> Sequence[Mapping[str, object]]:
+    """Load the latest order event per client_order_id."""
+    connection = getattr(event_store, "connection", lambda: None)()
+    if connection is None:
+        return []
+    query = (
+        "SELECT client_order_id, run_id, cycle_id, symbol, side, qty, order_type, "
+        "status, broker_order_id, created_at "
+        "FROM order_events ORDER BY created_at DESC"
+    )
+    try:
+        if hasattr(connection, "cursor"):
+            with connection.cursor() as cursor:
+                cursor.execute(query)
+                rows = cursor.fetchall()
+        else:
+            rows = connection.execute(query).fetchall()
+    except Exception as exc:
+        logger.warning("Risk context order query failed: %s", exc)
+        return []
+    seen: set[str] = set()
+    latest: list[Mapping[str, object]] = []
+    for row in rows or []:
+        client_order_id = row[0]
+        if not client_order_id or client_order_id in seen:
+            continue
+        seen.add(client_order_id)
+        latest.append(
+            {
+                "client_order_id": client_order_id,
+                "run_id": row[1],
+                "cycle_id": row[2],
+                "symbol": row[3],
+                "side": row[4],
+                "qty": row[5],
+                "order_type": row[6],
+                "status": row[7],
+                "broker_order_id": row[8],
+                "created_at": row[9],
+            }
+        )
+    return latest
+
+
+def _load_halt_flag(event_store: EventStore) -> bool:
+    """Load the global halt flag from config_kv."""
+    connection = getattr(event_store, "connection", lambda: None)()
+    if connection is None:
+        return False
+    query = "SELECT value FROM config_kv WHERE key = 'halt' LIMIT 1"
+    try:
+        if hasattr(connection, "cursor"):
+            with connection.cursor() as cursor:
+                cursor.execute(query)
+                row = cursor.fetchone()
+        else:
+            row = connection.execute(query).fetchone()
+    except Exception as exc:
+        logger.warning("Risk context halt query failed: %s", exc)
+        return False
+    if not row:
+        return False
+    value = str(row[0]).strip().lower()
+    return value in {"1", "true", "yes", "y", "on"}
 
 
 def _should_skip_trading(
@@ -923,6 +1117,7 @@ def _load_portfolio_from_broker(
     run_id: str,
     cycle_id: str | None,
     decision_ts: datetime,
+    config: Config,
 ) -> Portfolio:
     """Load portfolio state from a broker (Alpaca) each cycle."""
     get_account = getattr(broker, "get_account", None)
@@ -936,26 +1131,15 @@ def _load_portfolio_from_broker(
         cash_raw = account.get("cash", 0.0) if isinstance(account, Mapping) else 0.0
         cash = float(cash_raw) if cash_raw is not None else 0.0
         positions_raw = get_positions() or []
+        normalized_positions = normalize_broker_positions(positions_raw)
+        _validate_broker_positions(normalized_positions, config)
         positions: dict[str, Position] = {}
-        for position in positions_raw:
-            if not isinstance(position, Mapping):
-                continue
-            symbol = str(position.get("symbol", "")).strip().upper()
-            if not symbol:
-                continue
-            qty_raw = position.get("qty", 0.0)
-            try:
-                qty = float(qty_raw)
-            except (TypeError, ValueError):
-                qty = 0.0
-            side = str(position.get("side", "")).lower().strip()
-            if side == "short" and qty > 0:
-                qty = -qty
-            if abs(qty) < 1e-12:
-                continue
-            avg_raw = position.get("avg_entry_price")
-            avg_price = float(avg_raw) if avg_raw is not None else None
-            positions[symbol] = Position(symbol=symbol, qty=qty, avg_price=avg_price)
+        for position in normalized_positions:
+            positions[position.symbol] = Position(
+                symbol=position.symbol,
+                qty=position.qty,
+                avg_price=position.avg_entry_price,
+            )
         portfolio = Portfolio(positions=positions, cash_balance=cash)
         snapshot = portfolio.snapshot(
             asof_ts=decision_ts,
@@ -966,8 +1150,8 @@ def _load_portfolio_from_broker(
         snapshot.persist(event_store)
         return portfolio
     except Exception as exc:  # pragma: no cover - external dependency
-        logger.warning("Broker portfolio load failed; falling back to DB: %s", exc)
-        return Portfolio.from_event_store(event_store)
+        logger.error("Broker portfolio load failed: %s", exc)
+        raise
 
 
 def _sync_portfolio_from_broker(
@@ -978,6 +1162,7 @@ def _sync_portfolio_from_broker(
     run_id: str,
     cycle_id: str | None,
     asof_ts: datetime,
+    config: Config,
 ) -> None:
     """Refresh portfolio state from the broker after fills."""
     get_account = getattr(broker, "get_account", None)
@@ -990,26 +1175,15 @@ def _sync_portfolio_from_broker(
     cash_raw = account.get("cash", 0.0) if isinstance(account, Mapping) else 0.0
     cash = float(cash_raw) if cash_raw is not None else 0.0
     positions_raw = get_positions() or []
+    normalized_positions = normalize_broker_positions(positions_raw)
+    _validate_broker_positions(normalized_positions, config)
     positions: dict[str, Position] = {}
-    for position in positions_raw:
-        if not isinstance(position, Mapping):
-            continue
-        symbol = str(position.get("symbol", "")).strip().upper()
-        if not symbol:
-            continue
-        qty_raw = position.get("qty", 0.0)
-        try:
-            qty = float(qty_raw)
-        except (TypeError, ValueError):
-            qty = 0.0
-        side = str(position.get("side", "")).lower().strip()
-        if side == "short" and qty > 0:
-            qty = -qty
-        if abs(qty) < 1e-12:
-            continue
-        avg_raw = position.get("avg_entry_price")
-        avg_price = float(avg_raw) if avg_raw is not None else None
-        positions[symbol] = Position(symbol=symbol, qty=qty, avg_price=avg_price)
+    for position in normalized_positions:
+        positions[position.symbol] = Position(
+            symbol=position.symbol,
+            qty=position.qty,
+            avg_price=position.avg_entry_price,
+        )
 
     portfolio.positions = positions
     portfolio.cash_balance = cash
@@ -1021,6 +1195,32 @@ def _sync_portfolio_from_broker(
     )
     snapshot.persist(event_store)
     logger.info("Portfolio synced from broker positions=%s cash=%s", len(positions), cash)
+
+
+def _validate_broker_positions(positions, config: Config) -> None:
+    """Fail closed when broker positions do not match the configured live universe."""
+    mismatches = find_unmatched_positions(
+        positions,
+        configured_symbols=config.market_data_symbols,
+        configured_asset_class=config.market_data_asset_class,
+    )
+    if not mismatches:
+        return
+    mismatch_text = ", ".join(
+        "%s(asset_class=%s raw_symbol=%s raw_asset_class=%s qty=%s)"
+        % (
+            position.symbol,
+            position.asset_class,
+            position.raw_symbol,
+            position.raw_asset_class or "<none>",
+            position.qty,
+        )
+        for position in mismatches
+    )
+    raise ValueError(
+        "Broker portfolio mismatch with configured trading universe "
+        f"symbols={config.market_data_symbols} asset_class={config.market_data_asset_class}: {mismatch_text}"
+    )
 
 
 def _record_metrics_snapshot(
@@ -1123,85 +1323,11 @@ def _configure_logging(level_name: str | None = None) -> None:
     logger.info("Logging configured level=%s", level_name)
 
 
-def _build_strategy(config: Config, event_store: EventStore) -> Strategy:
-    """Construct the configured strategy.
-
-    Args:
-        config: Loaded configuration values.
-        event_store: Event store used by strategies that query data.
-
-    Returns:
-        Strategy instance.
-    """
-    strategy_class_path = (getattr(config, "strategy_class_path", "") or "").strip()
-    if strategy_class_path:
-        params = dict(getattr(config, "strategy_params", {}) or {})
-        try:
-            from trader.loader import instantiate
-            from trader.strategies.base import Strategy as StrategyBase
-
-            instance = instantiate(strategy_class_path, base_cls=StrategyBase, **params)
-        except Exception as exc:  # pragma: no cover - dynamic import
-            raise ValueError(f"Failed to load strategy class '{strategy_class_path}': {exc}") from exc
-        return instance
-
-    strategy_type = (getattr(config, "strategy_type", "noop") or "noop").lower()
-    if strategy_type == "sma":
-        generator = SimpleBarsSignalGenerator(
-            event_store=event_store,
-            symbols=config.market_data_symbols,
-            asset_class=config.market_data_asset_class,
-            timeframe=config.strategy_timeframe,
-            signals=[
-                SmaCrossoverSignal(
-                    short=SmaIndicator(period=config.sma_short_window),
-                    long=SmaIndicator(period=config.sma_long_window),
-                )
-            ],
-        )
-        return SimpleStrategy(
-            signal_generator=generator,
-            primary_signal="sma_crossover",
-        )
-    if strategy_type in {"random", "smoke"}:
-        return RandomStrategy(
-            symbols=config.market_data_symbols,
-            order_qty=getattr(config, "random_order_qty", 0.001),
-            buy_probability=getattr(config, "random_buy_probability", 0.45),
-            sell_probability=getattr(config, "random_sell_probability", 0.45),
-            rng_seed=getattr(config, "random_seed", None),
-        )
-    if strategy_type in {"toggle", "flip", "pingpong"}:
-        return ToggleUnitStrategy(
-            symbols=config.market_data_symbols,
-            order_qty=getattr(config, "toggle_order_qty", 1.0),
-        )
-    return NoOpStrategy()
-
-
-def _build_risk_manager(config: Config) -> RiskManager:
-    """Construct a risk manager from config or strategy default."""
-    # Placeholder for future external risk manager loading
-    return NoOpRiskManager()
-
-
 def main() -> None:
-    """Module entry point for running a single cycle."""
-    import argparse
-
-    load_dotenv(".env")
-    parser = argparse.ArgumentParser(description="Run a single trading cycle.")
-    parser.add_argument("config", help="Path to the YAML configuration file.")
-    args = parser.parse_args()
-
-    config_data = load_yaml_config(args.config)
-    _configure_logging(resolve_log_level(config_data))
-    config = build_config(config_data)
-    _log_startup_config(config)
-    result = run_cycle(config=config, config_snapshot=config_data)
-    logger.info(
-        "Cycle complete",
-        extra={"run_id": result.run_id, "cycle_id": result.cycle_id, "status": result.status},
+    """Reject direct module execution in favor of injected wrapper scripts."""
+    raise SystemExit(
+        "trader.cycle is a library module. "
+        "Construct a Strategy and RiskManager in your own wrapper script and call run_cycle(...)."
     )
 
 
