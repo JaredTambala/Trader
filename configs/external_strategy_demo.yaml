@@ -1,0 +1,32 @@
+runtime:
+  mode: once
+
+strategy:
+  id: external_demo
+  timeframe: 1Min
+
+broker:
+  type: noop
+
+market_data:
+  source: noop
+  asset_class: stocks
+  stock_feed: iex
+  symbols:
+    - AAPL
+  max_age_seconds: 60
+
+database:
+  event_store: noop
+  db_path: ":memory:"
+
+logging:
+  persist:
+    signals: false
+    indicators: false
+    orders: false
+    fills: false
+    positions: false
+
+metrics:
+  enable_snapshots: false

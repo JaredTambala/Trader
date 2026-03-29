@@ -1,0 +1,141 @@
+runtime:
+  mode: once
+
+logging:
+  level: DEBUG
+  persist:
+    signals: false
+    indicators: false
+    orders: true
+    fills: true
+    positions: true
+
+strategy:
+  id: toggle
+  timeframe: 1Min
+  toggle:
+    order_qty: 0.01
+
+risk:
+  max_orders_per_run: 10
+  max_gross_usd: 250000
+  max_pos_usd_per_symbol: 100000
+  max_open_buy_orders_per_symbol: 1
+
+broker:
+  type: alpaca
+  time_in_force: gtc
+
+alpaca:
+  api_key: ${ALPACA_API_KEY}
+  secret_key: ${ALPACA_SECRET_KEY}
+  base_url: ${ALPACA_BASE_URL}
+  data_base_url: https://data.alpaca.markets
+
+
+market_data:
+  source: alpaca
+  asset_class: crypto
+  stock_feed: iex
+  symbols:
+    - BTC/USD
+  max_age_seconds: 604800
+
+database:
+  event_store: postgres
+  pg:
+    host: ${PG_HOST}
+    port: ${PG_PORT}
+    db: ${PG_DB}
+    user: ${PG_USER}
+    password: ${PG_PASSWORD}
+  buffering:
+    enabled: false
+    flush_interval_ms: 1000
+    max_batch_size: 5000
+    max_queue_size: 10000
+    block_on_full: true
+
+backfill:
+  since: 40d
+  timeframe: 1Min
+  symbols:
+    - ETH/USD
+    - BTC/USD
+  asset_class: crypto
+  limit: null
+
+stream:
+  symbols:
+    - BTC/USD
+  asset_class: crypto
+  timeframe: 1Min
+
+trader_service:
+  mode: real_time
+  startup_recovery_mode: resume
+  cadence_seconds: 1.0
+  min_trigger_interval_ms: 200
+  notify_channel: market_data
+  max_iterations: null
+  portfolio_source: alpaca
+  initial_cash: 100000
+  initial_positions:
+    - symbol: BTC/USD
+      qty: 0
+
+
+replay:
+  asset_class: crypto
+  symbols:
+    - BTC/USD
+    - ETH/USD
+  timeframe: 1Min
+  start: "2026-01-20T00:00:00Z"
+  end: "2026-01-21T00:00:00Z"
+  cadence_seconds: 0.2
+  notify_channel: market_data
+  limit: null
+
+metrics:
+  enable_snapshots: true
+  interval_seconds: 30
+  window_seconds: null
+
+backtest:
+  start: "2026-01-20T00:00:00Z"
+  end: "2026-01-21T00:00:00Z"
+  timeframe: 1Min
+  symbols:
+    - BTC/USD
+  asset_class: crypto
+  max_runs: null
+  log_cycle_details: true
+  initial_cash: 1000000
+  initial_positions:
+    - symbol: BTC/USD
+      qty: 10
+
+data_quality:
+  symbols:
+    - MSFT
+  asset_class: stocks
+  timeframe: 1Min
+  start: "2025-01-01T00:00:00Z"
+  end: "2026-01-21T00:00:00Z"
+  max_gap_logs: 25
+  gap_multipliers:
+    minute: 5
+    hour: 2
+    day: 1
+  sessions:
+    - symbol: AAPL
+      timeframe: 1Min
+      timezone: America/New_York
+      start_time: "09:30"
+      end_time: "20:59"
+    - symbol: MSFT
+      timeframe: 1Min
+      timezone: America/New_York
+      start_time: "09:30"
+      end_time: "20:59"
