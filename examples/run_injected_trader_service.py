@@ -9,18 +9,17 @@ from typing import Mapping
 from dotenv import load_dotenv
 
 from trader.config import build_config, load_yaml_config, resolve_log_level
-from trader.risk import (
+from trader.trader_service import TraderService
+from trader.risk import RiskManager, RiskPipeline
+from trader_standard.risk import (
     HaltRiskManager,
     MaxGrossExposureRiskManager,
     MaxOrdersPerRunRiskManager,
     MaxPositionUsdPerSymbolRiskManager,
     NoOpRiskManager,
     OpenBuyOrderLimitRiskManager,
-    RiskManager,
-    RiskPipeline,
 )
-from trader.strategies.toggle import ToggleUnitStrategy
-from trader.trader_service import TraderService
+from trader_standard.strategies import ToggleUnitStrategy
 
 
 logger = logging.getLogger(__name__)

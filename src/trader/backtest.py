@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 import json
 import logging
+import math
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
 from dotenv import load_dotenv
@@ -237,6 +238,7 @@ class BacktestRunner:
             market_data_symbols=tuple(self._symbols),
             market_data_asset_class=self._asset_class,
             strategy_timeframe=spec.timeframe,
+            broker_type="internal",
         )
 
     def run(
@@ -1204,7 +1206,14 @@ def _compute_cagr(
     years = periods / periods_per_year
     if years <= 0:
         return None
-    return (end_equity / start_equity) ** (1 / years) - 1.0
+    ratio = end_equity / start_equity
+    if ratio <= 0:
+        return None
+    exponent = 1.0 / years
+    try:
+        return math.exp(math.log(ratio) * exponent) - 1.0
+    except OverflowError:
+        return float("inf")
 
 
 def _compute_sharpe(returns: Sequence[float], periods_per_year: float) -> float | None:

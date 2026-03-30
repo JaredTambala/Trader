@@ -16,8 +16,7 @@ from typing import AsyncIterator, Mapping, Sequence
 from trader.data import EventStore
 from trader.portfolio import Portfolio
 from trader.signal_generators import SignalGenerator
-
-from .base import Strategy
+from trader.strategies import Strategy
 
 
 logger = logging.getLogger(__name__)

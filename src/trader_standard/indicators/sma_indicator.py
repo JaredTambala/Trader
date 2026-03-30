@@ -5,9 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
-from trader.signals.bar import Bar
-
-from .indicator import Indicator
+from trader.indicators import Indicator
+from trader.signals import Bar
 
 
 @dataclass(frozen=True)

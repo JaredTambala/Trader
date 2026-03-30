@@ -1,0 +1,69 @@
+runtime:
+  mode: once
+
+logging:
+  level: INFO
+  persist:
+    signals: false
+    indicators: false
+    orders: false
+    fills: false
+    positions: false
+
+strategy:
+  id: noop
+  timeframe: 1Min
+
+broker:
+  type: noop
+  time_in_force: gtc
+
+alpaca:
+  api_key: ${ALPACA_API_KEY}
+  secret_key: ${ALPACA_SECRET_KEY}
+  base_url: ${ALPACA_BASE_URL}
+  data_base_url: https://data.alpaca.markets
+
+market_data:
+  source: alpaca
+  asset_class: crypto
+  stock_feed: iex
+  symbols:
+    - BTC/USD
+    - ETH/USD
+    - SOL/USD
+    - LTC/USD
+    - AVAX/USD
+    - LINK/USD
+  max_age_seconds: 604800
+
+database:
+  event_store: postgres
+  pg:
+    host: ${PG_HOST}
+    port: ${PG_PORT}
+    db: ${PG_DB}
+    user: ${PG_USER}
+    password: ${PG_PASSWORD}
+  buffering:
+    enabled: false
+    flush_interval_ms: 1000
+    max_batch_size: 5000
+    max_queue_size: 10000
+    block_on_full: true
+
+backfill:
+  since: 42d
+  timeframe: 1Min
+  symbols:
+    - BTC/USD
+    - ETH/USD
+    - SOL/USD
+    - LTC/USD
+    - AVAX/USD
+    - LINK/USD
+  asset_class: crypto
+  limit: null
+
+trader_service:
+  notify_channel: market_data

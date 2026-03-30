@@ -15,8 +15,8 @@ from tests.support.duckdb_store import DuckDBEventStore
 from trader.market_data import CryptoBarEvent, StaticMarketDataSource, StockBarEvent
 from trader.portfolio import Portfolio
 from trader.strategies import Strategy
-from trader.strategies.noop import NoOpStrategy
-from trader.risk import NoOpRiskManager
+from trader_standard.risk import NoOpRiskManager
+from trader_standard.strategies.noop import NoOpStrategy
 
 
 class RecordingEventStore(EventStore):

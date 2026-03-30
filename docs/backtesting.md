@@ -5,8 +5,9 @@ This guide explains how backtesting works in this system, what data it uses, and
 ## What a backtest does
 
 A backtest replays the trading cycle over historical bar timestamps that already exist in the event store. It does
-not call Alpaca during the run and it does not write new bar data. Bars are loaded once into memory and treated as
-immutable inputs for the strategy and signal generator.
+not call Alpaca during the run and it does not write new bar data. Backtests force the internal broker path, even if
+the input YAML references Alpaca. Bars are loaded once into memory and treated as immutable inputs for the strategy
+and signal generator.
 
 ## Preconditions
 
@@ -138,8 +139,9 @@ Annualization uses a calendar year (365 days) and the configured `timeframe`.
 
 ## Important limitations
 
-- This is not a broker simulation: it applies order intents directly to the portfolio.
-- No slippage, fees, or fill mechanics are modeled yet.
+- Backtests use the internal broker, not live venue execution.
+- No slippage or fees are modeled.
+- Fill behavior is intentionally simple and deterministic unless you explicitly configure internal-broker randomness.
 - Results depend on the stored bars and timeframe; mismatched timeframes yield sparse signals.
 - Bar data is read-only during a backtest; only trading events are persisted.
 
@@ -147,6 +149,7 @@ Annualization uses a calendar year (365 days) and the configured `timeframe`.
 
 ```bash
 uv run python examples/run_injected_backtest.py
+uv run python examples/run_library_backtest.py
 ```
 
 To see per-cycle logs, set:
@@ -161,4 +164,6 @@ Timeframes are normalized, so `1h`, `1Hour`, and `1H` are treated the same.
 
 - `python -m trader.backtest configs/example.yaml` is not a supported strategy-bearing entrypoint.
 - Use an injected wrapper such as `examples/run_injected_backtest.py`.
+- Use `examples/run_library_backtest.py` if you want the maintained `trader_standard` trend-following,
+  mean-reversion, or Bollinger Band compositions.
 - UI/API-triggered backtests are deferred beyond Phase 1 and are not part of the primary backtesting workflow.

@@ -344,7 +344,7 @@ def _load_latest_order_events(event_store: EventStore) -> list[Mapping[str, obje
     query = (
         "SELECT client_order_id, run_id, session_id, cycle_id, symbol, side, qty, order_type, "
         "status, broker_order_id, rejection_reason, created_at "
-        "FROM order_events ORDER BY created_at DESC"
+        "FROM order_events ORDER BY created_at DESC, order_event_id DESC"
     )
     if hasattr(connection, "cursor"):
         with connection.cursor() as cursor:

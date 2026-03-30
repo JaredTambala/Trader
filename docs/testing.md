@@ -19,5 +19,5 @@
 uv run pytest
 ```
 
-Tests use DuckDB utilities under `tests/support` for speed and isolation. Runtime code is Postgres
-only, so add Postgres integration coverage when needed (via a local Docker instance).
+Prefer in-memory fakes for unit tests and Postgres for integration coverage. Runtime code is Postgres
+only, so add Postgres-backed validation when needed (via a local Docker instance).

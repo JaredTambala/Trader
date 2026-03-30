@@ -1,6 +1,5 @@
-"""Indicator primitives for strategies."""
+"""Core indicator contracts."""
 
 from .indicator import Indicator
-from .sma_indicator import SmaIndicator
 
-__all__ = ["Indicator", "SmaIndicator"]
+__all__ = ["Indicator"]

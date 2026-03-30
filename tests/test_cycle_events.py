@@ -9,12 +9,14 @@ from trader.cycle import run_cycle
 from trader.config import Config
 from trader.market_data import StaticMarketDataSource, StockBarEvent
 from trader.portfolio import Portfolio
-from trader.strategies import SimpleStrategy, Strategy
-from trader.signal_generators import InMemoryBarsSignalGenerator
-from trader.risk import NoOpRiskManager
-from trader.signals import Bar, SmaCrossoverSignal
-from trader.indicators import SmaIndicator
+from trader.signals import Bar
+from trader.strategies import Strategy
 from tests.support.duckdb_store import DuckDBEventStore
+from trader_standard.indicators import SmaIndicator
+from trader_standard.risk import NoOpRiskManager
+from trader_standard.signal_generators import InMemoryBarsSignalGenerator
+from trader_standard.signals import SmaCrossoverSignal
+from trader_standard.strategies import SimpleStrategy
 
 
 class SingleOrderStrategy(Strategy):

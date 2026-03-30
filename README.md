@@ -9,7 +9,12 @@
 - live paper execution through Alpaca
 - runtime orchestration and event persistence
 
-The active runtime architecture is **Postgres-first**. DuckDB remains in the repo for tests and historical support, but it is not the primary runtime store.
+The repository now has a strict package boundary:
+
+- `trader`: core contracts, orchestration, state models, and runtime primitives
+- `trader_standard`: maintained first-party indicators, signals, strategies, and concrete risk managers
+
+The active runtime architecture is **Postgres-first**.
 
 ## Current Phase 1 Scope
 
@@ -72,7 +77,9 @@ Use this flow if you want to get the engine running from scratch and kick off tr
    uv run python run_market_data_stream.py configs/example.yaml
    ```
 5. Build or choose a strategy and risk pipeline in Python and inject them into the runtime.
-   The reference implementation is [examples/run_injected_trader_service.py](/home/jared/Trader/examples/run_injected_trader_service.py), which constructs a `ToggleUnitStrategy`, builds a risk manager, and starts `TraderService`.
+   The reference implementation is [examples/run_injected_trader_service.py](/home/jared/Trader/examples/run_injected_trader_service.py), which constructs a `trader_standard.ToggleUnitStrategy`, builds a risk manager, and starts `TraderService`.
+   If you want the maintained standard trend-following, mean-reversion, or Bollinger Band compositions, use
+   [examples/run_library_trader_service.py](/home/jared/Trader/examples/run_library_trader_service.py).
 6. Start trading from your wrapper script.
    ```bash
    uv run python examples/run_injected_trader_service.py
@@ -166,8 +173,9 @@ The supported integration model is normal Python imports and direct object injec
 
 ```python
 from trader.config import build_config, load_yaml_config
-from trader.risk import MaxOrdersPerRunRiskManager, RiskPipeline
-from trader.strategies.toggle import ToggleUnitStrategy
+from trader.risk import RiskPipeline
+from trader_standard.risk import MaxOrdersPerRunRiskManager
+from trader_standard.strategies import ToggleUnitStrategy
 from trader.trader_service import TraderService
 
 config_data = load_yaml_config("configs/example.yaml")
@@ -198,7 +206,47 @@ Reference examples:
 uv run python external_strategy_demo.py
 uv run python examples/run_injected_trader_service.py
 uv run python examples/run_injected_backtest.py
+uv run python examples/run_library_trader_service.py
+uv run python examples/run_library_backtest.py
 ```
+
+### Standard implementation library
+
+The maintained `trader_standard` package ships with a reusable long/flat strategy engine and standard compositions for:
+
+- trend-following
+- mean-reversion
+- Bollinger Band re-entry
+
+These are still composed in user-owned Python wrappers, not instantiated by the runtime itself.
+
+```python
+from trader_standard.strategies import FixedStopLossPolicy, build_trend_following_strategy
+
+strategy = build_trend_following_strategy(
+    symbols=config.market_data_symbols,
+    asset_class=config.market_data_asset_class,
+    timeframe=config.strategy_timeframe,
+    target_qty_when_long=1.0,
+    stop_policy=FixedStopLossPolicy(stop_loss_pct=0.03),
+    ema_fast_period=12,
+    ema_slow_period=26,
+    macd_fast_period=12,
+    macd_slow_period=26,
+    macd_signal_period=9,
+)
+```
+
+Standard implementation helpers live under:
+
+- `trader_standard.indicators`
+- `trader_standard.signals`
+- `trader_standard.strategies`
+- `trader_standard.risk`
+
+The example wrappers in `examples/run_library_backtest.py` and `examples/run_library_trader_service.py`
+show how to build these from passive YAML input while keeping strategy ownership in user code.
+Those wrappers read [configs/library_example.yaml](/home/jared/Trader/configs/library_example.yaml).
 
 ### Risk composition
 
@@ -213,12 +261,12 @@ risk:
 If you keep risk values in YAML, treat them as passive input for your wrapper script. The library does not build risk managers from config.
 
 ```python
-from trader.risk import (
+from trader.risk import RiskPipeline
+from trader_standard.risk import (
     MaxGrossExposureRiskManager,
     MaxOrdersPerRunRiskManager,
     MaxPositionUsdPerSymbolRiskManager,
     OpenBuyOrderLimitRiskManager,
-    RiskPipeline,
 )
 
 risk_cfg = config_data.get("risk", {})
@@ -234,7 +282,7 @@ risk_manager = RiskPipeline(
 )
 ```
 
-You can also ignore YAML completely and instantiate custom risk-manager subclasses directly in Python.
+You can also ignore YAML completely and instantiate custom `RiskManager` subclasses directly in Python.
 
 ### Broker configuration
 
@@ -289,6 +337,7 @@ uv run python examples/run_injected_trader_service.py
 
 ```bash
 uv run python examples/run_injected_backtest.py
+uv run python examples/run_library_backtest.py
 ```
 
 Useful `backtest` config fields:

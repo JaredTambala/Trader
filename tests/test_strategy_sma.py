@@ -11,12 +11,12 @@ from trader.config import Config
 from trader.cycle import run_cycle
 from tests.support.duckdb_store import DuckDBEventStore
 from trader.market_data import StaticMarketDataSource, StockBarEvent
-from trader.signal_generators import SimpleBarsSignalGenerator
-from trader.signals import SmaCrossoverSignal
-from trader.indicators import SmaIndicator
 from trader.portfolio import Portfolio
-from trader.strategies import SimpleStrategy
-from trader.risk import NoOpRiskManager
+from trader_standard.indicators import SmaIndicator
+from trader_standard.risk import NoOpRiskManager
+from trader_standard.signal_generators import SimpleBarsSignalGenerator
+from trader_standard.signals import SmaCrossoverSignal
+from trader_standard.strategies import SimpleStrategy
 
 
 def _config(tmp_path: Path) -> Config:

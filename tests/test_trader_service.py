@@ -6,10 +6,10 @@ import pytest
 
 from trader.config import Config
 from trader.data import NoOpEventStore
-from trader.risk import NoOpRiskManager
-from trader.strategies.noop import NoOpStrategy
 from trader.trader_service import TraderService
 from tests.support.duckdb_store import DuckDBEventStore
+from trader_standard.risk import NoOpRiskManager
+from trader_standard.strategies.noop import NoOpStrategy
 
 
 class CycleRecorder:
