@@ -9,7 +9,9 @@ from typing import Iterable, Mapping, Sequence
 
 from trader.data import EventStore
 from trader.signals import Bar, Signal
-from trader.signal_generators.signal_generator import SignalGenerator
+from trader.signal_generators import SignalGenerator
+
+from trader_standard.bar_signals import compute_signal_map, max_window_for_signals
 
 
 logger = logging.getLogger(__name__)
@@ -64,7 +66,7 @@ class InMemoryBarsSignalGenerator(SignalGenerator):
         cycle_id: str | None = None,
     ) -> Mapping[str, Mapping[str, float]]:
         """Generate signal events from available market data."""
-        max_window = max(signal.window for signal in self._signals)
+        max_window = max_window_for_signals(self._signals)
         cutoff = _normalize_timestamp(as_of_ts) if as_of_ts else None
         logger.info(
             "Signal generation start timeframe=%s symbols=%s window=%s as_of_ts=%s",
@@ -96,21 +98,14 @@ class InMemoryBarsSignalGenerator(SignalGenerator):
                 )
                 continue
             latest_first = list(reversed(window_bars))
-            symbol_signals: dict[str, float] = {}
-            for signal in self._signals:
-                try:
-                    subset = latest_first[: signal.window]
-                    symbol_signals[signal.name] = float(signal.compute(subset))
-                    _record_indicator_events(
-                        self._event_store,
-                        run_id=run_id,
-                        cycle_id=cycle_id,
-                        symbol=symbol,
-                        signal=signal,
-                        bars=subset,
-                    )
-                except Exception as exc:
-                    logger.warning("Signal compute failed signal=%s symbol=%s: %s", signal.name, symbol, exc)
+            symbol_signals = compute_signal_map(
+                signals=self._signals,
+                bars=latest_first,
+                event_store=self._event_store,
+                run_id=run_id,
+                cycle_id=cycle_id,
+                symbol=symbol,
+            )
             if symbol_signals:
                 output[symbol] = symbol_signals
         return output
@@ -147,21 +142,14 @@ class InMemoryBarsSignalGenerator(SignalGenerator):
             )
             return None
         latest_first = list(reversed(window_bars))
-        symbol_signals: dict[str, float] = {}
-        for signal in self._signals:
-            try:
-                subset = latest_first[: signal.window]
-                symbol_signals[signal.name] = float(signal.compute(subset))
-                _record_indicator_events(
-                    self._event_store,
-                    run_id=run_id,
-                    cycle_id=cycle_id,
-                    symbol=symbol,
-                    signal=signal,
-                    bars=subset,
-                )
-            except Exception as exc:
-                logger.warning("Signal compute failed signal=%s symbol=%s: %s", signal.name, symbol, exc)
+        symbol_signals = compute_signal_map(
+            signals=self._signals,
+            bars=latest_first,
+            event_store=self._event_store,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            symbol=symbol,
+        )
         return symbol_signals or None
 
 
@@ -170,40 +158,3 @@ def _normalize_timestamp(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
-
-
-def _record_indicator_events(
-    event_store: EventStore | None,
-    *,
-    run_id: str | None,
-    cycle_id: str | None,
-    symbol: str,
-    signal: Signal,
-    bars: Sequence[Bar],
-) -> None:
-    """Persist indicator telemetry events for the current batch."""
-    if event_store is None or not run_id or not cycle_id:
-        return
-    try:
-        indicators = signal.indicator_values(bars)
-    except Exception as exc:
-        logger.warning(
-            "Indicator values failed signal=%s symbol=%s: %s",
-            signal.name,
-            symbol,
-            exc,
-        )
-        return
-    for indicator_name, value, bar_ts in indicators:
-        event_store.record_event(
-            "indicator_events",
-            {
-                "run_id": run_id,
-                "session_id": run_id,
-                "cycle_id": cycle_id,
-                "symbol": symbol,
-                "indicator_name": indicator_name,
-                "value": float(value),
-                "bar_ts": bar_ts,
-            },
-        )

@@ -25,8 +25,7 @@ The active system is therefore defined around:
 - live paper execution through Alpaca
 - runtime observability and operator recovery
 
-The runtime is **Postgres-first**. DuckDB remains in the repository for test support and local utilities,
-but it is not the authoritative live-runtime store.
+The runtime is **Postgres-first**.
 
 ## System Principles
 
@@ -49,6 +48,16 @@ persisted as explicit, append-only event records. This supports reconstruction, 
 Strategies and risk managers are constructed in user code and injected into the runtime. The engine does not own
 user-code loading as a primary concern. This keeps the platform behaving like a normal Python library rather than
 like a plugin host.
+
+### Core / Standard Boundary
+
+The codebase now enforces a strict package boundary:
+
+- `trader` contains immutable contracts, orchestration, state models, and runtime primitives
+- `trader_standard` contains the project-maintained concrete indicators, signals, strategies, and risk managers
+
+Dependency direction is one-way. `trader_standard` depends on `trader`; core runtime code does not import
+`trader_standard`.
 
 ### Broker-Truth for Live Portfolio State
 
@@ -118,7 +127,14 @@ Primary responsibilities:
 Representative runtime objects:
 
 - `Strategy`
-- concrete strategies such as `ToggleUnitStrategy`
+
+Representative standard implementations outside core:
+
+- `trader_standard.ToggleUnitStrategy`
+- `trader_standard.LongFlatSignalStrategy`
+- `trader_standard.build_trend_following_strategy(...)`
+- `trader_standard.build_mean_reversion_strategy(...)`
+- `trader_standard.build_bollinger_band_strategy(...)`
 
 ### 4. Risk Layer
 
@@ -137,7 +153,14 @@ Representative runtime objects:
 - `RiskManager`
 - `RiskPipeline`
 - `RiskContext`
-- focused built-ins such as `OpenBuyOrderLimitRiskManager`
+
+Representative standard implementations outside core:
+
+- `trader_standard.OpenBuyOrderLimitRiskManager`
+
+Protective exits such as fixed stop-loss and trailing-stop behavior are intentionally implemented in strategy-space
+for the standard policy-driven strategies, so the risk layer remains an order-validation layer rather than an
+order-generation layer.
 
 ### 5. Broker Layer
 

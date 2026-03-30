@@ -11,8 +11,8 @@ from trader.market_data import StaticMarketDataSource, StockBarEvent
 from trader.portfolio import Portfolio
 from tests.support.duckdb_store import DuckDBEventStore
 from trader.strategies import Strategy
-from trader.strategies.noop import NoOpStrategy
-from trader.risk import NoOpRiskManager
+from trader_standard.risk import NoOpRiskManager, OpenBuyOrderLimitRiskManager
+from trader_standard.strategies.noop import NoOpStrategy
 
 
 def test_run_cycle_returns_success(tmp_path, monkeypatch):
@@ -247,7 +247,7 @@ def test_run_cycle_logs_risk_rejections(tmp_path, caplog) -> None:
     run_cycle(
         event_store=store,
         strategy=BuyStrategy(),
-        risk_manager=NoOpRiskManager(),
+        risk_manager=OpenBuyOrderLimitRiskManager(max_open_buy_orders_per_symbol=1),
         market_data_source=StaticMarketDataSource(
             [
                 StockBarEvent(

@@ -1,0 +1,55 @@
+"""Bollinger Band re-entry signal."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Sequence
+
+from trader.signals import Bar, Signal
+
+from trader_standard.indicators import BollingerBandsIndicator
+
+
+@dataclass(frozen=True)
+class BollingerBandSignal(Signal):
+    """Signal that trades lower-band re-entry and middle-band reversion."""
+
+    indicator: BollingerBandsIndicator
+
+    @property
+    def name(self) -> str:
+        mult = str(self.indicator.stddev_multiplier).replace(".", "_")
+        return f"bollinger_band_{self.indicator.period}_{mult}"
+
+    @property
+    def window(self) -> int:
+        return self.indicator.window + 1
+
+    def compute(self, bars: Sequence[Bar]) -> float:
+        series = self.indicator.compute_series(bars)
+        if len(series) < 2:
+            raise ValueError("Insufficient bars for Bollinger Band computation")
+        current = series[0]
+        previous = series[1]
+        current_close = float(bars[0].close)
+        previous_close = float(bars[1].close)
+        if previous_close < previous.lower and current_close >= current.lower:
+            return 1.0
+        if current_close >= current.middle:
+            return -1.0
+        return 0.0
+
+    def indicator_values(self, bars: Sequence[Bar]) -> Sequence[tuple[str, float, datetime]]:
+        series = self.indicator.compute_series(bars)
+        if not series:
+            raise ValueError("Insufficient bars for Bollinger Band indicator values")
+        current = series[0]
+        suffix = f"{self.indicator.period}_{str(self.indicator.stddev_multiplier).replace('.', '_')}"
+        bar_ts = bars[0].ts
+        return (
+            (f"bollinger_middle_{suffix}", current.middle, bar_ts),
+            (f"bollinger_upper_{suffix}", current.upper, bar_ts),
+            (f"bollinger_lower_{suffix}", current.lower, bar_ts),
+            (f"bollinger_bandwidth_{suffix}", current.bandwidth, bar_ts),
+        )

@@ -9,17 +9,16 @@ from dotenv import load_dotenv
 
 from trader.backtest import BacktestRunner, BacktestSpec
 from trader.config import build_config, load_yaml_config
-from trader.risk import (
+from trader.risk import RiskManager, RiskPipeline
+from trader_standard.risk import (
     HaltRiskManager,
     MaxGrossExposureRiskManager,
     MaxOrdersPerRunRiskManager,
     MaxPositionUsdPerSymbolRiskManager,
     NoOpRiskManager,
     OpenBuyOrderLimitRiskManager,
-    RiskManager,
-    RiskPipeline,
 )
-from trader.strategies.toggle import ToggleUnitStrategy
+from trader_standard.strategies import ToggleUnitStrategy
 
 
 def _build_risk_manager(risk_cfg: Mapping[str, object] | None = None) -> RiskManager:

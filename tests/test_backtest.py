@@ -9,9 +9,9 @@ import pytest
 
 from trader.backtest import BacktestRunner, BacktestSpec
 from trader.config import Config
-from trader.risk import NoOpRiskManager
-from trader.strategies.noop import NoOpStrategy
 from tests.support.duckdb_store import DuckDBEventStore
+from trader_standard.risk import NoOpRiskManager
+from trader_standard.strategies.noop import NoOpStrategy
 
 
 class CycleRecorder:

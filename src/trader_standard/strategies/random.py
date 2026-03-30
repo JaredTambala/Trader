@@ -9,7 +9,7 @@ from typing import Mapping, Sequence
 
 from trader.data import EventStore
 from trader.portfolio import Portfolio
-from .base import Strategy
+from trader.strategies import Strategy
 
 
 logger = logging.getLogger(__name__)

@@ -10,8 +10,8 @@ from trader.cycle import run_cycle
 from trader.data import NoOpEventStore
 from trader.market_data import StaticMarketDataSource, StockBarEvent
 from trader.portfolio import Portfolio
-from trader.risk import ConfigRiskManager, NoOpRiskManager, RiskManager, RiskPipeline
-from trader.strategies.base import Strategy
+from trader.risk import RiskManager, RiskPipeline
+from trader.strategy import Strategy
 
 
 class ExternalDemoStrategy(Strategy):
@@ -44,27 +44,9 @@ class ExternalDemoStrategy(Strategy):
         ]
 
 
-def _build_demo_risk_manager(config) -> RiskManager:
-    """Build a simple injected risk pipeline for the demo."""
-    managers: list[RiskManager] = []
-    if any(
-        limit is not None
-        for limit in (
-            config.risk_max_orders_per_run,
-            config.risk_max_gross_usd,
-            config.risk_max_pos_usd_per_symbol,
-        )
-    ):
-        managers.append(
-            ConfigRiskManager(
-                max_orders_per_run=config.risk_max_orders_per_run,
-                max_gross_usd=config.risk_max_gross_usd,
-                max_pos_usd_per_symbol=config.risk_max_pos_usd_per_symbol,
-            )
-        )
-    if not managers:
-        return NoOpRiskManager()
-    return RiskPipeline(managers)
+def _build_demo_risk_manager() -> RiskManager:
+    """Build a minimal injected risk pipeline for the demo."""
+    return RiskPipeline()
 
 
 def main() -> None:
@@ -73,7 +55,7 @@ def main() -> None:
     config = build_config(config_data)
 
     strategy = ExternalDemoStrategy(symbol="AAPL", qty=1.0)
-    risk_manager = _build_demo_risk_manager(config)
+    risk_manager = _build_demo_risk_manager()
 
     bar = StockBarEvent(
         symbol="AAPL",

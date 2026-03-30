@@ -3,14 +3,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from trader.portfolio import Position
-from trader.risk import (
+from trader.risk import RiskContext, RiskPipeline
+from trader_standard.risk import (
     HaltRiskManager,
     MaxGrossExposureRiskManager,
     MaxOrdersPerRunRiskManager,
     MaxPositionUsdPerSymbolRiskManager,
     OpenBuyOrderLimitRiskManager,
-    RiskContext,
-    RiskPipeline,
 )
 
 

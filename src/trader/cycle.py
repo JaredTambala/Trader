@@ -30,7 +30,6 @@ from .market_data import (
 from .portfolio import Portfolio, Position
 from .strategies import Strategy
 from .risk import (
-    OpenBuyOrderLimitRiskManager,
     RiskContext,
     RiskManager,
     RiskPipeline,
@@ -673,8 +672,6 @@ async def _process_market_stream_async(
 
     async def validator() -> None:
         """Handle validator."""
-        # Global safety check: don't allow concurrent open buy orders per symbol.
-        open_buy_guard = OpenBuyOrderLimitRiskManager(max_open_buy_orders_per_symbol=1)
         while True:
             order = await order_queue.get()
             if order is None:
@@ -695,22 +692,7 @@ async def _process_market_stream_async(
                 halted=_load_halt_flag(event_store),
             )
 
-            approved_a, rejected_a = open_buy_guard.evaluate([order], context)
-            if rejected_a:
-                for rejected in rejected_a:
-                    counters["orders_rejected_locally"] += 1
-                    _log_order_status(
-                        "rejected",
-                        rejected,
-                        run_id=run_id,
-                        cycle_id=cycle_id,
-                        extra="reason=%s manager=%s"
-                        % (rejected.get("rejection_reason"), open_buy_guard.__class__.__name__),
-                    )
-                _record_order_events(event_store, rejected_a, status="rejected")
-                continue
-
-            approved_orders = list(approved_a)
+            approved_orders = [order]
             rejected_orders: list[Mapping[str, object]] = []
             for manager in _iter_risk_managers(risk_manager):
                 approved_orders, rejected = manager.evaluate(approved_orders, context)
@@ -848,7 +830,7 @@ def _load_latest_order_events(event_store: EventStore) -> Sequence[Mapping[str, 
     query = (
         "SELECT client_order_id, run_id, cycle_id, symbol, side, qty, order_type, "
         "status, broker_order_id, created_at "
-        "FROM order_events ORDER BY created_at DESC"
+        "FROM order_events ORDER BY created_at DESC, order_event_id DESC"
     )
     try:
         if hasattr(connection, "cursor"):

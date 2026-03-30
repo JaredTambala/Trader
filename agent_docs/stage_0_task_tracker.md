@@ -189,6 +189,9 @@ The system has a working strategy/backtest foundation, including signal generati
 ### Delivered
 - Signal, indicator, and signal-generator primitives.
 - Example strategies in the repo.
+- A reusable policy-driven long/flat strategy engine with built-in trend-following,
+  mean-reversion, and Bollinger Band compositions.
+- Built-in EMA, RSI, MACD, and Bollinger indicator/signal support for Phase 1 strategy authoring.
 - Backtest runner with equity curve and portfolio metrics.
 - Portfolio state tracking with cash and positions.
 - YAML-driven configuration for runtime and backtest flows.

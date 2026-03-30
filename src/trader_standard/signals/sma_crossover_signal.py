@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Sequence
 
-from trader.indicators import SmaIndicator
-from .bar import Bar
-from .signal import Signal
+from trader.signals import Bar, Signal
+
+from trader_standard.indicators import SmaIndicator
 
 
 @dataclass(frozen=True)
