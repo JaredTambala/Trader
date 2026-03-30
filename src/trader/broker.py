@@ -165,7 +165,8 @@ class InternalPaperBroker(Broker):
             if price is not None and 0 < fill_qty < qty:
                 status = "partially_filled"
             created_at = order.get("created_at") or timestamp
-            fill_ts = datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc)
+            fill_ts = max(created_at, now)
             fill_price = float(price) if price is not None else None
             if fill_price is None:
                 self._logger.warning("Missing price for order; fill skipped symbol=%s", symbol)
