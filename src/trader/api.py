@@ -6,7 +6,7 @@ from argparse import ArgumentParser
 from dataclasses import asdict
 from datetime import datetime, timezone
 from threading import Thread
-from typing import Any, Callable, Mapping
+from typing import Any, Mapping
 
 import json
 import os

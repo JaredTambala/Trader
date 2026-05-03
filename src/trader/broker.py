@@ -3,23 +3,26 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from importlib import import_module
 import logging
 import random
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence, cast
 
 try:  # pragma: no cover - optional alpaca dependency
-    from alpaca.trading.client import TradingClient
-    from alpaca.trading.enums import OrderSide, TimeInForce
-    from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest
+    _TradingClient: Any = import_module("alpaca.trading.client").TradingClient
+    _OrderSide: Any = import_module("alpaca.trading.enums").OrderSide
+    _TimeInForce: Any = import_module("alpaca.trading.enums").TimeInForce
+    _LimitOrderRequest: Any = import_module("alpaca.trading.requests").LimitOrderRequest
+    _MarketOrderRequest: Any = import_module("alpaca.trading.requests").MarketOrderRequest
 except Exception:  # pragma: no cover - alpaca not installed in test env
-    TradingClient = None
-    OrderSide = None
-    TimeInForce = None
-    MarketOrderRequest = None
-    LimitOrderRequest = None
+    _TradingClient = None
+    _OrderSide = None
+    _TimeInForce = None
+    _MarketOrderRequest = None
+    _LimitOrderRequest = None
 
 from .data import EventStore
 from .identifiers import deterministic_client_order_id
@@ -45,6 +48,20 @@ _ALPACA_STATUS_MAP = {
 }
 _ALREADY_SUBMITTED_STATUSES = {"submitted", "accepted", "partially_filled", "filled"}
 _OPEN_ORDER_STATUSES = {"submitted", "accepted", "partially_filled", "error"}
+
+_ClientFactory = Any
+_EnumFactory = Any
+_RequestFactory = Any
+
+
+def _coerce_float(value: object | None, *, default: float = 0.0) -> float:
+    """Best-effort float coercion for loosely typed order payloads."""
+    if value is None:
+        return default
+    try:
+        return float(cast(Any, value))
+    except (TypeError, ValueError):
+        return default
 
 
 class Broker(ABC):
@@ -112,7 +129,7 @@ class InternalPaperBroker(Broker):
         for order in orders:
             symbol = str(order.get("symbol", "")).strip().upper()
             side = str(order.get("side", "")).lower().strip()
-            qty = float(order.get("qty", 0.0) or 0.0)
+            qty = _coerce_float(order.get("qty", 0.0))
             run_id = order.get("run_id")
             cycle_id = order.get("cycle_id")
             price = order.get("price")
@@ -164,9 +181,8 @@ class InternalPaperBroker(Broker):
             status = "filled" if price is not None else "error"
             if price is not None and 0 < fill_qty < qty:
                 status = "partially_filled"
-            created_at = order.get("created_at") or timestamp
             fill_ts = datetime.now(timezone.utc)
-            fill_price = float(price) if price is not None else None
+            fill_price = _coerce_float(price, default=0.0) if price is not None else None
             if fill_price is None:
                 self._logger.warning("Missing price for order; fill skipped symbol=%s", symbol)
             responses.append(
@@ -203,18 +219,20 @@ class AlpacaPaperBroker(Broker):
         retry_backoff_seconds: float = 0.5,
     ) -> None:
         """Initialize the broker."""
+        self._client: Any
         if client is None:
-            if TradingClient is None:
+            trading_client: _ClientFactory = _TradingClient
+            if trading_client is None:
                 raise ImportError("alpaca-py is required to use AlpacaPaperBroker")
             try:
-                self._client = TradingClient(
+                self._client = trading_client(
                     api_key,
                     secret_key,
                     paper=True,
                     base_url=base_url,
                 )
             except TypeError:
-                self._client = TradingClient(
+                self._client = trading_client(
                     api_key,
                     secret_key,
                     paper=True,
@@ -232,7 +250,7 @@ class AlpacaPaperBroker(Broker):
 
     def get_positions(self) -> Sequence[Mapping[str, object]]:
         """Fetch open positions from Alpaca."""
-        positions = self._with_retries(self._client.get_all_positions)
+        positions = cast(Sequence[object], self._with_retries(self._client.get_all_positions))
         results: list[Mapping[str, object]] = []
         for position in positions or []:
             symbol = str(getattr(position, "symbol", "") or "").strip().upper()
@@ -265,7 +283,11 @@ class AlpacaPaperBroker(Broker):
             client_order_id = str(enriched["client_order_id"])
             existing = self._find_existing_order(client_order_id)
             if existing is not None and existing.get("status") in _ALREADY_SUBMITTED_STATUSES:
-                reconciled = self._reconcile_existing_order(client_order_id, existing.get("broker_order_id"))
+                broker_order_id = existing.get("broker_order_id")
+                reconciled = self._reconcile_existing_order(
+                    client_order_id,
+                    str(broker_order_id) if broker_order_id is not None else None,
+                )
                 if reconciled is not None:
                     reconciled_status = str(reconciled.get("status", "")).lower()
                     self._logger.info(
@@ -314,7 +336,7 @@ class AlpacaPaperBroker(Broker):
         kwargs: dict[str, object] = {}
         if since_ts is not None:
             kwargs["after"] = since_ts
-        orders = self._with_retries(getter, **kwargs)
+        orders = cast(Sequence[object], self._with_retries(getter, **kwargs))
         results: list[Mapping[str, object]] = []
         for order in orders or []:
             results.append(self._normalize_order_response(order, {}))
@@ -359,7 +381,7 @@ class AlpacaPaperBroker(Broker):
         }
         updates: list[Mapping[str, object]] = []
         for event in open_events:
-            client_order_id = event["client_order_id"]
+            client_order_id = str(event["client_order_id"])
             broker_order = broker_by_client.get(client_order_id)
             if broker_order is None and event.get("broker_order_id"):
                 try:
@@ -422,13 +444,18 @@ class AlpacaPaperBroker(Broker):
                             "session_id": event.get("session_id") or event.get("run_id"),
                             "cycle_id": event.get("cycle_id"),
                             "fill_ts": broker_order.get("fill_ts") or datetime.now(timezone.utc),
-                            "fill_qty": float(fill_qty),
-                            "fill_price": float(fill_price),
+                            "fill_qty": _coerce_float(fill_qty),
+                            "fill_price": _coerce_float(fill_price),
                         },
                     )
         return updates
 
-    def _with_retries(self, func, *args, **kwargs):  # type: ignore[no-untyped-def]
+    def _with_retries(
+        self,
+        func: Callable[..., object],
+        *args: object,
+        **kwargs: object,
+    ) -> object:
         """Retry helper for Alpaca API calls."""
         last_exc: Exception | None = None
         for attempt in range(1, self._max_retries + 1):
@@ -450,7 +477,7 @@ class AlpacaPaperBroker(Broker):
         cycle_id = str(order.get("cycle_id", ""))
         symbol = str(order.get("symbol", "")).strip().upper()
         side = str(order.get("side", "")).lower().strip()
-        qty = float(order.get("qty", 0.0) or 0.0)
+        qty = _coerce_float(order.get("qty", 0.0))
         client_order_id = deterministic_client_order_id(cycle_id, symbol, side, qty)
         return {**order, "client_order_id": client_order_id}
 
@@ -458,7 +485,7 @@ class AlpacaPaperBroker(Broker):
         """Build an Alpaca order request payload."""
         symbol = str(order.get("symbol", "")).strip().upper()
         side = str(order.get("side", "")).lower().strip()
-        qty = float(order.get("qty", 0.0) or 0.0)
+        qty = _coerce_float(order.get("qty", 0.0))
         tif = str(order.get("time_in_force", "day")).lower()
         asset_class = str(order.get("asset_class", "")).lower()
         if asset_class in {"crypto", "cryptocurrency"} and "/" in symbol:
@@ -468,17 +495,26 @@ class AlpacaPaperBroker(Broker):
             tif = "gtc"
         order_type = str(order.get("order_type", "market")).lower()
         client_order_id = str(order.get("client_order_id", ""))
-        if MarketOrderRequest and LimitOrderRequest and OrderSide and TimeInForce:
-            side_enum = OrderSide.BUY if side == "buy" else OrderSide.SELL
+        market_order_request: _RequestFactory = _MarketOrderRequest
+        limit_order_request: _RequestFactory = _LimitOrderRequest
+        order_side: _EnumFactory = _OrderSide
+        time_in_force: _EnumFactory = _TimeInForce
+        if (
+            market_order_request is not None
+            and limit_order_request is not None
+            and order_side is not None
+            and time_in_force is not None
+        ):
+            side_enum = order_side.BUY if side == "buy" else order_side.SELL
             if tif in {"day", "daytime"}:
-                tif_enum = TimeInForce.DAY
-            elif tif in {"ioc", "immediate_or_cancel"} and hasattr(TimeInForce, "IOC"):
-                tif_enum = TimeInForce.IOC
+                tif_enum = time_in_force.DAY
+            elif tif in {"ioc", "immediate_or_cancel"} and hasattr(time_in_force, "IOC"):
+                tif_enum = time_in_force.IOC
             else:
-                tif_enum = TimeInForce.GTC
+                tif_enum = time_in_force.GTC
             if order_type == "limit":
-                limit_price = float(order.get("limit_price") or order.get("price") or 0.0)
-                return LimitOrderRequest(
+                limit_price = _coerce_float(order.get("limit_price") or order.get("price"))
+                return limit_order_request(
                     symbol=symbol,
                     qty=qty,
                     side=side_enum,
@@ -486,7 +522,7 @@ class AlpacaPaperBroker(Broker):
                     limit_price=limit_price,
                     client_order_id=client_order_id,
                 )
-            return MarketOrderRequest(
+            return market_order_request(
                 symbol=symbol,
                 qty=qty,
                 side=side_enum,
@@ -546,11 +582,15 @@ class AlpacaPaperBroker(Broker):
             "symbol": symbol,
             "asset_class": asset_class,
             "side": side,
-            "qty": float(qty_raw) if qty_raw is not None else None,
+            "qty": _coerce_float(qty_raw, default=0.0) if qty_raw is not None else None,
             "order_type": order_type,
             "created_at": created_at,
-            "fill_qty": float(filled_qty) if filled_qty is not None else None,
-            "fill_price": float(filled_avg_price) if filled_avg_price is not None else None,
+            "fill_qty": _coerce_float(filled_qty, default=0.0) if filled_qty is not None else None,
+            "fill_price": (
+                _coerce_float(filled_avg_price, default=0.0)
+                if filled_avg_price is not None
+                else None
+            ),
             "fill_ts": fill_ts,
             "rejection_reason": rejection_reason,
         }
@@ -662,7 +702,7 @@ class AlpacaPaperBroker(Broker):
         seen: set[str] = set()
         latest: list[Mapping[str, object]] = []
         for row in rows or []:
-            client_order_id = row[0]
+            client_order_id = str(row[0]) if row[0] is not None else ""
             if not client_order_id or client_order_id in seen:
                 continue
             seen.add(client_order_id)

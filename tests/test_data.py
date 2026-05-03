@@ -32,6 +32,7 @@ def test_duckdb_event_store_initializes_schema(tmp_path: Path) -> None:
 
     expected = {
         "runs",
+        "trading_sessions",
         "run_events",
         "stock_bar_events",
         "crypto_bar_events",
@@ -40,6 +41,7 @@ def test_duckdb_event_store_initializes_schema(tmp_path: Path) -> None:
         "order_events",
         "fill_events",
         "position_snapshots",
+        "metrics_snapshots",
         "config_kv",
     }
     assert expected.issubset(tables)

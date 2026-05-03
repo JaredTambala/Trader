@@ -43,6 +43,13 @@ uv venv
 uv sync --dev
 ```
 
+`uv sync --dev` is the canonical local setup for core development and test work.
+UI dependencies remain optional and can be installed separately with:
+
+```bash
+uv sync --group ui
+```
+
 For local Postgres development:
 
 ```bash
@@ -61,7 +68,7 @@ Use this flow if you want to get the engine running from scratch and kick off tr
    ```bash
    docker compose -f docker-compose.postgres.yml up -d
    ```
-3. Review [configs/example.yaml](/home/jared/Trader/configs/example.yaml).
+3. Review [configs/example.yaml](configs/example.yaml).
    The important sections are:
    - `market_data`: what symbols and asset class you trade
    - `broker`: how orders are executed
@@ -77,9 +84,9 @@ Use this flow if you want to get the engine running from scratch and kick off tr
    uv run python run_market_data_stream.py configs/example.yaml
    ```
 5. Build or choose a strategy and risk pipeline in Python and inject them into the runtime.
-   The reference implementation is [examples/run_injected_trader_service.py](/home/jared/Trader/examples/run_injected_trader_service.py), which constructs a `trader_standard.ToggleUnitStrategy`, builds a risk manager, and starts `TraderService`.
+   The reference implementation is [examples/run_injected_trader_service.py](examples/run_injected_trader_service.py), which constructs a `trader_standard.ToggleUnitStrategy`, builds a risk manager, and starts `TraderService`.
    If you want the maintained standard trend-following, mean-reversion, or Bollinger Band compositions, use
-   [examples/run_library_trader_service.py](/home/jared/Trader/examples/run_library_trader_service.py).
+   [examples/run_library_trader_service.py](examples/run_library_trader_service.py).
 6. Start trading from your wrapper script.
    ```bash
    uv run python examples/run_injected_trader_service.py
@@ -91,14 +98,14 @@ Typical workflow:
 - start your injected trader-service wrapper in another terminal
 - let `TraderService` react to incoming bars and execute the injected strategy
 
-If you want a minimal example of external strategy authoring, use [external_strategy_demo.py](/home/jared/Trader/external_strategy_demo.py).
+If you want a minimal example of external strategy authoring, use [external_strategy_demo.py](external_strategy_demo.py).
 
 ## Architecture Docs
 
 For external technical review, the core architecture is documented in:
 
-- [docs/system_architecture.md](/home/jared/Trader/docs/system_architecture.md)
-- [docs/runtime_hot_path_and_reconciliation.md](/home/jared/Trader/docs/runtime_hot_path_and_reconciliation.md)
+- [docs/system_architecture.md](docs/system_architecture.md)
+- [docs/runtime_hot_path_and_reconciliation.md](docs/runtime_hot_path_and_reconciliation.md)
 
 ## Live Runtime Safety
 
@@ -113,7 +120,7 @@ Equivalent Alpaca crypto forms such as `BTC/USD`, `BTCUSD`, and enum-style asset
 
 ## Order Recovery
 
-Use [run_order_recovery.py](/home/jared/Trader/run_order_recovery.py) as the operator tool for inspecting and repairing local order state.
+Use [run_order_recovery.py](run_order_recovery.py) as the operator tool for inspecting and repairing local order state.
 
 ```bash
 uv run python run_order_recovery.py configs/example.yaml report
@@ -125,7 +132,7 @@ uv run python run_order_recovery.py configs/example.yaml clean-start
 - `reconcile` reads broker state and repairs local `order_events` so stale local-open orders do not block trading.
 - `clean-start` closes local open orders in the configured universe only. It does not cancel broker orders and it is not a trading entrypoint.
 
-Neither recovery command starts trading. The canonical live entrypoint remains [examples/run_injected_trader_service.py](/home/jared/Trader/examples/run_injected_trader_service.py).
+Neither recovery command starts trading. The canonical live entrypoint remains [examples/run_injected_trader_service.py](examples/run_injected_trader_service.py).
 
 ## Configuration
 
@@ -246,7 +253,7 @@ Standard implementation helpers live under:
 
 The example wrappers in `examples/run_library_backtest.py` and `examples/run_library_trader_service.py`
 show how to build these from passive YAML input while keeping strategy ownership in user code.
-Those wrappers read [configs/library_example.yaml](/home/jared/Trader/configs/library_example.yaml).
+Those wrappers read [configs/library_example.yaml](configs/library_example.yaml).
 
 ### Risk composition
 
@@ -391,12 +398,21 @@ Run the full suite:
 uv run pytest -q
 ```
 
+Run the Postgres integration subset against a local Docker-backed Postgres instance:
+
+```bash
+docker compose -f docker-compose.postgres.yml up -d
+uv run pytest -m postgres
+```
+
 Targeted examples:
 
 ```bash
 uv run pytest tests/test_alpaca_broker.py
 uv run pytest tests/test_risk_manager.py
 uv run pytest tests/test_backtest.py
+uv run ruff check src tests examples run_*.py external_strategy_demo.py
+uv run mypy
 ```
 
 ## Deferred Interface Work

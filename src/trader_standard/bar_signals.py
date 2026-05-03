@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Mapping, Sequence
+from typing import Sequence
 
 from trader.data import EventStore
 from trader.signals import Bar, Signal

@@ -6,7 +6,6 @@ import json
 import logging
 import signal
 import time
-import threading
 from datetime import datetime, timezone
 from dataclasses import replace
 from typing import Iterable, Mapping
@@ -21,7 +20,6 @@ from .portfolio import Portfolio, Position
 from .broker import AlpacaPaperBroker, Broker, InternalPaperBroker, NoOpBroker
 from .strategies.base import Strategy
 from .risk import RiskManager
-from .portfolio import load_latest_positions, load_latest_cash
 from .metrics import MetricsWorker
 from .order_recovery import run_startup_recovery
 from .strategy_metadata import resolve_strategy_id

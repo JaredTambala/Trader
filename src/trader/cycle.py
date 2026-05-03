@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import uuid
 import json
 from typing import AsyncIterator, Mapping, Sequence

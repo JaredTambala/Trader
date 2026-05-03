@@ -21,7 +21,6 @@ from trader_standard.signals import (
     EmaCrossoverSignal,
     MacdCrossoverSignal,
     RsiThresholdSignal,
-    SmaStretchSignal,
 )
 from trader_standard.strategies import (
     FixedStopLossPolicy,

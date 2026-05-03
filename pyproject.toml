@@ -14,11 +14,8 @@ dependencies = [
     "alpaca-py>=0.31.0",
     "dotenv>=0.9.9",
     "fastapi>=0.128.0",
-    "plotly>=6.5.2",
     "psycopg[binary]>=3.2.1",
-    "pytest>=9.0.2",
     "pyyaml>=6.0.2",
-    "reflex>=0.8.26",
     "uvicorn>=0.40.0",
 ]
 
@@ -35,11 +32,45 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 addopts = "-q"
+markers = [
+    "postgres: integration tests requiring a live Postgres instance",
+]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+files = [
+    "src/trader/config.py",
+    "src/trader/risk.py",
+    "src/trader/strategies/base.py",
+    "src/trader/broker.py",
+]
+check_untyped_defs = true
+follow_imports = "silent"
+no_implicit_optional = true
+pretty = true
+warn_redundant_casts = true
+warn_unused_configs = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["alpaca.*"]
+ignore_missing_imports = true
 
 [dependency-groups]
 dev = [
     "duckdb>=1.4.3",
+    "httpx>=0.28.1",
+    "mypy>=1.18.2",
     "pytest>=9.0.2",
     "pytest-mock>=3.15.1",
+    "ruff>=0.13.1",
+    "types-pyyaml>=6.0.12.20250915",
 ]
 ui = ["reflex", "plotly>=5.20.0"]

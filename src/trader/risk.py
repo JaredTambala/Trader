@@ -80,7 +80,7 @@ class RiskPipeline(RiskManager):
         orders: Iterable[Mapping[str, object]],
         context: RiskContext,
     ) -> Tuple[Sequence[Mapping[str, object]], Sequence[Mapping[str, object]]]:
-        approved = list(orders)
+        approved: Sequence[Mapping[str, object]] = list(orders)
         rejected_all: list[Mapping[str, object]] = []
         for manager in self._managers:
             approved, rejected = manager.evaluate(approved, context)

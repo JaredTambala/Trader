@@ -10,7 +10,7 @@ For architecture-level review, this operational reference is complemented by:
 
 ## Architecture (Two Processes)
 
-Stage 0 runs as two long-lived processes:
+Phase 1 runs as two long-lived processes:
 
 1) **Market data streamer** (`uv run python run_market_data_stream.py configs/example.yaml`)
    - Connects to Alpaca websocket feeds.
@@ -91,7 +91,7 @@ These IDs ensure retries do not create duplicate orders. The canonical formats a
 
 ## Order Lifecycle (Implemented)
 
-The canonical order state machine for Stage 0:
+The canonical order state machine for Phase 1:
 
 - `created` → `validated` → `submitted` → `accepted` → `partially_filled` → `filled`
 - Terminal states: `rejected`, `canceled`, `expired`, `error`

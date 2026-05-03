@@ -8,7 +8,6 @@ from dataclasses import dataclass
 import json
 from queue import Queue, Full, Empty
 from threading import Event, Lock, Thread
-import time
 from typing import Any, Iterator, Mapping, Sequence
 
 try:
@@ -454,10 +453,6 @@ class FilteredEventStore(EventStore):
         """Handle transaction."""
         with self._inner.transaction():
             yield
-
-    def connection(self) -> Any:
-        """Handle connection."""
-        return getattr(self._inner, "connection", lambda: None)()
 
 
 def build_event_store(config: object) -> EventStore:

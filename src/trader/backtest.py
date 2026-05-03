@@ -12,9 +12,7 @@ import logging
 import math
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
-from dotenv import load_dotenv
-
-from .config import Config, build_config, load_yaml_config, resolve_log_level
+from .config import Config
 from .cycle import run_cycle
 from .data import EventStore, build_event_store
 from .identifiers import deterministic_run_session_id
