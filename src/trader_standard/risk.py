@@ -87,21 +87,30 @@ class MaxGrossExposureRiskManager(RiskManager):
         orders: Iterable[Mapping[str, object]],
         context: RiskContext,
     ) -> tuple[Sequence[Mapping[str, object]], Sequence[Mapping[str, object]]]:
+        working_qty: dict[str, float] = {
+            symbol: float(pos.qty) for symbol, pos in context.positions.items()
+        }
         current_gross = _gross_exposure(context.positions, context.price_lookup)
         approved: list[Mapping[str, object]] = []
         rejected: list[Mapping[str, object]] = []
 
         for order in orders:
+            symbol = str(order.get("symbol", "")).strip().upper()
             price = _resolve_order_price(order, context)
             if price is None:
                 rejected.append({**order, "rejection_reason": "missing_price"})
                 continue
             qty = float(order.get("qty") or 0.0)
-            proposed = current_gross + abs(price * qty)
+            side = str(order.get("side", "")).strip().lower()
+            delta = qty if side == "buy" else -qty
+            current_qty = working_qty.get(symbol, 0.0)
+            new_qty = current_qty + delta
+            proposed = current_gross + abs(new_qty * price) - abs(current_qty * price)
             if proposed > self._limit_usd:
                 rejected.append({**order, "rejection_reason": "max_gross_usd"})
                 continue
             approved.append(order)
+            working_qty[symbol] = new_qty
             current_gross = proposed
 
         return approved, rejected

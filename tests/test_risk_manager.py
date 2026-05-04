@@ -81,6 +81,43 @@ def test_max_gross_exposure_risk_manager_rejects_when_limit_exceeded() -> None:
     assert rejected[0]["rejection_reason"] == "max_gross_usd"
 
 
+def test_max_gross_exposure_risk_manager_approves_sell_that_reduces_exposure() -> None:
+    # Gross exposure is already at 100 USD (1 AAPL @ 100). A sell that reduces it
+    # should be approved even though the limit is 110 and a naive buy of equal size
+    # would be rejected.
+    context = _context(
+        positions={"AAPL": Position(symbol="AAPL", qty=1.0, avg_price=100.0)},
+        price_lookup={"AAPL": 100.0},
+    )
+    manager = MaxGrossExposureRiskManager(limit_usd=110.0)
+
+    approved, rejected = manager.evaluate(
+        [{"client_order_id": "o1", "symbol": "AAPL", "side": "sell", "qty": 0.5, "price": 100.0}],
+        context,
+    )
+
+    assert len(approved) == 1
+    assert rejected == []
+
+
+def test_max_gross_exposure_risk_manager_approves_sell_when_already_at_limit() -> None:
+    # Gross exposure exactly at the limit; a sell order that reduces it should be
+    # approved and must not be blocked as "exceeding" the limit.
+    context = _context(
+        positions={"AAPL": Position(symbol="AAPL", qty=2.0, avg_price=100.0)},
+        price_lookup={"AAPL": 100.0},
+    )
+    manager = MaxGrossExposureRiskManager(limit_usd=200.0)
+
+    approved, rejected = manager.evaluate(
+        [{"client_order_id": "o1", "symbol": "AAPL", "side": "sell", "qty": 1.0, "price": 100.0}],
+        context,
+    )
+
+    assert len(approved) == 1
+    assert rejected == []
+
+
 def test_max_position_usd_per_symbol_risk_manager_rejects_when_limit_exceeded() -> None:
     context = _context(
         positions={"AAPL": Position(symbol="AAPL", qty=1.0, avg_price=100.0)},
