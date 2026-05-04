@@ -42,6 +42,8 @@ def _truncate_runtime_tables(store: PostgresEventStore) -> None:
             run_events,
             trading_sessions,
             runs,
+            experiment_runs,
+            experiments,
             config_kv
         """
     )

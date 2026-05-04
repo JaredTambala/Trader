@@ -45,6 +45,18 @@ class FakeAlpacaBroker:
         ]
 
 
+class FakeReconcileBroker:
+    def __init__(self) -> None:
+        self.reconcile_calls = 0
+
+    def reconcile_orders(self):
+        self.reconcile_calls += 1
+        return [{"client_order_id": "cid_1", "status": "filled"}]
+
+    def submit_orders(self, orders):
+        return []
+
+
 def _config() -> Config:
     return Config(
         mode="loop",
@@ -190,3 +202,27 @@ def test_trader_service_resets_local_portfolio_from_alpaca_before_mismatch_failu
         """
     ).fetchall()
     assert rows == [("BTC", -1.0, 39.77, 100000.0)]
+
+
+def test_trader_service_periodic_reconcile_uses_broker_capability(monkeypatch) -> None:
+    broker = FakeReconcileBroker()
+    config = Config(
+        **{
+            **_config().__dict__,
+            "trader_service_order_reconciliation_interval_seconds": 60,
+        }
+    )
+    monkeypatch.setattr("trader.trader_service._build_runtime_broker", lambda config, event_store: broker)
+
+    service = TraderService(
+        config,
+        event_store=NoOpEventStore(),
+        cadence_seconds=0.0,
+        max_iterations=1,
+        strategy=NoOpStrategy(),
+        risk_manager=NoOpRiskManager(),
+    )
+
+    service._maybe_reconcile_orders(run_id="run_1", force=True)
+
+    assert broker.reconcile_calls == 1
