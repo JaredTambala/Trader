@@ -12,6 +12,7 @@ from trader.data import EventStore
 from trader.portfolio import Portfolio, Position
 from trader.signals import Signal
 from trader.strategies import Strategy
+from trader.strategy_metadata import StrategyInfo
 
 from trader_standard.bar_signals import (
     compute_signal_map,
@@ -225,6 +226,26 @@ class LongFlatSignalStrategy(Strategy):
     @property
     def strategy_id(self) -> str:
         return self._strategy_id
+
+    @property
+    def strategy_info(self) -> StrategyInfo:
+        """Return structured strategy metadata for research runs."""
+        return StrategyInfo(
+            strategy_id=self._strategy_id,
+            name=self._strategy_id,
+            version="1",
+            description="Long/flat bar-signal strategy from trader_standard.",
+            parameters={
+                "symbols": list(self._symbols),
+                "asset_class": self._asset_class,
+                "timeframe": self._timeframe,
+                "signals": [signal.name for signal in self._signals],
+                "primary_signal": self._primary_signal,
+                "target_qty_when_long": self._target_qty_when_long,
+            },
+            author="trader_standard",
+            source=f"{self.__class__.__module__}.{self.__class__.__qualname__}",
+        )
 
     def generate_orders(
         self,

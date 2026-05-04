@@ -6,7 +6,12 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Sequence
 
+from trader.indicators import IndicatorObservation
+
 from .bar import Bar
+
+
+IndicatorAuditValue = IndicatorObservation | tuple[str, float, datetime]
 
 
 class Signal(ABC):
@@ -36,13 +41,13 @@ class Signal(ABC):
             Scalar signal value.
         """
 
-    def indicator_values(self, bars: Sequence[Bar]) -> Sequence[tuple[str, float, datetime]]:
+    def indicator_values(self, bars: Sequence[Bar]) -> Sequence[IndicatorAuditValue]:
         """Return indicator values derived from a bar window.
 
         Args:
             bars: Bars in descending timestamp order (latest first).
 
         Returns:
-            Sequence of (indicator_name, value, bar_ts) tuples.
+            Sequence of auditable indicator observations or legacy (indicator_name, value, bar_ts) tuples.
         """
         return ()

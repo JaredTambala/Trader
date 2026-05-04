@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Sequence
 
+from trader.indicators import IndicatorObservation
 from trader.signals import Bar, Signal
 
 from trader_standard.indicators import SmaIndicator
@@ -46,7 +46,7 @@ class SmaCrossoverSignal(Signal):
             return -1.0
         return 0.0
 
-    def indicator_values(self, bars: Sequence[Bar]) -> Sequence[tuple[str, float, datetime]]:
+    def indicator_values(self, bars: Sequence[Bar]) -> Sequence[IndicatorObservation]:
         """Return indicator values used to derive the signal."""
         short_series = self.short.compute_series(bars)
         long_series = self.long.compute_series(bars)
@@ -54,6 +54,16 @@ class SmaCrossoverSignal(Signal):
             raise ValueError("Insufficient bars for SMA indicator values")
         bar_ts = bars[0].ts
         return (
-            (f"sma_short_{self.short.period}", float(short_series[0]), bar_ts),
-            (f"sma_long_{self.long.period}", float(long_series[0]), bar_ts),
+            IndicatorObservation(
+                indicator_name=f"sma_short_{self.short.period}",
+                ts=bar_ts,
+                value=float(short_series[0]),
+                payload={"base_indicator": "sma", "period": self.short.period, "role": "short"},
+            ),
+            IndicatorObservation(
+                indicator_name=f"sma_long_{self.long.period}",
+                ts=bar_ts,
+                value=float(long_series[0]),
+                payload={"base_indicator": "sma", "period": self.long.period, "role": "long"},
+            ),
         )

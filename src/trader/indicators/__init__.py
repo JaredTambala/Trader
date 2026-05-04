@@ -1,5 +1,5 @@
 """Core indicator contracts."""
 
-from .indicator import Indicator
+from .indicator import Indicator, IndicatorObservation
 
-__all__ = ["Indicator"]
+__all__ = ["Indicator", "IndicatorObservation"]

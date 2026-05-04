@@ -8,6 +8,7 @@ from typing import Mapping, Sequence
 from trader.data import EventStore
 from trader.portfolio import Portfolio
 from trader.strategies import Strategy
+from trader.strategy_metadata import StrategyInfo
 
 
 class NoOpStrategy(Strategy):
@@ -17,6 +18,19 @@ class NoOpStrategy(Strategy):
     def strategy_id(self) -> str:
         """Return the strategy identifier."""
         return "noop"
+
+    @property
+    def strategy_info(self) -> StrategyInfo:
+        """Return structured strategy metadata."""
+        return StrategyInfo(
+            strategy_id="noop",
+            name="noop",
+            version="1",
+            description="No-op strategy.",
+            parameters={},
+            author="trader_standard",
+            source=f"{self.__class__.__module__}.{self.__class__.__qualname__}",
+        )
 
     def generate_orders(
         self,
