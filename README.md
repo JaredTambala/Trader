@@ -6,6 +6,7 @@
 - importable strategy extension
 - risk management
 - backtesting
+- AI/tool-facing signal discovery workflows
 - live paper execution through Alpaca
 - runtime orchestration and event persistence
 
@@ -24,6 +25,7 @@ In scope:
 - direct strategy and risk-manager injection from user code
 - composable risk pipeline via injected `RiskManager` objects
 - backtesting
+- experiment-backed research, comparison, recommendations, and dry-run paper-promotion packets
 - trader service / realtime orchestration
 - Alpaca paper execution
 - metrics snapshots and trading-session tagging
@@ -91,6 +93,11 @@ Use this flow if you want to get the engine running from scratch and kick off tr
    ```bash
    uv run python examples/run_injected_trader_service.py
    ```
+7. Inspect the runtime from the operator CLI.
+   ```bash
+   uv run python run_operator.py configs/example.yaml status --json
+   uv run python run_operator.py configs/example.yaml health --json
+   ```
 
 Typical workflow:
 - run a backfill first so the strategy has bar history
@@ -100,12 +107,29 @@ Typical workflow:
 
 If you want a minimal example of external strategy authoring, use [external_strategy_demo.py](external_strategy_demo.py).
 
-## Architecture Docs
+## Documentation Map
 
-For external technical review, the core architecture is documented in:
+Start with the component-oriented operations docs when you want to understand how the system is run:
+
+- [docs/operations/README.md](docs/operations/README.md)
+- [docs/operations/runtime_orchestration.md](docs/operations/runtime_orchestration.md)
+- [docs/operations/market_data.md](docs/operations/market_data.md)
+- [docs/operations/strategy_and_risk.md](docs/operations/strategy_and_risk.md)
+- [docs/operations/broker_execution_portfolio.md](docs/operations/broker_execution_portfolio.md)
+- [docs/operations/event_store_and_audit.md](docs/operations/event_store_and_audit.md)
+- [docs/operations/results_and_metrics.md](docs/operations/results_and_metrics.md)
+- [docs/first_strategy.md](docs/first_strategy.md)
+- [docs/tool_contracts.md](docs/tool_contracts.md)
+- [docs/ai_tool_workflows.md](docs/ai_tool_workflows.md)
+- [docs/agent_operating_model.md](docs/agent_operating_model.md)
+
+For architecture-level review, use:
 
 - [docs/system_architecture.md](docs/system_architecture.md)
 - [docs/runtime_hot_path_and_reconciliation.md](docs/runtime_hot_path_and_reconciliation.md)
+- [docs/schema.md](docs/schema.md)
+- [docs/backtesting.md](docs/backtesting.md)
+- [docs/testing.md](docs/testing.md)
 
 ## Live Runtime Safety
 
@@ -114,15 +138,57 @@ For Alpaca-backed live trading, the runtime is intentionally fail-closed.
 - `trader_service.portfolio_source: alpaca` makes startup reset local `position_snapshots` from the broker account before trading begins.
 - After the reset, startup validates that broker positions belong to the configured trading universe.
 - If Alpaca contains positions outside the configured symbols or asset class, the service aborts rather than trading against an ambiguous account state.
+- `trader_service.order_reconciliation_interval_seconds` enables periodic append-only open-order reconciliation in loop/realtime service modes.
+- The global halt flag lives in Postgres `config_kv` and is enforced by `run_cycle` before strategy execution.
 - During live execution, order lifecycle logs now show `created`, `validated`, `submitted`, and broker-response states, and risk rejections are logged explicitly.
 
 Equivalent Alpaca crypto forms such as `BTC/USD`, `BTCUSD`, and enum-style asset classes returned by the SDK are normalized into the runtime’s canonical symbol and asset-class model.
 
-## Order Recovery
-
-Use [run_order_recovery.py](run_order_recovery.py) as the operator tool for inspecting and repairing local order state.
+Operator commands:
 
 ```bash
+uv run python run_operator.py configs/example.yaml status --json
+uv run python run_operator.py configs/example.yaml health --json
+uv run python run_operator.py configs/example.yaml positions --json
+uv run python run_operator.py configs/example.yaml open-orders --json
+uv run python run_operator.py configs/example.yaml halt set --reason "manual safety stop"
+uv run python run_operator.py configs/example.yaml halt clear
+uv run python run_operator.py configs/example.yaml reconcile --json
+```
+
+Read-only operator commands are event-store-first and do not construct a broker. `reconcile` is explicit and appends
+local order/fill audit events based on broker state.
+
+## AI-Toolable Research
+
+The Sprint 5 research surface lets an AI system or script plan data work, run bounded research suites, compare results,
+rank candidates, and prepare a dry-run paper-promotion packet. These commands are JSON-first and research-only; they do
+not start `TraderService`, submit Alpaca orders, clear halt state, or reconcile broker state.
+
+```bash
+uv run python run_research_discovery.py configs/reproducible_backtest.yaml \
+  --symbols DEMO \
+  --asset-class stocks \
+  --timeframe 1Min \
+  --since 1d \
+  --strategies trend_following,mean_reversion \
+  --data-mode existing \
+  --json
+
+uv run python run_research_recommendations.py configs/reproducible_backtest.yaml --experiment demo_discovery --json
+```
+
+See [docs/tool_contracts.md](docs/tool_contracts.md) for the stable envelope schema and side-effect classes, and
+[docs/ai_tool_workflows.md](docs/ai_tool_workflows.md) for the discovery, recommendation, and promotion workflows.
+
+## Order Recovery
+
+Use [run_operator.py](run_operator.py) as the primary operator tool for status, health, halt, and explicit
+reconciliation. [run_order_recovery.py](run_order_recovery.py) remains available for focused recovery reports and
+local clean-start operations.
+
+```bash
+uv run python run_operator.py configs/example.yaml reconcile --json
 uv run python run_order_recovery.py configs/example.yaml report
 uv run python run_order_recovery.py configs/example.yaml reconcile
 uv run python run_order_recovery.py configs/example.yaml clean-start
@@ -358,6 +424,33 @@ Useful `backtest` config fields:
 - `initial_positions`
 - `max_runs`
 - `log_cycle_details`
+- `assumptions`
+
+Backtest assumptions are optional and stay at the wrapper/backtest layer rather than the global runtime config. They
+can declare deterministic fees, slippage, latency metadata, and data fallback behavior.
+
+### Run the reproducible sample backtest workflow
+
+```bash
+docker compose -f docker-compose.postgres.yml up -d
+uv run python examples/load_sample_market_data.py
+uv run python examples/run_reproducible_backtest.py
+```
+
+This loads the checked-in synthetic `DEMO` 1-minute dataset and exports stable artifacts under
+`artifacts/reproducible_backtest/`.
+
+### Run a research experiment and compare results
+
+```bash
+uv run python run_research_experiment.py configs/reproducible_backtest.yaml --experiment demo_research --run-data-quality
+uv run python run_compare_results.py configs/reproducible_backtest.yaml --experiment demo_research --format table
+uv run python run_compare_results.py configs/reproducible_backtest.yaml --experiment demo_research --format json
+```
+
+Research runs are backtest-only in this phase. They use config-defined `trader_standard` strategies, optional
+deterministic parameter sweeps, Postgres `experiments` / `experiment_runs` records, and local artifacts under
+`artifacts/research/`.
 
 ### Replay stored bars through the realtime path
 
@@ -369,6 +462,7 @@ uv run python -m trader.market_data_replay configs/example.yaml
 
 ```bash
 uv run python run_data_quality.py configs/example.yaml
+uv run python run_data_quality.py configs/example.yaml --output-json artifacts/data_quality/example.json
 ```
 
 ## Operational Notes
@@ -420,7 +514,8 @@ uv run mypy
 The repo still contains deferred interface/platform work, but it is not part of the active Phase 1 roadmap:
 
 - Reflex UI in `src/ui/`
-- UI backtest API flow in `src/trader/api.py`
+- UI backtest workflow as the primary research/control surface
+- API/UI expansion for non-default backtest assumptions and richer strategy selection
 - UI plans in `plans/task_0_8b_breakdown.md` and `plans/task_0_8g_reflex_ui_refactor_plan.md`
 
 These remain in the repo for later phases and historical continuity, not as current-phase commitments.

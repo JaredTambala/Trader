@@ -4,6 +4,9 @@ Date: 2026-05-03
 
 Source audit: `docs/platform_audit_2026-05-03.md`
 
+> Historical planning backlog. Use [operations/README.md](operations/README.md), [backtesting.md](backtesting.md),
+> [schema.md](schema.md), and [testing.md](testing.md) for the current operating documentation.
+
 ## Working Rules
 
 - Keep the active path focused on the core engine, not UI expansion.
@@ -1049,70 +1052,191 @@ Dependencies:
 
 - S4.2, S4.3, S4.7.
 
-## Sprint 5: Prepare For Quant-Shop Tooling
+## Sprint 5: AI-Toolable Signal Discovery
 
-Goal: make the codebase ready for agents and tools without overbuilding prematurely.
+Detailed implementation plan: [platform_sprint_5_plan_2026-05-04.md](platform_sprint_5_plan_2026-05-04.md).
+
+Goal: make the platform suitable for tool-using AI systems and automation clients. Codex should be a first-class
+customer of this surface, but the contracts must be general enough for other AI assistants, orchestration systems, and
+scripts to fetch recent market data, run controlled research suites, compare results, and recommend candidate
+strategies for human-reviewed promotion to Alpaca paper trading.
+
+This sprint is not about putting AI systems in the hot trading path. It is about making the research loop
+machine-operable, auditable, and safe enough that a tool client can automate signal discovery while the human quant
+keeps explicit control of paper deployment.
+
+The primary user interaction this sprint should enable is high level:
+
+```text
+Pull recent data for AAPL, MSFT, and NVDA, then research trend-following and mean-reversion strategies over the last
+30 trading days with conservative costs. Show me the ranked candidates and whether any are ready for paper-review.
+```
+
+An AI/tool client should be able to translate that request into explicit bounded tool calls: plan data acquisition,
+backfill bars, run data quality, expand a research suite, execute backtests, compare results, generate recommendations,
+and optionally prepare a dry-run promotion packet. The tools must expose this as structured commands and outputs, not
+as log scraping or implicit Python internals.
+
+The same tool surface must also support iterative research. An AI/tool client should be able to read Sprint 4 operator
+outputs such as `status`, `health`, `positions`, `open-orders`, and halt state, then combine that runtime context with
+strategy metadata and prior strategy/result artifact files (`result.json`, `metrics.json`, `provenance.json`,
+`trades.csv`, and strategy artifact metadata) to compare outputs and propose the next experiment suite. Recent live
+paper state can inform research priorities, but it must not allow the AI/tool client to start or mutate paper trading
+without an explicit human/operator command.
 
 ### S5.1 Tool Command Contract
 
 Objective:
-Define stable machine-facing commands before adding agent orchestration.
+Define stable machine-facing commands for the full discovery workflow before adding orchestration.
 
 Likely areas:
 
 - `docs/tool_contracts.md`
-- operator/research CLI modules
+- data/backfill/research/compare/operator CLI modules
 - tests
 
 Tasks:
 
-1. List supported commands for data, backtest, compare, status, halt, and recovery.
-2. Define required inputs and JSON outputs.
-3. Define exit codes.
-4. Define commands that are read-only vs mutating.
-5. Mark live broker actions as requiring explicit command names and configs.
+1. Define a top-level discovery request schema: symbols, asset class, timeframe, data window, strategy families,
+   parameter budget, assumptions, risk profile, output directory, and dry-run flag.
+2. List supported commands for recent data acquisition, data quality, research suites, comparison, recommendation,
+   status, halt, and recovery.
+3. Define required inputs, JSON outputs, exit codes, artifact paths, and idempotency expectations.
+4. Define command side-effect classes: read-only, local-mutating, broker-read, broker-mutating.
+5. Require explicit command names and flags for broker reads/mutations.
+6. Mark paper-trading start commands as outside generic AI/tool automation.
+7. Include Sprint 4 operator outputs as supported tool inputs: `run_operator.py status --json`,
+   `health --json`, `positions --json`, `open-orders --json`, and `halt status --json`.
+8. Include strategy/result artifact files as supported tool inputs, with required schemas and provenance checks.
+9. Include example AI-facing invocations such as:
+   `run_research_discovery.py CONFIG --symbols AAPL,MSFT --asset-class stocks --timeframe 1Min --since 30d --strategies trend_following,mean_reversion --json`.
 
 Acceptance checks:
 
-- Tool contracts can be read without source inspection.
+- A tool client can discover the supported research workflow without reading source.
 - Commands avoid ambiguous side effects.
+- Live broker mutation cannot happen through a generic "run everything" command.
+- A natural-language research request can be represented as one validated discovery request payload.
+- Sprint 4 operator JSON and prior strategy/result artifacts can be accepted as context inputs for research planning.
 
 Dependencies:
 
 - S3.6 and S4.2.
 
-### S5.2 Machine-Readable CLI Output
+### S5.2 Recent Market Data Acquisition Workflow
 
 Objective:
-Make CLIs usable by agents, scripts, and humans.
+Let an AI/tool client prepare a bounded, recent research dataset without touching trading execution.
 
 Likely areas:
 
-- backfill/replay/data quality/status/recovery scripts
-- tests
+- `run_market_data_backfill.py`
+- `run_data_quality.py`
+- new tool wrappers
 - docs
+- tests
 
 Tasks:
 
-1. Add `--json` output where absent.
-2. Standardize success/error envelope.
-3. Include run IDs and artifact paths in outputs.
-4. Add tests that parse CLI JSON.
-5. Keep default human output readable.
+1. Add or standardize JSON output for recent backfill: symbols, asset class, timeframe, requested window, rows written,
+   duplicate rows skipped, source, and artifact/report path.
+2. Add a dry-run/plan mode that describes what data would be requested without writing rows.
+3. Add a research-safe config profile for recent data windows, e.g. last N days per symbol/timeframe.
+4. Chain data quality output into a machine-readable dataset readiness report.
+5. Ensure repeated runs are idempotent through existing bar uniqueness guarantees.
+6. Accept symbols/timeframe/window from the discovery request payload so an AI/tool client does not need to rewrite YAML
+   for every research question.
 
 Acceptance checks:
 
-- Important commands can emit valid JSON.
-- Error payloads are structured enough for tooling.
+- An AI/tool client can backfill recent bars and receive a parseable report.
+- Re-running the same recent-data step does not duplicate bars.
+- Data quality gaps are visible before research starts.
+- The output includes a dataset/report ID that later research-suite and recommendation steps can reference.
 
 Dependencies:
 
-- S5.1.
+- S5.1 and S2/S3 data-quality work.
 
-### S5.3 Strategy Artifact Metadata
+### S5.3 Research Suite Definition
 
 Objective:
-Represent promoted strategies as auditable artifacts.
+Represent "a suite of research tests" as a controlled, repeatable object rather than ad hoc CLI invocations.
+
+Likely areas:
+
+- configs
+- `src/trader/research.py`
+- new `src/trader/tools/`
+- docs
+- tests
+
+Tasks:
+
+1. Define a `research.suite` YAML section for strategies, parameter sweeps, symbols, timeframes, data windows,
+   assumptions, risk profiles, and benchmark settings.
+2. Support multiple strategy families from `trader_standard` without a general arbitrary-code loader.
+3. Add max-run, max-symbol, max-window, and runtime guardrails so suites cannot explode unexpectedly.
+4. Persist suite identity, suite hash, and suite member metadata into experiment provenance.
+5. Add deterministic suite expansion tests.
+6. Support suite overrides from a discovery request so an AI/tool client can ask for a strategy family and parameter
+   budget without editing checked-in configs.
+7. Support follow-up suite generation from previous comparison/recommendation artifacts, e.g. narrowing ranges around
+   strong candidates or excluding strategies rejected for data-quality or turnover reasons.
+
+Acceptance checks:
+
+- One config can express a small multi-strategy, multi-parameter research suite.
+- The suite expansion order is deterministic and bounded.
+- Every run can be traced back to the suite member that produced it.
+- A follow-up suite can reference previous result/recommendation artifacts without losing provenance.
+
+Dependencies:
+
+- S3.1 through S3.6.
+
+### S5.4 Research Recommendation Engine
+
+Objective:
+Turn experiment results into explicit, auditable candidate recommendations.
+
+Likely areas:
+
+- `src/trader/research.py`
+- new recommendation module or tool wrapper
+- `run_compare_results.py`
+- docs
+- tests
+
+Tasks:
+
+1. Define a candidate scorecard using metrics such as total return, Sharpe, max drawdown, turnover, fees, slippage,
+   alpha, beta, warnings count, trade count, data quality, and assumption compatibility.
+2. Define hard rejection rules: insufficient sample size, missing data quality, excessive drawdown, excessive turnover,
+   unstable assumptions, failed runs, or result warnings above threshold.
+3. Add a command such as `run_research_recommendations.py CONFIG --experiment NAME --json`.
+4. Emit ranked candidates with reasons for selection/rejection, metric values, artifact paths, and promotion readiness.
+5. Accept optional context from Sprint 4 operator outputs so recommendation reports can include operational context such
+   as current halt state, stale data, open orders, current paper positions, and recent live metrics.
+6. Accept optional prior strategy/result artifacts so recommendations can compare new runs against earlier strategy
+   outputs and suggest follow-up experiments.
+7. Add tests for ranking stability, rejection explanations, and follow-up experiment suggestions.
+
+Acceptance checks:
+
+- An AI/tool client can ask "which strategies are worth reviewing?" and receive a parseable ranked answer.
+- Recommendations include reasons, not just scores.
+- Rejected strategies are visible with concrete failure reasons.
+- Recommendations can say what to test next based on prior strategy outputs and current operator state.
+
+Dependencies:
+
+- S5.3 and S3.6.
+
+### S5.5 Strategy Artifact Metadata
+
+Objective:
+Represent recommended strategies as auditable artifacts that can be reviewed without importing arbitrary code.
 
 Likely areas:
 
@@ -1123,25 +1247,30 @@ Likely areas:
 
 Tasks:
 
-1. Define artifact metadata: strategy name, version, source path/package, parameters, risk profile, data assumptions.
-2. Capture source revision and dependency versions.
-3. Define compatibility checks for runtime package version.
-4. Store artifact metadata with runs.
-5. Provide a validation helper.
+1. Define artifact metadata: strategy name, version, source path/package, parameters, risk profile, data assumptions,
+   suite identity, recommendation score, source experiment run IDs, and generated output files.
+2. Capture source revision, dirty flag, package version, and dependency versions.
+3. Define the machine-readable outputs a strategy or strategy wrapper may produce: indicator observations, signal
+   summaries, trade records, result metrics, warnings, and provenance references.
+4. Define compatibility checks for runtime package version, strategy metadata, result schema version, and source data
+   assumptions.
+5. Store artifact metadata with recommendation and promotion packets.
+6. Provide a validation helper.
 
 Acceptance checks:
 
-- Strategy artifacts can be described without importing arbitrary code in a control plane.
+- Strategy artifacts can be reviewed and compared without arbitrary code import.
+- Strategy output files can be loaded and compared by an AI/tool client to decide new experiments.
 - Runtime still uses direct Python objects for execution.
 
 Dependencies:
 
-- S3.2 and S3.3.
+- S3.2, S3.3, and S5.4.
 
-### S5.4 Research To Paper Promotion Workflow
+### S5.6 Research To Paper Promotion Packet
 
 Objective:
-Create a deliberate path from a researched strategy to paper deployment.
+Create a deliberate human-reviewed path from a recommended strategy to paper deployment.
 
 Likely areas:
 
@@ -1152,25 +1281,27 @@ Likely areas:
 
 Tasks:
 
-1. Define minimum promotion criteria: sample size, max drawdown, turnover, data quality, cost assumptions.
+1. Define minimum promotion criteria: data window, sample size, drawdown, turnover, data quality, cost assumptions,
+   benchmark comparison, warning count, and risk profile.
 2. Add a promotion checklist document.
-3. Add a command or helper that packages selected metadata into a paper-run config.
-4. Ensure paper config references the same strategy metadata and risk profile.
-5. Add a dry-run validation step.
+3. Add a command/helper that packages selected recommendation metadata into a proposed paper-run config.
+4. Ensure paper config references the same strategy metadata, parameters, assumptions, and risk profile.
+5. Add dry-run validation that checks broker mode, symbols, halt state, and operator safety without starting trading.
 
 Acceptance checks:
 
-- A backtest run can be traced to a proposed paper deployment config.
-- Promotion does not start live trading by itself.
+- A recommended backtest run can be traced to a proposed paper deployment config.
+- Promotion does not start live paper trading by itself.
+- Human review remains the required bridge from recommendation to paper trading.
 
 Dependencies:
 
-- S5.3 and S4.2.
+- S5.5 and S4.2.
 
-### S5.5 Agent-Safe Guardrails
+### S5.7 AI/Tool-Safe Guardrails
 
 Objective:
-Prevent automation from accidentally trading or mutating broker state.
+Prevent automation from accidentally trading or mutating broker state while still allowing research automation.
 
 Likely areas:
 
@@ -1180,22 +1311,27 @@ Likely areas:
 
 Tasks:
 
-1. Classify commands as read-only, local-mutating, or broker-mutating.
-2. Require explicit flags for broker-mutating commands.
-3. Make default automation examples use backtest or dry-run modes.
+1. Classify commands as read-only, local-mutating, broker-read, or broker-mutating.
+2. Require explicit flags for broker reads and broker-mutating commands.
+3. Make default automation examples use backtest/research/dry-run modes.
 4. Add tests that dangerous commands fail closed when required flags are absent.
 5. Document environment variable and secret handling rules.
+6. Document that recommendations are not trading instructions and require human approval.
+7. Document which Sprint 4 commands are safe context sources for AI/tool workflows and which commands remain
+   human/operator-only.
 
 Acceptance checks:
 
-- Tooling cannot accidentally start live paper trading through a generic command.
+- Tooling cannot accidentally start live paper trading through a discovery workflow.
 - Mutating behavior is explicit in command names, flags, and docs.
+- AI/tool workflows are research-only unless a human invokes operator commands directly.
+- AI/tool clients can read operator state without gaining permission to mutate broker or paper-trading state.
 
 Dependencies:
 
 - S5.1.
 
-### S5.6 Thin Tool Wrappers
+### S5.8 Thin Tool Wrappers
 
 Objective:
 Build tool-friendly wrappers over proven package APIs, not a second runtime.
@@ -1208,51 +1344,62 @@ Likely areas:
 
 Tasks:
 
-1. Add Python functions for common tool actions: load config, run sample backtest, compare runs, read status.
+1. Add Python functions for common tool actions: load config, plan/backfill recent data, run data quality, run research
+   suite, compare results, recommend candidates, build promotion packet, and read live status.
 2. Return structured dataclasses or JSON-compatible mappings.
 3. Keep wrappers thin over existing APIs.
 4. Add tests that wrappers match CLI behavior.
+5. Add one orchestration helper that accepts a validated discovery request and calls the smaller wrappers in sequence.
+   This helper may coordinate the research workflow, but it must not contain trading logic or start live paper trading.
+6. Add artifact-loading helpers for strategy/result outputs and Sprint 4 operator JSON so follow-up research planning
+   can be done without bespoke file parsing in the AI client.
 
 Acceptance checks:
 
 - Tool wrappers do not duplicate trading logic.
-- Agent-facing surfaces use the same tested package paths as humans.
+- AI/tool-facing surfaces use the same tested package paths as humans.
+- A caller can submit one structured request for "pull data for these symbols and research these strategies" and receive
+  dataset, experiment, comparison, recommendation, and artifact references.
+- A caller can submit prior strategy outputs and operator status JSON as context for deciding the next experiment.
 
 Dependencies:
 
-- S5.2.
+- S5.2, S5.3, and S5.4.
 
-### S5.7 Multi-Agent Workflow Documentation
+### S5.9 AI Tool Workflow Documentation
 
 Objective:
-Document how agents should interact with the platform once the APIs are stable.
+Document how AI systems and tool clients should interact with the platform once the APIs are stable.
 
 Likely areas:
 
-- `docs/agent_workflows.md`
+- `docs/ai_tool_workflows.md`
 - `docs/tool_contracts.md`
 
 Tasks:
 
-1. Define roles: data auditor, strategy researcher, risk reviewer, operator assistant.
+1. Define roles: data auditor, strategy researcher, recommendation reviewer, risk reviewer, operator assistant.
 2. Define allowed commands per role.
-3. Define handoff artifacts between roles.
+3. Define handoff artifacts between roles: data-quality report, suite config, experiment ID, comparison JSON,
+   recommendation JSON, Sprint 4 operator status JSON, strategy/result artifact files, promotion packet, and paper
+   dry-run validation.
 4. Define escalation points for live trading decisions.
 5. Keep humans in control of broker-mutating actions.
 
 Acceptance checks:
 
-- Agent workflows reference implemented commands.
-- Documentation does not imply agents are part of the hot trading path.
+- AI/tool workflows reference implemented commands.
+- Documentation does not imply AI systems are part of the hot trading path.
+- The end-to-end signal discovery loop is understandable without source inspection.
 
 Dependencies:
 
-- S5.1, S5.5, S5.6.
+- S5.1, S5.7, and S5.8.
 
-### S5.8 End-To-End Tool Smoke Test
+### S5.10 End-To-End Discovery Smoke Test
 
 Objective:
-Prove the tool-facing workflow works from clean inputs to structured outputs.
+Prove the tool-facing discovery workflow works from recent-data preparation to ranked paper-promotion candidates.
 
 Likely areas:
 
@@ -1262,22 +1409,27 @@ Likely areas:
 
 Tasks:
 
-1. Load sample data.
-2. Run reproducible backtest.
-3. Export result JSON.
-4. Compare results.
-5. Query status.
-6. Verify all outputs are parseable and contain run IDs.
+1. Load or backfill a bounded dataset.
+2. Run data quality and produce JSON.
+3. Run a small research suite.
+4. Compare experiment results.
+5. Load a sample Sprint 4 operator-status JSON payload and prior strategy/result artifacts as recommendation context.
+6. Produce recommendation JSON with at least one accepted and one rejected candidate.
+7. Produce at least one follow-up experiment suggestion based on prior outputs.
+8. Build a dry-run promotion packet for the accepted candidate.
+9. Verify all outputs are parseable and contain dataset, experiment, run, artifact, operator-context, and
+   recommendation IDs.
 
 Acceptance checks:
 
-- One automated smoke test covers the non-live research workflow.
-- No Alpaca credentials are required.
-- The test demonstrates the future agent/tool path without adding agent dependency.
+- One automated smoke test covers the non-live discovery workflow.
+- No Alpaca trading credentials are required.
+- The test demonstrates the future AI/tool path without adding an AI-system dependency.
+- No command in the workflow starts paper trading.
 
 Dependencies:
 
-- S2.7, S2.8, S3.6, S5.2.
+- S2.7, S2.8, S3.6, S4.1, and S5.2 through S5.8.
 
 ## Suggested Execution Order
 
@@ -1293,4 +1445,3 @@ The first practical backlog should be:
 8. S2.5 Accounting Scenario Tests
 
 This order reduces hidden risk before adding research features.
-

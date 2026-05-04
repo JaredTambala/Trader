@@ -170,6 +170,7 @@ Primary responsibilities:
 
 - submit orders
 - normalize venue-specific status and symbol formats
+- normalize fill payloads into audit/accounting fields
 - expose positions, account, and order state
 - reconcile local audit state against broker reality
 

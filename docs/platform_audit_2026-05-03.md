@@ -2,6 +2,9 @@
 
 Date: 2026-05-03
 
+> Historical audit baseline. Use [operations/README.md](operations/README.md), [backtesting.md](backtesting.md),
+> [schema.md](schema.md), and [testing.md](testing.md) for the current operating documentation.
+
 ## Audit Purpose
 
 This audit assesses the current repository as the foundation for a personal "quant shop in a box":
@@ -447,21 +450,49 @@ Definition of done:
 
 - An operator can answer "is it safe, live, halted, stale, or out of sync?" without opening Python internals.
 
-### Sprint 5: Prepare For Quant-Shop Tooling
+### Sprint 5: AI-Toolable Signal Discovery
 
-Goal: make the codebase ready for agents and tools without overbuilding prematurely.
+Goal: make the codebase ready for a tool-using quant workflow where Codex is a first-class customer, while the same
+contracts also support other AI assistants, orchestration systems, and scripts. These tool clients should be able to
+prepare recent market data, run controlled research suites, compare results, recommend candidate strategies, and
+package promotion proposals for human-reviewed Alpaca paper trading.
+
+The target interaction is intentionally high-level: a human quant should be able to ask an AI/tool client to pull data
+for specific symbols and research selected strategy families. The platform should then expose bounded, structured tool
+calls for data planning/backfill, quality checks, suite execution, comparison, recommendations, and dry-run promotion
+packaging.
+
+The workflow should also be iterative. AI/tool clients should be able to use Sprint 4 operator outputs (`status`,
+`health`, `positions`, `open-orders`, halt state) and prior strategy/result artifacts (`result.json`, `metrics.json`,
+`provenance.json`, trades, and strategy metadata) as inputs when comparing strategies and deciding what experiment to
+run next.
 
 Tasks:
 
-1. Define stable tool-facing commands around data ingestion, backtesting, result comparison, live status, and recovery.
-2. Add strategy artifact metadata and promotion rules.
-3. Keep agents outside the hot path until strategy/result artifacts are reliable.
-4. Build only thin automation wrappers over proven package APIs.
+1. Define a discovery request contract covering symbols, asset class, timeframe, data window, strategy families,
+   parameter budget, assumptions, risk profile, output directory, dry-run behavior, optional operator-state context,
+   and optional prior strategy/result artifacts.
+2. Define stable tool-facing commands around recent data acquisition, data quality, research suites, result comparison,
+   recommendations, live status, halt, and recovery.
+3. Add research-suite definitions so multiple standard-library strategies and parameter sweeps can be run
+   deterministically from config.
+4. Add recommendation scoring and rejection explanations based on return, risk, turnover, costs, data quality,
+   warnings, assumption compatibility, current operator state, and prior strategy outputs.
+5. Add strategy artifact metadata and promotion-packet rules that trace a recommended backtest to a proposed paper
+   config.
+6. Keep AI systems outside the hot path; discovery can be automated, but paper trading still requires explicit human
+   operator action.
+7. Build only thin automation wrappers over proven package APIs, including one orchestration helper that turns a
+   validated discovery request into data, research, comparison, recommendation, operator-context, and artifact outputs.
 
 Definition of done:
 
-- Agents can invoke reliable commands and inspect structured outputs.
-- The trading engine remains a normal Python package, not an agent-dependent system.
+- An AI/tool client can execute the non-live discovery workflow and inspect structured outputs without scraping logs.
+- The workflow produces ranked recommendations with auditable reasons and artifacts.
+- The workflow can use Sprint 4 operator JSON and prior strategy output files as context for follow-up experiment
+  suggestions.
+- A recommendation can be converted into a dry-run paper promotion packet without starting paper trading.
+- The trading engine remains a normal Python package, not an AI-system-dependent platform.
 
 ## Suggested North Star For The Next Phase
 
