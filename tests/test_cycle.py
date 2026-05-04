@@ -9,6 +9,7 @@ from trader.data import NoOpEventStore
 from trader.identifiers import deterministic_cycle_id
 from trader.market_data import StaticMarketDataSource, StockBarEvent
 from trader.portfolio import Portfolio
+from trader.runtime_status import set_halt_state
 from tests.support.duckdb_store import DuckDBEventStore
 from trader.strategies import Strategy
 from trader_standard.risk import NoOpRiskManager, OpenBuyOrderLimitRiskManager
@@ -222,6 +223,25 @@ class BuyStrategy(Strategy):
         return [{"symbol": "AAPL", "side": "buy", "qty": 1.0, "order_type": "market"}]
 
 
+class CountingBroker:
+    def __init__(self) -> None:
+        self.submit_calls = 0
+        self.account_calls = 0
+        self.position_calls = 0
+
+    def submit_orders(self, orders):
+        self.submit_calls += 1
+        return []
+
+    def get_account(self):
+        self.account_calls += 1
+        return {"cash": 1000.0}
+
+    def get_positions(self):
+        self.position_calls += 1
+        return []
+
+
 def test_run_cycle_logs_risk_rejections(tmp_path, caplog) -> None:
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
     now = datetime.now(timezone.utc)
@@ -307,3 +327,138 @@ def test_run_cycle_logs_risk_rejections(tmp_path, caplog) -> None:
     )
 
     assert "reason=open_buy_order_exists manager=OpenBuyOrderLimitRiskManager" in caplog.text
+
+
+def test_run_cycle_global_halt_skips_strategy_and_broker(tmp_path) -> None:
+    store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
+    now = datetime.now(timezone.utc)
+    set_halt_state(store, halted=True, reason="test", now=now)
+    strategy = ProbeStrategy()
+    broker = CountingBroker()
+
+    result = run_cycle(
+        event_store=store,
+        strategy=strategy,
+        risk_manager=NoOpRiskManager(),
+        broker=broker,
+        market_data_source=StaticMarketDataSource(
+            [
+                StockBarEvent(
+                    symbol="AAPL",
+                    timeframe="1Min",
+                    ts=now,
+                    ingested_at=now,
+                    open=100.0,
+                    high=101.0,
+                    low=99.0,
+                    close=100.5,
+                    volume=10.0,
+                    trade_count=None,
+                    vwap=None,
+                    source="test",
+                )
+            ]
+        ),
+        config=Config(
+            mode="once",
+            strategy_type="probe",
+            strategy_id="probe",
+            strategy_timeframe="1Min",
+            sma_short_window=2,
+            sma_long_window=3,
+            db_path=str(tmp_path / "events.duckdb"),
+            event_store="postgres",
+            market_data_source="noop",
+            market_data_asset_class="stocks",
+            market_data_stock_feed="iex",
+            market_data_symbols=("AAPL",),
+            market_data_max_age_seconds=60,
+            alpaca_api_key="",
+            alpaca_secret_key="",
+            alpaca_data_base_url="https://data.alpaca.markets",
+            alpaca_base_url="https://paper-api.alpaca.markets",
+            pg_dsn="",
+            pg_host="",
+            pg_port=5432,
+            pg_db="",
+            pg_user="",
+            pg_password="",
+            buffered_event_store=False,
+            buffer_flush_interval_ms=250,
+            buffer_max_batch_size=500,
+            buffer_max_queue_size=10000,
+            buffer_block_on_full=True,
+            log_signal_events=True,
+            log_indicator_events=True,
+            log_order_events=True,
+            log_fill_events=True,
+            log_position_snapshots=True,
+            broker_type="noop",
+        ),
+        decision_ts=now,
+        portfolio=Portfolio.from_event_store(store, asof_ts=now),
+    )
+
+    assert result.status == "halted"
+    assert strategy.calls == 0
+    assert broker.submit_calls == 0
+    row = store.connection().execute(
+        "SELECT status, error_message FROM run_events WHERE cycle_id = ?",
+        [result.cycle_id],
+    ).fetchone()
+    assert row == ("halted", "global_halt")
+
+
+def test_run_cycle_does_not_refresh_alpaca_portfolio_when_source_is_db(tmp_path) -> None:
+    store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
+    now = datetime.now(timezone.utc)
+    broker = CountingBroker()
+
+    run_cycle(
+        event_store=store,
+        strategy=NoOpStrategy(),
+        risk_manager=NoOpRiskManager(),
+        broker=broker,
+        market_data_source=StaticMarketDataSource([]),
+        config=Config(
+            mode="once",
+            strategy_type="noop",
+            strategy_id="noop",
+            strategy_timeframe="1Min",
+            sma_short_window=2,
+            sma_long_window=3,
+            db_path=str(tmp_path / "events.duckdb"),
+            event_store="postgres",
+            market_data_source="noop",
+            market_data_asset_class="stocks",
+            market_data_stock_feed="iex",
+            market_data_symbols=("AAPL",),
+            market_data_max_age_seconds=60,
+            alpaca_api_key="",
+            alpaca_secret_key="",
+            alpaca_data_base_url="https://data.alpaca.markets",
+            alpaca_base_url="https://paper-api.alpaca.markets",
+            pg_dsn="",
+            pg_host="",
+            pg_port=5432,
+            pg_db="",
+            pg_user="",
+            pg_password="",
+            buffered_event_store=False,
+            buffer_flush_interval_ms=250,
+            buffer_max_batch_size=500,
+            buffer_max_queue_size=10000,
+            buffer_block_on_full=True,
+            log_signal_events=True,
+            log_indicator_events=True,
+            log_order_events=True,
+            log_fill_events=True,
+            log_position_snapshots=True,
+            broker_type="alpaca",
+            trader_service_portfolio_source="db",
+        ),
+        decision_ts=now,
+    )
+
+    assert broker.account_calls == 0
+    assert broker.position_calls == 0

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass
+import json
 from typing import Iterator, Mapping, Sequence
 
 import duckdb
@@ -61,6 +62,48 @@ class DuckDBEventStore(EventStore):
                     timeframe TEXT,
                     start_ts TIMESTAMP,
                     end_ts TIMESTAMP
+                )
+                """,
+            ),
+            SchemaTable(
+                name="experiments",
+                create_sql="""
+                CREATE TABLE IF NOT EXISTS experiments (
+                    experiment_id TEXT PRIMARY KEY,
+                    name TEXT UNIQUE,
+                    description TEXT,
+                    tags TEXT,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP,
+                    metadata TEXT
+                )
+                """,
+            ),
+            SchemaTable(
+                name="experiment_runs",
+                create_sql="""
+                CREATE TABLE IF NOT EXISTS experiment_runs (
+                    experiment_run_id TEXT PRIMARY KEY,
+                    experiment_id TEXT,
+                    run_id TEXT,
+                    status TEXT,
+                    created_at TIMESTAMP,
+                    finished_at TIMESTAMP,
+                    strategy_id TEXT,
+                    strategy_name TEXT,
+                    strategy_version TEXT,
+                    symbols TEXT,
+                    asset_class TEXT,
+                    timeframe TEXT,
+                    start_ts TIMESTAMP,
+                    end_ts TIMESTAMP,
+                    parameters TEXT,
+                    assumptions TEXT,
+                    provenance TEXT,
+                    data_quality TEXT,
+                    result_summary TEXT,
+                    artifact_dir TEXT,
+                    error_message TEXT
                 )
                 """,
             ),
@@ -143,7 +186,8 @@ class DuckDBEventStore(EventStore):
                     symbol TEXT,
                     indicator_name TEXT,
                     value DOUBLE,
-                    bar_ts TIMESTAMP
+                    bar_ts TIMESTAMP,
+                    payload TEXT
                 )
                 """,
             ),
@@ -177,6 +221,9 @@ class DuckDBEventStore(EventStore):
                     cycle_id TEXT,
                     fill_ts TIMESTAMP,
                     fill_qty DOUBLE,
+                    raw_fill_price DOUBLE,
+                    slippage_amount DOUBLE,
+                    fee_amount DOUBLE,
                     fill_price DOUBLE
                 )
                 """,
@@ -234,6 +281,30 @@ class DuckDBEventStore(EventStore):
             ON crypto_bar_events(symbol, timeframe, ts, source)
             """
         )
+        self._connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS experiment_runs_experiment_id_idx
+            ON experiment_runs(experiment_id)
+            """
+        )
+        self._connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS experiment_runs_run_id_idx
+            ON experiment_runs(run_id)
+            """
+        )
+        self._connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS experiment_runs_status_idx
+            ON experiment_runs(status)
+            """
+        )
+        self._connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS experiment_runs_created_at_idx
+            ON experiment_runs(created_at)
+            """
+        )
 
     def record_event(self, event_type: str, payload: Mapping[str, object]) -> None:
         if event_type not in {
@@ -249,12 +320,15 @@ class DuckDBEventStore(EventStore):
             "config_kv",
             "metrics_snapshots",
             "trading_sessions",
+            "experiments",
+            "experiment_runs",
         }:
             raise ValueError(f"Unknown event type: {event_type}")
 
         columns = ", ".join(payload.keys())
         placeholders = ", ".join(["?"] * len(payload))
-        sql = f"INSERT INTO {event_type} ({columns}) VALUES ({placeholders})"
+        insert = "INSERT OR IGNORE" if event_type in {"stock_bar_events", "crypto_bar_events"} else "INSERT"
+        sql = f"{insert} INTO {event_type} ({columns}) VALUES ({placeholders})"
         self._connection.execute(sql, list(payload.values()))
 
     def record_run_session_start(
@@ -502,6 +576,259 @@ class DuckDBEventStore(EventStore):
                 error_message,
             ],
         )
+
+    def upsert_experiment(
+        self,
+        *,
+        experiment_id: str,
+        name: str,
+        description: str | None = None,
+        tags: Sequence[str] | None = None,
+        created_at: object | None = None,
+        updated_at: object | None = None,
+        metadata: Mapping[str, object] | None = None,
+    ) -> None:
+        self._connection.execute(
+            """
+            INSERT INTO experiments (
+                experiment_id,
+                name,
+                description,
+                tags,
+                created_at,
+                updated_at,
+                metadata
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (experiment_id) DO UPDATE SET
+                name = excluded.name,
+                description = excluded.description,
+                tags = excluded.tags,
+                updated_at = excluded.updated_at,
+                metadata = excluded.metadata
+            """,
+            [
+                experiment_id,
+                name,
+                description,
+                json.dumps(list(tags or ()), default=str),
+                created_at,
+                updated_at,
+                json.dumps(metadata or {}, default=str),
+            ],
+        )
+
+    def record_experiment_run_start(
+        self,
+        *,
+        experiment_run_id: str,
+        experiment_id: str,
+        run_id: str,
+        created_at: object,
+        status: str = "started",
+        strategy_id: str | None = None,
+        strategy_name: str | None = None,
+        strategy_version: str | None = None,
+        symbols: Sequence[str] | None = None,
+        asset_class: str | None = None,
+        timeframe: str | None = None,
+        start_ts: object | None = None,
+        end_ts: object | None = None,
+        parameters: Mapping[str, object] | None = None,
+        assumptions: Mapping[str, object] | None = None,
+        provenance: Mapping[str, object] | None = None,
+        data_quality: Mapping[str, object] | None = None,
+        artifact_dir: str | None = None,
+    ) -> None:
+        self._connection.execute(
+            """
+            INSERT INTO experiment_runs (
+                experiment_run_id,
+                experiment_id,
+                run_id,
+                status,
+                created_at,
+                finished_at,
+                strategy_id,
+                strategy_name,
+                strategy_version,
+                symbols,
+                asset_class,
+                timeframe,
+                start_ts,
+                end_ts,
+                parameters,
+                assumptions,
+                provenance,
+                data_quality,
+                result_summary,
+                artifact_dir,
+                error_message
+            )
+            VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL)
+            ON CONFLICT (experiment_run_id) DO UPDATE SET
+                status = excluded.status,
+                strategy_id = excluded.strategy_id,
+                strategy_name = excluded.strategy_name,
+                strategy_version = excluded.strategy_version,
+                symbols = excluded.symbols,
+                asset_class = excluded.asset_class,
+                timeframe = excluded.timeframe,
+                start_ts = excluded.start_ts,
+                end_ts = excluded.end_ts,
+                parameters = excluded.parameters,
+                assumptions = excluded.assumptions,
+                provenance = excluded.provenance,
+                data_quality = excluded.data_quality,
+                artifact_dir = excluded.artifact_dir,
+                error_message = NULL
+            """,
+            [
+                experiment_run_id,
+                experiment_id,
+                run_id,
+                status,
+                created_at,
+                strategy_id,
+                strategy_name,
+                strategy_version,
+                json.dumps(list(symbols) if symbols is not None else None, default=str),
+                asset_class,
+                timeframe,
+                start_ts,
+                end_ts,
+                json.dumps(parameters or {}, default=str),
+                json.dumps(assumptions or {}, default=str),
+                json.dumps(provenance or {}, default=str),
+                json.dumps(data_quality or {}, default=str),
+                artifact_dir,
+            ],
+        )
+
+    def record_experiment_run_finish(
+        self,
+        *,
+        experiment_run_id: str,
+        experiment_id: str,
+        run_id: str,
+        status: str,
+        finished_at: object,
+        result_summary: Mapping[str, object] | None = None,
+        provenance: Mapping[str, object] | None = None,
+        data_quality: Mapping[str, object] | None = None,
+        artifact_dir: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        self._connection.execute(
+            """
+            INSERT INTO experiment_runs (
+                experiment_run_id,
+                experiment_id,
+                run_id,
+                status,
+                created_at,
+                finished_at,
+                provenance,
+                data_quality,
+                result_summary,
+                artifact_dir,
+                error_message
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (experiment_run_id) DO UPDATE SET
+                status = excluded.status,
+                finished_at = excluded.finished_at,
+                provenance = excluded.provenance,
+                data_quality = excluded.data_quality,
+                result_summary = excluded.result_summary,
+                artifact_dir = excluded.artifact_dir,
+                error_message = excluded.error_message
+            """,
+            [
+                experiment_run_id,
+                experiment_id,
+                run_id,
+                status,
+                finished_at,
+                finished_at,
+                json.dumps(provenance or {}, default=str),
+                json.dumps(data_quality or {}, default=str),
+                json.dumps(result_summary or {}, default=str),
+                artifact_dir,
+                error_message,
+            ],
+        )
+
+    def list_experiment_runs(
+        self,
+        experiment_id: str,
+        *,
+        limit: int | None = None,
+    ) -> list[Mapping[str, object]]:
+        query = """
+            SELECT
+                experiment_run_id,
+                experiment_id,
+                run_id,
+                status,
+                created_at,
+                finished_at,
+                strategy_id,
+                strategy_name,
+                strategy_version,
+                symbols,
+                asset_class,
+                timeframe,
+                start_ts,
+                end_ts,
+                parameters,
+                assumptions,
+                provenance,
+                data_quality,
+                result_summary,
+                artifact_dir,
+                error_message
+            FROM experiment_runs
+            WHERE experiment_id = ?
+            ORDER BY created_at DESC, experiment_run_id DESC
+        """
+        params: list[object] = [experiment_id]
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(limit)
+        rows = self._connection.execute(query, params).fetchall()
+        fields = [
+            "experiment_run_id",
+            "experiment_id",
+            "run_id",
+            "status",
+            "created_at",
+            "finished_at",
+            "strategy_id",
+            "strategy_name",
+            "strategy_version",
+            "symbols",
+            "asset_class",
+            "timeframe",
+            "start_ts",
+            "end_ts",
+            "parameters",
+            "assumptions",
+            "provenance",
+            "data_quality",
+            "result_summary",
+            "artifact_dir",
+            "error_message",
+        ]
+        parsed_rows: list[Mapping[str, object]] = []
+        for row in rows:
+            item = dict(zip(fields, row))
+            for key in {"symbols", "parameters", "assumptions", "provenance", "data_quality", "result_summary"}:
+                value = item.get(key)
+                if isinstance(value, str):
+                    item[key] = json.loads(value)
+            parsed_rows.append(item)
+        return parsed_rows
 
     def close(self) -> None:
         self._connection.close()

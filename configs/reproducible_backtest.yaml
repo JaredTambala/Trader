@@ -1,0 +1,100 @@
+runtime:
+  mode: once
+
+logging:
+  level: INFO
+  persist:
+    signals: true
+    indicators: true
+    orders: true
+    fills: true
+    positions: true
+
+strategy:
+  id: trend_following
+  timeframe: 1Min
+  trend_following:
+    target_qty_when_long: 1.0
+    ema_fast_period: 2
+    ema_slow_period: 4
+    macd_fast_period: 3
+    macd_slow_period: 6
+    macd_signal_period: 3
+
+risk: {}
+
+broker:
+  type: alpaca
+  time_in_force: day
+
+alpaca:
+  api_key: ${ALPACA_API_KEY}
+  secret_key: ${ALPACA_SECRET_KEY}
+  base_url: ${ALPACA_BASE_URL}
+  data_base_url: https://data.alpaca.markets
+
+market_data:
+  source: alpaca
+  asset_class: stocks
+  stock_feed: iex
+  symbols:
+    - DEMO
+  max_age_seconds: 300
+
+database:
+  event_store: postgres
+  pg:
+    host: ${PG_HOST}
+    port: ${PG_PORT}
+    db: ${PG_DB}
+    user: ${PG_USER}
+    password: ${PG_PASSWORD}
+  buffering:
+    enabled: false
+    flush_interval_ms: 1000
+    max_batch_size: 5000
+    max_queue_size: 10000
+    block_on_full: true
+
+backtest:
+  start: "2026-01-20T12:00:00Z"
+  end: "2026-01-20T12:11:00Z"
+  timeframe: 1Min
+  symbols:
+    - DEMO
+  asset_class: stocks
+  max_runs: null
+  log_cycle_details: false
+  initial_cash: 1000
+  initial_positions: []
+  assumptions:
+    fill_model: full_fill
+    latency_ms: 0
+    fees:
+      fixed_per_order: 0.1
+      bps: 0
+      minimum_fee: 0.1
+    slippage:
+      bps: 10
+    data:
+      allow_latest_prior_bar: true
+      allow_price_carry_forward: true
+
+metrics:
+  enable_snapshots: true
+  interval_seconds: 0
+  window_seconds: null
+
+research:
+  experiment:
+    name: demo_trend_following
+    description: Sample trend-following research workflow
+    tags:
+      - sample
+      - sprint3
+    output_dir: artifacts/research
+  sweep:
+    max_runs: 4
+    parameters:
+      strategy.trend_following.ema_fast_period: [2, 3]
+      strategy.trend_following.ema_slow_period: [4, 6]

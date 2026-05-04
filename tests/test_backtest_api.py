@@ -5,8 +5,7 @@ from __future__ import annotations
 import importlib
 import os
 from pathlib import Path
-from threading import Thread
-from typing import Any, Mapping
+from typing import Any
 
 import pytest
 import yaml

@@ -32,6 +32,7 @@ def test_duckdb_event_store_initializes_schema(tmp_path: Path) -> None:
 
     expected = {
         "runs",
+        "trading_sessions",
         "run_events",
         "stock_bar_events",
         "crypto_bar_events",
@@ -40,9 +41,70 @@ def test_duckdb_event_store_initializes_schema(tmp_path: Path) -> None:
         "order_events",
         "fill_events",
         "position_snapshots",
+        "metrics_snapshots",
         "config_kv",
+        "experiments",
+        "experiment_runs",
     }
     assert expected.issubset(tables)
+
+    fill_columns = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info('fill_events')").fetchall()
+    }
+    assert {"raw_fill_price", "slippage_amount", "fee_amount"}.issubset(fill_columns)
+
+
+def test_duckdb_experiment_run_lifecycle(tmp_path: Path) -> None:
+    db_path = tmp_path / "events.duckdb"
+    store = DuckDBEventStore(str(db_path))
+    now = datetime.now(timezone.utc)
+
+    store.upsert_experiment(
+        experiment_id="exp_demo",
+        name="demo",
+        description="Demo experiment",
+        tags=("sample",),
+        created_at=now,
+        updated_at=now,
+        metadata={"owner": "test"},
+    )
+    store.record_experiment_run_start(
+        experiment_run_id="exp_run_1",
+        experiment_id="exp_demo",
+        run_id="run_1",
+        created_at=now,
+        strategy_id="trend_following",
+        strategy_name="Trend",
+        strategy_version="1",
+        symbols=("DEMO",),
+        asset_class="stocks",
+        timeframe="1Min",
+        start_ts=now,
+        end_ts=now,
+        parameters={"fast": 2},
+        assumptions={"slippage_bps": 10},
+        provenance={"config_hash": "abc"},
+        data_quality={"report_id": "dq_1"},
+        artifact_dir="artifacts/demo/run_1",
+    )
+    store.record_experiment_run_finish(
+        experiment_run_id="exp_run_1",
+        experiment_id="exp_demo",
+        run_id="run_1",
+        status="success",
+        finished_at=now,
+        result_summary={"total_return": 0.1},
+        provenance={"config_hash": "abc"},
+        data_quality={"report_id": "dq_1"},
+        artifact_dir="artifacts/demo/run_1",
+    )
+
+    rows = store.list_experiment_runs("exp_demo")
+    assert len(rows) == 1
+    assert rows[0]["status"] == "success"
+    assert rows[0]["parameters"] == {"fast": 2}
+    assert rows[0]["result_summary"] == {"total_return": 0.1}
 
 
 def test_duplicate_client_order_id_allowed(tmp_path: Path) -> None:

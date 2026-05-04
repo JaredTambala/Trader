@@ -79,6 +79,7 @@ trader_service:
   notify_channel: market_data
   max_iterations: null
   portfolio_source: alpaca
+  order_reconciliation_interval_seconds: 60
   initial_cash: 100000
   initial_positions:
     - symbol: BTC/USD

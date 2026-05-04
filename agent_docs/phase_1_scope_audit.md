@@ -73,7 +73,6 @@ Each category below records:
 
 - Intended Phase 1 status: retained
 - Code evidence:
-  - `src/trader/loader.py`
   - `src/trader/strategy.py`
   - `src/trader/strategies/`
   - `external_strategy_demo.py`
@@ -85,7 +84,7 @@ Each category below records:
   - `README.md`
   - `agent_docs/stage_0_task_tracker.md`
 - Conclusion:
-  - Strategy externalization is implemented and belongs in Phase 1.
+  - Strategy externalization is implemented through direct imports and object injection and belongs in Phase 1.
 - Action required:
   - continue documenting strategy authoring around direct imports and object injection
 

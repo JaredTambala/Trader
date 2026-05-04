@@ -10,7 +10,7 @@ For architecture-level review, this operational reference is complemented by:
 
 ## Architecture (Two Processes)
 
-Stage 0 runs as two long-lived processes:
+Phase 1 runs as two long-lived processes:
 
 1) **Market data streamer** (`uv run python run_market_data_stream.py configs/example.yaml`)
    - Connects to Alpaca websocket feeds.
@@ -44,16 +44,21 @@ A single cycle performs:
 
 1) Ensure a `runs` session exists (`status=started`).
 2) Record `run_events` cycle start (`status=started`).
-3) Ingest market data (polling or streaming-lite) and persist bar events.
+3) Check the global halt state for live runs.
+   - If halted, record `run_events.status='halted'` with `error_message='global_halt'` and submit no orders.
+4) Load portfolio state.
+   - `portfolio_source: alpaca` refreshes cash/positions from Alpaca.
+   - `portfolio_source: db` uses local `position_snapshots`.
+5) Ingest market data (polling or streaming-lite) and persist bar events.
    - If ingestion yields no new events, the cycle loads the latest bars from the event store.
    - For streamer/backfill workflows, set `market_data.source: noop` and rely on the event store lookup.
-4) Skip trading if market data is missing or stale.
-5) Generate signals (Strategy).
-6) Validate signals (RiskManager).
-7) Submit orders (Broker).
-8) Persist a portfolio snapshot (based on executed order intents).
-9) Record `run_events` cycle finish (`status=success|failed`).
-10) If this is a one-off run, record `runs` finish (`status=success|failed`).
+6) Skip trading if market data is missing or stale.
+7) Generate signals (Strategy).
+8) Validate signals (RiskManager).
+9) Submit orders (Broker).
+10) Persist a portfolio snapshot or refresh broker-backed portfolio state after confirmed fills.
+11) Record `run_events` cycle finish (`status=success|failed|halted`).
+12) If this is a one-off run, record `runs` finish (`status=success|failed|halted`).
 
 ## Backtest Execution Loop
 
@@ -67,8 +72,10 @@ store. It does **not** ingest or mutate bar data during the run.
    - Run `run_cycle` **per symbol that has a bar at that timestamp** with `decision_ts=ts`,
      `ingest_market_data=false`, an in-memory portfolio, and the injected strategy/risk manager.
    - Fetch the bar for that symbol/timestamp from memory (not from Alpaca or Postgres).
-   - Generate signals for that symbol and apply order intents in memory.
-   - Persist trading events (`run_events`, `signal_events`, `order_events`, `position_snapshots`).
+   - Generate signals for that symbol and execute approved orders through a deterministic internal broker.
+   - Apply adjusted fill prices, slippage, and fees to the shared in-memory portfolio.
+   - Persist trading events (`run_events`, `signal_events`, `order_events`, `fill_events`,
+     `position_snapshots`).
 
 Errors during a cycle are captured in `run_events.error_message` and the cycle is marked `failed`.
 
@@ -77,6 +84,7 @@ Errors during a cycle are captured in `run_events.error_message` and the cycle i
 - **Data source**: backtest uses historical bars from Postgres loaded into memory; live cycles use Alpaca (or streamer/backfill) as the source of truth.
 - **Bar writes**: backtest does not write bar events; live cycles persist bar events as they arrive.
 - **Portfolio state**: backtest keeps portfolio state in memory during the run; live Alpaca cycles refresh portfolio state from the broker and persist snapshots for auditability.
+- **Execution costs**: backtest can apply deterministic fee/slippage assumptions; live execution records broker-observed fills.
 - **Time semantics**: backtest uses deterministic `decision_ts`; live cycles use wall-clock time for freshness checks.
 - **External side effects**: backtest does not talk to brokers; live cycles submit orders to the broker.
 
@@ -91,7 +99,7 @@ These IDs ensure retries do not create duplicate orders. The canonical formats a
 
 ## Order Lifecycle (Implemented)
 
-The canonical order state machine for Stage 0:
+The canonical order state machine for Phase 1:
 
 - `created` → `validated` → `submitted` → `accepted` → `partially_filled` → `filled`
 - Terminal states: `rejected`, `canceled`, `expired`, `error`
@@ -138,16 +146,37 @@ The runtime behavior is:
 `run_order_recovery.py clean-start` is a separate operator tool that closes local open orders in the
 configured universe. It does not cancel broker orders.
 
+`TraderService` can also run periodic reconciliation in loop/realtime modes when
+`trader_service.order_reconciliation_interval_seconds` is positive. The default for Alpaca paper trading is 60
+seconds. Periodic reconciliation calls the broker capability when available and appends `order_events` / `fill_events`;
+it never updates or deletes old lifecycle rows.
+
+The unified operator entrypoint is:
+
+```bash
+uv run python run_operator.py configs/example.yaml status --json
+uv run python run_operator.py configs/example.yaml health --json
+uv run python run_operator.py configs/example.yaml halt set --reason "manual safety stop"
+uv run python run_operator.py configs/example.yaml halt clear
+uv run python run_operator.py configs/example.yaml reconcile --json
+```
+
+Read-only operator commands use the event store only. `reconcile` is the only operator command here that constructs a
+broker.
+
 ## Live Portfolio Semantics
 
 For Alpaca-backed live trading:
 
-- Alpaca is the source of truth for portfolio state.
+- `trader_service.portfolio_source: alpaca` makes Alpaca the source of current portfolio truth.
 - Startup sync resets local `position_snapshots` from Alpaca before mismatch validation.
+- Per-cycle Alpaca portfolio refresh happens only when `portfolio_source=alpaca`.
+- `portfolio_source: db` keeps cycle reads event-store-first and avoids broker account/position reads.
 - If the broker account contains positions outside the configured symbols or asset class, the runtime
   fails closed.
-- When fills occur, the runtime refreshes portfolio state from the broker rather than applying local
+- When confirmed Alpaca fills occur, the runtime refreshes portfolio state from the broker rather than applying local
   intent-based portfolio mutations.
+- The metrics worker defaults to event-store snapshots and does not duplicate broker account reads.
 
 Equivalent Alpaca forms such as `BTCUSD` and enum-style asset classes like `assetclass.crypto` are
 normalized into the canonical runtime model before validation.
@@ -236,11 +265,13 @@ and realtime modalities.
 ### Order filling
 
 **Primary classes**
-- `InternalPaperBroker`: paper fills with optional tunables (latency, rejection rate, fill fraction).
+- `InternalPaperBroker`: paper fills with optional tunables plus deterministic fee/slippage fields for backtests.
 - `NoOpBroker`: dry‑run mode, no fills.
 
 **Flow**
 - Fills are recorded as `fill_events`; order lifecycle is append‑only in `order_events`.
+- In backtests, `raw_fill_price` is the unadjusted reference price and `fill_price` is the effective accounting price
+  after deterministic slippage. `fee_amount` and `slippage_amount` expose modeled execution costs.
 
 ---
 
@@ -254,7 +285,8 @@ and realtime modalities.
 3) For each timestamp and symbol with a bar:
    - Call `run_cycle` with `ingest_market_data=false` and the injected runtime objects.
    - Signals and orders are generated against in‑memory bars.
-4) Persist run/cycle events and optional trading events.
+   - Fills are normalized through the internal broker before portfolio accounting.
+4) Persist run/cycle events, fills, positions, and optional signal/indicator trading events.
 
 **State**
 - Portfolio is in‑memory for the run.
@@ -317,17 +349,17 @@ values per symbol. It does not decide trades; it only computes signal values.
 
 ## Remaining Gaps
 
-1) **Health/status runtime surface**  
+1) **Health/status runtime surface**
    The health/status API remains incomplete and still needs runtime-backed endpoints.
 
-2) **Backtest execution realism**  
+2) **Backtest execution realism**
    Internal broker realism is present, but richer statistical fill modeling is tracked separately.
 
-3) **Fill-driven accounting depth**  
+3) **Fill-driven accounting depth**
    Fill-driven synchronization is implemented for Alpaca runtime flows, but portfolio/performance
    accounting can still be tightened further across all execution modes.
 
-4) **Interface/deployment work**  
+4) **Interface/deployment work**
    UI, Superset, package split, and deployment productization are intentionally out of Phase 1.
 
 ## Follow-Up Focus

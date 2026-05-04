@@ -10,6 +10,7 @@ from typing import Mapping, Sequence
 from trader.data import EventStore
 from trader.portfolio import Portfolio
 from trader.strategies import Strategy
+from trader.strategy_metadata import StrategyInfo
 
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,24 @@ class RandomStrategy(Strategy):
     def strategy_id(self) -> str:
         """Return the strategy identifier."""
         return "random"
+
+    @property
+    def strategy_info(self) -> StrategyInfo:
+        """Return structured strategy metadata."""
+        return StrategyInfo(
+            strategy_id="random",
+            name="random",
+            version="1",
+            description="Randomized connectivity strategy.",
+            parameters={
+                "symbols": list(self._symbols),
+                "order_qty": self._order_qty,
+                "buy_probability": self._buy_probability,
+                "sell_probability": self._sell_probability,
+            },
+            author="trader_standard",
+            source=f"{self.__class__.__module__}.{self.__class__.__qualname__}",
+        )
 
     def generate_orders(
         self,

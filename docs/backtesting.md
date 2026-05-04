@@ -32,10 +32,24 @@ backtest:
     - symbol: BTC/USD
       qty: 0.5
       avg_price: 40000
+  assumptions:
+    fill_model: full_fill
+    latency_ms: 0
+    fees:
+      fixed_per_order: 0.10
+      bps: 0
+      minimum_fee: 0.10
+    slippage:
+      bps: 10
+    data:
+      allow_latest_prior_bar: true
+      allow_price_carry_forward: true
 ```
 Timeframes are normalized, so `1h`, `1Hour`, and `1H` are treated the same.
 If `avg_price` is omitted, the backtest uses the first bar close in the window for that symbol.
 `initial_cash` seeds the portfolio cash balance for the backtest.
+If `backtest.assumptions` is omitted, the defaults preserve the earlier behavior: full fills, zero fees, zero
+slippage, no effective latency, latest-prior-bar fallback allowed, and last-known-price carry-forward enabled.
 
 ## Execution flow
 
@@ -47,9 +61,10 @@ If `avg_price` is omitted, the backtest uses the first bar close in the window f
    - Run a cycle **per symbol that has a bar at that timestamp**.
    - Each cycle uses `decision_ts=ts` and `ingest_market_data=false`.
    - Fetch the bar for that symbol/timestamp from the in-memory bar set.
-   - Generate signals for that symbol and apply order intents to the shared portfolio (positions + cash).
+   - Generate signals for that symbol and execute them through a deterministic internal paper broker.
+   - Apply adjusted fill prices, slippage, and fees to the shared in-memory portfolio.
    - Persist `runs` (session), `run_events` (cycles), `signal_events`, `order_events`,
-     and `position_snapshots`.
+     `fill_events`, and `position_snapshots`.
 6) Compute a summary from the in-memory portfolio and the latest bar prices.
 
 ## Output summary fields
@@ -65,6 +80,11 @@ The backtest returns and logs a summary with portfolio context:
 - `gross_qty`: Sum of absolute position quantities.
 - `net_notional`: Sum of `qty * last_price` (or `avg_price` if no last price).
 - `gross_notional`: Sum of `abs(qty * last_price)` (or `avg_price` fallback).
+- `assumptions`: The explicit fill, fee, slippage, latency, and data assumptions used.
+- `warnings`: Non-fatal data/execution warnings gathered during the run.
+- `trades`: Per-fill trade records with effective fill price, raw fill price, fees, slippage, and realized PnL.
+- `realized_pnl`: Net realized PnL from closed trades.
+- `total_fees` / `total_slippage`: Aggregate execution-cost totals across the run.
 
 Per-position details:
 
@@ -140,8 +160,8 @@ Annualization uses a calendar year (365 days) and the configured `timeframe`.
 ## Important limitations
 
 - Backtests use the internal broker, not live venue execution.
-- No slippage or fees are modeled.
-- Fill behavior is intentionally simple and deterministic unless you explicitly configure internal-broker randomness.
+- The benchmark remains frictionless even when strategy fills include fees or slippage.
+- Fill behavior is deterministic and audit-friendly; stochastic slippage remains out of scope.
 - Results depend on the stored bars and timeframe; mismatched timeframes yield sparse signals.
 - Bar data is read-only during a backtest; only trading events are persisted.
 
@@ -151,6 +171,38 @@ Annualization uses a calendar year (365 days) and the configured `timeframe`.
 uv run python examples/run_injected_backtest.py
 uv run python examples/run_library_backtest.py
 ```
+
+To exercise the checked-in deterministic sample workflow:
+
+```bash
+docker compose -f docker-compose.postgres.yml up -d
+uv run python examples/load_sample_market_data.py
+uv run python examples/run_reproducible_backtest.py
+```
+
+The reproducible runner exports:
+
+- `artifacts/reproducible_backtest/result.json`
+- `artifacts/reproducible_backtest/equity_curve.csv`
+- `artifacts/reproducible_backtest/trades.csv`
+
+## Running a research experiment
+
+Research experiments use the same backtest engine, but add experiment grouping, provenance, parameter sweeps, and a
+comparison surface:
+
+```bash
+uv run python run_research_experiment.py configs/reproducible_backtest.yaml --experiment demo_research --run-data-quality
+uv run python run_compare_results.py configs/reproducible_backtest.yaml --experiment demo_research --format table
+uv run python run_compare_results.py configs/reproducible_backtest.yaml --experiment demo_research --format json
+```
+
+When `research.sweep.parameters` is present, parameter paths are expanded in sorted path order and YAML list values are
+kept in declared order. Each member is run sequentially and recorded in `experiment_runs`. Failed members keep their
+error row, while successful members write artifacts under `artifacts/research/<experiment_slug>/<run_id>/`.
+
+Research result records include `run_id`, `experiment_id`, `experiment_run_id`, provenance, assumptions, strategy
+metadata, data-quality summary when available, and the local artifact path.
 
 To see per-cycle logs, set:
 
@@ -166,4 +218,6 @@ Timeframes are normalized, so `1h`, `1Hour`, and `1H` are treated the same.
 - Use an injected wrapper such as `examples/run_injected_backtest.py`.
 - Use `examples/run_library_backtest.py` if you want the maintained `trader_standard` trend-following,
   mean-reversion, or Bollinger Band compositions.
-- UI/API-triggered backtests are deferred beyond Phase 1 and are not part of the primary backtesting workflow.
+- API/UI-triggered backtests exist as a compatibility path and use the shared serializer, but the primary research
+  workflow is either injected Python wrappers or the `trader_standard` research CLI. The API request shape does not
+  expose the full backtest assumptions surface yet, so API-triggered backtests use default assumptions.

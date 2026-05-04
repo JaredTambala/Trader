@@ -1,5 +1,10 @@
 # Task 0.8e — Strategy Externalization (User-Provided Code)
 
+Historical note:
+The current Phase 1 architecture externalizes strategies through normal Python imports and direct object
+injection from user-owned wrapper scripts. The dynamic-loader approach below is preserved as planning history,
+not active runtime direction.
+
 ## Goal
 Allow users to build strategies and risk managers in **their own codebases** while importing the official interfaces from this repo (`trader`). The system should load these implementations dynamically at runtime and run them without code changes to this repo.
 
@@ -22,7 +27,8 @@ Allow users to build strategies and risk managers in **their own codebases** whi
 ## Phase 2 — Dynamic loader
 
 3) **Add a loader utility**
-- `trader/loader.py`:
+- Historical exploration only; not part of the current injection-first runtime model.
+  A loader utility would have looked like:
   - `load_class("module:Class")`
   - Validate interface compliance (method presence / subclass check)
   - Raise helpful errors with import path + missing method detail

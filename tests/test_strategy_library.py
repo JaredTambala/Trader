@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import json
 from pathlib import Path
 
 import pytest
@@ -21,7 +22,6 @@ from trader_standard.signals import (
     EmaCrossoverSignal,
     MacdCrossoverSignal,
     RsiThresholdSignal,
-    SmaStretchSignal,
 )
 from trader_standard.strategies import (
     FixedStopLossPolicy,
@@ -117,17 +117,29 @@ def _config(tmp_path: Path) -> Config:
 
 
 def test_indicator_helpers_compute_expected_values() -> None:
-    ema_series = EmaIndicator(period=3).compute_series(_bars_from_closes([1, 2, 3, 4, 5, 6]))
+    bars = _bars_from_closes([1, 2, 3, 4, 5, 6])
+    ema = EmaIndicator(period=3)
+    ema_series = ema.compute_series(bars)
     assert list(ema_series) == pytest.approx([5.0, 4.0, 3.0, 2.0])
+    ema_observation = ema.compute(bars)
+    assert ema_observation is not None
+    assert ema_observation.indicator_name == "ema"
+    assert ema_observation.scalar_value == pytest.approx(5.0)
+    assert ema_observation.to_payload()["metadata"] == {"bars_used": 3, "window": 3}
 
     rsi_series = RsiIndicator(period=5).compute_series(_bars_from_closes([1, 2, 3, 4, 5, 6]))
     assert rsi_series[0] == pytest.approx(100.0)
 
-    macd_series = MacdIndicator(fast_period=3, slow_period=6, signal_period=3).compute_series(
-        _bars_from_closes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
-    )
+    macd = MacdIndicator(fast_period=3, slow_period=6, signal_period=3)
+    macd_bars = _bars_from_closes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    macd_series = macd.compute_series(macd_bars)
     assert macd_series[0].macd_line > 0.0
     assert macd_series[0].signal_line > 0.0
+    macd_observation = macd.compute(macd_bars)
+    assert macd_observation is not None
+    assert macd_observation.indicator_name == "macd"
+    assert macd_observation.scalar_value is None
+    assert macd_observation.to_payload()["value"]["histogram"] == pytest.approx(macd_series[0].histogram)
 
     bands = BollingerBandsIndicator(period=5, stddev_multiplier=2.0).compute_series(
         _bars_from_closes([10, 10, 10, 10, 10, 8])
@@ -357,6 +369,17 @@ def test_run_cycle_persists_signal_and_indicator_events_for_library_strategy(tmp
     conn = store.connection()
     assert conn.execute("SELECT COUNT(*) FROM signal_events").fetchone()[0] > 0
     assert conn.execute("SELECT COUNT(*) FROM indicator_events").fetchone()[0] > 0
+    rows = conn.execute(
+        """
+        SELECT indicator_name, value, payload
+        FROM indicator_events
+        ORDER BY indicator_name
+        """
+    ).fetchall()
+    assert any(row[0].startswith("ema_fast_") and row[2] for row in rows)
+    macd_payloads = [json.loads(row[2]) for row in rows if row[0].startswith("macd_")]
+    assert macd_payloads
+    assert {"macd_line", "signal_line", "histogram"} <= set(macd_payloads[0]["metadata"])
 
 
 def test_backtest_runner_supports_policy_driven_strategy(tmp_path: Path) -> None:

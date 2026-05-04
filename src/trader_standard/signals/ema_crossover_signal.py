@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Sequence
 
+from trader.indicators import IndicatorObservation
 from trader.signals import Bar, Signal
 
 from trader_standard.indicators import EmaIndicator
@@ -41,13 +41,23 @@ class EmaCrossoverSignal(Signal):
             return -1.0
         return 0.0
 
-    def indicator_values(self, bars: Sequence[Bar]) -> Sequence[tuple[str, float, datetime]]:
+    def indicator_values(self, bars: Sequence[Bar]) -> Sequence[IndicatorObservation]:
         fast_series = self.fast.compute_series(bars)
         slow_series = self.slow.compute_series(bars)
         if not fast_series or not slow_series:
             raise ValueError("Insufficient bars for EMA indicator values")
         bar_ts = bars[0].ts
         return (
-            (f"ema_fast_{self.fast.period}", float(fast_series[0]), bar_ts),
-            (f"ema_slow_{self.slow.period}", float(slow_series[0]), bar_ts),
+            IndicatorObservation(
+                indicator_name=f"ema_fast_{self.fast.period}",
+                ts=bar_ts,
+                value=float(fast_series[0]),
+                payload={"base_indicator": "ema", "period": self.fast.period, "role": "fast"},
+            ),
+            IndicatorObservation(
+                indicator_name=f"ema_slow_{self.slow.period}",
+                ts=bar_ts,
+                value=float(slow_series[0]),
+                payload={"base_indicator": "ema", "period": self.slow.period, "role": "slow"},
+            ),
         )

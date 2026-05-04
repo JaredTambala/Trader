@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Mapping
+from collections.abc import Mapping
 
 from dotenv import load_dotenv
 
@@ -19,6 +18,8 @@ from trader_standard.risk import (
     OpenBuyOrderLimitRiskManager,
 )
 from trader_standard.strategies import ToggleUnitStrategy
+
+from backtest_support import assumptions_from_backtest_config, parse_datetime
 
 
 def _build_risk_manager(risk_cfg: Mapping[str, object] | None = None) -> RiskManager:
@@ -45,13 +46,6 @@ def _build_risk_manager(risk_cfg: Mapping[str, object] | None = None) -> RiskMan
     return RiskPipeline(managers)
 
 
-def _parse_datetime(value: str) -> datetime:
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
-
-
 def main() -> None:
     load_dotenv(".env")
     config_data = load_yaml_config("configs/example.yaml")
@@ -66,8 +60,8 @@ def main() -> None:
         raise ValueError("backtest section must be a mapping")
 
     spec = BacktestSpec(
-        start=_parse_datetime(str(backtest_cfg["start"])),
-        end=_parse_datetime(str(backtest_cfg["end"])),
+        start=parse_datetime(str(backtest_cfg["start"])),
+        end=parse_datetime(str(backtest_cfg["end"])),
         timeframe=str(backtest_cfg.get("timeframe", config.strategy_timeframe)),
         max_runs=int(backtest_cfg["max_runs"]) if backtest_cfg.get("max_runs") is not None else None,
     )
@@ -85,6 +79,7 @@ def main() -> None:
         strategy=strategy,
         risk_manager=risk_manager,
         config_snapshot=config_data,
+        assumptions=assumptions_from_backtest_config(backtest_cfg),
     )
     runner.run(log_cycle_details=bool(backtest_cfg.get("log_cycle_details", False)))
 

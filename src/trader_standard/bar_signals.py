@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
-from typing import Mapping, Sequence
+from typing import Sequence
 
 from trader.data import EventStore
+from trader.indicators import IndicatorObservation
 from trader.signals import Bar, Signal
 
 
@@ -120,7 +122,8 @@ def record_indicator_events(
             exc,
         )
         return
-    for indicator_name, value, bar_ts in indicators:
+    for indicator in indicators:
+        indicator_name, value, bar_ts, payload = _normalize_indicator_audit_value(indicator)
         event_store.record_event(
             "indicator_events",
             {
@@ -129,10 +132,21 @@ def record_indicator_events(
                 "cycle_id": cycle_id,
                 "symbol": symbol,
                 "indicator_name": indicator_name,
-                "value": float(value),
+                "value": value,
                 "bar_ts": bar_ts,
+                "payload": payload,
             },
         )
+
+
+def _normalize_indicator_audit_value(
+    value: IndicatorObservation | tuple[str, float, datetime],
+) -> tuple[str, float | None, datetime, str | None]:
+    if isinstance(value, IndicatorObservation):
+        payload = json.dumps(value.to_payload(), sort_keys=True)
+        return value.indicator_name, value.scalar_value, value.ts, payload
+    indicator_name, scalar_value, bar_ts = value
+    return indicator_name, float(scalar_value), bar_ts, None
 
 
 def _row_to_bar(row: Sequence[object]) -> Bar:

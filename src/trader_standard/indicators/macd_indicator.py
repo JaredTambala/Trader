@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Sequence
 
+from trader.indicators import Indicator
 from trader.signals import Bar
 
 from .ema_indicator import EmaIndicator
@@ -21,12 +22,16 @@ class MacdValue:
 
 
 @dataclass(frozen=True)
-class MacdIndicator:
+class MacdIndicator(Indicator):
     """Compute MACD component series from OHLCV bars."""
 
     fast_period: int = 12
     slow_period: int = 26
     signal_period: int = 9
+
+    @property
+    def name(self) -> str:
+        return "macd"
 
     @property
     def window(self) -> int:

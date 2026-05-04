@@ -147,34 +147,8 @@ def run_cycle(
     event_store = _apply_event_filters(event_store, config)
     event_store.flush()
 
-    broker_kind = config.broker_type.lower()
-
-    # Refresh portfolio from broker each cycle for Alpaca to avoid stale DB state.
-    if broker_kind == "alpaca":
-        portfolio = _load_portfolio_from_broker(
-            broker=broker,
-            event_store=event_store,
-            run_id=run_id or "",
-            cycle_id=None,
-            decision_ts=decision_ts,
-            config=config,
-        )
-        logger.info(
-            "Portfolio loaded from Alpaca positions=%s cash=%s",
-            len(portfolio.positions),
-            portfolio.cash_balance,
-        )
-    elif portfolio is None:
-        portfolio_asof = decision_ts if config.mode.lower() == "backtest" else None
-        portfolio = Portfolio.from_event_store(event_store, asof_ts=portfolio_asof)
-        logger.info("Portfolio loaded positions=%s", len(portfolio.positions))
-    else:
-        logger.info("Portfolio override positions=%s", len(portfolio.positions))
-
-    if market_data_source is None:
-        market_data_source = _build_market_data_source(config)
-
     run_type = (run_type or ("backtest" if config.mode.lower() == "backtest" else "trading")).lower()
+    broker_kind = config.broker_type.lower()
     cycle_id = deterministic_cycle_id(strategy_id, decision_ts)
     started_at = datetime.now(timezone.utc)
     owns_run_session = False
@@ -203,12 +177,60 @@ def run_cycle(
             decision_ts=decision_ts,
             started_at=started_at,
         )
+        if run_type != "backtest" and _load_halt_flag(event_store):
+            finished_at = datetime.now(timezone.utc)
+            logger.warning("Cycle halted by global halt run_id=%s cycle_id=%s", run_id, cycle_id)
+            event_store.record_cycle_finish(
+                run_id=run_id,
+                cycle_id=cycle_id,
+                strategy_id=strategy_id,
+                mode=config.mode,
+                decision_ts=decision_ts,
+                started_at=started_at,
+                finished_at=finished_at,
+                status="halted",
+                error_message="global_halt",
+            )
+            run_session_status = "halted"
+            run_session_error = "global_halt"
+            return CycleResult(run_id=run_id, cycle_id=cycle_id, status="halted")
+
+        portfolio_source = getattr(
+            config,
+            "trader_service_portfolio_source",
+            "alpaca" if broker_kind == "alpaca" else "db",
+        )
+        # Refresh from Alpaca only when the live service explicitly owns broker-backed portfolio state.
+        if run_type != "backtest" and broker_kind == "alpaca" and portfolio_source == "alpaca":
+            portfolio = _load_portfolio_from_broker(
+                broker=broker,
+                event_store=event_store,
+                run_id=run_id,
+                cycle_id=cycle_id,
+                decision_ts=decision_ts,
+                config=config,
+            )
+            logger.info(
+                "Broker refresh reason=cycle_portfolio_source_alpaca positions=%s cash=%s",
+                len(portfolio.positions),
+                portfolio.cash_balance,
+            )
+        elif portfolio is None:
+            portfolio_asof = decision_ts if config.mode.lower() == "backtest" else None
+            portfolio = Portfolio.from_event_store(event_store, asof_ts=portfolio_asof)
+            logger.info("Portfolio loaded positions=%s", len(portfolio.positions))
+        else:
+            logger.info("Portfolio override positions=%s", len(portfolio.positions))
+
+        if market_data_source is None:
+            market_data_source = _build_market_data_source(config)
+
         stream_mode = config.mode.lower() != "backtest"
-        broker_kind = config.broker_type.lower()
         sync_portfolio_on_fill = broker_kind in {"alpaca", "internal"}
         processed_orders: Sequence[Mapping[str, object]] = []
         market_data_events: Sequence[MarketDataEvent] = []
         price_lookup: Mapping[str, float] = {}
+        cycle_finished = False
         if ingest_market_data and stream_mode:
             event_counter = {"count": 0}
             processed_orders, price_lookup = asyncio.run(
@@ -356,6 +378,20 @@ def run_cycle(
                 status="success",
                 error_message=None,
             )
+            cycle_finished = True
+        if not cycle_finished:
+            finished_at = datetime.now(timezone.utc)
+            event_store.record_cycle_finish(
+                run_id=run_id,
+                cycle_id=cycle_id,
+                strategy_id=strategy_id,
+                mode=config.mode,
+                decision_ts=decision_ts,
+                started_at=started_at,
+                finished_at=finished_at,
+                status="success",
+                error_message=None,
+            )
     except Exception as exc:
         finished_at = datetime.now(timezone.utc)
         event_store.record_cycle_finish(
@@ -481,12 +517,12 @@ def _attach_order_metadata(
     *,
     run_id: str,
     cycle_id: str,
+    created_at: datetime,
     price_lookup: Mapping[str, float],
     asset_class: str,
     time_in_force: str,
 ) -> Sequence[Mapping[str, object]]:
     """Attach run metadata to order payloads."""
-    timestamp = datetime.now(timezone.utc)
     enriched: list[Mapping[str, object]] = []
     for order in orders:
         symbol = str(order.get("symbol", "")).strip().upper()
@@ -508,7 +544,7 @@ def _attach_order_metadata(
                 "cycle_id": cycle_id,
                 "client_order_id": client_order_id,
                 "price": price,
-                "created_at": order.get("created_at") or timestamp,
+                "created_at": order.get("created_at") or created_at,
                 "asset_class": asset_class,
                 "time_in_force": order.get("time_in_force", time_in_force),
             }
@@ -525,8 +561,22 @@ def _record_order_events(
     event_ts: datetime | None = None,
 ) -> None:
     """Persist order lifecycle events for candidate orders."""
-    timestamp = event_ts or datetime.now(timezone.utc)
+    status_offsets = {
+        "created": 0,
+        "validated": 1,
+        "submitted": 2,
+        "rejected": 2,
+    }
     for order in orders:
+        if event_ts is not None:
+            timestamp = event_ts
+        else:
+            base_ts = order.get("created_at")
+            if isinstance(base_ts, datetime):
+                offset = status_offsets.get(status, 0)
+                timestamp = base_ts + timedelta(microseconds=offset)
+            else:
+                timestamp = datetime.now(timezone.utc)
         session_id = order.get("session_id") or order.get("run_id")
         event_store.record_event(
             "order_events",
@@ -567,12 +617,17 @@ def _record_broker_responses(
         broker_order_id = response.get("broker_order_id")
         rejection_reason = response.get("rejection_reason")
         order_payload = order if rejection_reason is None else {**order, "rejection_reason": rejection_reason}
+        resolved_fill_ts = _resolve_terminal_event_ts(
+            event_store,
+            client_order_id=str(client_order_id) if client_order_id is not None else None,
+            proposed_ts=response.get("fill_ts"),
+        )
         _record_order_events(
             event_store,
             [order_payload],
             status=status,
             broker_order_id=broker_order_id,
-            event_ts=response.get("fill_ts") or datetime.now(timezone.utc),
+            event_ts=resolved_fill_ts,
         )
         if status in {"filled", "partially_filled"}:
             fill_qty = response.get("fill_qty", order.get("qty"))
@@ -590,11 +645,83 @@ def _record_broker_responses(
                     "run_id": order.get("run_id"),
                     "session_id": order.get("session_id") or order.get("run_id"),
                     "cycle_id": order.get("cycle_id"),
-                    "fill_ts": response.get("fill_ts") or datetime.now(timezone.utc),
+                    "fill_ts": resolved_fill_ts,
                     "fill_qty": float(fill_qty),
+                    "raw_fill_price": response.get("raw_fill_price"),
                     "fill_price": float(fill_price),
+                    "slippage_amount": response.get("slippage_amount"),
+                    "fee_amount": response.get("fee_amount"),
                 },
             )
+
+
+def _resolve_terminal_event_ts(
+    event_store: EventStore,
+    *,
+    client_order_id: str | None,
+    proposed_ts: object | None,
+) -> datetime:
+    """Ensure terminal broker events sort after prior local lifecycle events."""
+    if isinstance(proposed_ts, datetime):
+        candidate = _normalize_event_ts(proposed_ts)
+    else:
+        candidate = datetime.now(timezone.utc)
+    latest_order_ts = _latest_order_event_ts(event_store, client_order_id)
+    if latest_order_ts is None or candidate > latest_order_ts:
+        return candidate
+    return latest_order_ts + timedelta(microseconds=1)
+
+
+def _latest_order_event_ts(
+    event_store: EventStore,
+    client_order_id: str | None,
+) -> datetime | None:
+    """Return the latest order-event timestamp for a client order id."""
+    if not client_order_id:
+        return None
+    events = getattr(event_store, "events", None)
+    if isinstance(events, dict):
+        latest: datetime | None = None
+        for event in events.get("order_events", []):
+            if event.get("client_order_id") != client_order_id:
+                continue
+            created_at = event.get("created_at")
+            if not isinstance(created_at, datetime):
+                continue
+            created_at = _normalize_event_ts(created_at)
+            latest = created_at if latest is None or created_at > latest else latest
+        return latest
+
+    connection = getattr(event_store, "connection", lambda: None)()
+    if connection is None:
+        return None
+    placeholder = "?" if connection.__class__.__module__.startswith("duckdb") else "%s"
+    query = (
+        "SELECT created_at FROM order_events "
+        f"WHERE client_order_id = {placeholder} "
+        "ORDER BY created_at DESC LIMIT 1"
+    )
+    try:
+        if hasattr(connection, "cursor"):
+            with connection.cursor() as cursor:
+                cursor.execute(query, [client_order_id])
+                row = cursor.fetchone()
+        else:
+            row = connection.execute(query, [client_order_id]).fetchone()
+    except Exception:
+        return None
+    if not row or row[0] is None:
+        return None
+    if isinstance(row[0], datetime):
+        return _normalize_event_ts(row[0])
+    return None
+
+
+def _normalize_event_ts(value: datetime) -> datetime:
+    """Normalize runtime event timestamps to UTC-aware datetimes."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 async def _process_market_stream_async(
@@ -661,6 +788,7 @@ async def _process_market_stream_async(
                     [order],
                     run_id=run_id,
                     cycle_id=cycle_id,
+                    created_at=decision_ts,
                     price_lookup={symbol: float(event.close)},
                     asset_class=asset_class,
                     time_in_force=time_in_force,
@@ -1086,6 +1214,7 @@ def _apply_fill_to_portfolio(
                 "side": side,
                 "qty": qty,
                 "price": fill_price,
+                "fee_amount": response.get("fee_amount"),
             }
         ],
         price_lookup=price_lookup,
@@ -1153,6 +1282,7 @@ def _sync_portfolio_from_broker(
         logger.warning("Portfolio sync skipped; broker lacks account/position access")
         return
 
+    logger.info("Broker refresh reason=post_fill_sync run_id=%s cycle_id=%s", run_id, cycle_id)
     account = get_account()
     cash_raw = account.get("cash", 0.0) if isinstance(account, Mapping) else 0.0
     cash = float(cash_raw) if cash_raw is not None else 0.0
@@ -1176,7 +1306,7 @@ def _sync_portfolio_from_broker(
         session_id=run_id,
     )
     snapshot.persist(event_store)
-    logger.info("Portfolio synced from broker positions=%s cash=%s", len(positions), cash)
+    logger.info("Portfolio synced from broker positions=%s cash=%s reason=post_fill_sync", len(positions), cash)
 
 
 def _validate_broker_positions(positions, config: Config) -> None:

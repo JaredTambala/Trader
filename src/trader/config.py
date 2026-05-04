@@ -91,6 +91,8 @@ class Config:
         random_sell_probability: Probability of emitting a sell order.
         toggle_order_qty: Unit size for toggle strategy orders.
         trader_service_startup_recovery_mode: Startup recovery policy for live trading (resume/fail_closed).
+        trader_service_portfolio_source: Source for live portfolio state (db/alpaca).
+        trader_service_order_reconciliation_interval_seconds: Periodic open-order reconciliation interval; 0 disables.
     """
     mode: str
     strategy_type: str
@@ -142,6 +144,8 @@ class Config:
     metrics_window_seconds: int | None = None
     metrics_enable_snapshots: bool = False
     trader_service_startup_recovery_mode: str = "resume"
+    trader_service_portfolio_source: str = ""
+    trader_service_order_reconciliation_interval_seconds: int = 0
 
 
 def load_yaml_config(path: str | Path) -> dict[str, Any]:
@@ -193,6 +197,9 @@ def build_config(data: Mapping[str, Any]) -> Config:
     window_seconds = None if window_seconds_raw in (None, "") else _as_int(window_seconds_raw, 0)
     strategy_type = str(strategy.get("type", strategy.get("id", "custom")))
     strategy_id = str(strategy.get("id", strategy_type))
+    broker_type = str(broker.get("type", "noop"))
+    default_portfolio_source = "alpaca" if broker_type.lower() == "alpaca" else "db"
+    default_reconciliation_interval = 60 if broker_type.lower() == "alpaca" else 0
 
     return Config(
         mode=str(runtime.get("mode", "once")),
@@ -228,7 +235,7 @@ def build_config(data: Mapping[str, Any]) -> Config:
         log_order_events=_as_bool(persist_cfg.get("orders"), True),
         log_fill_events=_as_bool(persist_cfg.get("fills"), True),
         log_position_snapshots=_as_bool(persist_cfg.get("positions"), True),
-        broker_type=str(broker.get("type", "noop")),
+        broker_type=broker_type,
         internal_broker_reject_probability=_as_float(internal_cfg.get("reject_probability"), 0.0),
         internal_broker_fill_delay_ms_mean=_as_float(internal_cfg.get("fill_delay_ms_mean"), 0.0),
         internal_broker_fill_delay_ms_stddev=_as_float(internal_cfg.get("fill_delay_ms_stddev"), 0.0),
@@ -245,6 +252,13 @@ def build_config(data: Mapping[str, Any]) -> Config:
         metrics_window_seconds=window_seconds,
         metrics_enable_snapshots=_as_bool(metrics_cfg.get("enable_snapshots"), False),
         trader_service_startup_recovery_mode=str(trader_service_cfg.get("startup_recovery_mode", "resume")),
+        trader_service_portfolio_source=str(
+            trader_service_cfg.get("portfolio_source", default_portfolio_source)
+        ).strip().lower(),
+        trader_service_order_reconciliation_interval_seconds=_as_int(
+            trader_service_cfg.get("order_reconciliation_interval_seconds"),
+            default_reconciliation_interval,
+        ),
 )
 
 

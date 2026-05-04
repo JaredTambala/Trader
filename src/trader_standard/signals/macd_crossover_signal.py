@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Sequence
 
+from trader.indicators import IndicatorObservation
 from trader.signals import Bar, Signal
 
 from trader_standard.indicators import MacdIndicator
@@ -40,15 +40,24 @@ class MacdCrossoverSignal(Signal):
             return -1.0
         return 0.0
 
-    def indicator_values(self, bars: Sequence[Bar]) -> Sequence[tuple[str, float, datetime]]:
+    def indicator_values(self, bars: Sequence[Bar]) -> Sequence[IndicatorObservation]:
         series = self.indicator.compute_series(bars)
         if not series:
             raise ValueError("Insufficient bars for MACD indicator values")
         current = series[0]
         suffix = f"{self.indicator.fast_period}_{self.indicator.slow_period}_{self.indicator.signal_period}"
-        bar_ts = bars[0].ts
         return (
-            (f"macd_line_{suffix}", current.macd_line, bar_ts),
-            (f"macd_signal_{suffix}", current.signal_line, bar_ts),
-            (f"macd_histogram_{suffix}", current.histogram, bar_ts),
+            IndicatorObservation(
+                indicator_name=f"macd_{suffix}",
+                ts=bars[0].ts,
+                value=current.histogram,
+                payload={
+                    "fast_period": self.indicator.fast_period,
+                    "slow_period": self.indicator.slow_period,
+                    "signal_period": self.indicator.signal_period,
+                    "macd_line": current.macd_line,
+                    "signal_line": current.signal_line,
+                    "histogram": current.histogram,
+                },
+            ),
         )

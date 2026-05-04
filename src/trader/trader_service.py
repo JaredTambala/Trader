@@ -6,7 +6,6 @@ import json
 import logging
 import signal
 import time
-import threading
 from datetime import datetime, timezone
 from dataclasses import replace
 from typing import Iterable, Mapping
@@ -21,7 +20,6 @@ from .portfolio import Portfolio, Position
 from .broker import AlpacaPaperBroker, Broker, InternalPaperBroker, NoOpBroker
 from .strategies.base import Strategy
 from .risk import RiskManager
-from .portfolio import load_latest_positions, load_latest_cash
 from .metrics import MetricsWorker
 from .order_recovery import run_startup_recovery
 from .strategy_metadata import resolve_strategy_id
@@ -67,6 +65,7 @@ class TraderService:
         self._broker = _build_runtime_broker(self._config, self._event_store)
         self._stop = False
         self._metrics_worker: MetricsWorker | None = None
+        self._last_order_reconciliation_at = 0.0
 
     def run(self) -> None:
         """Run the trading service based on the configured mode."""
@@ -122,6 +121,7 @@ class TraderService:
                 recovery.broker_open_in_scope,
                 recovery.broker_open_out_of_scope,
             )
+            self._last_order_reconciliation_at = time.monotonic()
             _maybe_sync_portfolio_from_alpaca(
                 self._event_store,
                 self._config,
@@ -200,6 +200,7 @@ class TraderService:
                 risk_manager=risk_manager,
                 broker=self._broker,
             )
+            self._maybe_reconcile_orders(run_id=run_id)
             iterations += 1
             if self._max_iterations is not None and iterations >= self._max_iterations:
                 logger.info("Trader service reached max iterations=%s", self._max_iterations)
@@ -260,6 +261,7 @@ class TraderService:
                                 risk_manager=risk_manager,
                                 broker=self._broker,
                             )
+                            self._maybe_reconcile_orders(run_id=run_id)
                             iterations += 1
                             if self._max_iterations is not None and iterations >= self._max_iterations:
                                 logger.info("Trader service reached max iterations=%s", self._max_iterations)
@@ -278,15 +280,41 @@ class TraderService:
                         risk_manager=risk_manager,
                         broker=self._broker,
                     )
+                    self._maybe_reconcile_orders(run_id=run_id)
                     last_run = time.monotonic()
                     pending = False
                     iterations += 1
-                    if self._max_iterations is not None and iterations >= self._max_iterations:
-                        logger.info("Trader service reached max iterations=%s", self._max_iterations)
-                        break
+                if self._max_iterations is not None and iterations >= self._max_iterations:
+                    logger.info("Trader service reached max iterations=%s", self._max_iterations)
+                    break
+                self._maybe_reconcile_orders(run_id=run_id)
         except KeyboardInterrupt:
             logger.info("Realtime loop interrupted; stopping service")
             self.stop()
+
+    def _maybe_reconcile_orders(self, *, run_id: str, force: bool = False) -> None:
+        """Periodically reconcile local open orders with the broker when supported."""
+        interval = getattr(self._config, "trader_service_order_reconciliation_interval_seconds", 0)
+        if interval is None or interval <= 0:
+            return
+        reconciler = getattr(self._broker, "reconcile_orders", None)
+        if not callable(reconciler):
+            return
+        now = time.monotonic()
+        if not force and self._last_order_reconciliation_at and now - self._last_order_reconciliation_at < interval:
+            return
+        logger.info(
+            "Broker refresh reason=periodic_order_reconciliation run_id=%s interval_seconds=%s",
+            run_id,
+            interval,
+        )
+        try:
+            updates = reconciler()
+        except Exception as exc:  # pragma: no cover - broker dependent
+            logger.exception("Periodic order reconciliation failed: %s", exc)
+            return
+        self._last_order_reconciliation_at = now
+        logger.info("Periodic order reconciliation complete updates=%s", len(updates or ()))
 
     def _start_metrics_worker(self, *, run_id: str) -> None:
         """Start background metrics sampling if configured."""
@@ -295,7 +323,7 @@ class TraderService:
         enable_snapshots = getattr(self._config, "metrics_enable_snapshots", False)
         if interval is None or interval <= 0:
             return
-        broker = self._broker if hasattr(self._broker, "get_account") and hasattr(self._broker, "get_positions") else None
+        logger.info("Metrics worker using event-store portfolio snapshots")
         self._metrics_worker = MetricsWorker(
             event_store=self._event_store,
             symbols=tuple(self._config.market_data_symbols or ()),
@@ -304,7 +332,7 @@ class TraderService:
             window_seconds=float(window) if window else None,
             run_id=run_id,
             persist_snapshots=enable_snapshots,
-            broker=broker,
+            broker=None,
         )
         self._metrics_worker.start()
 
@@ -504,6 +532,7 @@ def _maybe_sync_portfolio_from_alpaca(
     try:
         if broker is None:
             broker = _build_runtime_broker(config, event_store)
+        logger.info("Broker refresh reason=startup_portfolio_sync run_id=%s", run_id)
         account = broker.get_account()
         cash_raw = account.get("cash", 0.0)
         cash = float(cash_raw) if cash_raw is not None else 0.0
@@ -592,6 +621,9 @@ def _build_runtime_broker(config: Config, event_store: EventStore) -> Broker:
 
 def _resolve_portfolio_source(config: Config, config_snapshot: Mapping[str, object] | None) -> str:
     """Determine which source to use for realtime portfolio state."""
+    typed_source = getattr(config, "trader_service_portfolio_source", "")
+    if typed_source:
+        return str(typed_source).strip().lower()
     source = None
     if config_snapshot and isinstance(config_snapshot, Mapping):
         service_cfg = config_snapshot.get("trader_service", {})

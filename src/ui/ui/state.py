@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
-from typing import Sequence
+import json
 import os
-import time
+from typing import Sequence
+from zoneinfo import ZoneInfo
 
 import plotly.graph_objects as go
 import psycopg
@@ -674,7 +674,6 @@ class DataViewerState(rx.State):
         rows: list[dict[str, object]],
     ) -> tuple[list[object], list[list[object]]]:
         """Build axis."""
-        row_count = len(rows)
         if self.axis_mode == "session":
             customdata = [[self._format_ts(self._parse_ts(row["ts"])), row["volume"]] for row in rows]
             x_values = [self._format_ts(self._parse_ts(row["ts"])) for row in rows]

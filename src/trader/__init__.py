@@ -21,13 +21,29 @@ from .market_data import (
 )
 from .market_data_stream import MarketDataStreamRunner
 from .market_data_backfill import MarketDataBackfillRunner
-from .backtest import BacktestResult, BacktestRunner, PositionSummary
-from .indicators import Indicator
+from .backtest import (
+    BacktestAssumptions,
+    BacktestResult,
+    BacktestRunner,
+    DataAssumptions,
+    FeeAssumptions,
+    PositionSummary,
+    SlippageAssumptions,
+    TradeRecord,
+    build_backtest_assumptions,
+    export_backtest_equity_curve_csv,
+    export_backtest_result_json,
+    export_backtest_trades_csv,
+    serialize_backtest_result,
+)
+from .indicators import Indicator, IndicatorObservation
 from .portfolio import Portfolio, PortfolioSnapshot, Position
 from .risk import RiskContext, RiskManager, RiskPipeline
+from .sample_data import load_sample_market_data_csv
 from .signal_generators import SignalGenerator
 from .signals import Bar, Signal
 from .strategies import Strategy
+from .strategy_metadata import StrategyInfo, resolve_strategy_info
 from .trader_service import TraderService
 
 __all__ = [
@@ -54,9 +70,20 @@ __all__ = [
     "MarketDataStreamRunner",
     "MarketDataBackfillRunner",
     "BacktestResult",
+    "BacktestAssumptions",
     "PositionSummary",
     "BacktestRunner",
+    "FeeAssumptions",
+    "SlippageAssumptions",
+    "DataAssumptions",
+    "TradeRecord",
+    "build_backtest_assumptions",
+    "serialize_backtest_result",
+    "export_backtest_result_json",
+    "export_backtest_equity_curve_csv",
+    "export_backtest_trades_csv",
     "Indicator",
+    "IndicatorObservation",
     "Portfolio",
     "PortfolioSnapshot",
     "Position",
@@ -70,5 +97,8 @@ __all__ = [
     "RiskManager",
     "RiskPipeline",
     "Strategy",
+    "StrategyInfo",
+    "resolve_strategy_info",
     "TraderService",
+    "load_sample_market_data_csv",
 ]

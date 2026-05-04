@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser
-from dataclasses import asdict
 from datetime import datetime, timezone
 from threading import Thread
-from typing import Any, Callable, Mapping
+from typing import Any, Mapping
 
 import json
 import os
@@ -15,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-from .backtest import BacktestResult, BacktestRunner, BacktestSpec, persist_backtest_result
+from .backtest import BacktestRunner, BacktestSpec, persist_backtest_result, serialize_backtest_result
 from .data import build_event_store
 from .config import build_config, load_yaml_config
 from .identifiers import deterministic_run_session_id
@@ -67,13 +66,6 @@ def _sanitize_serializable(value: Any) -> Any:
         return [_sanitize_serializable(v) for v in value]
     return value
 
-
-def _serialize_backtest_result(result: BacktestResult) -> dict[str, Any]:
-    """Convert `BacktestResult` to JSON-friendly mapping."""
-    raw = asdict(result)
-    return _sanitize_serializable(raw)
-
-
 def _run_backtest_worker(run_id: str, request: BacktestRequest) -> None:
     """Background worker that runs the requested backtest."""
     state = BACKTEST_RUNS.setdefault(run_id, {})
@@ -113,7 +105,7 @@ def _run_backtest_worker(run_id: str, request: BacktestRequest) -> None:
         progress["processed"] = progress.get("total", progress.get("processed", 0))
         state["status"] = "completed"
         state["finished_at"] = datetime.now(timezone.utc)
-        state["result"] = _serialize_backtest_result(result)
+        state["result"] = serialize_backtest_result(result)
     except Exception as exc:  # pragma: no cover - serious failure
         state["status"] = "failed"
         state["finished_at"] = datetime.now(timezone.utc)

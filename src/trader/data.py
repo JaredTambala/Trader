@@ -8,7 +8,6 @@ from dataclasses import dataclass
 import json
 from queue import Queue, Full, Empty
 from threading import Event, Lock, Thread
-import time
 from typing import Any, Iterator, Mapping, Sequence
 
 try:
@@ -173,6 +172,132 @@ class EventStore(ABC):
                     "end_ts": end_ts,
                 },
             )
+
+    def upsert_experiment(
+        self,
+        *,
+        experiment_id: str,
+        name: str,
+        description: str | None = None,
+        tags: Sequence[str] | None = None,
+        created_at: object | None = None,
+        updated_at: object | None = None,
+        metadata: Mapping[str, object] | None = None,
+    ) -> None:
+        """Create or update an experiment grouping."""
+        self.record_event(
+            "experiments",
+            {
+                "experiment_id": experiment_id,
+                "name": name,
+                "description": description,
+                "tags": list(tags or ()),
+                "created_at": created_at,
+                "updated_at": updated_at,
+                "metadata": dict(metadata or {}),
+            },
+        )
+
+    def record_experiment_run_start(
+        self,
+        *,
+        experiment_run_id: str,
+        experiment_id: str,
+        run_id: str,
+        created_at: object,
+        status: str = "started",
+        strategy_id: str | None = None,
+        strategy_name: str | None = None,
+        strategy_version: str | None = None,
+        symbols: Sequence[str] | None = None,
+        asset_class: str | None = None,
+        timeframe: str | None = None,
+        start_ts: object | None = None,
+        end_ts: object | None = None,
+        parameters: Mapping[str, object] | None = None,
+        assumptions: Mapping[str, object] | None = None,
+        provenance: Mapping[str, object] | None = None,
+        data_quality: Mapping[str, object] | None = None,
+        artifact_dir: str | None = None,
+    ) -> None:
+        """Record the start of a research experiment run."""
+        self.record_event(
+            "experiment_runs",
+            {
+                "experiment_run_id": experiment_run_id,
+                "experiment_id": experiment_id,
+                "run_id": run_id,
+                "status": status,
+                "created_at": created_at,
+                "finished_at": None,
+                "strategy_id": strategy_id,
+                "strategy_name": strategy_name,
+                "strategy_version": strategy_version,
+                "symbols": list(symbols) if symbols is not None else None,
+                "asset_class": asset_class,
+                "timeframe": timeframe,
+                "start_ts": start_ts,
+                "end_ts": end_ts,
+                "parameters": dict(parameters or {}),
+                "assumptions": dict(assumptions or {}),
+                "provenance": dict(provenance or {}),
+                "data_quality": dict(data_quality or {}),
+                "result_summary": None,
+                "artifact_dir": artifact_dir,
+                "error_message": None,
+            },
+        )
+
+    def record_experiment_run_finish(
+        self,
+        *,
+        experiment_run_id: str,
+        experiment_id: str,
+        run_id: str,
+        status: str,
+        finished_at: object,
+        result_summary: Mapping[str, object] | None = None,
+        provenance: Mapping[str, object] | None = None,
+        data_quality: Mapping[str, object] | None = None,
+        artifact_dir: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        """Record the final state of a research experiment run."""
+        self.record_event(
+            "experiment_runs",
+            {
+                "experiment_run_id": experiment_run_id,
+                "experiment_id": experiment_id,
+                "run_id": run_id,
+                "status": status,
+                "created_at": finished_at,
+                "finished_at": finished_at,
+                "strategy_id": None,
+                "strategy_name": None,
+                "strategy_version": None,
+                "symbols": None,
+                "asset_class": None,
+                "timeframe": None,
+                "start_ts": None,
+                "end_ts": None,
+                "parameters": None,
+                "assumptions": None,
+                "provenance": dict(provenance or {}),
+                "data_quality": dict(data_quality or {}),
+                "result_summary": dict(result_summary or {}),
+                "artifact_dir": artifact_dir,
+                "error_message": error_message,
+            },
+        )
+
+    def list_experiment_runs(
+        self,
+        experiment_id: str,
+        *,
+        limit: int | None = None,
+    ) -> list[Mapping[str, object]]:
+        """Return experiment runs in newest-first order when supported."""
+        return []
 
     def record_cycle_start(
         self,
@@ -441,6 +566,109 @@ class FilteredEventStore(EventStore):
             error_message=error_message,
         )
 
+    def upsert_experiment(
+        self,
+        *,
+        experiment_id: str,
+        name: str,
+        description: str | None = None,
+        tags: Sequence[str] | None = None,
+        created_at: object | None = None,
+        updated_at: object | None = None,
+        metadata: Mapping[str, object] | None = None,
+    ) -> None:
+        """Handle upsert experiment."""
+        self._inner.upsert_experiment(
+            experiment_id=experiment_id,
+            name=name,
+            description=description,
+            tags=tags,
+            created_at=created_at,
+            updated_at=updated_at,
+            metadata=metadata,
+        )
+
+    def record_experiment_run_start(
+        self,
+        *,
+        experiment_run_id: str,
+        experiment_id: str,
+        run_id: str,
+        created_at: object,
+        status: str = "started",
+        strategy_id: str | None = None,
+        strategy_name: str | None = None,
+        strategy_version: str | None = None,
+        symbols: Sequence[str] | None = None,
+        asset_class: str | None = None,
+        timeframe: str | None = None,
+        start_ts: object | None = None,
+        end_ts: object | None = None,
+        parameters: Mapping[str, object] | None = None,
+        assumptions: Mapping[str, object] | None = None,
+        provenance: Mapping[str, object] | None = None,
+        data_quality: Mapping[str, object] | None = None,
+        artifact_dir: str | None = None,
+    ) -> None:
+        """Handle experiment run start."""
+        self._inner.record_experiment_run_start(
+            experiment_run_id=experiment_run_id,
+            experiment_id=experiment_id,
+            run_id=run_id,
+            created_at=created_at,
+            status=status,
+            strategy_id=strategy_id,
+            strategy_name=strategy_name,
+            strategy_version=strategy_version,
+            symbols=symbols,
+            asset_class=asset_class,
+            timeframe=timeframe,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            parameters=parameters,
+            assumptions=assumptions,
+            provenance=provenance,
+            data_quality=data_quality,
+            artifact_dir=artifact_dir,
+        )
+
+    def record_experiment_run_finish(
+        self,
+        *,
+        experiment_run_id: str,
+        experiment_id: str,
+        run_id: str,
+        status: str,
+        finished_at: object,
+        result_summary: Mapping[str, object] | None = None,
+        provenance: Mapping[str, object] | None = None,
+        data_quality: Mapping[str, object] | None = None,
+        artifact_dir: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        """Handle experiment run finish."""
+        self._inner.record_experiment_run_finish(
+            experiment_run_id=experiment_run_id,
+            experiment_id=experiment_id,
+            run_id=run_id,
+            status=status,
+            finished_at=finished_at,
+            result_summary=result_summary,
+            provenance=provenance,
+            data_quality=data_quality,
+            artifact_dir=artifact_dir,
+            error_message=error_message,
+        )
+
+    def list_experiment_runs(
+        self,
+        experiment_id: str,
+        *,
+        limit: int | None = None,
+    ) -> list[Mapping[str, object]]:
+        """Handle list experiment runs."""
+        return self._inner.list_experiment_runs(experiment_id, limit=limit)
+
     def flush(self) -> None:
         """Handle flush."""
         return self._inner.flush()
@@ -454,10 +682,6 @@ class FilteredEventStore(EventStore):
         """Handle transaction."""
         with self._inner.transaction():
             yield
-
-    def connection(self) -> Any:
-        """Handle connection."""
-        return getattr(self._inner, "connection", lambda: None)()
 
 
 def build_event_store(config: object) -> EventStore:
@@ -710,6 +934,116 @@ class BufferedEventStore(EventStore):
         """Expose the underlying connection if supported."""
         return getattr(self._inner, "connection", lambda: None)()
 
+    def upsert_experiment(
+        self,
+        *,
+        experiment_id: str,
+        name: str,
+        description: str | None = None,
+        tags: Sequence[str] | None = None,
+        created_at: object | None = None,
+        updated_at: object | None = None,
+        metadata: Mapping[str, object] | None = None,
+    ) -> None:
+        """Synchronously upsert experiment metadata."""
+        self.flush()
+        with self._write_lock:
+            self._write_store.upsert_experiment(
+                experiment_id=experiment_id,
+                name=name,
+                description=description,
+                tags=tags,
+                created_at=created_at,
+                updated_at=updated_at,
+                metadata=metadata,
+            )
+
+    def record_experiment_run_start(
+        self,
+        *,
+        experiment_run_id: str,
+        experiment_id: str,
+        run_id: str,
+        created_at: object,
+        status: str = "started",
+        strategy_id: str | None = None,
+        strategy_name: str | None = None,
+        strategy_version: str | None = None,
+        symbols: Sequence[str] | None = None,
+        asset_class: str | None = None,
+        timeframe: str | None = None,
+        start_ts: object | None = None,
+        end_ts: object | None = None,
+        parameters: Mapping[str, object] | None = None,
+        assumptions: Mapping[str, object] | None = None,
+        provenance: Mapping[str, object] | None = None,
+        data_quality: Mapping[str, object] | None = None,
+        artifact_dir: str | None = None,
+    ) -> None:
+        """Synchronously record experiment run start."""
+        self.flush()
+        with self._write_lock:
+            self._write_store.record_experiment_run_start(
+                experiment_run_id=experiment_run_id,
+                experiment_id=experiment_id,
+                run_id=run_id,
+                created_at=created_at,
+                status=status,
+                strategy_id=strategy_id,
+                strategy_name=strategy_name,
+                strategy_version=strategy_version,
+                symbols=symbols,
+                asset_class=asset_class,
+                timeframe=timeframe,
+                start_ts=start_ts,
+                end_ts=end_ts,
+                parameters=parameters,
+                assumptions=assumptions,
+                provenance=provenance,
+                data_quality=data_quality,
+                artifact_dir=artifact_dir,
+            )
+
+    def record_experiment_run_finish(
+        self,
+        *,
+        experiment_run_id: str,
+        experiment_id: str,
+        run_id: str,
+        status: str,
+        finished_at: object,
+        result_summary: Mapping[str, object] | None = None,
+        provenance: Mapping[str, object] | None = None,
+        data_quality: Mapping[str, object] | None = None,
+        artifact_dir: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        """Synchronously record experiment run finish."""
+        self.flush()
+        with self._write_lock:
+            self._write_store.record_experiment_run_finish(
+                experiment_run_id=experiment_run_id,
+                experiment_id=experiment_id,
+                run_id=run_id,
+                status=status,
+                finished_at=finished_at,
+                result_summary=result_summary,
+                provenance=provenance,
+                data_quality=data_quality,
+                artifact_dir=artifact_dir,
+                error_message=error_message,
+            )
+
+    def list_experiment_runs(
+        self,
+        experiment_id: str,
+        *,
+        limit: int | None = None,
+    ) -> list[Mapping[str, object]]:
+        """List experiment runs after flushing pending writes."""
+        self.flush()
+        return self._inner.list_experiment_runs(experiment_id, limit=limit)
+
     def _run(self) -> None:
         """Handle run."""
         interval = self._settings.flush_interval_ms / 1000.0
@@ -857,6 +1191,42 @@ class PostgresEventStore(EventStore):
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS experiments (
+                experiment_id TEXT PRIMARY KEY,
+                name TEXT UNIQUE,
+                description TEXT,
+                tags TEXT[],
+                created_at TIMESTAMPTZ,
+                updated_at TIMESTAMPTZ,
+                metadata JSONB
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS experiment_runs (
+                experiment_run_id TEXT PRIMARY KEY,
+                experiment_id TEXT,
+                run_id TEXT,
+                status TEXT,
+                created_at TIMESTAMPTZ,
+                finished_at TIMESTAMPTZ,
+                strategy_id TEXT,
+                strategy_name TEXT,
+                strategy_version TEXT,
+                symbols TEXT[],
+                asset_class TEXT,
+                timeframe TEXT,
+                start_ts TIMESTAMPTZ,
+                end_ts TIMESTAMPTZ,
+                parameters JSONB,
+                assumptions JSONB,
+                provenance JSONB,
+                data_quality JSONB,
+                result_summary JSONB,
+                artifact_dir TEXT,
+                error_message TEXT
+            )
+            """,
+            """
             ALTER TABLE IF EXISTS run_events
             DROP CONSTRAINT IF EXISTS run_events_pkey
             """,
@@ -965,7 +1335,8 @@ class PostgresEventStore(EventStore):
                 symbol TEXT,
                 indicator_name TEXT,
                 value DOUBLE PRECISION,
-                bar_ts TIMESTAMPTZ
+                bar_ts TIMESTAMPTZ,
+                payload TEXT
             )
             """,
             """
@@ -975,6 +1346,10 @@ class PostgresEventStore(EventStore):
             """
             ALTER TABLE indicator_events
             ADD COLUMN IF NOT EXISTS session_id TEXT
+            """,
+            """
+            ALTER TABLE indicator_events
+            ADD COLUMN IF NOT EXISTS payload TEXT
             """,
             """
             CREATE TABLE IF NOT EXISTS order_events (
@@ -1030,12 +1405,27 @@ class PostgresEventStore(EventStore):
                 cycle_id TEXT,
                 fill_ts TIMESTAMPTZ,
                 fill_qty DOUBLE PRECISION,
+                raw_fill_price DOUBLE PRECISION,
+                slippage_amount DOUBLE PRECISION,
+                fee_amount DOUBLE PRECISION,
                 fill_price DOUBLE PRECISION
             )
             """,
             """
             ALTER TABLE fill_events
             ADD COLUMN IF NOT EXISTS session_id TEXT
+            """,
+            """
+            ALTER TABLE fill_events
+            ADD COLUMN IF NOT EXISTS raw_fill_price DOUBLE PRECISION
+            """,
+            """
+            ALTER TABLE fill_events
+            ADD COLUMN IF NOT EXISTS slippage_amount DOUBLE PRECISION
+            """,
+            """
+            ALTER TABLE fill_events
+            ADD COLUMN IF NOT EXISTS fee_amount DOUBLE PRECISION
             """,
             """
             CREATE TABLE IF NOT EXISTS position_snapshots (
@@ -1156,6 +1546,22 @@ class PostgresEventStore(EventStore):
             CREATE INDEX IF NOT EXISTS metrics_snapshots_session_id_idx
             ON metrics_snapshots(session_id)
             """,
+            """
+            CREATE INDEX IF NOT EXISTS experiment_runs_experiment_id_idx
+            ON experiment_runs(experiment_id)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS experiment_runs_run_id_idx
+            ON experiment_runs(run_id)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS experiment_runs_status_idx
+            ON experiment_runs(status)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS experiment_runs_created_at_idx
+            ON experiment_runs(created_at)
+            """,
         ]
         with self.transaction():
             for stmt in statements:
@@ -1176,6 +1582,8 @@ class PostgresEventStore(EventStore):
             "position_snapshots",
             "config_kv",
             "metrics_snapshots",
+            "experiments",
+            "experiment_runs",
         }:
             raise ValueError(f"Unknown event type: {event_type}")
 
@@ -1447,6 +1855,258 @@ class PostgresEventStore(EventStore):
                 error_message,
             ],
         )
+
+    def upsert_experiment(
+        self,
+        *,
+        experiment_id: str,
+        name: str,
+        description: str | None = None,
+        tags: Sequence[str] | None = None,
+        created_at: object | None = None,
+        updated_at: object | None = None,
+        metadata: Mapping[str, object] | None = None,
+    ) -> None:
+        """Insert or update an experiment grouping."""
+        metadata_json = json.dumps(metadata or {}, default=str)
+        self._connection.execute(
+            """
+            INSERT INTO experiments (
+                experiment_id,
+                name,
+                description,
+                tags,
+                created_at,
+                updated_at,
+                metadata
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (experiment_id) DO UPDATE SET
+                name = excluded.name,
+                description = excluded.description,
+                tags = excluded.tags,
+                updated_at = excluded.updated_at,
+                metadata = excluded.metadata
+            """,
+            [
+                experiment_id,
+                name,
+                description,
+                list(tags or ()),
+                created_at,
+                updated_at,
+                metadata_json,
+            ],
+        )
+
+    def record_experiment_run_start(
+        self,
+        *,
+        experiment_run_id: str,
+        experiment_id: str,
+        run_id: str,
+        created_at: object,
+        status: str = "started",
+        strategy_id: str | None = None,
+        strategy_name: str | None = None,
+        strategy_version: str | None = None,
+        symbols: Sequence[str] | None = None,
+        asset_class: str | None = None,
+        timeframe: str | None = None,
+        start_ts: object | None = None,
+        end_ts: object | None = None,
+        parameters: Mapping[str, object] | None = None,
+        assumptions: Mapping[str, object] | None = None,
+        provenance: Mapping[str, object] | None = None,
+        data_quality: Mapping[str, object] | None = None,
+        artifact_dir: str | None = None,
+    ) -> None:
+        """Insert or update an experiment run start row."""
+        self._connection.execute(
+            """
+            INSERT INTO experiment_runs (
+                experiment_run_id,
+                experiment_id,
+                run_id,
+                status,
+                created_at,
+                finished_at,
+                strategy_id,
+                strategy_name,
+                strategy_version,
+                symbols,
+                asset_class,
+                timeframe,
+                start_ts,
+                end_ts,
+                parameters,
+                assumptions,
+                provenance,
+                data_quality,
+                result_summary,
+                artifact_dir,
+                error_message
+            )
+            VALUES (%s, %s, %s, %s, %s, NULL, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, %s, NULL)
+            ON CONFLICT (experiment_run_id) DO UPDATE SET
+                status = excluded.status,
+                strategy_id = excluded.strategy_id,
+                strategy_name = excluded.strategy_name,
+                strategy_version = excluded.strategy_version,
+                symbols = excluded.symbols,
+                asset_class = excluded.asset_class,
+                timeframe = excluded.timeframe,
+                start_ts = excluded.start_ts,
+                end_ts = excluded.end_ts,
+                parameters = excluded.parameters,
+                assumptions = excluded.assumptions,
+                provenance = excluded.provenance,
+                data_quality = excluded.data_quality,
+                artifact_dir = excluded.artifact_dir,
+                error_message = NULL
+            """,
+            [
+                experiment_run_id,
+                experiment_id,
+                run_id,
+                status,
+                created_at,
+                strategy_id,
+                strategy_name,
+                strategy_version,
+                list(symbols) if symbols is not None else None,
+                asset_class,
+                timeframe,
+                start_ts,
+                end_ts,
+                json.dumps(parameters or {}, default=str),
+                json.dumps(assumptions or {}, default=str),
+                json.dumps(provenance or {}, default=str),
+                json.dumps(data_quality or {}, default=str),
+                artifact_dir,
+            ],
+        )
+
+    def record_experiment_run_finish(
+        self,
+        *,
+        experiment_run_id: str,
+        experiment_id: str,
+        run_id: str,
+        status: str,
+        finished_at: object,
+        result_summary: Mapping[str, object] | None = None,
+        provenance: Mapping[str, object] | None = None,
+        data_quality: Mapping[str, object] | None = None,
+        artifact_dir: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        """Update an experiment run with terminal state."""
+        self._connection.execute(
+            """
+            INSERT INTO experiment_runs (
+                experiment_run_id,
+                experiment_id,
+                run_id,
+                status,
+                created_at,
+                finished_at,
+                provenance,
+                data_quality,
+                result_summary,
+                artifact_dir,
+                error_message
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (experiment_run_id) DO UPDATE SET
+                status = excluded.status,
+                finished_at = excluded.finished_at,
+                provenance = COALESCE(excluded.provenance, experiment_runs.provenance),
+                data_quality = COALESCE(excluded.data_quality, experiment_runs.data_quality),
+                result_summary = excluded.result_summary,
+                artifact_dir = COALESCE(excluded.artifact_dir, experiment_runs.artifact_dir),
+                error_message = excluded.error_message
+            """,
+            [
+                experiment_run_id,
+                experiment_id,
+                run_id,
+                status,
+                finished_at,
+                finished_at,
+                json.dumps(provenance or {}, default=str),
+                json.dumps(data_quality or {}, default=str),
+                json.dumps(result_summary or {}, default=str),
+                artifact_dir,
+                error_message,
+            ],
+        )
+
+    def list_experiment_runs(
+        self,
+        experiment_id: str,
+        *,
+        limit: int | None = None,
+    ) -> list[Mapping[str, object]]:
+        """Return experiment runs in newest-first order."""
+        query = """
+            SELECT
+                experiment_run_id,
+                experiment_id,
+                run_id,
+                status,
+                created_at,
+                finished_at,
+                strategy_id,
+                strategy_name,
+                strategy_version,
+                symbols,
+                asset_class,
+                timeframe,
+                start_ts,
+                end_ts,
+                parameters,
+                assumptions,
+                provenance,
+                data_quality,
+                result_summary,
+                artifact_dir,
+                error_message
+            FROM experiment_runs
+            WHERE experiment_id = %s
+            ORDER BY created_at DESC, experiment_run_id DESC
+        """
+        params: list[object] = [experiment_id]
+        if limit is not None:
+            query += " LIMIT %s"
+            params.append(limit)
+        with self._connection.cursor() as cursor:
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+        fields = [
+            "experiment_run_id",
+            "experiment_id",
+            "run_id",
+            "status",
+            "created_at",
+            "finished_at",
+            "strategy_id",
+            "strategy_name",
+            "strategy_version",
+            "symbols",
+            "asset_class",
+            "timeframe",
+            "start_ts",
+            "end_ts",
+            "parameters",
+            "assumptions",
+            "provenance",
+            "data_quality",
+            "result_summary",
+            "artifact_dir",
+            "error_message",
+        ]
+        return [dict(zip(fields, row)) for row in rows]
 
     def close(self) -> None:
         """Close the Postgres connection."""

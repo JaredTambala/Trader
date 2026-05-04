@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from trader.backtest import BacktestRunner, BacktestSpec
+from trader.backtest import BacktestAssumptions, BacktestRunner, BacktestSpec
 from trader.config import Config
 from tests.support.duckdb_store import DuckDBEventStore
 from trader_standard.risk import NoOpRiskManager
@@ -97,9 +97,13 @@ def test_backtest_runner_replays_timestamps(monkeypatch, tmp_path: Path) -> None
         strategy=NoOpStrategy(),
         risk_manager=NoOpRiskManager(),
     )
-    runner.run()
+    result = runner.run()
 
     assert recorder.decision_times == timestamps
+    assert result.assumptions == BacktestAssumptions()
+    assert result.warnings == ()
+    assert result.total_fees == 0.0
+    assert result.total_slippage == 0.0
 
 
 def test_backtest_runner_requires_injected_risk_manager(tmp_path: Path) -> None:
