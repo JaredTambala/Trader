@@ -2,23 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Mapping
+from collections.abc import Mapping
 
 from dotenv import load_dotenv
 
 from trader.backtest import BacktestRunner, BacktestSpec
 from trader.config import build_config, load_yaml_config
 
+from backtest_support import assumptions_from_backtest_config, parse_datetime
 from strategy_library_support import build_library_risk_manager, build_library_strategy
-
-
-def _parse_datetime(value: str) -> datetime:
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
-
 
 def main() -> None:
     load_dotenv(".env")
@@ -38,8 +30,8 @@ def main() -> None:
     strategy = build_library_strategy(config_data, config)
     risk_manager = build_library_risk_manager(risk_cfg)
     spec = BacktestSpec(
-        start=_parse_datetime(str(backtest_cfg["start"])),
-        end=_parse_datetime(str(backtest_cfg["end"])),
+        start=parse_datetime(str(backtest_cfg["start"])),
+        end=parse_datetime(str(backtest_cfg["end"])),
         timeframe=str(backtest_cfg.get("timeframe", config.strategy_timeframe)),
         max_runs=int(backtest_cfg["max_runs"]) if backtest_cfg.get("max_runs") is not None else None,
     )
@@ -53,6 +45,7 @@ def main() -> None:
         strategy=strategy,
         risk_manager=risk_manager,
         config_snapshot=config_data,
+        assumptions=assumptions_from_backtest_config(backtest_cfg),
     )
     runner.run(log_cycle_details=bool(backtest_cfg.get("log_cycle_details", False)))
 

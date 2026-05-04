@@ -5,13 +5,16 @@ from __future__ import annotations
 import argparse
 from bisect import bisect_left
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, replace
+import csv
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 import json
 import logging
 import math
+from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
+from .broker import Broker, InternalPaperBroker
 from .config import Config
 from .cycle import run_cycle
 from .data import EventStore, build_event_store
@@ -26,6 +29,59 @@ from .timeframes import normalize_timeframe
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class FeeAssumptions:
+    """Deterministic fee model for backtests."""
+
+    fixed_per_order: float = 0.0
+    bps: float = 0.0
+    minimum_fee: float = 0.0
+
+
+@dataclass(frozen=True)
+class SlippageAssumptions:
+    """Deterministic slippage model for backtests."""
+
+    bps: float = 0.0
+
+
+@dataclass(frozen=True)
+class DataAssumptions:
+    """Data-availability and pricing assumptions for backtests."""
+
+    allow_latest_prior_bar: bool = True
+    allow_price_carry_forward: bool = True
+
+
+@dataclass(frozen=True)
+class BacktestAssumptions:
+    """Execution and data assumptions attached to a backtest run."""
+
+    fill_model: str = "full_fill"
+    latency_ms: float = 0.0
+    fees: FeeAssumptions = field(default_factory=FeeAssumptions)
+    slippage: SlippageAssumptions = field(default_factory=SlippageAssumptions)
+    data: DataAssumptions = field(default_factory=DataAssumptions)
+
+
+@dataclass(frozen=True)
+class TradeRecord:
+    """Serialized trade/fill record for backtest inspection and export."""
+
+    client_order_id: str
+    cycle_id: str | None
+    symbol: str
+    side: str
+    fill_ts: datetime
+    fill_qty: float
+    raw_fill_price: float | None
+    fill_price: float
+    fee_amount: float
+    slippage_amount: float
+    notional: float
+    realized_pnl: float | None
 
 
 @dataclass(frozen=True)
@@ -72,6 +128,12 @@ class BacktestResult:
     net_notional: float | None
     gross_notional: float | None
     positions: tuple[PositionSummary, ...]
+    assumptions: BacktestAssumptions
+    warnings: tuple[str, ...]
+    trades: tuple[TradeRecord, ...]
+    realized_pnl: float | None
+    total_fees: float
+    total_slippage: float
     strategy_performance: "PerformanceSummary"
     benchmark_performance: "PerformanceSummary"
     tracking_error: float | None
@@ -80,6 +142,10 @@ class BacktestResult:
     beta: float | None
     equity_curve: tuple["EquityPoint", ...]
     benchmark_curve: tuple["EquityPoint", ...]
+    run_id: str | None = None
+    experiment_id: str | None = None
+    experiment_run_id: str | None = None
+    provenance: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -126,6 +192,61 @@ class _TradeStats:
     avg_win: float | None
     avg_loss: float | None
     turnover: float | None
+    realized_pnl: float | None
+    trades: tuple[TradeRecord, ...]
+    total_fees: float
+    total_slippage: float
+
+
+def build_backtest_assumptions(data: Mapping[str, object] | None = None) -> BacktestAssumptions:
+    """Build backtest assumptions from a passive mapping."""
+    data = data or {}
+    fee_cfg = _mapping_value(data.get("fees"))
+    slippage_cfg = _mapping_value(data.get("slippage"))
+    data_cfg = _mapping_value(data.get("data"))
+    return BacktestAssumptions(
+        fill_model=str(data.get("fill_model", "full_fill")),
+        latency_ms=_float_value(data.get("latency_ms"), 0.0),
+        fees=FeeAssumptions(
+            fixed_per_order=_float_value(fee_cfg.get("fixed_per_order"), 0.0),
+            bps=_float_value(fee_cfg.get("bps"), 0.0),
+            minimum_fee=_float_value(fee_cfg.get("minimum_fee"), 0.0),
+        ),
+        slippage=SlippageAssumptions(
+            bps=_float_value(slippage_cfg.get("bps"), 0.0),
+        ),
+        data=DataAssumptions(
+            allow_latest_prior_bar=_bool_value(data_cfg.get("allow_latest_prior_bar"), True),
+            allow_price_carry_forward=_bool_value(data_cfg.get("allow_price_carry_forward"), True),
+        ),
+    )
+
+
+def _empty_performance_summary() -> PerformanceSummary:
+    """Return an empty performance summary for degenerate runs."""
+    return PerformanceSummary(
+        start_equity=None,
+        end_equity=None,
+        total_return=None,
+        cagr=None,
+        volatility=None,
+        sharpe=None,
+        sortino=None,
+        max_drawdown=None,
+        max_drawdown_duration=None,
+        calmar=None,
+        ulcer_index=None,
+        avg_net_exposure=None,
+        avg_gross_exposure=None,
+        avg_invested_pct=None,
+        trade_count=None,
+        hit_rate=None,
+        profit_factor=None,
+        expectancy=None,
+        avg_win=None,
+        avg_loss=None,
+        turnover=None,
+    )
 
 
 class BacktestMarketDataSource(MarketDataSource):
@@ -139,6 +260,8 @@ class BacktestMarketDataSource(MarketDataSource):
         timeframe: str,
         source: str = "backtest",
         symbols: Sequence[str] | None = None,
+        allow_latest_prior_bar: bool = True,
+        warnings: list[str] | None = None,
     ) -> None:
         """Initialize the instance."""
         if symbols is not None:
@@ -152,6 +275,8 @@ class BacktestMarketDataSource(MarketDataSource):
         self._timeframe = timeframe
         self._source = source
         self._as_of_ts: datetime | None = None
+        self._allow_latest_prior_bar = allow_latest_prior_bar
+        self._warnings = warnings if warnings is not None else []
 
     def set_as_of(self, as_of_ts: datetime) -> None:
         """Set the current timestamp for fetch calls."""
@@ -168,6 +293,16 @@ class BacktestMarketDataSource(MarketDataSource):
                 continue
             idx = bisect_left(timestamps, self._as_of_ts)
             if idx >= len(timestamps) or timestamps[idx] != self._as_of_ts:
+                if not self._allow_latest_prior_bar:
+                    logger.warning(
+                        "Backtest exact-bar requirement failed symbol=%s decision_ts=%s; skipping",
+                        symbol,
+                        self._as_of_ts.isoformat(),
+                    )
+                    self._append_warning(
+                        f"Missing exact bar for {symbol} at {self._as_of_ts.isoformat()}; skipped symbol."
+                    )
+                    continue
                 idx = idx - 1
                 if idx < 0:
                     logger.warning(
@@ -175,12 +310,18 @@ class BacktestMarketDataSource(MarketDataSource):
                         symbol,
                         self._as_of_ts.isoformat(),
                     )
+                    self._append_warning(
+                        f"No prior bar available for {symbol} at {self._as_of_ts.isoformat()}; skipped symbol."
+                    )
                     continue
                 logger.warning(
                     "Backtest price misalignment symbol=%s decision_ts=%s latest_ts=%s; using latest bar",
                     symbol,
                     self._as_of_ts.isoformat(),
                     timestamps[idx].isoformat(),
+                )
+                self._append_warning(
+                    f"Used latest prior bar for {symbol} at {self._as_of_ts.isoformat()} from {timestamps[idx].isoformat()}."
                 )
             bar = bars[idx]
             events.append(
@@ -194,6 +335,11 @@ class BacktestMarketDataSource(MarketDataSource):
                 )
             )
         return events
+
+    def _append_warning(self, message: str) -> None:
+        """Add a warning once while preserving insertion order."""
+        if message not in self._warnings:
+            self._warnings.append(message)
 
 
 class BacktestRunner:
@@ -212,6 +358,9 @@ class BacktestRunner:
         initial_positions: Sequence[Position] | None = None,
         initial_cash: float | None = None,
         config_snapshot: Mapping[str, object] | None = None,
+        assumptions: BacktestAssumptions | None = None,
+        run_id: str | None = None,
+        started_at: datetime | None = None,
     ) -> None:
         """Initialize the instance."""
         self._spec = spec
@@ -223,6 +372,9 @@ class BacktestRunner:
         self._initial_positions = list(initial_positions) if initial_positions else []
         self._initial_cash = float(initial_cash) if initial_cash is not None else 0.0
         self._config_snapshot = config_snapshot
+        self._assumptions = assumptions or BacktestAssumptions()
+        self._run_id = run_id
+        self._started_at = started_at
         if strategy is None:
             raise ValueError("BacktestRunner requires an injected strategy instance.")
         if risk_manager is None:
@@ -246,32 +398,13 @@ class BacktestRunner:
         progress_callback: Callable[[int, int, datetime | None], None] | None = None,
     ) -> BacktestResult:
         """Run the backtest and return an aggregated summary."""
+        warnings: list[str] = []
         if not self._symbols:
             logger.warning("No symbols configured for backtest")
+            started_at = self._started_at or datetime.now(timezone.utc)
+            run_id = self._run_id or deterministic_run_session_id("backtest", started_at)
             now = datetime.now(timezone.utc)
-            empty_summary = PerformanceSummary(
-                start_equity=None,
-                end_equity=None,
-                total_return=None,
-                cagr=None,
-                volatility=None,
-                sharpe=None,
-                sortino=None,
-                max_drawdown=None,
-                max_drawdown_duration=None,
-                calmar=None,
-                ulcer_index=None,
-                avg_net_exposure=None,
-                avg_gross_exposure=None,
-                avg_invested_pct=None,
-                trade_count=None,
-                hit_rate=None,
-                profit_factor=None,
-                expectancy=None,
-                avg_win=None,
-                avg_loss=None,
-                turnover=None,
-            )
+            empty_summary = _empty_performance_summary()
             return BacktestResult(
                 total_runs=0,
                 success_runs=0,
@@ -290,6 +423,12 @@ class BacktestRunner:
                 net_notional=None,
                 gross_notional=None,
                 positions=tuple(),
+                assumptions=self._assumptions,
+                warnings=("No symbols configured for backtest.",),
+                trades=tuple(),
+                realized_pnl=None,
+                total_fees=0.0,
+                total_slippage=0.0,
                 strategy_performance=empty_summary,
                 benchmark_performance=empty_summary,
                 tracking_error=None,
@@ -298,6 +437,7 @@ class BacktestRunner:
                 beta=None,
                 equity_curve=tuple(),
                 benchmark_curve=tuple(),
+                run_id=run_id,
             )
         if self._spec.start > self._spec.end:
             raise ValueError("Backtest start must be <= end")
@@ -316,30 +456,10 @@ class BacktestRunner:
         timestamps = sorted(symbol_schedule.keys())
         if not timestamps:
             logger.warning("No bars found for backtest window")
+            started_at = self._started_at or datetime.now(timezone.utc)
+            run_id = self._run_id or deterministic_run_session_id("backtest", started_at)
             now = datetime.now(timezone.utc)
-            empty_summary = PerformanceSummary(
-                start_equity=None,
-                end_equity=None,
-                total_return=None,
-                cagr=None,
-                volatility=None,
-                sharpe=None,
-                sortino=None,
-                max_drawdown=None,
-                max_drawdown_duration=None,
-                calmar=None,
-                ulcer_index=None,
-                avg_net_exposure=None,
-                avg_gross_exposure=None,
-                avg_invested_pct=None,
-                trade_count=None,
-                hit_rate=None,
-                profit_factor=None,
-                expectancy=None,
-                avg_win=None,
-                avg_loss=None,
-                turnover=None,
-            )
+            empty_summary = _empty_performance_summary()
             return BacktestResult(
                 total_runs=0,
                 success_runs=0,
@@ -358,6 +478,12 @@ class BacktestRunner:
                 net_notional=None,
                 gross_notional=None,
                 positions=tuple(),
+                assumptions=self._assumptions,
+                warnings=("No bars found for backtest window.",),
+                trades=tuple(),
+                realized_pnl=None,
+                total_fees=0.0,
+                total_slippage=0.0,
                 strategy_performance=empty_summary,
                 benchmark_performance=empty_summary,
                 tracking_error=None,
@@ -366,6 +492,7 @@ class BacktestRunner:
                 beta=None,
                 equity_curve=tuple(),
                 benchmark_curve=tuple(),
+                run_id=run_id,
             )
 
         count = 0
@@ -374,7 +501,10 @@ class BacktestRunner:
         equity_curve: list[EquityPoint] = []
         benchmark_curve: list[EquityPoint] = []
         exposure_samples: list[tuple[float, float, float | None]] = []
-        price_state = _PriceState(bars_by_symbol)
+        price_state = _PriceState(
+            bars_by_symbol,
+            allow_price_carry_forward=self._assumptions.data.allow_price_carry_forward,
+        )
         logger.info(
             "Backtest start asset_class=%s symbols=%s timeframe=%s start=%s end=%s runs=%s",
             self._asset_class,
@@ -384,10 +514,22 @@ class BacktestRunner:
             self._spec.end.isoformat(),
             limit or len(timestamps),
         )
-        started_at = datetime.now(timezone.utc)
-        run_id = deterministic_run_session_id("backtest", started_at)
+        logger.info(
+            "Backtest assumptions fill_model=%s latency_ms=%.2f fee_fixed=%s fee_bps=%s fee_min=%s slippage_bps=%s allow_latest_prior_bar=%s allow_price_carry_forward=%s",
+            self._assumptions.fill_model,
+            self._assumptions.latency_ms,
+            self._assumptions.fees.fixed_per_order,
+            self._assumptions.fees.bps,
+            self._assumptions.fees.minimum_fee,
+            self._assumptions.slippage.bps,
+            self._assumptions.data.allow_latest_prior_bar,
+            self._assumptions.data.allow_price_carry_forward,
+        )
+        started_at = self._started_at or datetime.now(timezone.utc)
+        run_id = self._run_id or deterministic_run_session_id("backtest", started_at)
         strategy = self._strategy
         risk_manager = self._risk_manager
+        broker = _build_backtest_broker(self._assumptions)
         strategy_id = resolve_strategy_id(strategy, self._config.strategy_id)
         run_status = "success"
         run_error: str | None = None
@@ -440,6 +582,8 @@ class BacktestRunner:
             asset_class=self._asset_class,
             timeframe=self._spec.timeframe,
             symbols=self._symbols,
+            allow_latest_prior_bar=self._assumptions.data.allow_latest_prior_bar,
+            warnings=warnings,
         )
         configs_by_symbol = {
             symbol: replace(self._config, market_data_symbols=(symbol,))
@@ -464,6 +608,7 @@ class BacktestRunner:
                             market_data_source=data_source,
                             strategy=strategy,
                             risk_manager=risk_manager,
+                            broker=broker,
                             portfolio=portfolio,
                             ingest_market_data=False,
                             run_id=run_id,
@@ -514,6 +659,20 @@ class BacktestRunner:
             if self._owns_event_store:
                 self._event_store.close()
 
+        trade_stats = trade_stats or _TradeStats(
+            trade_count=0,
+            hit_rate=None,
+            profit_factor=None,
+            expectancy=None,
+            avg_win=None,
+            avg_loss=None,
+            turnover=None,
+            realized_pnl=None,
+            trades=tuple(),
+            total_fees=0.0,
+            total_slippage=0.0,
+        )
+
         finished_at = datetime.now(timezone.utc)
         strategy_summary = _build_performance_summary(
             equity_curve,
@@ -550,6 +709,12 @@ class BacktestRunner:
             net_notional=summary.net_notional,
             gross_notional=summary.gross_notional,
             positions=summary.positions,
+            assumptions=self._assumptions,
+            warnings=tuple(warnings),
+            trades=trade_stats.trades,
+            realized_pnl=trade_stats.realized_pnl,
+            total_fees=trade_stats.total_fees,
+            total_slippage=trade_stats.total_slippage,
             strategy_performance=strategy_summary,
             benchmark_performance=benchmark_summary,
             tracking_error=comparison.tracking_error,
@@ -558,6 +723,7 @@ class BacktestRunner:
             beta=comparison.beta,
             equity_curve=tuple(equity_curve),
             benchmark_curve=tuple(benchmark_curve),
+            run_id=run_id,
         )
         logger.info(
             "Backtest complete total=%s success=%s failed=%s duration_seconds=%.2f",
@@ -758,6 +924,7 @@ def _latest_prices_from_bars(bars_by_symbol: Mapping[str, Sequence[Bar]]) -> dic
 @dataclass
 class _PriceState:
     bars_by_symbol: Mapping[str, Sequence[Bar]]
+    allow_price_carry_forward: bool = True
 
     def __post_init__(self) -> None:
         """Normalize derived fields after initialization."""
@@ -767,6 +934,18 @@ class _PriceState:
     def advance(self, ts: datetime) -> Mapping[str, float]:
         """Advance to the next timestamp in the schedule."""
         target = _normalize_timestamp(ts)
+        if not self.allow_price_carry_forward:
+            current_prices: dict[str, float] = {}
+            for symbol, bars in self.bars_by_symbol.items():
+                idx = self._indices.get(symbol, 0)
+                while idx < len(bars) and _normalize_timestamp(bars[idx].ts) < target:
+                    idx += 1
+                if idx < len(bars) and _normalize_timestamp(bars[idx].ts) == target:
+                    current_prices[symbol] = float(bars[idx].close)
+                    idx += 1
+                self._indices[symbol] = idx
+            self._last_prices = current_prices
+            return dict(self._last_prices)
         for symbol, bars in self.bars_by_symbol.items():
             idx = self._indices.get(symbol, 0)
             while idx < len(bars) and _normalize_timestamp(bars[idx].ts) <= target:
@@ -862,21 +1041,25 @@ def _compute_trade_stats(
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT client_order_id, symbol, side
+            SELECT client_order_id, symbol, side, cycle_id
             FROM order_events
             WHERE run_id = %s AND client_order_id IS NOT NULL AND side IS NOT NULL
             """,
             [run_id],
         )
         order_rows = cursor.fetchall()
-        order_lookup: dict[str, tuple[str, str]] = {}
-        for client_order_id, symbol, side in order_rows:
+        order_lookup: dict[str, tuple[str, str, str | None]] = {}
+        for client_order_id, symbol, side, cycle_id in order_rows:
             if client_order_id and client_order_id not in order_lookup:
-                order_lookup[str(client_order_id)] = (str(symbol), str(side).lower())
+                order_lookup[str(client_order_id)] = (
+                    str(symbol),
+                    str(side).lower(),
+                    str(cycle_id) if cycle_id is not None else None,
+                )
 
         cursor.execute(
             """
-            SELECT client_order_id, fill_ts, fill_qty, fill_price
+            SELECT client_order_id, fill_ts, fill_qty, fill_price, raw_fill_price, fee_amount, slippage_amount
             FROM fill_events
             WHERE run_id = %s
             ORDER BY fill_ts ASC
@@ -894,66 +1077,96 @@ def _compute_trade_stats(
             avg_win=None,
             avg_loss=None,
             turnover=None,
+            realized_pnl=None,
+            trades=tuple(),
+            total_fees=0.0,
+            total_slippage=0.0,
         )
 
     positions: dict[str, tuple[float, float | None]] = {}
+    trades: list[TradeRecord] = []
     realized_pnls: list[float] = []
     traded_notional = 0.0
+    total_fees = 0.0
+    total_slippage = 0.0
 
-    for client_order_id, _fill_ts, fill_qty, fill_price in fill_rows:
+    for client_order_id, fill_ts, fill_qty, fill_price, raw_fill_price, fee_amount, slippage_amount in fill_rows:
         if client_order_id is None:
             continue
         order = order_lookup.get(str(client_order_id))
         if order is None:
             continue
-        symbol, side = order
+        symbol, side, cycle_id = order
         qty = float(fill_qty or 0.0)
         price = float(fill_price or 0.0)
+        raw_price = float(raw_fill_price) if raw_fill_price is not None else None
+        fee = float(fee_amount or 0.0)
+        slippage = float(slippage_amount or 0.0)
         if qty <= 0 or price <= 0:
             continue
-        traded_notional += abs(qty * price)
+        total_fees += fee
+        total_slippage += slippage
+        notional = abs(qty * price)
+        traded_notional += notional
         sign = 1.0 if side == "buy" else -1.0
         current_qty, avg_price = positions.get(symbol, (0.0, None))
         delta = sign * qty
+        fee_per_unit = fee / qty if qty else 0.0
+        effective_unit_price = price + fee_per_unit if side == "buy" else price - fee_per_unit
+        realized_pnl: float | None = None
 
         if current_qty == 0 or avg_price is None:
             new_qty = current_qty + delta
             if abs(new_qty) < 1e-12:
                 positions.pop(symbol, None)
             else:
-                positions[symbol] = (new_qty, price)
-            continue
-
-        if current_qty > 0 and delta < 0:
+                positions[symbol] = (new_qty, effective_unit_price)
+        elif current_qty > 0 and delta < 0:
             close_qty = min(current_qty, qty)
-            realized_pnls.append((price - avg_price) * close_qty)
+            realized_pnl = (effective_unit_price - avg_price) * close_qty
+            realized_pnls.append(realized_pnl)
             remaining = current_qty - close_qty
             if qty > close_qty:
-                positions[symbol] = (-(qty - close_qty), price)
+                positions[symbol] = (-(qty - close_qty), effective_unit_price)
             elif abs(remaining) < 1e-12:
                 positions.pop(symbol, None)
             else:
                 positions[symbol] = (remaining, avg_price)
-            continue
-
-        if current_qty < 0 and delta > 0:
+        elif current_qty < 0 and delta > 0:
             close_qty = min(abs(current_qty), qty)
-            realized_pnls.append((avg_price - price) * close_qty)
+            realized_pnl = (avg_price - effective_unit_price) * close_qty
+            realized_pnls.append(realized_pnl)
             remaining = abs(current_qty) - close_qty
             if qty > close_qty:
-                positions[symbol] = (qty - close_qty, price)
+                positions[symbol] = (qty - close_qty, effective_unit_price)
             elif abs(remaining) < 1e-12:
                 positions.pop(symbol, None)
             else:
                 positions[symbol] = (-remaining, avg_price)
-            continue
-
-        new_qty = current_qty + delta
-        if new_qty == 0:
-            positions.pop(symbol, None)
         else:
-            avg_price_new = ((current_qty * avg_price) + (delta * price)) / new_qty
-            positions[symbol] = (new_qty, avg_price_new)
+            new_qty = current_qty + delta
+            if abs(new_qty) < 1e-12:
+                positions.pop(symbol, None)
+            else:
+                avg_price_new = ((current_qty * avg_price) + (delta * effective_unit_price)) / new_qty
+                positions[symbol] = (new_qty, avg_price_new)
+
+        trades.append(
+            TradeRecord(
+                client_order_id=str(client_order_id),
+                cycle_id=cycle_id,
+                symbol=symbol,
+                side=side,
+                fill_ts=_normalize_timestamp(fill_ts),
+                fill_qty=qty,
+                raw_fill_price=raw_price,
+                fill_price=price,
+                fee_amount=fee,
+                slippage_amount=slippage,
+                notional=notional,
+                realized_pnl=realized_pnl,
+            )
+        )
 
     trade_count = len(realized_pnls)
     wins = [pnl for pnl in realized_pnls if pnl > 0]
@@ -977,6 +1190,7 @@ def _compute_trade_stats(
     turnover = None
     if avg_equity:
         turnover = traded_notional / avg_equity
+    realized_total = sum(realized_pnls) if realized_pnls else None
 
     return _TradeStats(
         trade_count=trade_count,
@@ -986,6 +1200,10 @@ def _compute_trade_stats(
         avg_win=avg_win,
         avg_loss=avg_loss,
         turnover=turnover,
+        realized_pnl=realized_total,
+        trades=tuple(trades),
+        total_fees=total_fees,
+        total_slippage=total_slippage,
     )
 
 
@@ -1170,6 +1388,33 @@ def _parse_timeframe_parts(timeframe: str) -> tuple[int, str]:
             amount = int(tf[:-len(unit)])
             return amount, unit.lower()
     raise ValueError(f"Unsupported timeframe: {timeframe}")
+
+
+def _mapping_value(value: object | None) -> Mapping[str, object]:
+    """Return a mapping value or an empty mapping."""
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise ValueError("Backtest assumptions sections must be mappings")
+    return value
+
+
+def _float_value(value: object | None, default: float) -> float:
+    """Coerce a float config value with a default."""
+    if value is None:
+        return default
+    return float(value)
+
+
+def _bool_value(value: object | None, default: bool) -> bool:
+    """Coerce a bool-like config value with a default."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
 
 
 def _mean(values: Sequence[float]) -> float:
@@ -1398,6 +1643,8 @@ def _build_data_sources(
     asset_class: str,
     timeframe: str,
     symbols: Sequence[str],
+    allow_latest_prior_bar: bool,
+    warnings: list[str],
 ) -> dict[str, BacktestMarketDataSource]:
     """Build data sources."""
     sources: dict[str, BacktestMarketDataSource] = {}
@@ -1407,8 +1654,26 @@ def _build_data_sources(
             asset_class=asset_class,
             timeframe=timeframe,
             symbols=(symbol,),
+            allow_latest_prior_bar=allow_latest_prior_bar,
+            warnings=warnings,
         )
     return sources
+
+
+def _build_backtest_broker(assumptions: BacktestAssumptions) -> Broker:
+    """Create a deterministic internal broker for backtest execution."""
+    return InternalPaperBroker(
+        reject_probability=0.0,
+        fill_delay_ms_mean=max(0.0, assumptions.latency_ms),
+        fill_delay_ms_stddev=0.0,
+        fill_qty_fraction_mean=1.0,
+        fill_qty_fraction_stddev=0.0,
+        slippage_bps=max(0.0, assumptions.slippage.bps),
+        fee_fixed_per_order=max(0.0, assumptions.fees.fixed_per_order),
+        fee_bps=max(0.0, assumptions.fees.bps),
+        fee_minimum=max(0.0, assumptions.fees.minimum_fee),
+        sleep_on_fill_delay=False,
+    )
 
 
 def _fetch_first_prices(
@@ -1738,14 +2003,84 @@ def _sanitize_value(value: Any) -> Any:
     if isinstance(value, list):
         return [_sanitize_value(v) for v in value]
     if isinstance(value, tuple):
-        return tuple(_sanitize_value(v) for v in value)
+        return [_sanitize_value(v) for v in value]
     return value
 
 
-def _serialize_backtest_result(result: BacktestResult) -> Mapping[str, Any]:
+def serialize_backtest_result(result: BacktestResult) -> dict[str, Any]:
     """Prepare backtest result for storage/transmission."""
     raw = asdict(result)
     return _sanitize_value(raw)
+
+
+def export_backtest_result_json(result: BacktestResult, path: str | Path) -> Path:
+    """Write the serialized backtest result to JSON."""
+    output_path = Path(path)
+    output_path.write_text(json.dumps(serialize_backtest_result(result), indent=2), encoding="utf-8")
+    return output_path
+
+
+def export_backtest_equity_curve_csv(result: BacktestResult, path: str | Path) -> Path:
+    """Write the strategy and benchmark equity curves to CSV."""
+    output_path = Path(path)
+    with output_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=["ts", "strategy_equity", "benchmark_equity"],
+        )
+        writer.writeheader()
+        for index, point in enumerate(result.equity_curve):
+            benchmark_point = result.benchmark_curve[index] if index < len(result.benchmark_curve) else None
+            writer.writerow(
+                {
+                    "ts": point.ts.isoformat(),
+                    "strategy_equity": point.equity,
+                    "benchmark_equity": benchmark_point.equity if benchmark_point is not None else None,
+                }
+            )
+    return output_path
+
+
+def export_backtest_trades_csv(result: BacktestResult, path: str | Path) -> Path:
+    """Write backtest trade records to CSV."""
+    output_path = Path(path)
+    with output_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "client_order_id",
+                "cycle_id",
+                "symbol",
+                "side",
+                "fill_ts",
+                "fill_qty",
+                "raw_fill_price",
+                "fill_price",
+                "fee_amount",
+                "slippage_amount",
+                "notional",
+                "realized_pnl",
+            ],
+        )
+        writer.writeheader()
+        for trade in result.trades:
+            writer.writerow(
+                {
+                    "client_order_id": trade.client_order_id,
+                    "cycle_id": trade.cycle_id,
+                    "symbol": trade.symbol,
+                    "side": trade.side,
+                    "fill_ts": trade.fill_ts.isoformat(),
+                    "fill_qty": trade.fill_qty,
+                    "raw_fill_price": trade.raw_fill_price,
+                    "fill_price": trade.fill_price,
+                    "fee_amount": trade.fee_amount,
+                    "slippage_amount": trade.slippage_amount,
+                    "notional": trade.notional,
+                    "realized_pnl": trade.realized_pnl,
+                }
+            )
+    return output_path
 
 
 def persist_backtest_result(run_id: str, result: BacktestResult, config: Config) -> None:
@@ -1759,7 +2094,7 @@ def persist_backtest_result(run_id: str, result: BacktestResult, config: Config)
                 "run_id": run_id,
                 "session_id": run_id,
                 "cycle_id": None,
-                "payload": json.dumps(_serialize_backtest_result(result)),
+                "payload": json.dumps(serialize_backtest_result(result)),
             },
         )
     finally:

@@ -8,8 +8,8 @@ import logging
 import random
 import time
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Callable, Iterable, Mapping, Sequence, cast
+from datetime import datetime, timedelta, timezone
+from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence, cast, runtime_checkable
 
 try:  # pragma: no cover - optional alpaca dependency
     _TradingClient: Any = import_module("alpaca.trading.client").TradingClient
@@ -65,7 +65,12 @@ def _coerce_float(value: object | None, *, default: float = 0.0) -> float:
 
 
 class Broker(ABC):
-    """Submits orders to a trading venue or paper broker."""
+    """Submits orders to a trading venue or paper broker.
+
+    Broker responses should use canonical fields when available:
+    client_order_id, status, broker_order_id, symbol, asset_class, side, qty,
+    order_type, created_at, fill_qty, fill_price, fill_ts, and rejection_reason.
+    """
 
     @abstractmethod
     def submit_orders(self, orders: Iterable[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
@@ -80,6 +85,44 @@ class Broker(ABC):
         Raises:
             Exception: Implementations raise if submission fails or is rejected.
         """
+
+
+@runtime_checkable
+class AccountBroker(Protocol):
+    """Optional broker capability for remote account and position refreshes."""
+
+    def get_account(self) -> Mapping[str, object]:
+        """Return account fields such as cash, buying_power, and equity."""
+
+    def get_positions(self) -> Sequence[Mapping[str, object]]:
+        """Return normalized or broker-native open positions."""
+
+
+@runtime_checkable
+class OrderLookupBroker(Protocol):
+    """Optional broker capability for remote order reads."""
+
+    def list_orders(self, since_ts: datetime | None = None) -> Sequence[Mapping[str, object]]:
+        """Return broker orders, optionally bounded by timestamp."""
+
+    def get_order_by_id(self, broker_order_id: str) -> Mapping[str, object]:
+        """Return one broker order by broker ID."""
+
+
+@runtime_checkable
+class OrderCancelBroker(Protocol):
+    """Optional broker capability for order cancellation."""
+
+    def cancel_order(self, broker_order_id: str) -> None:
+        """Cancel one broker-side order."""
+
+
+@runtime_checkable
+class OrderReconcileBroker(Protocol):
+    """Optional broker capability for append-only local reconciliation."""
+
+    def reconcile_orders(self, since_ts: datetime | None = None) -> Sequence[Mapping[str, object]]:
+        """Append local order/fill events that reflect broker state."""
 
 
 class NoOpBroker(Broker):
@@ -111,6 +154,11 @@ class InternalPaperBroker(Broker):
         fill_delay_ms_stddev: float = 0.0,
         fill_qty_fraction_mean: float = 1.0,
         fill_qty_fraction_stddev: float = 0.0,
+        slippage_bps: float = 0.0,
+        fee_fixed_per_order: float = 0.0,
+        fee_bps: float = 0.0,
+        fee_minimum: float = 0.0,
+        sleep_on_fill_delay: bool = True,
         rng_seed: int | None = None,
     ) -> None:
         """Initialize the instance."""
@@ -120,6 +168,11 @@ class InternalPaperBroker(Broker):
         self._fill_delay_ms_stddev = max(0.0, float(fill_delay_ms_stddev))
         self._fill_qty_fraction_mean = max(0.0, float(fill_qty_fraction_mean))
         self._fill_qty_fraction_stddev = max(0.0, float(fill_qty_fraction_stddev))
+        self._slippage_bps = max(0.0, float(slippage_bps))
+        self._fee_fixed_per_order = max(0.0, float(fee_fixed_per_order))
+        self._fee_bps = max(0.0, float(fee_bps))
+        self._fee_minimum = max(0.0, float(fee_minimum))
+        self._sleep_on_fill_delay = bool(sleep_on_fill_delay)
         self._rng = random.Random(rng_seed)
 
     def submit_orders(self, orders: Iterable[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
@@ -163,7 +216,7 @@ class InternalPaperBroker(Broker):
                     0.0,
                     self._rng.gauss(self._fill_delay_ms_mean, self._fill_delay_ms_stddev),
                 )
-            if delay_ms:
+            if delay_ms and self._sleep_on_fill_delay:
                 time.sleep(delay_ms / 1000.0)
             client_order_id = order.get("client_order_id") or deterministic_client_order_id(
                 str(cycle_id),
@@ -181,10 +234,23 @@ class InternalPaperBroker(Broker):
             status = "filled" if price is not None else "error"
             if price is not None and 0 < fill_qty < qty:
                 status = "partially_filled"
-            fill_ts = datetime.now(timezone.utc)
-            fill_price = _coerce_float(price, default=0.0) if price is not None else None
-            if fill_price is None:
+            raw_fill_price = _coerce_float(price, default=0.0) if price is not None else None
+            base_fill_ts = order.get("created_at")
+            if not isinstance(base_fill_ts, datetime):
+                base_fill_ts = timestamp
+            fill_ts = base_fill_ts + timedelta(milliseconds=delay_ms, microseconds=3)
+            fill_price = raw_fill_price
+            slippage_amount = 0.0
+            fee_amount = 0.0
+            if raw_fill_price is None:
                 self._logger.warning("Missing price for order; fill skipped symbol=%s", symbol)
+            else:
+                if side == "buy":
+                    fill_price = raw_fill_price * (1.0 + (self._slippage_bps / 10_000.0))
+                else:
+                    fill_price = raw_fill_price * (1.0 - (self._slippage_bps / 10_000.0))
+                slippage_amount = abs(fill_price - raw_fill_price) * fill_qty
+                fee_amount = self._compute_fee_amount(fill_qty, fill_price)
             responses.append(
                 {
                     "order_event_id": f"order_evt_{uuid.uuid4().hex}",
@@ -198,10 +264,21 @@ class InternalPaperBroker(Broker):
                     "qty": qty,
                     "fill_ts": fill_ts,
                     "fill_qty": fill_qty if fill_price is not None else None,
+                    "raw_fill_price": raw_fill_price,
                     "fill_price": fill_price,
+                    "slippage_amount": slippage_amount,
+                    "fee_amount": fee_amount,
                 }
             )
         return responses
+
+    def _compute_fee_amount(self, fill_qty: float, fill_price: float) -> float:
+        """Compute deterministic fees for a single fill."""
+        bps_fee = abs(fill_qty * fill_price) * (self._fee_bps / 10_000.0)
+        fee = self._fee_fixed_per_order + bps_fee
+        if fee <= 0.0 and self._fee_minimum <= 0.0:
+            return 0.0
+        return max(self._fee_minimum, fee)
 
 
 class AlpacaPaperBroker(Broker):
@@ -445,7 +522,10 @@ class AlpacaPaperBroker(Broker):
                             "cycle_id": event.get("cycle_id"),
                             "fill_ts": broker_order.get("fill_ts") or datetime.now(timezone.utc),
                             "fill_qty": _coerce_float(fill_qty),
+                            "raw_fill_price": _coerce_float(fill_price),
                             "fill_price": _coerce_float(fill_price),
+                            "slippage_amount": None,
+                            "fee_amount": None,
                         },
                     )
         return updates

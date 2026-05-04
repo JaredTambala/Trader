@@ -132,19 +132,23 @@ class Portfolio:
             if price is None:
                 price = price_lookup.get(symbol)
             price_value = float(price) if price is not None else None
+            fee_amount = order.get("fee_amount")
+            fee_value = float(fee_amount) if fee_amount is not None else 0.0
 
             current = self.positions.get(symbol, Position(symbol=symbol, qty=0.0, avg_price=None))
             new_qty = current.qty + delta
             new_avg = _compute_avg_price(current, delta, new_qty, price_value)
 
             if price_value is None:
+                if fee_value:
+                    self.cash_balance -= fee_value
                 logger.warning("Cash update skipped; missing price for order symbol=%s", symbol)
             else:
                 notional = qty_float * price_value
                 if side == "buy":
-                    self.cash_balance -= notional
+                    self.cash_balance -= notional + fee_value
                 else:
-                    self.cash_balance += notional
+                    self.cash_balance += notional - fee_value
 
             if abs(new_qty) < 1e-12:
                 self.positions.pop(symbol, None)

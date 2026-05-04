@@ -1,0 +1,13 @@
+symbol,asset_class,timeframe,ts,open,high,low,close,volume,trade_count,vwap,source
+DEMO,stocks,1Min,2026-01-20T12:00:00Z,9.67,9.87,9.57,9.77,1000,,,sample
+DEMO,stocks,1Min,2026-01-20T12:01:00Z,10.08,10.28,9.98,10.18,1005,,,sample
+DEMO,stocks,1Min,2026-01-20T12:02:00Z,9.84,10.04,9.74,9.94,1010,,,sample
+DEMO,stocks,1Min,2026-01-20T12:03:00Z,12.45,12.65,12.35,12.55,1015,,,sample
+DEMO,stocks,1Min,2026-01-20T12:04:00Z,9.91,10.11,9.81,10.01,1020,,,sample
+DEMO,stocks,1Min,2026-01-20T12:05:00Z,11.89,12.09,11.79,11.99,1025,,,sample
+DEMO,stocks,1Min,2026-01-20T12:06:00Z,9.02,9.22,8.92,9.12,1030,,,sample
+DEMO,stocks,1Min,2026-01-20T12:07:00Z,12.20,12.40,12.10,12.30,1035,,,sample
+DEMO,stocks,1Min,2026-01-20T12:08:00Z,12.30,12.50,12.20,12.40,1040,,,sample
+DEMO,stocks,1Min,2026-01-20T12:09:00Z,9.67,9.87,9.57,9.77,1045,,,sample
+DEMO,stocks,1Min,2026-01-20T12:10:00Z,10.31,10.51,10.21,10.41,1050,,,sample
+DEMO,stocks,1Min,2026-01-20T12:11:00Z,12.42,12.62,12.32,12.52,1055,,,sample

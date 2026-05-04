@@ -4,7 +4,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from trader.config import Config
 from trader.data import PostgresEventStore
+from trader.runtime_status import runtime_status, set_halt_state
 
 
 pytestmark = pytest.mark.postgres
@@ -37,8 +39,72 @@ def test_postgres_event_store_initializes_runtime_schema(
         "position_snapshots",
         "metrics_snapshots",
         "config_kv",
+        "experiments",
+        "experiment_runs",
     }
     assert expected.issubset(tables)
+    fill_columns = {
+        row[0]
+        for row in connection.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'fill_events'
+            """
+        ).fetchall()
+    }
+    assert {"raw_fill_price", "slippage_amount", "fee_amount"}.issubset(fill_columns)
+
+
+def test_postgres_experiment_run_lifecycle(
+    postgres_event_store: PostgresEventStore,
+) -> None:
+    now = datetime(2026, 1, 21, 12, 0, tzinfo=timezone.utc)
+    postgres_event_store.upsert_experiment(
+        experiment_id="exp_demo",
+        name="demo",
+        description="Demo experiment",
+        tags=("sample",),
+        created_at=now,
+        updated_at=now,
+        metadata={"owner": "test"},
+    )
+    postgres_event_store.record_experiment_run_start(
+        experiment_run_id="exp_run_1",
+        experiment_id="exp_demo",
+        run_id="run_1",
+        created_at=now,
+        strategy_id="trend_following",
+        strategy_name="Trend",
+        strategy_version="1",
+        symbols=("DEMO",),
+        asset_class="stocks",
+        timeframe="1Min",
+        start_ts=now,
+        end_ts=now,
+        parameters={"fast": 2},
+        assumptions={"slippage_bps": 10},
+        provenance={"config_hash": "abc"},
+        data_quality={"report_id": "dq_1"},
+        artifact_dir="artifacts/demo/run_1",
+    )
+    postgres_event_store.record_experiment_run_finish(
+        experiment_run_id="exp_run_1",
+        experiment_id="exp_demo",
+        run_id="run_1",
+        status="success",
+        finished_at=now,
+        result_summary={"total_return": 0.1},
+        provenance={"config_hash": "abc"},
+        data_quality={"report_id": "dq_1"},
+        artifact_dir="artifacts/demo/run_1",
+    )
+
+    rows = postgres_event_store.list_experiment_runs("exp_demo")
+    assert len(rows) == 1
+    assert rows[0]["status"] == "success"
+    assert rows[0]["parameters"] == {"fast": 2}
+    assert rows[0]["result_summary"] == {"total_return": 0.1}
 
 
 def test_postgres_bar_events_are_idempotent_on_symbol_timeframe_ts_source(
@@ -196,3 +262,158 @@ def test_postgres_metrics_snapshots_persist_run_cycle_and_session_ids(
         ["run_metrics"],
     ).fetchone()
     assert row == ("run_metrics", "run_metrics", "cycle_metrics", '{"equity": 1000.0}')
+
+
+def test_postgres_fill_events_support_null_cost_fields_for_old_rows(
+    postgres_event_store: PostgresEventStore,
+) -> None:
+    timestamp = datetime(2026, 1, 21, 12, 0, tzinfo=timezone.utc)
+    postgres_event_store.record_event(
+        "fill_events",
+        {
+            "client_order_id": "legacy_fill",
+            "run_id": "run_legacy",
+            "session_id": "run_legacy",
+            "cycle_id": "cycle_legacy",
+            "fill_ts": timestamp,
+            "fill_qty": 1.0,
+            "fill_price": 100.0,
+        },
+    )
+
+    row = postgres_event_store.connection().execute(
+        """
+        SELECT raw_fill_price, slippage_amount, fee_amount
+        FROM fill_events
+        WHERE client_order_id = %s
+        """,
+        ["legacy_fill"],
+    ).fetchone()
+    assert row == (None, None, None)
+
+
+def test_postgres_halt_state_round_trip(
+    postgres_event_store: PostgresEventStore,
+) -> None:
+    now = datetime(2026, 1, 21, 12, 0, tzinfo=timezone.utc)
+
+    state = set_halt_state(postgres_event_store, halted=True, reason="operator test", now=now)
+
+    assert state == {
+        "halted": True,
+        "reason": "operator test",
+        "updated_at": now.isoformat(),
+    }
+    row = postgres_event_store.connection().execute(
+        "SELECT value FROM config_kv WHERE key = %s",
+        ["halt"],
+    ).fetchone()
+    assert row == ("true",)
+
+
+def test_postgres_runtime_status_queries_latest_cycle_and_open_orders(
+    postgres_event_store: PostgresEventStore,
+) -> None:
+    now = datetime(2026, 1, 21, 12, 0, tzinfo=timezone.utc)
+    postgres_event_store.record_run_session_start("run_status", "trading", now, strategy_id="demo")
+    postgres_event_store.record_cycle_start("run_status", "cycle_status", "demo", "loop", now, now)
+    postgres_event_store.record_cycle_finish(
+        "run_status",
+        "cycle_status",
+        "demo",
+        "loop",
+        now,
+        now,
+        now,
+        "success",
+        None,
+    )
+    postgres_event_store.record_run_session_finish(
+        "run_status",
+        "trading",
+        now,
+        now,
+        "success",
+        None,
+        strategy_id="demo",
+    )
+    postgres_event_store.record_event(
+        "stock_bar_events",
+        {
+            "symbol": "AAPL",
+            "timeframe": "1Min",
+            "ts": now,
+            "ingested_at": now,
+            "open": 100.0,
+            "high": 101.0,
+            "low": 99.0,
+            "close": 100.5,
+            "volume": 10.0,
+            "trade_count": None,
+            "vwap": None,
+            "source": "test",
+        },
+    )
+    postgres_event_store.record_event(
+        "order_events",
+        {
+            "order_event_id": "order_evt_pg_status",
+            "client_order_id": "cid_pg_status",
+            "run_id": "run_status",
+            "session_id": "run_status",
+            "cycle_id": "cycle_status",
+            "symbol": "AAPL",
+            "side": "buy",
+            "qty": 1.0,
+            "order_type": "market",
+            "status": "submitted",
+            "broker_order_id": "broker_pg_status",
+            "rejection_reason": None,
+            "created_at": now,
+        },
+    )
+
+    status = runtime_status(postgres_event_store, _status_config(), now=now)
+
+    assert status["latest_cycle"]["cycle_id"] == "cycle_status"
+    assert status["open_orders"]["count"] == 1
+    assert status["market_data"]["stale_count"] == 0
+
+
+def _status_config() -> Config:
+    return Config(
+        mode="loop",
+        strategy_type="demo",
+        strategy_id="demo",
+        strategy_timeframe="1Min",
+        sma_short_window=2,
+        sma_long_window=3,
+        db_path="",
+        event_store="postgres",
+        market_data_source="noop",
+        market_data_asset_class="stocks",
+        market_data_stock_feed="iex",
+        market_data_symbols=("AAPL",),
+        market_data_max_age_seconds=60,
+        alpaca_api_key="",
+        alpaca_secret_key="",
+        alpaca_data_base_url="https://data.alpaca.markets",
+        alpaca_base_url="https://paper-api.alpaca.markets",
+        pg_dsn="",
+        pg_host="",
+        pg_port=5432,
+        pg_db="",
+        pg_user="",
+        pg_password="",
+        buffered_event_store=False,
+        buffer_flush_interval_ms=250,
+        buffer_max_batch_size=500,
+        buffer_max_queue_size=10000,
+        buffer_block_on_full=True,
+        log_signal_events=True,
+        log_indicator_events=True,
+        log_order_events=True,
+        log_fill_events=True,
+        log_position_snapshots=True,
+        broker_type="noop",
+    )
