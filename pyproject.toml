@@ -50,6 +50,14 @@ files = [
     "src/trader/risk.py",
     "src/trader/strategies/base.py",
     "src/trader/broker.py",
+    "src/trader/strategy_metadata.py",
+    "src/trader/research.py",
+    "src/trader/runtime_status.py",
+    "src/trader/tools",
+    "run_operator.py",
+    "run_research_discovery.py",
+    "run_research_recommendations.py",
+    "run_prepare_paper_promotion.py",
 ]
 check_untyped_defs = true
 follow_imports = "silent"
