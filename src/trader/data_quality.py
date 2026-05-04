@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
+import hashlib
+import json
 import logging
+from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
@@ -49,7 +52,7 @@ class SessionWindow:
     timezone: ZoneInfo
 
 
-def run_data_quality(config_data: Mapping[str, object]) -> None:
+def run_data_quality(config_data: Mapping[str, object]) -> dict[str, object]:
     """Run data quality checks using a parsed config mapping."""
     config = build_config(config_data)
     quality = _get_section(config_data, "data_quality")
@@ -65,6 +68,8 @@ def run_data_quality(config_data: Mapping[str, object]) -> None:
     sessions = _parse_sessions(quality.get("sessions"))
 
     event_store = build_event_store(config)
+    summaries: list[DataQualitySummary] = []
+    gaps_by_symbol: dict[str, list[GapRecord]] = {}
     try:
         for symbol in symbols:
             timestamps = _fetch_timestamps(
@@ -85,8 +90,27 @@ def run_data_quality(config_data: Mapping[str, object]) -> None:
             )
             _log_summary(summary)
             _log_gaps(gaps, max_gap_logs=max_gap_logs)
+            summaries.append(summary)
+            gaps_by_symbol[symbol] = gaps
     finally:
         event_store.close()
+    return _build_report(
+        symbols=symbols,
+        asset_class=asset_class,
+        timeframe=timeframe,
+        start=start,
+        end=end,
+        summaries=summaries,
+        gaps_by_symbol=gaps_by_symbol,
+    )
+
+
+def write_data_quality_report(report: Mapping[str, object], path: str | Path) -> Path:
+    """Write a structured data quality report to JSON."""
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+    return output_path
 
 
 def _fetch_timestamps(
@@ -437,6 +461,63 @@ def _log_gaps(gaps: Iterable[GapRecord], *, max_gap_logs: int) -> None:
             gap.delta,
             gap.threshold,
         )
+
+
+def _build_report(
+    *,
+    symbols: Sequence[str],
+    asset_class: str,
+    timeframe: str,
+    start: datetime | None,
+    end: datetime | None,
+    summaries: Sequence[DataQualitySummary],
+    gaps_by_symbol: Mapping[str, Sequence[GapRecord]],
+) -> dict[str, object]:
+    """Build a JSON-serializable data quality report."""
+    summary_payload = [_summary_payload(summary) for summary in summaries]
+    gap_payload = {
+        symbol: [_gap_payload(gap) for gap in gaps]
+        for symbol, gaps in gaps_by_symbol.items()
+    }
+    stable_payload = {
+        "symbols": list(symbols),
+        "asset_class": asset_class,
+        "timeframe": timeframe,
+        "start": start.isoformat() if start else None,
+        "end": end.isoformat() if end else None,
+        "summaries": summary_payload,
+    }
+    report_id = "dq_" + hashlib.sha256(
+        json.dumps(stable_payload, sort_keys=True).encode("utf-8")
+    ).hexdigest()[:16]
+    return {
+        "report_id": report_id,
+        "generated_at": datetime.now(tz=ZoneInfo("UTC")).isoformat(),
+        **stable_payload,
+        "gaps": gap_payload,
+    }
+
+
+def _summary_payload(summary: DataQualitySummary) -> dict[str, object]:
+    return {
+        "symbol": summary.symbol,
+        "total_bars": summary.total_bars,
+        "missing_gaps": summary.missing_gaps,
+        "expected_gaps": summary.expected_gaps,
+        "max_gap_seconds": summary.max_gap.total_seconds() if summary.max_gap else None,
+    }
+
+
+def _gap_payload(gap: GapRecord) -> dict[str, object]:
+    return {
+        "symbol": gap.symbol,
+        "prev_ts": gap.prev_ts.isoformat(),
+        "next_ts": gap.next_ts.isoformat(),
+        "delta_seconds": gap.delta.total_seconds(),
+        "expected_seconds": gap.expected.total_seconds(),
+        "threshold_seconds": gap.threshold.total_seconds(),
+        "reason": gap.reason,
+    }
 
 
 def _param_placeholder(connection: object) -> str:
