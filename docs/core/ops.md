@@ -1,6 +1,6 @@
 # Operations (Phase 1)
 
-For the current component-oriented operating manual, start with `docs/operations/README.md`.
+For the current component-oriented operating manual, start with `docs/core/operations/README.md`.
 
 ## Deployment (Phase 1 baseline)
 
@@ -114,7 +114,7 @@ trader_service:
 
 ## Order Recovery Runbook
 
-For the architectural rationale behind these procedures, see `docs/runtime_hot_path_and_reconciliation.md`.
+For the architectural rationale behind these procedures, see `docs/core/runtime_hot_path_and_reconciliation.md`.
 
 - `report`
   - Use when you want to inspect local open orders, broker open orders, and scope mismatches without mutating anything.

@@ -17,7 +17,7 @@ The **UI Backtest Runner** (Task 0.8b) adds the ability to launch, monitor, an
 | 8️⃣ | **Error & Retry Handling** | On failures from start/progress/result endpoints, record errors in `status_message`/`error` and surface banners; backend records failed run status + error message in `runs`. | `src/trader/backtest.py`, `src/trader/trader_service.py`, `src/ui/ui/state.py`, `src/ui/ui/pages/backtest_result.py` | Failures set `runs.status=failed`, UI displays descriptive error with retry guidance. |
 | 9️⃣ | **API Integration Tests** | Add `tests/test_backtest_api.py` covering each endpoint: start returns run_id, progress evolves, result returns metrics, failure path returns error. | `tests/test_backtest_api.py` | Tests pass under `uv run pytest`. |
 | 🔟 | **UI Flow Tests (optional)** | Add a UI smoke test (Reflex or Playwright) that fills the form, triggers the run, polls progress, and verifies the results page displays metrics. | `tests/ui/test_backtest_flow.py` | Test scripts run end-to-end (can be skipped if tooling absent). |
-| 1️⃣1️⃣ | **Docs & Ops** | Document the UI backtest workflow, API contract, env vars, and how to interpret results in `docs/ops.md`/`README.md`. | `docs/ops.md`, `README.md` | Documentation builds without errors and includes a new section. |
+| 1️⃣1️⃣ | **Docs & Ops** | Document the UI backtest workflow, API contract, env vars, and how to interpret results in `docs/core/ops.md`/`README.md`. | `docs/core/ops.md`, `README.md` | Documentation builds without errors and includes a new section. |
 
 ## Suggested Timeline
 1. **Prep → UI Form** (Day 1) 

@@ -352,5 +352,5 @@ LIMIT 20;
 
 ## Conventions
 
-- Review schema changes alongside `src/trader/data.py`, `docs/operations/`, and Postgres integration tests.
+- Review schema changes alongside `src/trader/data.py`, `docs/core/operations/`, and Postgres integration tests.
 - Keep docs aligned with the runtime schema rather than historical DuckDB-first descriptions.

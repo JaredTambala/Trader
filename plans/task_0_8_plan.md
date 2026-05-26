@@ -30,11 +30,11 @@ The goal of **Task 0.8** is to implement a concrete `AlpacaPaperBroker` that u
   * Simulate ambiguous submission → `error` → reconciliation.
   * Test status mapping for each Alpaca status value.
  | `tests/test_alpaca_broker.py` | All tests pass with `uv run pytest`. Coverage ≥ 90 % for the new broker code. |
-| **1️⃣4️⃣ Docs** | Update `docs/execution.md`:
+| **1️⃣4️⃣ Docs** | Update `docs/core/execution.md`:
   * Add a table mapping Alpaca statuses to canonical states.
   * Document the idempotency guarantees and reconciliation flow.
   * Show example configuration snippet for Alpaca credentials.
- | `docs/execution.md` | Documentation builds without errors; new sections are present. |
+ | `docs/core/execution.md` | Documentation builds without errors; new sections are present. |
 | **1️⃣5️⃣ Export** | Expose `AlpacaPaperBroker` in the module's `__all__` and update the broker factory in `src/trader/broker.py` so `BROKER=alpaca` creates an instance. | `src/trader/broker.py` | Running the app with `BROKER=alpaca` uses the new class (verified by a smoke test). |
 | **1️⃣6️⃣ Full Suite** | Run the complete test suite (`uv run pytest`). Fix any regressions introduced by the new code. | Entire repo | All tests pass; CI would succeed. |
 

@@ -1,7 +1,7 @@
 # Operations Documentation
 
-This directory is the current component-oriented operating manual for the engine. The docs are organized around the
-runtime components an operator, researcher, or future tool-agent has to understand. Each component document explains:
+This directory is the current component-oriented operating manual for the core engine. The docs are organized around
+the runtime components an operator or platform integrator has to understand. Each component document explains:
 
 - how the component behaves in backtest and live trading modes
 - which configuration controls it
@@ -21,9 +21,8 @@ Existing reference docs remain useful:
 - [../schema.md](../schema.md) is the authoritative runtime schema reference.
 - [../testing.md](../testing.md) describes the required local and CI quality gates.
 - [../ops.md](../ops.md) remains the short command/runbook reference.
-- [../tool_contracts.md](../tool_contracts.md) documents the JSON envelopes and side-effect classes for AI/tool clients.
-- [../ai_tool_workflows.md](../ai_tool_workflows.md) describes discovery, recommendations, and dry-run promotion packets.
-- [../agent_operating_model.md](../agent_operating_model.md) defines the intended agent identities and boundaries.
+
+Research-agent and MCP documentation lives in [../../research_agents/README.md](../../research_agents/README.md).
 
 ## Component documents
 
@@ -63,10 +62,9 @@ YAML/env config
 | Event store/audit | Records run, cycle, signal, order, fill, position, and result history. | Records session, cycle, recovery, order, fill, position, and metrics history. |
 | Results/metrics | Returns `BacktestResult` and optional JSON/CSV exports. | Writes metrics snapshots and operational audit rows. |
 
-Research mode is a backtest-only wrapper around these components: it loads stored bars, builds a standard-library
-strategy from config, runs one or more sequential backtests, records experiment metadata, and writes artifacts.
-Sprint 5 discovery extends this research wrapper with tool contracts, suite expansion, conservative recommendations,
-and dry-run promotion packets. It can read operator status JSON from Sprint 4, but it does not control live execution.
+Research and MCP tools are external consumers of these components. They may call core market-data, backtest, event-store,
+and operator-read APIs, but their agent identities, tool contracts, and artifacts are documented outside the core
+platform context.
 
 ## Primary workflows
 

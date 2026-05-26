@@ -109,27 +109,31 @@ If you want a minimal example of external strategy authoring, use [external_stra
 
 ## Documentation Map
 
-Start with the component-oriented operations docs when you want to understand how the system is run:
+Start with [docs/README.md](docs/README.md) for the bounded documentation contexts.
 
-- [docs/operations/README.md](docs/operations/README.md)
-- [docs/operations/runtime_orchestration.md](docs/operations/runtime_orchestration.md)
-- [docs/operations/market_data.md](docs/operations/market_data.md)
-- [docs/operations/strategy_and_risk.md](docs/operations/strategy_and_risk.md)
-- [docs/operations/broker_execution_portfolio.md](docs/operations/broker_execution_portfolio.md)
-- [docs/operations/event_store_and_audit.md](docs/operations/event_store_and_audit.md)
-- [docs/operations/results_and_metrics.md](docs/operations/results_and_metrics.md)
-- [docs/first_strategy.md](docs/first_strategy.md)
-- [docs/tool_contracts.md](docs/tool_contracts.md)
-- [docs/ai_tool_workflows.md](docs/ai_tool_workflows.md)
-- [docs/agent_operating_model.md](docs/agent_operating_model.md)
+Core platform documentation for `trader` and `trader_standard`:
 
-For architecture-level review, use:
+- [docs/core/operations/README.md](docs/core/operations/README.md)
+- [docs/core/operations/runtime_orchestration.md](docs/core/operations/runtime_orchestration.md)
+- [docs/core/operations/market_data.md](docs/core/operations/market_data.md)
+- [docs/core/operations/strategy_and_risk.md](docs/core/operations/strategy_and_risk.md)
+- [docs/core/operations/broker_execution_portfolio.md](docs/core/operations/broker_execution_portfolio.md)
+- [docs/core/operations/event_store_and_audit.md](docs/core/operations/event_store_and_audit.md)
+- [docs/core/operations/results_and_metrics.md](docs/core/operations/results_and_metrics.md)
+- [docs/core/first_strategy.md](docs/core/first_strategy.md)
+- [docs/core/system_architecture.md](docs/core/system_architecture.md)
+- [docs/core/runtime_hot_path_and_reconciliation.md](docs/core/runtime_hot_path_and_reconciliation.md)
+- [docs/core/schema.md](docs/core/schema.md)
+- [docs/core/backtesting.md](docs/core/backtesting.md)
+- [docs/core/testing.md](docs/core/testing.md)
 
-- [docs/system_architecture.md](docs/system_architecture.md)
-- [docs/runtime_hot_path_and_reconciliation.md](docs/runtime_hot_path_and_reconciliation.md)
-- [docs/schema.md](docs/schema.md)
-- [docs/backtesting.md](docs/backtesting.md)
-- [docs/testing.md](docs/testing.md)
+Research-agent, MCP, and LangGraph documentation:
+
+- [docs/research_agents/README.md](docs/research_agents/README.md)
+- [docs/research_agents/agent_operating_model.md](docs/research_agents/agent_operating_model.md)
+- [docs/research_agents/tool_contracts.md](docs/research_agents/tool_contracts.md)
+- [docs/research_agents/ai_tool_workflows.md](docs/research_agents/ai_tool_workflows.md)
+- [docs/research_agents/mcp_trading_research_tools.md](docs/research_agents/mcp_trading_research_tools.md)
 
 ## Live Runtime Safety
 
@@ -178,8 +182,8 @@ uv run python run_research_discovery.py configs/reproducible_backtest.yaml \
 uv run python run_research_recommendations.py configs/reproducible_backtest.yaml --experiment demo_discovery --json
 ```
 
-See [docs/tool_contracts.md](docs/tool_contracts.md) for the stable envelope schema and side-effect classes, and
-[docs/ai_tool_workflows.md](docs/ai_tool_workflows.md) for the discovery, recommendation, and promotion workflows.
+See [docs/research_agents/tool_contracts.md](docs/research_agents/tool_contracts.md) for the stable envelope schema and side-effect classes, and
+[docs/research_agents/ai_tool_workflows.md](docs/research_agents/ai_tool_workflows.md) for the discovery, recommendation, and promotion workflows.
 
 ## Order Recovery
 

@@ -2,10 +2,10 @@
 
 Date: 2026-05-03
 
-Source audit: `docs/platform_audit_2026-05-03.md`
+Source audit: `docs/history/platform_audit_2026-05-03.md`
 
-> Historical planning backlog. Use [operations/README.md](operations/README.md), [backtesting.md](backtesting.md),
-> [schema.md](schema.md), and [testing.md](testing.md) for the current operating documentation.
+> Historical planning backlog. Use [../core/operations/README.md](../core/operations/README.md), [../core/backtesting.md](../core/backtesting.md),
+> [../core/schema.md](../core/schema.md), and [../core/testing.md](../core/testing.md) for the current operating documentation.
 
 ## Working Rules
 
@@ -61,7 +61,7 @@ Likely areas:
 - `pyproject.toml`
 - `uv.lock`
 - `README.md`
-- `docs/testing.md`
+- `docs/core/testing.md`
 
 Tasks:
 
@@ -90,7 +90,7 @@ Make tests run automatically on every push or pull request.
 Likely areas:
 
 - `.github/workflows/ci.yml`
-- `docs/testing.md`
+- `docs/core/testing.md`
 
 Tasks:
 
@@ -153,7 +153,7 @@ Likely areas:
 - `pyproject.toml`
 - `src/trader/`
 - `src/trader_standard/`
-- `docs/testing.md`
+- `docs/core/testing.md`
 
 Tasks:
 
@@ -183,7 +183,7 @@ Likely areas:
 - `tests/`
 - `tests/conftest.py`
 - `docker-compose.postgres.yml`
-- `docs/testing.md`
+- `docs/core/testing.md`
 - `pyproject.toml`
 
 Tasks:
@@ -213,7 +213,7 @@ Likely areas:
 
 - `src/trader/data.py`
 - `tests/test_postgres_event_store.py`
-- `docs/schema.md`
+- `docs/core/schema.md`
 
 Tasks:
 
@@ -229,7 +229,7 @@ Tasks:
 Acceptance checks:
 
 - Postgres tests cover behavior that DuckDB tests cannot prove.
-- Tests fail if `docs/schema.md` assumptions are wrong enough to affect runtime behavior.
+- Tests fail if `docs/core/schema.md` assumptions are wrong enough to affect runtime behavior.
 - `uv run pytest` passes.
 
 Dependencies:
@@ -271,8 +271,8 @@ Make schema docs match implementation.
 
 Likely areas:
 
-- `docs/schema.md`
-- `docs/er.md`
+- `docs/core/schema.md`
+- `docs/core/er.md`
 - `src/trader/data.py`
 - `tests/`
 
@@ -287,7 +287,7 @@ Tasks:
 
 Acceptance checks:
 
-- `docs/schema.md` matches `PostgresEventStore._ensure_schema`.
+- `docs/core/schema.md` matches `PostgresEventStore._ensure_schema`.
 - Stale module references are removed or clearly marked historical.
 - `uv run pytest` passes.
 
@@ -307,7 +307,7 @@ Represent execution assumptions explicitly in code and result payloads.
 Likely areas:
 
 - `src/trader/backtest.py`
-- `docs/backtesting.md`
+- `docs/core/backtesting.md`
 - examples
 - tests
 
@@ -339,7 +339,7 @@ Likely areas:
 - `src/trader/backtest.py`
 - `src/trader/broker.py`
 - `src/trader/portfolio.py`
-- `docs/backtesting.md`
+- `docs/core/backtesting.md`
 - config examples
 
 Tasks:
@@ -399,7 +399,7 @@ Likely areas:
 
 - `src/trader/data.py`
 - `tests/support/duckdb_store.py`
-- `docs/schema.md`
+- `docs/core/schema.md`
 - `src/trader/backtest.py`
 - tests
 
@@ -491,7 +491,7 @@ Likely areas:
 
 - `examples/data/`
 - `tests/fixtures/`
-- `docs/backtesting.md`
+- `docs/core/backtesting.md`
 - `run_market_data_backfill.py` or a new fixture loader
 
 Tasks:
@@ -521,7 +521,7 @@ Likely areas:
 
 - `examples/run_reproducible_backtest.py`
 - `configs/`
-- `docs/backtesting.md`
+- `docs/core/backtesting.md`
 - `README.md`
 
 Tasks:
@@ -554,7 +554,7 @@ Likely areas:
 
 - `src/trader/data.py`
 - `src/trader/backtest.py`
-- `docs/schema.md`
+- `docs/core/schema.md`
 - tests
 
 Tasks:
@@ -645,7 +645,7 @@ Likely areas:
 
 - new `run_research_experiment.py`
 - `examples/strategy_library_support.py`
-- `docs/backtesting.md`
+- `docs/core/backtesting.md`
 - tests
 
 Tasks:
@@ -760,7 +760,7 @@ Make the package approachable for an aspiring quant.
 
 Likely areas:
 
-- `docs/first_strategy.md`
+- `docs/core/first_strategy.md`
 - `examples/`
 - sample config/data
 
@@ -852,7 +852,7 @@ Expose operational state through commands.
 Likely areas:
 
 - new `run_runtime_status.py` or `run_operator.py`
-- `docs/ops.md`
+- `docs/core/ops.md`
 - tests
 
 Tasks:
@@ -885,7 +885,7 @@ Likely areas:
 - `src/trader/risk.py`
 - `src/trader/data.py`
 - operator CLI
-- `docs/ops.md`
+- `docs/core/ops.md`
 - tests
 
 Tasks:
@@ -1003,7 +1003,7 @@ Likely areas:
 - `src/trader/order_recovery.py`
 - `src/trader/trader_service.py`
 - `src/trader/broker.py`
-- `docs/execution.md`
+- `docs/core/execution.md`
 - tests
 
 Tasks:
@@ -1030,7 +1030,7 @@ Make paper trading operation repeatable.
 
 Likely areas:
 
-- `docs/ops.md`
+- `docs/core/ops.md`
 - `README.md`
 - operator CLI docs
 
@@ -1091,7 +1091,7 @@ Define stable machine-facing commands for the full discovery workflow before add
 
 Likely areas:
 
-- `docs/tool_contracts.md`
+- `docs/research_agents/tool_contracts.md`
 - data/backfill/research/compare/operator CLI modules
 - tests
 
@@ -1373,8 +1373,8 @@ Document how AI systems and tool clients should interact with the platform once 
 
 Likely areas:
 
-- `docs/ai_tool_workflows.md`
-- `docs/tool_contracts.md`
+- `docs/research_agents/ai_tool_workflows.md`
+- `docs/research_agents/tool_contracts.md`
 
 Tasks:
 

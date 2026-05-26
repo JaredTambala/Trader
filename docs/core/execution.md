@@ -5,8 +5,8 @@ expectations for Phase 1.
 
 For architecture-level review, this operational reference is complemented by:
 
-- `docs/system_architecture.md`
-- `docs/runtime_hot_path_and_reconciliation.md`
+- `docs/core/system_architecture.md`
+- `docs/core/runtime_hot_path_and_reconciliation.md`
 
 ## Architecture (Two Processes)
 
@@ -95,7 +95,7 @@ Errors during a cycle are captured in `run_events.error_message` and the cycle i
 - `client_order_id` is deterministic: derived from `cycle_id`, `symbol`, `side`, and `target_qty`.
 
 These IDs ensure retries do not create duplicate orders. The canonical formats are documented in
-`docs/schema.md`.
+`docs/core/schema.md`.
 
 ## Order Lifecycle (Implemented)
 

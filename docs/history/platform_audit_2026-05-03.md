@@ -2,8 +2,8 @@
 
 Date: 2026-05-03
 
-> Historical audit baseline. Use [operations/README.md](operations/README.md), [backtesting.md](backtesting.md),
-> [schema.md](schema.md), and [testing.md](testing.md) for the current operating documentation.
+> Historical audit baseline. Use [../core/operations/README.md](../core/operations/README.md), [../core/backtesting.md](../core/backtesting.md),
+> [../core/schema.md](../core/schema.md), and [../core/testing.md](../core/testing.md) for the current operating documentation.
 
 ## Audit Purpose
 
@@ -84,9 +84,9 @@ metrics, and trading sessions.
 Evidence:
 
 - `src/trader/data.py`
-- `docs/schema.md`
-- `docs/system_architecture.md`
-- `docs/runtime_hot_path_and_reconciliation.md`
+- `docs/core/schema.md`
+- `docs/core/system_architecture.md`
+- `docs/core/runtime_hot_path_and_reconciliation.md`
 
 The model is append-oriented where it matters, especially for order lifecycle and reconciliation.
 
@@ -99,8 +99,8 @@ Evidence:
 
 - `src/trader/backtest.py`
 - `src/trader/cycle.py`
-- `docs/backtesting.md`
-- `docs/execution.md`
+- `docs/core/backtesting.md`
+- `docs/core/execution.md`
 
 The backtest runner also computes a meaningful initial metric set: equity curve, buy-and-hold benchmark, drawdown,
 Sharpe, Sortino, Calmar, exposure, trade stats, turnover, alpha, beta, tracking error, and information ratio.
@@ -177,12 +177,12 @@ Required action:
 
 ### P0: Schema Documentation Drift
 
-`docs/schema.md` does not fully match the current schema in `src/trader/data.py`.
+`docs/core/schema.md` does not fully match the current schema in `src/trader/data.py`.
 
 Examples:
 
-- The implementation has `trading_sessions`; `docs/schema.md` does not list it.
-- The implementation has `session_id` on multiple event tables; `docs/schema.md` omits it in several places.
+- The implementation has `trading_sessions`; `docs/core/schema.md` does not list it.
+- The implementation has `session_id` on multiple event tables; `docs/core/schema.md` omits it in several places.
 - Older audit docs still reference `src/trader/loader.py`, which no longer exists.
 
 Risk:
@@ -192,7 +192,7 @@ Risk:
 
 Required action:
 
-- Make `docs/schema.md` generated or at least schema-test-backed.
+- Make `docs/core/schema.md` generated or at least schema-test-backed.
 - Refresh older docs so `Stage 0` history does not read as active truth.
 
 ### P0: Repository Hygiene Gap
@@ -226,8 +226,8 @@ The runtime has good logs and event records, but operational controls are still 
 
 Evidence:
 
-- `docs/ops.md` says "Halt trading: set global halt flag (to be implemented)."
-- `docs/execution.md` lists health/status runtime surface as a remaining gap.
+- `docs/core/ops.md` says "Halt trading: set global halt flag (to be implemented)."
+- `docs/core/execution.md` lists health/status runtime surface as a remaining gap.
 
 Risk:
 
@@ -378,7 +378,7 @@ Required action:
 
 ## Recommended Reprioritization
 
-Detailed task breakdown: `docs/platform_sprint_task_breakdown_2026-05-03.md`
+Detailed task breakdown: `docs/history/platform_sprint_task_breakdown_2026-05-03.md`
 
 ### Sprint 1: Stabilize The Foundation
 
@@ -391,7 +391,7 @@ Tasks:
 3. Remove or relocate tracked `.duckdb` runtime artifacts.
 4. Add `ruff` and basic type checking.
 5. Move test-only dependencies out of runtime dependencies.
-6. Refresh `docs/schema.md` and stale planning references.
+6. Refresh `docs/core/schema.md` and stale planning references.
 7. Replace absolute README paths with repo-relative links.
 
 Definition of done:

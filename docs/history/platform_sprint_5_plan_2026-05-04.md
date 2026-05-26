@@ -33,7 +33,7 @@ Sprint 5 ships the full `S5.1` through `S5.10` backlog from the sprint task brea
 
 ### 1. Tool Contracts And JSON Envelopes
 
-Add `docs/tool_contracts.md` and shared tool response helpers.
+Add `docs/research_agents/tool_contracts.md` and shared tool response helpers.
 
 Standard JSON envelope:
 
@@ -220,8 +220,8 @@ Validation checks:
 
 Add:
 
-- `docs/ai_tool_workflows.md`
-- `docs/tool_contracts.md`
+- `docs/research_agents/ai_tool_workflows.md`
+- `docs/research_agents/tool_contracts.md`
 
 Document roles:
 
