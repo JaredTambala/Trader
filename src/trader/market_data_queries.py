@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import re
 from typing import Any
 
 from .data import EventStore
@@ -14,6 +15,7 @@ from .timeframes import normalize_timeframe
 MAX_BAR_QUERY_SYMBOLS = 20
 DEFAULT_BAR_FETCH_LIMIT = 1_000
 MAX_BAR_FETCH_LIMIT = 10_000
+_SYMBOL_RE = re.compile(r"^[A-Z0-9][A-Z0-9./_-]{0,31}$")
 
 _BAR_TABLE_BY_ASSET_CLASS = {
     "stocks": "stock_bar_events",
@@ -82,6 +84,19 @@ class BarRange:
     symbol: str
     first_ts: datetime | None
     last_ts: datetime | None
+
+
+@dataclass(frozen=True)
+class BarTimestamp:
+    """Timestamp for one fetched bar.
+
+    Attributes:
+        symbol: Canonical symbol.
+        ts: Bar timestamp.
+    """
+
+    symbol: str
+    ts: datetime
 
 
 @dataclass(frozen=True)
@@ -156,6 +171,9 @@ def normalize_bar_query(query: BarQuery, *, default_limit: int | None = None) ->
     canonical_symbols = tuple(
         dict.fromkeys(canonicalize_symbol(symbol, asset_class=asset_class) for symbol in symbols)
     )
+    invalid_symbols = [symbol for symbol in canonical_symbols if _SYMBOL_RE.fullmatch(symbol) is None]
+    if invalid_symbols:
+        raise MarketDataQueryValidationError(f"Invalid bar query symbol: {invalid_symbols[0]}")
     try:
         timeframe = normalize_timeframe(query.timeframe)
     except ValueError as exc:
@@ -271,6 +289,34 @@ def fetch_bar_ranges(event_store: EventStore, query: BarQuery) -> tuple[BarRange
         ranges.get(symbol, BarRange(symbol=symbol, first_ts=None, last_ts=None))
         for symbol in normalized.symbols
     )
+
+
+def fetch_bar_timestamps(event_store: EventStore, query: BarQuery) -> tuple[BarTimestamp, ...]:
+    """Fetch all matching bar timestamps for a validated query.
+
+    Args:
+        event_store: Event store exposing a queryable connection.
+        query: Bar query request.
+
+    Returns:
+        Matching symbol/timestamp pairs ordered by timestamp and symbol.
+
+    Raises:
+        EventStoreConnectionUnavailable: If the event store has no query connection.
+        MarketDataQueryValidationError: If the query is invalid.
+    """
+    normalized = normalize_bar_query(query)
+    rows = _fetchall(
+        _queryable_connection(event_store),
+        f"""
+        SELECT symbol, ts
+        FROM {_bar_table_name(normalized.asset_class)}
+        WHERE {_where_clause(normalized)}
+        ORDER BY ts ASC, symbol ASC
+        """,
+        _where_params(normalized),
+    )
+    return tuple(BarTimestamp(symbol=str(row[0]), ts=_required_datetime(row[1])) for row in rows)
 
 
 def count_bar_sources(event_store: EventStore, query: BarQuery) -> tuple[BarSourceCount, ...]:

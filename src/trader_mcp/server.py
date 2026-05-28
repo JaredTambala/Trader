@@ -12,7 +12,10 @@ from trader.config import build_config, load_yaml_config
 from trader.data import EventStore, NoOpEventStore, build_event_store
 from trader_mcp.adapters import envelope_to_mcp_result
 from trader_mcp.constants import (
+    CAPABILITY_REGISTRATION_FLAGS,
+    DATA_ENSURE_LOADED_TOOL,
     DATA_GET_INVENTORY_TOOL,
+    DATA_SUMMARIZE_QUALITY_TOOL,
     DATA_TOOL_DESCRIPTIONS,
     MCP_CONFIG_TOOL,
     MCP_HEALTH_TOOL,
@@ -20,12 +23,19 @@ from trader_mcp.constants import (
     REGISTERED_TOOL_NAMES,
     SERVER_NAME,
     SUPPORT_TOOL_DESCRIPTIONS,
-    UNREGISTERED_CAPABILITY_FLAGS,
 )
 from trader_mcp.environment import McpEnvironment, load_local_environment
 from trader_research.agents import agent_owner_for_tool
 from trader_research.contracts import SCHEMA_VERSION, SideEffect, ToolEnvelope, error_envelope, success_envelope
-from trader_research.data import DataInventoryRequest, get_data_inventory
+from trader_research.data import (
+    DataEnsureLoadedPolicy,
+    DataEnsureLoadedRequest,
+    DataInventoryRequest,
+    DataQualityRequest,
+    data_ensure_loaded as ensure_loaded_service,
+    data_summarize_quality as summarize_quality_service,
+    get_data_inventory,
+)
 
 
 EventStoreProvider = Callable[[], EventStore]
@@ -35,18 +45,25 @@ EventStoreProvider = Callable[[], EventStore]
 def create_server(
     environment: McpEnvironment | None = None,
     event_store_provider: EventStoreProvider | None = None,
+    data_loading_policy: DataEnsureLoadedPolicy | None = None,
 ) -> FastMCP:
     """Create the MCP server and register read-only tools.
 
     Args:
         environment: Optional resolved local MCP environment.
         event_store_provider: Optional provider for read-only event-store queries.
+        data_loading_policy: Optional explicit data-loading policy for tests or
+            controlled embedding.
 
     Returns:
         Configured FastMCP server instance.
     """
     local_env = environment or load_local_environment()
     data_event_store_provider = event_store_provider or build_event_store_provider(local_env)
+    resolved_data_loading_policy = data_loading_policy or DataEnsureLoadedPolicy(
+        allow_data_loading=local_env.allow_data_loading,
+        backfill_config_path=local_env.trader_config_path,
+    )
     server = FastMCP(SERVER_NAME)
 
     @server.tool(name=MCP_HEALTH_TOOL, description=SUPPORT_TOOL_DESCRIPTIONS[MCP_HEALTH_TOOL])
@@ -100,6 +117,86 @@ def create_server(
             start=start,
             end=end,
             source=source,
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=DATA_SUMMARIZE_QUALITY_TOOL,
+        description=DATA_TOOL_DESCRIPTIONS[DATA_SUMMARIZE_QUALITY_TOOL],
+    )
+    def data_summarize_quality(
+        symbols: list[str],
+        asset_class: str,
+        timeframe: str,
+        start: str,
+        end: str,
+        source: str | None = None,
+    ) -> CallToolResult:
+        """Return a read-only Data Agent quality envelope.
+
+        Args:
+            symbols: JSON array of requested symbols.
+            asset_class: Requested asset class.
+            timeframe: Requested bar timeframe.
+            start: Inclusive requested start timestamp as ISO-8601 text.
+            end: Inclusive requested end timestamp as ISO-8601 text.
+            source: Optional source filter.
+
+        Returns:
+            MCP call result containing a Data Agent quality envelope.
+        """
+        envelope = build_data_quality_envelope(
+            event_store_provider=data_event_store_provider,
+            symbols=symbols,
+            asset_class=asset_class,
+            timeframe=timeframe,
+            start=start,
+            end=end,
+            source=source,
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=DATA_ENSURE_LOADED_TOOL,
+        description=DATA_TOOL_DESCRIPTIONS[DATA_ENSURE_LOADED_TOOL],
+    )
+    def data_ensure_loaded(
+        symbols: list[str],
+        asset_class: str,
+        timeframe: str,
+        start: str,
+        end: str,
+        mode: str,
+        source: str | None = None,
+        dry_run: bool = True,
+    ) -> CallToolResult:
+        """Return a Data Agent data inspection/loading envelope.
+
+        Args:
+            symbols: JSON array of requested symbols.
+            asset_class: Requested asset class.
+            timeframe: Requested bar timeframe.
+            start: Inclusive requested start timestamp as ISO-8601 text.
+            end: Inclusive requested end timestamp as ISO-8601 text.
+            mode: Ensure mode: existing, sample, or backfill.
+            source: Optional source filter.
+            dry_run: Whether backfill mode should plan only.
+
+        Returns:
+            MCP call result containing a Data Agent ensure-loaded envelope.
+        """
+        envelope = build_data_ensure_loaded_envelope(
+            event_store_provider=data_event_store_provider,
+            environment=local_env,
+            symbols=symbols,
+            asset_class=asset_class,
+            timeframe=timeframe,
+            start=start,
+            end=end,
+            mode=mode,
+            source=source,
+            dry_run=dry_run,
+            policy=resolved_data_loading_policy,
         )
         return CallToolResult(**envelope_to_mcp_result(envelope))
 
@@ -178,7 +275,23 @@ def build_config_envelope(environment: McpEnvironment | None = None) -> ToolEnve
             "side_effect": SideEffect.READ_ONLY.value,
             "description": DATA_TOOL_DESCRIPTIONS[DATA_GET_INVENTORY_TOOL],
         },
+        {
+            "name": DATA_SUMMARIZE_QUALITY_TOOL,
+            "agent_owner": agent_owner_for_tool(DATA_SUMMARIZE_QUALITY_TOOL),
+            "side_effect": SideEffect.READ_ONLY.value,
+            "description": DATA_TOOL_DESCRIPTIONS[DATA_SUMMARIZE_QUALITY_TOOL],
+        },
+        {
+            "name": DATA_ENSURE_LOADED_TOOL,
+            "agent_owner": agent_owner_for_tool(DATA_ENSURE_LOADED_TOOL),
+            "side_effect": SideEffect.LOCAL_MUTATING.value,
+            "description": DATA_TOOL_DESCRIPTIONS[DATA_ENSURE_LOADED_TOOL],
+        },
     ]
+    safety = {
+        **CAPABILITY_REGISTRATION_FLAGS,
+        "data_loading_mutation_allowed": local_env.allow_data_loading,
+    }
     return success_envelope(
         command=MCP_CONFIG_TOOL,
         agent_owner=MCP_SERVER_OWNER,
@@ -192,7 +305,7 @@ def build_config_envelope(environment: McpEnvironment | None = None) -> ToolEnve
             "tool_count": len(tool_metadata),
             "tools": tool_metadata,
             "policy": local_env.policy_flags(),
-            "safety": dict(UNREGISTERED_CAPABILITY_FLAGS),
+            "safety": safety,
         },
     )
 
@@ -240,6 +353,110 @@ def build_data_inventory_envelope(
     return get_data_inventory(event_store_provider(), request)
 
 
+def build_data_quality_envelope(
+    *,
+    event_store_provider: EventStoreProvider,
+    symbols: Sequence[str],
+    asset_class: str,
+    timeframe: str,
+    start: str,
+    end: str,
+    source: str | None = None,
+) -> ToolEnvelope:
+    """Build a Data Agent quality envelope from MCP-native inputs.
+
+    Args:
+        event_store_provider: Provider for read-only event-store queries.
+        symbols: Requested symbol universe.
+        asset_class: Requested asset class.
+        timeframe: Requested bar timeframe.
+        start: Inclusive requested start timestamp as ISO-8601 text.
+        end: Inclusive requested end timestamp as ISO-8601 text.
+        source: Optional source filter.
+
+    Returns:
+        Data Agent quality envelope for the requested window.
+    """
+    try:
+        request = _data_quality_request_from_inputs(
+            symbols=symbols,
+            asset_class=asset_class,
+            timeframe=timeframe,
+            start=start,
+            end=end,
+            source=source,
+        )
+    except ValueError as exc:
+        return error_envelope(
+            command=DATA_SUMMARIZE_QUALITY_TOOL,
+            side_effect=SideEffect.READ_ONLY,
+            code="validation_error",
+            message=str(exc),
+        )
+    return summarize_quality_service(event_store_provider(), request)
+
+
+def build_data_ensure_loaded_envelope(
+    *,
+    event_store_provider: EventStoreProvider,
+    environment: McpEnvironment,
+    symbols: Sequence[str],
+    asset_class: str,
+    timeframe: str,
+    start: str,
+    end: str,
+    mode: str,
+    source: str | None = None,
+    dry_run: bool = True,
+    policy: DataEnsureLoadedPolicy | None = None,
+) -> ToolEnvelope:
+    """Build a Data Agent ensure-loaded envelope from MCP-native inputs.
+
+    Args:
+        event_store_provider: Provider for event-store reads and allowed local writes.
+        environment: MCP environment carrying runtime mutation policy.
+        symbols: Requested symbol universe.
+        asset_class: Requested asset class.
+        timeframe: Requested bar timeframe.
+        start: Inclusive requested start timestamp as ISO-8601 text.
+        end: Inclusive requested end timestamp as ISO-8601 text.
+        mode: Ensure mode: existing, sample, or backfill.
+        source: Optional source filter.
+        dry_run: Whether backfill mode should plan only.
+        policy: Optional explicit loading policy. Defaults to environment policy.
+
+    Returns:
+        Data Agent ensure-loaded envelope.
+    """
+    try:
+        request = _data_ensure_loaded_request_from_inputs(
+            symbols=symbols,
+            asset_class=asset_class,
+            timeframe=timeframe,
+            start=start,
+            end=end,
+            mode=mode,
+            source=source,
+            dry_run=dry_run,
+        )
+    except ValueError as exc:
+        return error_envelope(
+            command=DATA_ENSURE_LOADED_TOOL,
+            side_effect=SideEffect.LOCAL_MUTATING,
+            code="validation_error",
+            message=str(exc),
+        )
+    return ensure_loaded_service(
+        event_store_provider(),
+        request,
+        policy=policy
+        or DataEnsureLoadedPolicy(
+            allow_data_loading=environment.allow_data_loading,
+            backfill_config_path=environment.trader_config_path,
+        ),
+    )
+
+
 def _data_inventory_request_from_inputs(
     *,
     symbols: Sequence[str],
@@ -275,6 +492,82 @@ def _data_inventory_request_from_inputs(
     )
 
 
+def _data_quality_request_from_inputs(
+    *,
+    symbols: Sequence[str],
+    asset_class: str,
+    timeframe: str,
+    start: str,
+    end: str,
+    source: str | None,
+) -> DataQualityRequest:
+    """Build a Data Agent quality request from MCP tool inputs.
+
+    Args:
+        symbols: Requested symbol universe.
+        asset_class: Requested asset class.
+        timeframe: Requested bar timeframe.
+        start: Inclusive requested start timestamp as ISO-8601 text.
+        end: Inclusive requested end timestamp as ISO-8601 text.
+        source: Optional source filter.
+
+    Returns:
+        Data quality request with parsed datetimes.
+
+    Raises:
+        ValueError: If MCP inputs are not JSON-native values expected by the tool.
+    """
+    return DataQualityRequest(
+        symbols=_parse_symbols(symbols),
+        asset_class=str(asset_class),
+        timeframe=str(timeframe),
+        start=_parse_iso_datetime(start, field_name="start"),
+        end=_parse_iso_datetime(end, field_name="end"),
+        source=str(source) if source is not None else None,
+    )
+
+
+def _data_ensure_loaded_request_from_inputs(
+    *,
+    symbols: Sequence[str],
+    asset_class: str,
+    timeframe: str,
+    start: str,
+    end: str,
+    mode: str,
+    source: str | None,
+    dry_run: bool,
+) -> DataEnsureLoadedRequest:
+    """Build a Data Agent ensure-loaded request from MCP tool inputs.
+
+    Args:
+        symbols: Requested symbol universe.
+        asset_class: Requested asset class.
+        timeframe: Requested bar timeframe.
+        start: Inclusive requested start timestamp as ISO-8601 text.
+        end: Inclusive requested end timestamp as ISO-8601 text.
+        mode: Ensure mode.
+        source: Optional source filter.
+        dry_run: Whether backfill mode should plan only.
+
+    Returns:
+        Data ensure-loaded request with parsed datetimes.
+
+    Raises:
+        ValueError: If MCP inputs are not JSON-native values expected by the tool.
+    """
+    return DataEnsureLoadedRequest(
+        symbols=_parse_symbols(symbols),
+        asset_class=str(asset_class),
+        timeframe=str(timeframe),
+        start=_parse_iso_datetime(start, field_name="start"),
+        end=_parse_iso_datetime(end, field_name="end"),
+        mode=str(mode),
+        source=str(source) if source is not None else None,
+        dry_run=_parse_bool(dry_run, field_name="dry_run"),
+    )
+
+
 def _parse_symbols(symbols: Sequence[str]) -> tuple[str, ...]:
     """Parse MCP symbol input into a tuple.
 
@@ -290,6 +583,30 @@ def _parse_symbols(symbols: Sequence[str]) -> tuple[str, ...]:
     if isinstance(symbols, str) or not isinstance(symbols, Sequence):
         raise ValueError("symbols must be a JSON array of strings")
     return tuple(str(symbol) for symbol in symbols)
+
+
+def _parse_bool(value: object, *, field_name: str) -> bool:
+    """Parse a JSON-native boolean input.
+
+    Args:
+        value: Candidate boolean value.
+        field_name: Input field name used in validation errors.
+
+    Returns:
+        Parsed boolean.
+
+    Raises:
+        ValueError: If the value cannot be interpreted as a boolean.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "off"}:
+            return False
+    raise ValueError(f"{field_name} must be a boolean")
 
 
 def _parse_iso_datetime(value: str, *, field_name: str) -> datetime:

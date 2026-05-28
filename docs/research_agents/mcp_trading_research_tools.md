@@ -50,15 +50,18 @@ The server reads portable, non-secret local configuration from `local.env`: envi
 root, optional trader config path, and capability policy flags. Static identifiers such as server name, tool names,
 and tool descriptions stay in Python metadata under `trader_mcp.constants`.
 
-The server currently registers only read-only support and inventory tools:
+The server currently registers support tools plus the bounded Data Agent workflow tools:
 
 - `mcp_health`
 - `mcp_get_config`
 - `data_get_inventory`
+- `data_summarize_quality`
+- `data_ensure_loaded`
 
-No broker tools, raw SQL tools, data-loading tools, backtest tools, resources, prompts, or LangGraph workflows are
-exposed by this skeleton server. If `TRADER_MCP_TRADER_CONFIG_PATH` is unset, the inventory tool uses a no-op event
-store and returns the normal unavailable-connection envelope instead of loading data or mutating state.
+No broker tools, raw SQL tools, backtest tools, resources, prompts, or LLM-backed workflows are exposed by this server.
+`data_ensure_loaded` is registered with `side_effect="local_mutating"`, but runtime mutation still requires
+`TRADER_MCP_ALLOW_DATA_LOADING=true`; the default local policy rejects sample-loading requests. If
+`TRADER_MCP_TRADER_CONFIG_PATH` is unset, data tools use a no-op event store unless tests inject a DuckDB store.
 
 ## Data Inventory Service
 
@@ -73,8 +76,7 @@ Chunk 6 registers `data_get_inventory` over MCP using the same dependency-free e
 symbols, asset class, timeframe, start/end timestamps, and optional source, then returns `content`,
 `structuredContent`, and `isError` with `agent_owner="Data Agent"` and `side_effect="read_only"`.
 
-This tool does not load data, backfill data, write artifacts, run data-quality checks, run backtests, expose SQL tools,
-or add LangGraph workflows.
+This tool does not load data, backfill data, write artifacts, run backtests, expose SQL tools, or mutate state.
 
 ## First MCP Tool Evidence
 
@@ -103,3 +105,37 @@ uv run pytest tests/test_langgraph_agents.py
 The graph test uses the same test-only DuckDB-backed MCP server as the first MCP evidence test. `trader_agents` does
 not import platform data/query modules or the MCP server implementation; it uses only identity metadata and an MCP
 client boundary.
+
+## Data Agent Quality And Loading Workflow
+
+Chunks 10 through 16 complete the deterministic Data Agent workflow:
+
+```text
+mcp_health
+mcp_get_config
+data_get_inventory
+data_summarize_quality
+data_ensure_loaded
+data_summarize_quality
+```
+
+Reproduce the Slice 3 evidence with:
+
+```bash
+uv run pytest tests/test_data_quality_service.py tests/test_data_ensure_loaded.py tests/test_mcp_data_workflow.py tests/test_langgraph_data_workflow.py tests/test_mcp_first_tool_evidence.py tests/test_mcp_tools.py tests/test_mcp_server.py tests/test_market_data_queries.py tests/test_data_inventory.py tests/test_sql_boundaries.py tests/test_agent_identities.py tests/test_research_contracts.py tests/test_mcp_adapters.py
+```
+
+The tests assert these envelope fields:
+
+- `data_summarize_quality`: `ok`, `agent_owner="Data Agent"`, `side_effect="read_only"`, embedded
+  `data_quality_report.report_id`, normalized `asset_class`, `symbols`, `timeframe`, `requested_window`,
+  per-symbol `bar_count`, `missing_gap_count`, `expected_gap_count`, `session_gap_count`, `max_gap_seconds`, and
+  report-level `complete` plus warnings for missing rows or detected gaps.
+- `data_ensure_loaded`: `ok`, `agent_owner="Data Agent"`, `side_effect="local_mutating"`, explicit `mode`,
+  `rows_loaded`, dry-run backfill plan fields with zero network calls/writes, permitted non-dry-run backfill runner
+  evidence, sample-load evidence, and post-load `dataset_manifest` plus `data_quality_report`.
+- MCP workflow evidence: every `CallToolResult.content[0].text` parses to the same JSON as `structuredContent`, and
+  `isError` matches the shared `ToolEnvelope.ok` value.
+- Data Agent graph evidence: ordered `called_tools`, initial manifest, initial quality report, load result, final
+  quality report, accumulated warnings/errors, policy refusal when loading is not allowed, and no forbidden direct
+  imports from platform data/query modules or the MCP server.

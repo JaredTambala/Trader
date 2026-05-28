@@ -9,10 +9,12 @@ from tests.support.duckdb_store import DuckDBEventStore
 from trader.data import NoOpEventStore
 from trader.sample_data import load_sample_market_data_csv
 from trader_mcp.constants import (
+    CAPABILITY_REGISTRATION_FLAGS,
+    DATA_ENSURE_LOADED_TOOL,
     DATA_GET_INVENTORY_TOOL,
+    DATA_SUMMARIZE_QUALITY_TOOL,
     MCP_CONFIG_TOOL,
     REGISTERED_TOOL_NAMES,
-    UNREGISTERED_CAPABILITY_FLAGS,
 )
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
@@ -122,7 +124,7 @@ def test_data_inventory_mcp_tool_reports_unavailable_connection() -> None:
     anyio.run(_run)
 
 
-def test_config_output_includes_inventory_and_excludes_mutating_tools() -> None:
+def test_config_output_includes_data_tools_and_excludes_unsafe_tools() -> None:
     server = create_server(load_local_environment(), event_store_provider=NoOpEventStore)
 
     async def _run() -> None:
@@ -132,9 +134,13 @@ def test_config_output_includes_inventory_and_excludes_mutating_tools() -> None:
         data = result.structuredContent["data"]
         tool_names = {tool["name"] for tool in data["tools"]}
         assert DATA_GET_INVENTORY_TOOL in tool_names
+        assert DATA_SUMMARIZE_QUALITY_TOOL in tool_names
+        assert DATA_ENSURE_LOADED_TOOL in tool_names
         assert "research_run_backtest" not in tool_names
-        assert "data_ensure_loaded" not in tool_names
-        assert data["safety"] == UNREGISTERED_CAPABILITY_FLAGS
+        assert data["safety"] == {
+            **CAPABILITY_REGISTRATION_FLAGS,
+            "data_loading_mutation_allowed": False,
+        }
 
     anyio.run(_run)
 

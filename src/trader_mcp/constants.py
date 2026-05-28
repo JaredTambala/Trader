@@ -20,11 +20,21 @@ MCP_CONFIG_TOOL: Final = "mcp_get_config"
 DATA_GET_INVENTORY_TOOL: Final = "data_get_inventory"
 """Tool name for read-only Data Agent inventory."""
 
+DATA_SUMMARIZE_QUALITY_TOOL: Final = "data_summarize_quality"
+"""Tool name for read-only Data Agent data-quality summaries."""
+
+DATA_ENSURE_LOADED_TOOL: Final = "data_ensure_loaded"
+"""Tool name for explicit Data Agent data inspection/loading."""
+
 SUPPORT_TOOL_NAMES: Final = (MCP_HEALTH_TOOL, MCP_CONFIG_TOOL)
 """Read-only support tool names exposed by the MCP server."""
 
-DATA_TOOL_NAMES: Final = (DATA_GET_INVENTORY_TOOL,)
-"""Read-only Data Agent tool names exposed by the MCP server."""
+DATA_TOOL_NAMES: Final = (
+    DATA_GET_INVENTORY_TOOL,
+    DATA_SUMMARIZE_QUALITY_TOOL,
+    DATA_ENSURE_LOADED_TOOL,
+)
+"""Data Agent tool names exposed by the MCP server."""
 
 REGISTERED_TOOL_NAMES: Final = (*SUPPORT_TOOL_NAMES, *DATA_TOOL_NAMES)
 """All tool names currently exposed by the MCP server."""
@@ -37,8 +47,18 @@ SUPPORT_TOOL_DESCRIPTIONS: Final = {
 
 DATA_TOOL_DESCRIPTIONS: Final = {
     DATA_GET_INVENTORY_TOOL: "Return bounded market-data inventory and dataset manifest.",
+    DATA_SUMMARIZE_QUALITY_TOOL: "Return bounded market-data quality gaps and completeness.",
+    DATA_ENSURE_LOADED_TOOL: "Inspect, sample-load, or plan bounded market-data loading.",
 }
-"""Descriptions for read-only Data Agent tools exposed by the MCP server."""
+"""Descriptions for Data Agent tools exposed by the MCP server."""
+
+CAPABILITY_REGISTRATION_FLAGS: Final = {
+    "broker_mutating_tools_registered": False,
+    "raw_sql_tools_registered": False,
+    "data_loading_tools_registered": True,
+    "backtest_tools_registered": False,
+}
+"""Safety flags for registered and intentionally unregistered tool families."""
 
 UNREGISTERED_CAPABILITY_FLAGS: Final = {
     "broker_mutating_tools_registered": False,
@@ -46,4 +66,4 @@ UNREGISTERED_CAPABILITY_FLAGS: Final = {
     "data_loading_tools_registered": False,
     "backtest_tools_registered": False,
 }
-"""Safety flags for tool families intentionally not registered in the skeleton."""
+"""Historical pre-loading safety flags retained for older tests and docs."""

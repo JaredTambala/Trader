@@ -21,3 +21,4 @@ interfaces. Those belong in [../core/README.md](../core/README.md).
 - [ai_tool_workflows.md](ai_tool_workflows.md)
 - [codex_trading_research_framework_brief.md](codex_trading_research_framework_brief.md)
 - [mcp_trading_research_tools.md](mcp_trading_research_tools.md)
+- [agents_mcp_user_guide.md](agents_mcp_user_guide.md)

@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
+from types import TracebackType
 from typing import Any, Protocol
 
 from mcp import ClientSession, StdioServerParameters
@@ -71,6 +72,100 @@ class StdioMcpToolClient:
             ) as session:
                 await session.initialize()
                 result = await session.call_tool(tool_name, dict(arguments))
+        return {
+            "content": [_content_block_to_dict(block) for block in result.content],
+            "structuredContent": dict(result.structuredContent or {}),
+            "isError": bool(result.isError),
+        }
+
+
+@dataclass
+class PersistentStdioMcpToolClient:
+    """MCP client that keeps one stdio server session open across calls.
+
+    Attributes:
+        command: Executable used to start the MCP server.
+        args: Command arguments.
+        cwd: Optional working directory for the server process.
+        env: Optional environment for the server process.
+        read_timeout_seconds: Timeout applied to MCP reads.
+    """
+
+    command: str
+    args: Sequence[str]
+    cwd: str | Path | None = None
+    env: Mapping[str, str] | None = None
+    read_timeout_seconds: int = 10
+
+    def __post_init__(self) -> None:
+        """Initialize runtime context-manager handles."""
+        self._stdio_context: Any | None = None
+        self._session_context: Any | None = None
+        self._session: ClientSession | None = None
+
+    async def __aenter__(self) -> "PersistentStdioMcpToolClient":
+        """Start the stdio server and initialize the MCP session.
+
+        Returns:
+            Initialized persistent MCP client.
+        """
+        server_params = StdioServerParameters(
+            command=self.command,
+            args=list(self.args),
+            cwd=self.cwd,
+            env=dict(self.env) if self.env is not None else None,
+        )
+        self._stdio_context = stdio_client(server_params)
+        read_stream, write_stream = await self._stdio_context.__aenter__()
+        self._session_context = ClientSession(
+            read_stream,
+            write_stream,
+            read_timeout_seconds=timedelta(seconds=self.read_timeout_seconds),
+        )
+        self._session = await self._session_context.__aenter__()
+        await self._session.initialize()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool:
+        """Close the MCP session and stdio server.
+
+        Args:
+            exc_type: Exception type from the managed block.
+            exc: Exception from the managed block.
+            tb: Traceback from the managed block.
+
+        Returns:
+            False so exceptions propagate normally.
+        """
+        if self._session_context is not None:
+            await self._session_context.__aexit__(exc_type, exc, tb)
+        if self._stdio_context is not None:
+            await self._stdio_context.__aexit__(exc_type, exc, tb)
+        self._session = None
+        return False
+
+    async def call_tool(self, tool_name: str, arguments: Mapping[str, Any]) -> Mapping[str, Any]:
+        """Call one MCP tool over the persistent session.
+
+        Args:
+            tool_name: MCP tool name to call.
+            arguments: JSON-native tool arguments.
+
+        Returns:
+            MCP-style result mapping with JSON-safe content blocks and structured
+            content.
+
+        Raises:
+            RuntimeError: If the client is used outside its async context.
+        """
+        if self._session is None:
+            raise RuntimeError("PersistentStdioMcpToolClient must be used as an async context manager")
+        result = await self._session.call_tool(tool_name, dict(arguments))
         return {
             "content": [_content_block_to_dict(block) for block in result.content],
             "structuredContent": dict(result.structuredContent or {}),

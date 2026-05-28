@@ -147,13 +147,13 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 7. First MCP Tool Evidence | Done | `tests/test_mcp_first_tool_evidence.py`; `uv run pytest tests/test_mcp_first_tool_evidence.py tests/test_mcp_tools.py tests/test_mcp_server.py tests/test_market_data_queries.py tests/test_data_inventory.py tests/test_sql_boundaries.py tests/test_agent_identities.py tests/test_research_contracts.py tests/test_mcp_adapters.py` | Stdio MCP client starts a sample-data server, lists tools, calls `data_get_inventory`, and receives a valid Data Agent envelope. |
 | 8. LangGraph Agent Identity Skeleton | Done | `tests/test_langgraph_agents.py`; `uv run python -c "from trader_agents.data_agent import build_data_agent_inventory_graph"` | LangGraph dependency, Data Agent state schema, and MCP client wrapper added without LLM calls or persistence. |
 | 9. Data Agent Inventory Graph | Done | `tests/test_langgraph_agents.py`; `uv run pytest tests/test_langgraph_agents.py` | Deterministic Data Agent graph calls `data_get_inventory` through MCP and returns the dataset manifest in graph state. |
-| 10. Data Quality Service | Not started |  |  |
-| 11. Register Data Quality MCP Tool | Not started |  |  |
-| 12. Extend Data Agent Graph for Quality | Not started |  |  |
-| 13. Data Ensure/Loading Service | Not started |  |  |
-| 14. Register Data Loading MCP Tool | Not started |  |  |
-| 15. Extend Data Agent Graph for Loading | Not started |  |  |
-| 16. Data MCP and LangGraph Workflow Evidence | Not started |  |  |
+| 10. Data Quality Service | Done | `tests/test_data_quality_service.py`; `uv run pytest tests/test_data_quality_service.py tests/test_data_ensure_loaded.py` | Read-only Data Agent quality service returns stable report IDs, per-symbol totals, missing-gap counts, max-gap seconds, completeness, warnings, validation errors, and unavailable-store envelopes. |
+| 11. Register Data Quality MCP Tool | Done | `tests/test_mcp_data_workflow.py`; `tests/test_mcp_tools.py`; `tests/test_mcp_server.py` | `data_summarize_quality` is registered as a read-only Data Agent MCP tool with JSON-native inputs and shared envelope output. |
+| 12. Extend Data Agent Graph for Quality | Done | `tests/test_langgraph_data_workflow.py`; `uv run pytest tests/test_langgraph_agents.py tests/test_langgraph_data_workflow.py` | Data Agent quality graph calls `data_get_inventory` then `data_summarize_quality` through the MCP client and preserves reports, warnings, errors, and ordered tool calls. |
+| 13. Data Ensure/Loading Service | Done | `tests/test_data_ensure_loaded.py`; `uv run pytest tests/test_data_quality_service.py tests/test_data_ensure_loaded.py` | `data_ensure_loaded` supports existing, sample, dry-run backfill, and permitted non-dry-run backfill through bounded config or injected runner policy with post-load evidence. |
+| 14. Register Data Loading MCP Tool | Done | `tests/test_mcp_data_workflow.py`; `tests/test_mcp_tools.py`; `tests/test_mcp_server.py` | `data_ensure_loaded` is registered as `local_mutating`; config distinguishes registration from `TRADER_MCP_ALLOW_DATA_LOADING` runtime permission and MCP can run permitted injected/configured backfill through the tool. |
+| 15. Extend Data Agent Graph for Loading | Done | `tests/test_langgraph_data_workflow.py` | Full Data Agent graph enforces loading policy and calls inventory, quality, ensure-loaded, and final quality through MCP tools only. |
+| 16. Data MCP and LangGraph Workflow Evidence | Done | `tests/test_mcp_data_workflow.py`; `tests/test_langgraph_data_workflow.py`; `docs/research_agents/mcp_trading_research_tools.md` | Stdio MCP evidence covers health/config/inventory/quality/ensure/final quality with JSON text parity; LangGraph evidence completes the same workflow through the MCP client. |
 | 17. Move Shared Tool Contracts | Not started |  |  |
 | 18. Move Research Helpers | Not started |  |  |
 | 19. Move Research Tool Modules | Not started |  |  |
@@ -197,6 +197,7 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 57. MCP and LangGraph Contract Tests | Not started |  |  |
 | 58. Iterative Documentation | Not started |  |  |
 | 59. Verification Pass | Not started |  |  |
+| 60. Calendar-Aware Data Quality | Not started | AMD 12-month `1Min` MCP run exposed wall-clock gap overcounting in `artifacts/research/amd_12mo_1min_data_agent_quality_full_2026-05-28.json` | Later backlog item: add market-calendar/session-aware expected-bar and gap classification for stocks so nights, weekends, holidays, early closes, and feed/session windows are not reported as missing data. Preserve warnings for true intra-session gaps and coverage edges. |
 
 ## Proposed Package Shape
 
@@ -409,6 +410,9 @@ Data Agent graph completes the same workflow with allowed MCP tools only
 Implement chunks 17-22 after the Data Agent MCP and LangGraph workflow is proven. This is where broader migration,
 shared schemas, and the Quant Research Supervisor identity belong. The supervisor starts early, but only as an
 orchestrator over Data Agent artifacts and explicit missing-specialist blockers.
+
+Use `plans/mcp_trading_research_tools_slice4_test_conditions.md` as the intermediate acceptance contract for the full
+slice before marking chunks 17-22 `Done`.
 
 Evidence target:
 
