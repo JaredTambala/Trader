@@ -145,8 +145,8 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 5. Data Inventory Service | Done | `tests/test_market_data_queries.py`; `tests/test_data_inventory.py`; `tests/test_sql_boundaries.py`; `uv run pytest tests/test_market_data_queries.py tests/test_data_inventory.py tests/test_sql_boundaries.py tests/test_agent_identities.py tests/test_research_contracts.py tests/test_mcp_adapters.py tests/test_mcp_server.py` | Direct read-only Data Agent service returns embedded dataset manifests through typed core market-data queries; research/MCP layers do not embed raw SQL; MCP registration remains chunk 6. |
 | 6. Register Data Inventory MCP Tool | Done | `tests/test_mcp_tools.py`; `tests/test_mcp_server.py`; `uv run pytest tests/test_mcp_tools.py tests/test_mcp_server.py tests/test_market_data_queries.py tests/test_data_inventory.py tests/test_sql_boundaries.py tests/test_agent_identities.py tests/test_research_contracts.py tests/test_mcp_adapters.py` | `data_get_inventory` is registered as a read-only Data Agent MCP tool with injectable event-store wiring and shared envelope output. |
 | 7. First MCP Tool Evidence | Done | `tests/test_mcp_first_tool_evidence.py`; `uv run pytest tests/test_mcp_first_tool_evidence.py tests/test_mcp_tools.py tests/test_mcp_server.py tests/test_market_data_queries.py tests/test_data_inventory.py tests/test_sql_boundaries.py tests/test_agent_identities.py tests/test_research_contracts.py tests/test_mcp_adapters.py` | Stdio MCP client starts a sample-data server, lists tools, calls `data_get_inventory`, and receives a valid Data Agent envelope. |
-| 8. LangGraph Agent Identity Skeleton | Not started |  |  |
-| 9. Data Agent Inventory Graph | Not started |  |  |
+| 8. LangGraph Agent Identity Skeleton | Done | `tests/test_langgraph_agents.py`; `uv run python -c "from trader_agents.data_agent import build_data_agent_inventory_graph"` | LangGraph dependency, Data Agent state schema, and MCP client wrapper added without LLM calls or persistence. |
+| 9. Data Agent Inventory Graph | Done | `tests/test_langgraph_agents.py`; `uv run pytest tests/test_langgraph_agents.py` | Deterministic Data Agent graph calls `data_get_inventory` through MCP and returns the dataset manifest in graph state. |
 | 10. Data Quality Service | Not started |  |  |
 | 11. Register Data Quality MCP Tool | Not started |  |  |
 | 12. Extend Data Agent Graph for Quality | Not started |  |  |
@@ -390,6 +390,8 @@ Data Agent graph starts
 ### Slice 3: Data Tool Workflow and Data Agent Graph
 
 Implement chunks 10-16 next. This builds out the data-quality and data-loading capabilities while the MCP surface and Data Agent LangGraph identity are already live.
+
+Use `plans/mcp_trading_research_tools_slice3_test_conditions.md` as the intermediate acceptance contract for the full slice before marking chunks 10-16 `Done`.
 
 Evidence target:
 

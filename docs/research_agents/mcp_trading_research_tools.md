@@ -87,3 +87,19 @@ uv run pytest tests/test_mcp_first_tool_evidence.py
 The test starts a test-only DuckDB-backed MCP server, lists the registered tools, calls `data_get_inventory`, and
 asserts a valid Data Agent envelope in both `structuredContent` and the JSON text block. The sample manifest contains
 the `DEMO` stock bars from `2026-01-20T12:00:00Z` through `2026-01-20T12:11:00Z`, with 12 rows from source `sample`.
+
+## Data Agent LangGraph Identity
+
+Chunks 8 and 9 add the first deterministic LangGraph identity without LLM calls or checkpoint persistence. The Data
+Agent graph owns `DataAgentState`, enforces the Data Agent MCP tool allowlist, calls `data_get_inventory` through an
+MCP client wrapper, and stores the returned tool envelope plus `dataset_manifest` payload in graph state.
+
+Reproduce the graph evidence with:
+
+```bash
+uv run pytest tests/test_langgraph_agents.py
+```
+
+The graph test uses the same test-only DuckDB-backed MCP server as the first MCP evidence test. `trader_agents` does
+not import platform data/query modules or the MCP server implementation; it uses only identity metadata and an MCP
+client boundary.
