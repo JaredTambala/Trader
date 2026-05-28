@@ -11,10 +11,11 @@ from mcp.client.stdio import stdio_client
 from mcp.types import CallToolResult
 
 from trader_mcp.constants import (
+    DATA_GET_INVENTORY_TOOL,
     MCP_CONFIG_TOOL,
     MCP_HEALTH_TOOL,
     MCP_SERVER_OWNER,
-    SUPPORT_TOOL_NAMES,
+    REGISTERED_TOOL_NAMES,
     UNREGISTERED_CAPABILITY_FLAGS,
 )
 from trader_mcp.environment import load_local_environment
@@ -27,6 +28,7 @@ def test_local_env_loads_portable_configuration() -> None:
     assert local_env.environment == "local"
     assert local_env.transport == "stdio"
     assert str(local_env.artifact_root) == "artifacts/research"
+    assert local_env.trader_config_path is None
     assert local_env.policy_flags() == {
         "allow_broker_mutation": False,
         "allow_raw_sql": False,
@@ -35,14 +37,14 @@ def test_local_env_loads_portable_configuration() -> None:
     }
 
 
-def test_create_server_registers_only_support_tools() -> None:
+def test_create_server_registers_support_and_inventory_tools() -> None:
     local_env = load_local_environment()
     server = create_server(local_env)
 
     async def _run() -> None:
         tools = await server.list_tools()
 
-        assert {tool.name for tool in tools} == set(SUPPORT_TOOL_NAMES)
+        assert {tool.name for tool in tools} == set(REGISTERED_TOOL_NAMES)
 
     anyio.run(_run)
 
@@ -75,8 +77,10 @@ def test_config_tool_excludes_research_and_mutating_tools() -> None:
         assert result.structuredContent is not None
         data = result.structuredContent["data"]
         tool_names = {tool["name"] for tool in data["tools"]}
-        assert tool_names == set(SUPPORT_TOOL_NAMES)
-        assert "data_get_inventory" not in tool_names
+        assert tool_names == set(REGISTERED_TOOL_NAMES)
+        inventory_tool = next(tool for tool in data["tools"] if tool["name"] == DATA_GET_INVENTORY_TOOL)
+        assert inventory_tool["agent_owner"] == "Data Agent"
+        assert inventory_tool["side_effect"] == "read_only"
         assert "research_run_backtest" not in tool_names
         assert data["policy"] == local_env.policy_flags()
         assert data["safety"] == UNREGISTERED_CAPABILITY_FLAGS
@@ -105,7 +109,7 @@ def test_stdio_server_lists_and_calls_health_tool() -> None:
                 tools = await session.list_tools()
                 result = await session.call_tool(MCP_HEALTH_TOOL, {})
 
-        assert {tool.name for tool in tools.tools} == set(SUPPORT_TOOL_NAMES)
+        assert {tool.name for tool in tools.tools} == set(REGISTERED_TOOL_NAMES)
         assert result.isError is False
         assert result.structuredContent is not None
         assert result.structuredContent["command"] == MCP_HEALTH_TOOL

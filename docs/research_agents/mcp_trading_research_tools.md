@@ -47,16 +47,18 @@ uv run python -m trader_mcp.server
 ```
 
 The server reads portable, non-secret local configuration from `local.env`: environment label, transport, artifact
-root, and capability policy flags. Static identifiers such as server name, tool names, and tool descriptions stay in
-Python metadata under `trader_mcp.constants`.
+root, optional trader config path, and capability policy flags. Static identifiers such as server name, tool names,
+and tool descriptions stay in Python metadata under `trader_mcp.constants`.
 
-The server currently registers only read-only support tools:
+The server currently registers only read-only support and inventory tools:
 
 - `mcp_health`
 - `mcp_get_config`
+- `data_get_inventory`
 
-Data Agent tools are intentionally not registered until chunks 5 and 6. No broker tools, raw SQL tools, data-loading
-tools, backtest tools, resources, prompts, or LangGraph workflows are exposed by this skeleton server.
+No broker tools, raw SQL tools, data-loading tools, backtest tools, resources, prompts, or LangGraph workflows are
+exposed by this skeleton server. If `TRADER_MCP_TRADER_CONFIG_PATH` is unset, the inventory tool uses a no-op event
+store and returns the normal unavailable-connection envelope instead of loading data or mutating state.
 
 ## Data Inventory Service
 
@@ -67,5 +69,9 @@ names, or direct `.execute(...)` calls. The service returns a Data Agent `ToolEn
 `dataset_manifest` payload. The manifest includes a stable dataset ID, asset class, symbols, timeframe, requested
 window, source filter, total rows, completeness flag, and per-symbol row/source coverage.
 
-`data_get_inventory` is not exposed over MCP until chunk 6. This chunk does not load data, backfill data, write
-artifacts, run data-quality checks, run backtests, expose SQL tools, or add LangGraph workflows.
+Chunk 6 registers `data_get_inventory` over MCP using the same dependency-free envelope adapter. It accepts JSON-native
+symbols, asset class, timeframe, start/end timestamps, and optional source, then returns `content`,
+`structuredContent`, and `isError` with `agent_owner="Data Agent"` and `side_effect="read_only"`.
+
+This tool does not load data, backfill data, write artifacts, run data-quality checks, run backtests, expose SQL tools,
+or add LangGraph workflows.

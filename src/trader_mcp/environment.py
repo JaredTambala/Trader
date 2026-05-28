@@ -18,6 +18,7 @@ class McpEnvironment:
         environment: Environment label, such as `local`.
         transport: Transport used by the local MCP server.
         artifact_root: Root directory for future MCP/research artifacts.
+        trader_config_path: Optional trader YAML config used to build the event store.
         allow_broker_mutation: Whether broker-mutating MCP tools may be enabled.
         allow_raw_sql: Whether raw SQL MCP tools may be enabled.
         allow_data_loading: Whether data-loading MCP tools may be enabled.
@@ -27,6 +28,7 @@ class McpEnvironment:
     environment: str
     transport: str
     artifact_root: Path
+    trader_config_path: Path | None
     allow_broker_mutation: bool
     allow_raw_sql: bool
     allow_data_loading: bool
@@ -72,6 +74,7 @@ def load_local_environment(env_path: str | Path | None = None) -> McpEnvironment
         environment=_required_env("TRADER_MCP_ENVIRONMENT", file_values),
         transport=transport,
         artifact_root=Path(_required_env("TRADER_MCP_ARTIFACT_ROOT", file_values)),
+        trader_config_path=_optional_path_env("TRADER_MCP_TRADER_CONFIG_PATH", file_values),
         allow_broker_mutation=_bool_env("TRADER_MCP_ALLOW_BROKER_MUTATION", file_values),
         allow_raw_sql=_bool_env("TRADER_MCP_ALLOW_RAW_SQL", file_values),
         allow_data_loading=_bool_env("TRADER_MCP_ALLOW_DATA_LOADING", file_values),
@@ -105,6 +108,22 @@ def _required_env(name: str, file_values: Mapping[str, str]) -> str:
     if not value:
         raise ValueError(f"Missing required local MCP env value: {name}")
     return value
+
+
+def _optional_path_env(name: str, file_values: Mapping[str, str]) -> Path | None:
+    """Return an optional path env value.
+
+    Args:
+        name: Environment variable name.
+        file_values: Values loaded from the env file.
+
+    Returns:
+        Path value when supplied, otherwise `None`.
+    """
+    value = os.environ.get(name, file_values.get(name, "")).strip()
+    if not value:
+        return None
+    return Path(value)
 
 
 def _bool_env(name: str, file_values: Mapping[str, str]) -> bool:
