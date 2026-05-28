@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from trader.tools.artifacts import load_strategy_artifacts
-from trader.tools.discovery import DiscoveryRequest, run_discovery
-from trader.tools.promotion import build_promotion_packet
-from trader.tools.recommendations import RecommendationSettings, build_recommendations
-from trader.tools.suites import build_suite_members
+from trader_research.artifacts import load_strategy_artifacts
+from trader_research.discovery import DiscoveryRequest, run_discovery
+from trader_research.promotion import build_promotion_packet
+from trader_research.recommendations import RecommendationSettings, build_recommendations
+from trader_research.suites import build_suite_members
 
 
 def test_suite_expansion_is_deterministic_and_guarded() -> None:

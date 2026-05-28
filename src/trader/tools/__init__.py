@@ -1,7 +1,10 @@
-"""Tool-facing helpers for AI/system orchestration."""
+"""Compatibility exports for migrated research tool helpers.
 
-from .contracts import SideEffect, ToolEnvelope, error_envelope, success_envelope
-from .discovery import DiscoveryRequest, run_discovery
+Canonical implementations live under `trader_research`.
+"""
+
+from trader_research.contracts import SideEffect, ToolEnvelope, error_envelope, success_envelope
+from trader_research.discovery import DiscoveryRequest, run_discovery
 
 __all__ = [
     "DiscoveryRequest",

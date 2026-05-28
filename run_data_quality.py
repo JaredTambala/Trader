@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 from trader.config import load_yaml_config, resolve_log_level
 from trader.data_quality import run_data_quality, write_data_quality_report
-from trader.tools.contracts import SideEffect, envelope_json, success_envelope
+from trader_research.contracts import SideEffect, envelope_json, success_envelope
 
 
 logger = logging.getLogger(__name__)
@@ -47,6 +47,7 @@ def main() -> None:
     if args.json:
         envelope = success_envelope(
             command="data_quality",
+            agent_owner="Data Agent",
             side_effect=SideEffect.READ_ONLY,
             data={
                 "report": report,

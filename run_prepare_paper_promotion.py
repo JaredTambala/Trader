@@ -10,8 +10,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from trader.config import load_yaml_config, resolve_log_level
-from trader.tools.contracts import SideEffect, envelope_json, error_envelope, success_envelope
-from trader.tools.promotion import build_promotion_packet
+from trader_research.contracts import SideEffect, envelope_json, error_envelope, success_envelope
+from trader_research.promotion import build_promotion_packet
 
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,7 @@ def main() -> None:
         )
         envelope = success_envelope(
             command="prepare_paper_promotion",
+            agent_owner="Quant Research Supervisor Agent",
             side_effect=SideEffect.LOCAL_MUTATING,
             data=packet,
             artifacts={
@@ -51,6 +52,7 @@ def main() -> None:
                 envelope_json(
                     error_envelope(
                         command="prepare_paper_promotion",
+                        agent_owner="Quant Research Supervisor Agent",
                         side_effect=SideEffect.LOCAL_MUTATING,
                         message=str(exc),
                     )

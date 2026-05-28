@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from trader.tools.discovery import DiscoveryRequest, run_discovery
+from trader_research.discovery import DiscoveryRequest, run_discovery
 
 
 @pytest.mark.postgres

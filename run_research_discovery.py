@@ -10,8 +10,8 @@ from typing import Any, Mapping
 from dotenv import load_dotenv
 
 from trader.config import load_yaml_config, resolve_log_level
-from trader.tools.contracts import SideEffect, envelope_json, error_envelope
-from trader.tools.discovery import DiscoveryRequest, run_discovery
+from trader_research.contracts import SideEffect, envelope_json, error_envelope
+from trader_research.discovery import DiscoveryRequest, run_discovery
 
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,7 @@ def main() -> None:
                 envelope_json(
                     error_envelope(
                         command="research_discovery",
+                        agent_owner="Quant Research Supervisor Agent",
                         side_effect=SideEffect.READ_ONLY if args.dry_run or args.data_mode == "plan" else SideEffect.LOCAL_MUTATING,
                         message=str(exc),
                     )

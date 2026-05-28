@@ -154,12 +154,12 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 14. Register Data Loading MCP Tool | Done | `tests/test_mcp_data_workflow.py`; `tests/test_mcp_tools.py`; `tests/test_mcp_server.py` | `data_ensure_loaded` is registered as `local_mutating`; config distinguishes registration from `TRADER_MCP_ALLOW_DATA_LOADING` runtime permission and MCP can run permitted injected/configured backfill through the tool. |
 | 15. Extend Data Agent Graph for Loading | Done | `tests/test_langgraph_data_workflow.py` | Full Data Agent graph enforces loading policy and calls inventory, quality, ensure-loaded, and final quality through MCP tools only. |
 | 16. Data MCP and LangGraph Workflow Evidence | Done | `tests/test_mcp_data_workflow.py`; `tests/test_langgraph_data_workflow.py`; `docs/research_agents/mcp_trading_research_tools.md` | Stdio MCP evidence covers health/config/inventory/quality/ensure/final quality with JSON text parity; LangGraph evidence completes the same workflow through the MCP client. |
-| 17. Move Shared Tool Contracts | Not started |  |  |
-| 18. Move Research Helpers | Not started |  |  |
-| 19. Move Research Tool Modules | Not started |  |  |
-| 20. Research Domain Schemas | Not started |  |  |
-| 21. Quant Research Supervisor Graph Skeleton | Not started |  |  |
-| 22. Supervisor Consumes Data Agent Handoff | Not started |  |  |
+| 17. Move Shared Tool Contracts | Done | `tests/test_research_contracts.py`; `tests/test_tool_contracts.py`; `tests/test_package_boundaries.py` | `trader_research.contracts` is canonical; `trader.tools.contracts` is a compatibility shim that returns the same envelope classes and preserves agent ownership. |
+| 18. Move Research Helpers | Done | `tests/test_research.py`; `tests/test_sprint5_cli.py`; `tests/test_package_boundaries.py` | Research helper behavior runs through `trader_research.research`; `trader.research` is a temporary compatibility shim only. |
+| 19. Move Research Tool Modules | Done | `tests/test_research_tools.py`; `tests/test_sprint5_cli.py`; `tests/test_package_boundaries.py` | Artifacts, discovery, promotion, recommendations, and suite helpers now live under `trader_research` with legacy `trader.tools.*` shims and no MCP/LangGraph imports. |
+| 20. Research Domain Schemas | Done | `tests/test_research_domain.py` | Bounded requests, data requirements, specialist handoffs, artifact slots, planned artifact refs, run refs, and verdict schemas serialize to JSON-safe dictionaries and validate ownership/bounds. |
+| 21. Quant Research Supervisor Graph Skeleton | Done | `tests/test_quant_research_supervisor.py`; `uv run python -c "from trader_agents.quant_research import build_quant_research_supervisor_graph"` | Supervisor graph records bounded requests, distinct identity, handoff ledger, artifact slots, public status, empty `called_tools`, and explicit missing-specialist blockers. |
+| 22. Supervisor Consumes Data Agent Handoff | Done | `tests/test_supervisor_data_handoff.py`; `tests/test_quant_research_supervisor.py` | Supervisor accepts Data Agent manifest/quality handoffs, preserves ownership/provenance, blocks incomplete quality, rejects forged/mismatched handoffs, and does not fetch raw data. |
 | 23. Math Coder Tool Contracts | Not started |  |  |
 | 24. Register Math Coder MCP Tools | Not started |  |  |
 | 25. Math Coder Agent Graph | Not started |  |  |

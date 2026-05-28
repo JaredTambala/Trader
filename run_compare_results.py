@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 from trader.config import build_config, load_yaml_config, resolve_log_level
 from trader.data import build_event_store
-from trader.research import list_experiment_comparison
+from trader_research.research import list_experiment_comparison
 
 
 logger = logging.getLogger(__name__)

@@ -10,9 +10,9 @@ from dotenv import load_dotenv
 
 from trader.config import build_config, load_yaml_config, resolve_log_level
 from trader.data import build_event_store
-from trader.research import experiment_slug, list_experiment_comparison
-from trader.tools.contracts import SideEffect, envelope_json, error_envelope, success_envelope, write_json_artifact
-from trader.tools.recommendations import RecommendationSettings, build_recommendations_from_files
+from trader_research.contracts import SideEffect, envelope_json, error_envelope, success_envelope, write_json_artifact
+from trader_research.recommendations import RecommendationSettings, build_recommendations_from_files
+from trader_research.research import experiment_slug, list_experiment_comparison
 
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,7 @@ def main() -> None:
         payload, output_path, warnings = _run(args, config_data)
         envelope = success_envelope(
             command="research_recommendations",
+            agent_owner="Quant Research Supervisor Agent",
             side_effect=SideEffect.READ_ONLY,
             data=payload,
             artifacts={"recommendations": str(output_path)},
@@ -39,6 +40,7 @@ def main() -> None:
                 envelope_json(
                     error_envelope(
                         command="research_recommendations",
+                        agent_owner="Quant Research Supervisor Agent",
                         side_effect=SideEffect.READ_ONLY,
                         message=str(exc),
                     )

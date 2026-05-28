@@ -7,7 +7,9 @@ and which agent features are planned next. It is a user-facing companion to the 
 ## Current Scope
 
 The current MCP server is a deterministic local research-tool server. It exposes support tools plus a Data Agent
-workflow for bounded market-data inspection and explicit data loading.
+workflow for bounded market-data inspection and explicit data loading. The LangGraph layer also includes a deterministic
+Quant Research Supervisor skeleton that consumes Data Agent artifact handoffs and records missing specialist evidence
+as blockers; it does not expose new MCP tools yet.
 
 Available tools:
 
@@ -210,12 +212,34 @@ The graph state preserves:
 
 The full workflow graph refuses to call `data_ensure_loaded` unless state policy has `allow_data_loading=true`.
 
+## Quant Research Supervisor Skeleton
+
+The initial supervisor graph is available through:
+
+```python
+from trader_agents.quant_research import build_quant_research_supervisor_graph, data_agent_handoffs_from_state
+from trader_agents.state import build_quant_research_supervisor_initial_state
+```
+
+Current behavior:
+
+- records a bounded research request
+- accepts Data Agent `dataset_manifest` and `data_quality_report` handoffs
+- preserves Data Agent ownership and provenance
+- stores a handoff ledger and specialist artifact slots
+- marks missing required specialist artifacts as structured blockers
+- keeps `called_tools` empty because supervisor MCP tool calls are not part of this slice
+
+The supervisor consumes artifact references or structured summaries only. It does not fetch raw market data, call Data
+Agent MCP tools directly, run backtests, call an LLM, or mutate broker state.
+
 ## Reproducible Evidence
 
 Run the current MCP and LangGraph evidence tests with:
 
 ```bash
 uv run pytest tests/test_data_quality_service.py tests/test_data_ensure_loaded.py tests/test_mcp_data_workflow.py tests/test_langgraph_data_workflow.py tests/test_mcp_first_tool_evidence.py tests/test_mcp_tools.py tests/test_mcp_server.py tests/test_market_data_queries.py tests/test_data_inventory.py tests/test_sql_boundaries.py tests/test_agent_identities.py tests/test_research_contracts.py tests/test_mcp_adapters.py
+uv run pytest tests/test_research_contracts.py tests/test_tool_contracts.py tests/test_research.py tests/test_research_tools.py tests/test_research_domain.py tests/test_quant_research_supervisor.py tests/test_supervisor_data_handoff.py tests/test_package_boundaries.py
 ```
 
 Useful focused checks:
@@ -223,8 +247,10 @@ Useful focused checks:
 ```bash
 uv run pytest tests/test_mcp_data_workflow.py
 uv run pytest tests/test_langgraph_data_workflow.py
+uv run pytest tests/test_quant_research_supervisor.py tests/test_supervisor_data_handoff.py
 uv run python -c "import trader_mcp; import trader_mcp.server as s; s.create_server()"
 uv run python -c "from trader_agents.data_agent import build_data_agent_inventory_graph"
+uv run python -c "from trader_agents.quant_research import build_quant_research_supervisor_graph"
 ```
 
 ## Current Limitations
@@ -238,7 +264,8 @@ The current user-facing workflow is intentionally narrow:
   runner is provided.
 - Data Agent outputs are embedded in envelopes; persisted research artifacts are planned but not part of the current
   MCP workflow.
-- Quant Research Supervisor, Math Coder, ML, Hypothesis, Evaluation, and Adversarial graphs are not implemented yet.
+- The Quant Research Supervisor is an orchestration skeleton only. Math Coder, ML, Hypothesis, Evaluation, and
+  Adversarial graphs are not implemented yet.
 
 ## Upcoming Features
 
@@ -248,7 +275,7 @@ Planned work after the current Data Agent slice:
 | --- | --- |
 | Shared contracts | Move remaining legacy tool contracts into the research package boundary. |
 | Research helpers | Move research helper modules out of the core runtime package where appropriate. |
-| Quant Research Supervisor | Add supervisor state, handoff ledger, and specialist artifact consumption. |
+| Quant Research Supervisor | Extend the skeleton to request specialist work and later synthesize evidenced recommendations. |
 | Math Coder Agent | List and validate indicator/stat-test contracts. |
 | ML Agent | Register and summarize feature, model, prediction, and drift artifacts. |
 | Hypothesis Agent | Create explicit hypothesis-card artifacts from known ingredients. |

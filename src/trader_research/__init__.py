@@ -22,14 +22,26 @@ from .contracts import (
     write_json_artifact,
 )
 from .data import DataInventoryRequest, get_data_inventory
+from .domain import (
+    BoundedResearchRequest,
+    DataRequirement,
+    ResearchIssue,
+    SpecialistArtifactSlot,
+    SpecialistHandoff,
+)
 
 __all__ = [
     "AGENT_DEFINITIONS",
     "TOOL_OWNER_BY_NAME",
     "AgentDefinition",
     "ArtifactReference",
+    "BoundedResearchRequest",
     "DataInventoryRequest",
+    "DataRequirement",
+    "ResearchIssue",
     "SideEffect",
+    "SpecialistArtifactSlot",
+    "SpecialistHandoff",
     "ToolEnvelope",
     "agent_owner_for_tool",
     "envelope_json",

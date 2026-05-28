@@ -9,7 +9,7 @@ import pytest
 from tests.test_backtest_exports import _sample_result
 from trader.backtest import BacktestAssumptions, BacktestSpec
 from trader.config import Config
-from trader.research import (
+from trader_research.research import (
     attach_research_metadata,
     build_parameter_grid,
     build_run_provenance,

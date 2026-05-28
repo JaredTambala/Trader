@@ -139,3 +139,33 @@ The tests assert these envelope fields:
 - Data Agent graph evidence: ordered `called_tools`, initial manifest, initial quality report, load result, final
   quality report, accumulated warnings/errors, policy refusal when loading is not allowed, and no forbidden direct
   imports from platform data/query modules or the MCP server.
+
+## Research Foundations And Supervisor Skeleton
+
+Chunks 17 through 22 move the legacy research helpers and tool modules into the `trader_research` package boundary,
+add typed research-domain schemas, and introduce the first deterministic Quant Research Supervisor graph skeleton.
+
+The old `trader.research` and `trader.tools.*` import paths are compatibility shims only. Canonical implementations now
+live under `trader_research`, and package-boundary tests verify that core `trader` modules do not depend on
+`trader_research`, `trader_mcp`, or `trader_agents` outside those shims.
+
+Reproduce the Slice 4 supervisor evidence with:
+
+```bash
+uv run pytest tests/test_research_contracts.py tests/test_tool_contracts.py tests/test_research.py tests/test_research_tools.py tests/test_research_domain.py tests/test_quant_research_supervisor.py tests/test_supervisor_data_handoff.py tests/test_package_boundaries.py
+```
+
+The tests assert these supervisor handoff fields and boundaries:
+
+- `SpecialistHandoff`: `handoff_id`, producing `agent_owner`, `artifact_type`, optional `artifact_path`, structured
+  `payload`, `source_request`, `provenance_refs`, structured `warnings`, structured `blockers`, and producing
+  `side_effect`.
+- Data Agent handoff consumption: supervisor state preserves `agent_owner="Data Agent"`, dataset manifest ID,
+  data-quality report ID, requested symbols, asset class, timeframe, window, completeness, Data Agent warnings, and
+  provenance from the Data Agent graph.
+- Supervisor state: distinct `Quant Research Supervisor Agent` identity, bounded `research_request`, handoff ledger,
+  specialist artifact slots, structured blockers, structured errors, public status, and ordered `called_tools`.
+- Missing specialist evidence: absent Data, Math Coder, ML, Hypothesis, Evaluation, and Adversarial artifacts are
+  explicit blockers when required; ML artifacts can be represented as optional when the request does not require them.
+- Boundary evidence: the supervisor does not call MCP tools, fetch raw bars, run backtests, invoke LLMs, mutate broker
+  state, or import platform data/query modules. It consumes Data Agent artifact references and summaries only.

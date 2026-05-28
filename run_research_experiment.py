@@ -25,7 +25,7 @@ from trader.data import build_event_store  # noqa: E402
 from trader.data_quality import run_data_quality, write_data_quality_report  # noqa: E402
 from trader.identifiers import deterministic_run_session_id  # noqa: E402
 from trader.portfolio import Position  # noqa: E402
-from trader.research import (  # noqa: E402
+from trader_research.research import (  # noqa: E402
     attach_research_metadata,
     build_parameter_grid,
     build_run_provenance,
