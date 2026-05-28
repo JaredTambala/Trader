@@ -13,3 +13,21 @@ Update it in the same change as each tool or graph slice:
 
 The task register and detailed implementation sequence currently live in
 [../../plans/mcp_trading_research_tools_plan.md](../../plans/mcp_trading_research_tools_plan.md).
+
+## Boundary Recon
+
+Chunk 0 confirms that the first useful MCP evidence should be the smallest read-only Data Agent slice:
+`data_get_inventory`. That tool should accept bounded symbols, asset class, timeframe, start, and end values, then
+return source metadata, symbol-level row counts, a dataset-manifest payload, and warnings for missing, sparse, or
+unavailable data. It should not run data quality, load sample rows, backfill, validate strategies, run backtests, or
+write artifacts in the first evidence loop.
+
+Existing code should remain in place until its replacement slice is proven:
+
+- `trader.tools.contracts` is the source to replace with `trader_research.contracts` in chunks 2 and 17.
+- `trader.research` contains experiment and backtest artifact helpers that should move to `trader_research` in chunk
+  18.
+- `trader.tools.discovery`, `suites`, `recommendations`, `promotion`, and `artifacts` are later migration candidates;
+  move them only as each capability becomes part of the new research service layer.
+- `trader.backtest`, `trader.data`, `trader.data_quality`, sample data loading, and market-data backfill stay core
+  platform services. Future `trader_research` services should wrap them instead of moving them.

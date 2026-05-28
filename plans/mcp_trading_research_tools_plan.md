@@ -137,8 +137,8 @@ Use this register as the source of truth for implementation status. Keep statuse
 
 | Chunk | Status | Evidence | Notes |
 | --- | --- | --- | --- |
-| 0. Boundary Recon | Not started |  |  |
-| 1. Clean Package Skeleton | Not started |  |  |
+| 0. Boundary Recon | Done | `docs/research_agents/mcp_trading_research_tools.md` Boundary Recon notes | Smallest first MCP data slice and later migration candidates documented. |
+| 1. Clean Package Skeleton | Done | `tests/test_agent_identities.py`; `uv run pytest tests/test_agent_identities.py`; `uv run python -c "import trader_research, trader_mcp, trader_agents"` | Importable metadata-only packages added for `trader_research`, `trader_mcp`, and `trader_agents`. |
 | 2. Minimal Tool Contracts | Not started |  |  |
 | 3. MCP Envelope Adapter | Not started |  |  |
 | 4. MCP Server Skeleton | Not started |  |  |
