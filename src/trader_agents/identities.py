@@ -9,7 +9,15 @@ from trader_research.agents import AgentDefinition, get_agent_definition
 
 @dataclass(frozen=True)
 class AgentIdentity:
-    """Runtime-facing identity metadata for an agent graph."""
+    """Runtime-facing identity metadata for an agent graph.
+
+    Attributes:
+        agent_key: Stable machine-readable agent key.
+        display_name: Human-readable agent name used in envelopes and docs.
+        role_policy: Short policy describing the agent's decision boundary.
+        tool_allowlist: Tool names the agent identity may call initially.
+        output_artifacts: Artifact filenames or types the agent may produce.
+    """
 
     agent_key: str
     display_name: str
@@ -44,12 +52,30 @@ _ROLE_POLICIES = {
 
 
 def build_agent_identity(agent_key_or_name: str) -> AgentIdentity:
-    """Build static identity metadata from a registered agent definition."""
+    """Build static identity metadata from a registered agent definition.
+
+    Args:
+        agent_key_or_name: Stable key or display name for a registered agent.
+
+    Returns:
+        Runtime-facing identity metadata for the requested agent.
+
+    Raises:
+        KeyError: If no registered agent matches the supplied value.
+    """
     definition = get_agent_definition(agent_key_or_name)
     return _identity_from_definition(definition)
 
 
 def _identity_from_definition(definition: AgentDefinition) -> AgentIdentity:
+    """Build identity metadata from a registered definition.
+
+    Args:
+        definition: Registered agent definition.
+
+    Returns:
+        Runtime-facing identity metadata.
+    """
     return AgentIdentity(
         agent_key=definition.key,
         display_name=definition.display_name,

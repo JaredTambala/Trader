@@ -31,3 +31,9 @@ Existing code should remain in place until its replacement slice is proven:
   move them only as each capability becomes part of the new research service layer.
 - `trader.backtest`, `trader.data`, `trader.data_quality`, sample data loading, and market-data backfill stay core
   platform services. Future `trader_research` services should wrap them instead of moving them.
+
+## Minimal Envelope And MCP Adapter
+
+Chunks 2 and 3 add the dependency-free `trader_research.contracts` envelope and `trader_mcp.adapters` conversion
+helper. The adapter returns MCP-style `content`, `structuredContent`, and `isError` fields without requiring the MCP
+SDK, so the next slice can add the first server skeleton on top of stable JSON contracts.

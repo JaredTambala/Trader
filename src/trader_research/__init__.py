@@ -12,11 +12,27 @@ from .agents import (
     agent_owner_for_tool,
     get_agent_definition,
 )
+from .contracts import (
+    ArtifactReference,
+    SideEffect,
+    ToolEnvelope,
+    envelope_json,
+    error_envelope,
+    success_envelope,
+    write_json_artifact,
+)
 
 __all__ = [
     "AGENT_DEFINITIONS",
     "TOOL_OWNER_BY_NAME",
     "AgentDefinition",
+    "ArtifactReference",
+    "SideEffect",
+    "ToolEnvelope",
     "agent_owner_for_tool",
+    "envelope_json",
+    "error_envelope",
     "get_agent_definition",
+    "success_envelope",
+    "write_json_artifact",
 ]

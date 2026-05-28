@@ -8,7 +8,15 @@ from typing import Mapping
 
 @dataclass(frozen=True)
 class AgentDefinition:
-    """Static definition for one research-agent identity."""
+    """Static definition for one research-agent identity.
+
+    Attributes:
+        key: Stable machine-readable agent key.
+        display_name: Human-readable agent name used in envelopes and docs.
+        mission: Short description of the agent's responsibility boundary.
+        owned_artifacts: Artifact filenames or types owned by the agent.
+        initial_tools: Tool names initially allowlisted for the agent.
+    """
 
     key: str
     display_name: str
@@ -125,6 +133,14 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
 
 
 def _normalize_lookup(value: str) -> str:
+    """Normalize an agent lookup string.
+
+    Args:
+        value: Agent key or display name.
+
+    Returns:
+        Lowercase underscore-separated lookup key.
+    """
     text = value.strip().lower().replace("-", "_").replace(" ", "_")
     while "__" in text:
         text = text.replace("__", "_")
@@ -149,7 +165,17 @@ TOOL_OWNER_BY_NAME: Mapping[str, str] = {
 
 
 def get_agent_definition(agent_key_or_name: str) -> AgentDefinition:
-    """Return a registered agent definition by key or display name."""
+    """Return a registered agent definition by key or display name.
+
+    Args:
+        agent_key_or_name: Stable key or display name for a registered agent.
+
+    Returns:
+        Matching agent definition.
+
+    Raises:
+        KeyError: If no registered agent matches the supplied value.
+    """
     lookup = _normalize_lookup(agent_key_or_name)
     try:
         return _AGENTS_BY_KEY[_AGENT_ALIASES[lookup]]
@@ -158,7 +184,17 @@ def get_agent_definition(agent_key_or_name: str) -> AgentDefinition:
 
 
 def agent_owner_for_tool(tool_name: str) -> str:
-    """Return the display name of the agent that owns a planned tool."""
+    """Return the display name of the agent that owns a planned tool.
+
+    Args:
+        tool_name: Stable tool command identifier.
+
+    Returns:
+        Display name of the owning agent.
+
+    Raises:
+        KeyError: If the tool name is not registered.
+    """
     try:
         return TOOL_OWNER_BY_NAME[tool_name]
     except KeyError as exc:
