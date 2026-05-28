@@ -75,3 +75,15 @@ symbols, asset class, timeframe, start/end timestamps, and optional source, then
 
 This tool does not load data, backfill data, write artifacts, run data-quality checks, run backtests, expose SQL tools,
 or add LangGraph workflows.
+
+## First MCP Tool Evidence
+
+Chunk 7 proves the first end-to-end MCP evidence loop through a real stdio client:
+
+```bash
+uv run pytest tests/test_mcp_first_tool_evidence.py
+```
+
+The test starts a test-only DuckDB-backed MCP server, lists the registered tools, calls `data_get_inventory`, and
+asserts a valid Data Agent envelope in both `structuredContent` and the JSON text block. The sample manifest contains
+the `DEMO` stock bars from `2026-01-20T12:00:00Z` through `2026-01-20T12:11:00Z`, with 12 rows from source `sample`.
