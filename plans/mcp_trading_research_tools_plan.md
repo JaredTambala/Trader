@@ -142,7 +142,7 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 2. Minimal Tool Contracts | Done | `tests/test_research_contracts.py`; `uv run pytest tests/test_agent_identities.py tests/test_research_contracts.py tests/test_mcp_adapters.py` | Research-owned `ToolEnvelope`, `SideEffect`, `ArtifactReference`, and JSON helpers added without moving legacy contracts. |
 | 3. MCP Envelope Adapter | Done | `tests/test_mcp_adapters.py`; `uv run python -c "from trader_research.contracts import ToolEnvelope; from trader_mcp.adapters import envelope_to_mcp_result"` | Dependency-free MCP result adapter returns `content`, `structuredContent`, and `isError`. |
 | 4. MCP Server Skeleton | Done | `tests/test_mcp_server.py`; stdio client smoke test; `uv run python -c "import trader_mcp; import trader_mcp.server as s; s.create_server()"` | Stdio MCP server exposes only read-only `mcp_health` and `mcp_get_config` support tools. |
-| 5. Data Inventory Service | Not started |  |  |
+| 5. Data Inventory Service | Done | `tests/test_market_data_queries.py`; `tests/test_data_inventory.py`; `tests/test_sql_boundaries.py`; `uv run pytest tests/test_market_data_queries.py tests/test_data_inventory.py tests/test_sql_boundaries.py tests/test_agent_identities.py tests/test_research_contracts.py tests/test_mcp_adapters.py tests/test_mcp_server.py` | Direct read-only Data Agent service returns embedded dataset manifests through typed core market-data queries; research/MCP layers do not embed raw SQL; MCP registration remains chunk 6. |
 | 6. Register Data Inventory MCP Tool | Not started |  |  |
 | 7. First MCP Tool Evidence | Not started |  |  |
 | 8. LangGraph Agent Identity Skeleton | Not started |  |  |

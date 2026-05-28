@@ -57,3 +57,15 @@ The server currently registers only read-only support tools:
 
 Data Agent tools are intentionally not registered until chunks 5 and 6. No broker tools, raw SQL tools, data-loading
 tools, backtest tools, resources, prompts, or LangGraph workflows are exposed by this skeleton server.
+
+## Data Inventory Service
+
+Chunk 5 adds the direct `trader_research.data.get_data_inventory` service only. It calls typed, validating core
+market-data query helpers in `trader.market_data_queries`, which own the fixed table selection and parameterized SQL
+against the platform `EventStore.connection()` read path. The research and MCP layers must not embed raw SQL, table
+names, or direct `.execute(...)` calls. The service returns a Data Agent `ToolEnvelope` with an embedded
+`dataset_manifest` payload. The manifest includes a stable dataset ID, asset class, symbols, timeframe, requested
+window, source filter, total rows, completeness flag, and per-symbol row/source coverage.
+
+`data_get_inventory` is not exposed over MCP until chunk 6. This chunk does not load data, backfill data, write
+artifacts, run data-quality checks, run backtests, expose SQL tools, or add LangGraph workflows.
