@@ -141,7 +141,7 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 1. Clean Package Skeleton | Done | `tests/test_agent_identities.py`; `uv run pytest tests/test_agent_identities.py`; `uv run python -c "import trader_research, trader_mcp, trader_agents"` | Importable metadata-only packages added for `trader_research`, `trader_mcp`, and `trader_agents`. |
 | 2. Minimal Tool Contracts | Done | `tests/test_research_contracts.py`; `uv run pytest tests/test_agent_identities.py tests/test_research_contracts.py tests/test_mcp_adapters.py` | Research-owned `ToolEnvelope`, `SideEffect`, `ArtifactReference`, and JSON helpers added without moving legacy contracts. |
 | 3. MCP Envelope Adapter | Done | `tests/test_mcp_adapters.py`; `uv run python -c "from trader_research.contracts import ToolEnvelope; from trader_mcp.adapters import envelope_to_mcp_result"` | Dependency-free MCP result adapter returns `content`, `structuredContent`, and `isError`. |
-| 4. MCP Server Skeleton | Not started |  |  |
+| 4. MCP Server Skeleton | Done | `tests/test_mcp_server.py`; stdio client smoke test; `uv run python -c "import trader_mcp; import trader_mcp.server as s; s.create_server()"` | Stdio MCP server exposes only read-only `mcp_health` and `mcp_get_config` support tools. |
 | 5. Data Inventory Service | Not started |  |  |
 | 6. Register Data Inventory MCP Tool | Not started |  |  |
 | 7. First MCP Tool Evidence | Not started |  |  |
@@ -522,9 +522,9 @@ verification should be updated at every evidence checkpoint rather than saved fo
 
 ## Open Decisions
 
-- MCP SDK dependency and version pin: verify against the current official Python MCP SDK before implementation.
+- MCP SDK dependency and version pin: resolved for the server skeleton as `mcp>=1.27.1,<2`.
 - LangGraph dependency/version and persistence choice: choose the smallest graph/checkpoint setup that supports agent identity and state without persisting hidden reasoning.
 - Persistence shape for first release: `trader.data.EventStore` may provide platform persistence primitives, but research-specific persistence adapters and artifact policies belong in `trader_research`.
 - Natural-language planning: start with structured input and a narrow parser; add LLM structured-output planning only after deterministic services are tested.
 - Generated strategy code: defer until maintained strategies plus validation/reporting are useful.
-- Transport: stdio first; HTTP/SSE later only if another client requires it.
+- Transport: stdio for the server skeleton; HTTP/SSE later only if another client requires it.

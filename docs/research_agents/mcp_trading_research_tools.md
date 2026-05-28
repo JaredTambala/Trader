@@ -37,3 +37,23 @@ Existing code should remain in place until its replacement slice is proven:
 Chunks 2 and 3 add the dependency-free `trader_research.contracts` envelope and `trader_mcp.adapters` conversion
 helper. The adapter returns MCP-style `content`, `structuredContent`, and `isError` fields without requiring the MCP
 SDK, so the next slice can add the first server skeleton on top of stable JSON contracts.
+
+## MCP Server Skeleton
+
+Chunk 4 adds the first stdio MCP server using `mcp>=1.27.1,<2`. Start it locally with:
+
+```bash
+uv run python -m trader_mcp.server
+```
+
+The server reads portable, non-secret local configuration from `local.env`: environment label, transport, artifact
+root, and capability policy flags. Static identifiers such as server name, tool names, and tool descriptions stay in
+Python metadata under `trader_mcp.constants`.
+
+The server currently registers only read-only support tools:
+
+- `mcp_health`
+- `mcp_get_config`
+
+Data Agent tools are intentionally not registered until chunks 5 and 6. No broker tools, raw SQL tools, data-loading
+tools, backtest tools, resources, prompts, or LangGraph workflows are exposed by this skeleton server.
