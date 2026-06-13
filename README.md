@@ -52,6 +52,16 @@ UI dependencies remain optional and can be installed separately with:
 uv sync --group ui
 ```
 
+Local MCP and research-agent environment defaults are templated in [env.template](env.template). Create your ignored
+local copy with:
+
+```bash
+cp env.template local.env
+```
+
+See [README_ENV.md](README_ENV.md) for the `local.env`, Data Agent LLM, OpenRouter/Ollama, and runtime `.env` setup
+details.
+
 For local Postgres development:
 
 ```bash
@@ -211,6 +221,10 @@ All runtime entrypoints take a single YAML config file.
 Use `configs/example.yaml` as the starting point.
 
 The YAML supports environment variable expansion such as `${ALPACA_API_KEY}` and `${PG_HOST}`. Load `.env` into the shell or rely on the top-level entrypoints, which call `load_dotenv(".env")`.
+
+MCP server configuration is intentionally separate from this runtime environment. Keep MCP control-plane settings in
+`local.env`; keep trader execution-plane secrets and YAML substitutions in `.env`. See [README_ENV.md](README_ENV.md)
+for the boundary contract.
 
 ### Minimal runtime shape
 

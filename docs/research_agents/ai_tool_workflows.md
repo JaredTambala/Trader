@@ -90,6 +90,80 @@ Policy:
 - backfill is local-mutating and must be bounded by symbols, asset class, timeframe, and window.
 - incomplete data must produce warnings and downstream Evaluation blockers.
 
+## Slice 3A: Data Agent Symbol Discovery
+
+Goal: let the Data Agent discover and validate provider-scoped symbols, instrument types, and bar types before a bounded
+inventory, quality, or loading request is formed.
+
+Expected flow:
+
+```text
+data_discover_symbols
+  -> configured provider validation
+  -> provider-scoped instrument/bar type validation
+  -> exact symbol existence status or bounded catalog search results
+  -> fail fast on provider mismatch or missing requested symbols
+  -> selected symbols feed data_get_inventory, data_summarize_quality, and data_ensure_loaded
+```
+
+Owned artifact:
+
+- `symbol_discovery_report.json`
+
+The tool must support two related use cases:
+
+- exploratory discovery: find available provider-scoped instruments by query, source, provider, instrument type, and bar type
+- exact validation: confirm that requested symbols exist before downstream Data Agent workflows use them
+
+The validation path should report missing symbols as structured data, not as hidden tool failure. A request can therefore
+complete successfully while returning `all_requested_symbols_exist=false` and `missing_symbols=[...]`. Downstream Data
+Agent graphs may treat that report as a blocker before calling inventory, quality, or ensure-loaded tools.
+
+In composed Data Agent workflows, symbol discovery is mandatory preflight. The graph should call `data_discover_symbols`
+against the configured source before it creates or calls inventory, quality, or loading requests. If the requested
+symbols are not available from that configured source, the graph must stop with a structured blocker and must not query
+the data source.
+
+Implementation order:
+
+- first add the shared provider context and provider-aware validation to existing Data Agent tools
+- then add deterministic local/configured symbol discovery
+- then register the MCP tool and wire the Data Agent graph preflight through MCP
+- then add explicit-policy provider catalog adapters such as Alpaca asset lookup
+
+Provider requests are validated in the same preflight. If the current config resolves to Alpaca and the request asks for
+Polygon, the graph must stop with a structured provider blocker, such as `provider_not_configured`, before any local
+inventory, quality, loading, or backfill path is attempted.
+
+The existing Data Agent tools must also become provider-aware. `data_get_inventory`, `data_summarize_quality`, and
+`data_ensure_loaded` should accept the resolved provider context and independently reject provider mismatches, so direct
+MCP callers receive the same fail-fast behavior as agent workflows. `source` remains a local bar-source filter; provider
+selection is a separate field resolved through configured provider adapters.
+
+Instrument and bar semantics are provider-scoped. Current `stocks` and `crypto` labels are compatibility labels for the
+existing Alpaca-backed bar tables, not universal assumptions. Data Agent tools should resolve provider, instrument type,
+and bar type together before creating local queries or loading requests.
+
+Policy:
+
+- local symbol discovery is read-only and allowed by default
+- configured-universe discovery is read-only when a bounded trader config path is present
+- configured-source validation is the default for Data Agent preflight
+- concrete requested providers must match the configured provider
+- requested instrument types and bar types must be supported by the resolved provider
+- provider-catalog discovery is read-only but requires explicit network/provider policy
+- existing inventory, quality, and loading tools must validate provider context before querying or loading
+- provider discovery must not use broker order APIs or imply that historical bars are already loaded
+
+Implemented evidence:
+
+- `tests/test_data_symbol_discovery.py` covers provider context resolution, existing-tool provider mismatch, local
+  discovery, configured crypto canonicalization, and fake provider catalog injection.
+- `tests/test_alpaca_symbol_provider.py` covers the policy-gated Alpaca asset-listing adapter with a fake client and
+  missing-credentials failure.
+- `tests/test_langgraph_data_workflow.py` covers mandatory preflight ordering and blockers for missing symbols or
+  provider mismatch before inventory/quality/loading calls.
+
 ## Slice 4: Quant Research Supervisor Skeleton
 
 Goal: create the Quant Research Supervisor identity before adding broad quant tools, so future work has a clear
@@ -112,6 +186,46 @@ Owned artifacts:
 
 The supervisor must not fetch data directly, invent missing specialist evidence, or run backtests before the required
 artifact contracts exist.
+
+## Slice 4A: Data Agent LLM Control Loop
+
+Goal: power the now-complete Data Agent with a real LLM-backed control loop while keeping Data Agent tools
+deterministic.
+
+Expected flow:
+
+```text
+natural-language bounded data request
+  -> provider-neutral LLM client selected from runtime configuration
+  -> Data Agent LLM policy node emits one typed action proposal
+  -> deterministic router validates provider context, mandatory discovery, allowlist, side-effect policy, and loop budget
+  -> graph calls existing Data Agent MCP tools, blocks early, or finishes
+```
+
+LLM provider policy:
+
+- the Data Agent policy node can use runtime-configured hosted gateways such as OpenRouter-style APIs or local backends
+  such as Ollama
+- external model providers live behind `trader_agents.llm_client`; they must not leak into Data Agent MCP tool schemas
+- missing or unsupported LLM configuration must fail fast with a structured blocker before any MCP tool call
+- tests should use fake LLM clients/transports and must not call external model providers
+
+Guardrails:
+
+- the LLM may only emit typed actions: `discover_symbols`, `inspect_inventory`, `summarize_quality`, `ensure_loaded`,
+  `retry_with_changes`, `block`, or `finish`
+- `data_discover_symbols` remains mandatory before inventory, quality, or loading
+- downstream tool calls must match the resolved provider, instrument type, and bar type from discovery
+- `data_ensure_loaded` remains policy-gated and bounded
+- the Data Agent LLM cannot call SQL, broker, strategy, backtest, supervisor, or non-Data-Agent tools
+- graph state may retain sanitized public decisions, but not raw prompts, hidden reasoning, messages, or scratchpads
+
+Implemented evidence:
+
+- `tests/test_llm_client.py` covers missing config, fake LLM responses, OpenAI-compatible/OpenRouter-style request
+  construction, and Ollama request construction with fake transports.
+- `tests/test_data_agent_llm_policy.py` covers the policy graph happy path, invalid tool rejection, missing-symbol
+  blockers, provider-context mismatch, loading-policy refusal, loop limits, missing LLM config, and no raw prompt state.
 
 ## Slice 5: Math Coder MCP Tool Creation
 

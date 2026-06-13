@@ -45,7 +45,7 @@ def _data_args(**overrides: object) -> dict[str, object]:
 
 def test_mcp_server_lists_full_data_workflow_tools(tmp_path: Path) -> None:
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
-    server = create_server(load_local_environment(), event_store_provider=lambda: store)
+    server = create_server(load_local_environment("env.template"), event_store_provider=lambda: store)
 
     async def _run() -> None:
         tools = await server.list_tools()
@@ -61,7 +61,7 @@ def test_mcp_server_lists_full_data_workflow_tools(tmp_path: Path) -> None:
 def test_mcp_quality_tool_returns_sample_report(tmp_path: Path) -> None:
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
     load_sample_market_data_csv(store, SAMPLE_CSV)
-    server = create_server(load_local_environment(), event_store_provider=lambda: store)
+    server = create_server(load_local_environment("env.template"), event_store_provider=lambda: store)
 
     async def _run() -> None:
         result = await server.call_tool(DATA_SUMMARIZE_QUALITY_TOOL, _data_args())
@@ -80,7 +80,7 @@ def test_mcp_quality_tool_returns_sample_report(tmp_path: Path) -> None:
 
 def test_mcp_quality_tool_returns_validation_errors(tmp_path: Path) -> None:
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
-    server = create_server(load_local_environment(), event_store_provider=lambda: store)
+    server = create_server(load_local_environment("env.template"), event_store_provider=lambda: store)
 
     async def _run() -> None:
         bad_datetime = await server.call_tool(DATA_SUMMARIZE_QUALITY_TOOL, _data_args(start="not-a-date"))
@@ -100,7 +100,7 @@ def test_mcp_quality_tool_returns_validation_errors(tmp_path: Path) -> None:
 
 def test_mcp_default_environment_rejects_sample_loading(tmp_path: Path) -> None:
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
-    server = create_server(load_local_environment(), event_store_provider=lambda: store)
+    server = create_server(load_local_environment("env.template"), event_store_provider=lambda: store)
 
     async def _run() -> None:
         result = await server.call_tool(
@@ -118,7 +118,7 @@ def test_mcp_default_environment_rejects_sample_loading(tmp_path: Path) -> None:
 
 def test_mcp_explicit_policy_allows_sample_loading(tmp_path: Path) -> None:
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
-    environment = replace(load_local_environment(), allow_data_loading=True)
+    environment = replace(load_local_environment("env.template"), allow_data_loading=True)
     server = create_server(environment, event_store_provider=lambda: store)
 
     async def _run() -> None:
@@ -139,7 +139,7 @@ def test_mcp_explicit_policy_allows_sample_loading(tmp_path: Path) -> None:
 
 def test_mcp_backfill_dry_run_plans_without_writing_rows(tmp_path: Path) -> None:
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
-    server = create_server(load_local_environment(), event_store_provider=lambda: store)
+    server = create_server(load_local_environment("env.template"), event_store_provider=lambda: store)
 
     async def _run() -> None:
         backfill = await server.call_tool(
@@ -162,7 +162,7 @@ def test_mcp_backfill_dry_run_plans_without_writing_rows(tmp_path: Path) -> None
 
 def test_mcp_backfill_non_dry_run_runs_through_injected_tool_policy(tmp_path: Path) -> None:
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
-    environment = replace(load_local_environment(), allow_data_loading=True)
+    environment = replace(load_local_environment("env.template"), allow_data_loading=True)
     calls: list[DataEnsureLoadedRequest] = []
 
     def _runner(request: DataEnsureLoadedRequest, event_store: EventStore) -> Mapping[str, Any]:
@@ -197,7 +197,7 @@ def test_mcp_backfill_non_dry_run_runs_through_injected_tool_policy(tmp_path: Pa
 
 def test_mcp_ensure_loaded_returns_validation_errors(tmp_path: Path) -> None:
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
-    server = create_server(load_local_environment(), event_store_provider=lambda: store)
+    server = create_server(load_local_environment("env.template"), event_store_provider=lambda: store)
 
     async def _run() -> None:
         result = await server.call_tool(DATA_ENSURE_LOADED_TOOL, _data_args(mode="existing", symbols=[]))
@@ -211,7 +211,7 @@ def test_mcp_ensure_loaded_returns_validation_errors(tmp_path: Path) -> None:
 
 
 def test_mcp_config_safety_distinguishes_registration_and_runtime_permission() -> None:
-    environment = load_local_environment()
+    environment = load_local_environment("env.template")
     server = create_server(environment)
 
     async def _run() -> None:

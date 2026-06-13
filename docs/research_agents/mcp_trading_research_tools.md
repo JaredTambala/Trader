@@ -46,22 +46,36 @@ Chunk 4 adds the first stdio MCP server using `mcp>=1.27.1,<2`. Start it locally
 uv run python -m trader_mcp.server
 ```
 
-The server reads portable, non-secret local configuration from `local.env`: environment label, transport, artifact
-root, optional trader config path, and capability policy flags. Static identifiers such as server name, tool names,
-and tool descriptions stay in Python metadata under `trader_mcp.constants`.
+The server reads portable, non-secret control-plane configuration from `local.env`: environment label, transport,
+artifact root, optional execution config pointers, and capability policy flags. Static identifiers such as server name,
+tool names, and tool descriptions stay in Python metadata under `trader_mcp.constants`.
+
+The MCP server must not require an execution environment to start. `local.env` can point at a trader YAML with
+`TRADER_MCP_TRADER_CONFIG_PATH`, and it can point at the dotenv file used to expand that YAML with
+`TRADER_MCP_TOOL_ENV_PATH`, but both are execution-plane inputs loaded lazily by affected tools. If either file is
+missing or invalid, the failure belongs in that tool's `ToolEnvelope`; it must not break server startup, tool listing,
+`mcp_health`, or `mcp_get_config`.
+
+This boundary is intentionally not optimized for zero duplication. It is acceptable for `local.env` and `.env` to
+repeat values when doing so avoids coupling MCP process startup to trader runtime secrets, database settings, broker
+settings, or script defaults.
 
 The server currently registers support tools plus the bounded Data Agent workflow tools:
 
 - `mcp_health`
 - `mcp_get_config`
+- `data_discover_symbols`
 - `data_get_inventory`
 - `data_summarize_quality`
 - `data_ensure_loaded`
 
 No broker tools, raw SQL tools, backtest tools, resources, prompts, or LLM-backed workflows are exposed by this server.
-`data_ensure_loaded` is registered with `side_effect="local_mutating"`, but runtime mutation still requires
-`TRADER_MCP_ALLOW_DATA_LOADING=true`; the default local policy rejects sample-loading requests. If
-`TRADER_MCP_TRADER_CONFIG_PATH` is unset, data tools use a no-op event store unless tests inject a DuckDB store.
+`data_discover_symbols`, `data_get_inventory`, and `data_summarize_quality` are read-only. `data_ensure_loaded` is
+registered with `side_effect="local_mutating"`, but runtime mutation still requires
+`TRADER_MCP_ALLOW_DATA_LOADING=true`; the default local policy rejects sample-loading requests. Provider-catalog symbol
+discovery is separate and requires `TRADER_MCP_ALLOW_SYMBOL_PROVIDER_DISCOVERY=true`; local and configured-universe
+symbol discovery remain read-only deterministic defaults. If `TRADER_MCP_TRADER_CONFIG_PATH` is unset, data tools use a
+no-op event store unless tests inject a DuckDB store.
 
 ## Data Inventory Service
 
@@ -106,6 +120,47 @@ The graph test uses the same test-only DuckDB-backed MCP server as the first MCP
 not import platform data/query modules or the MCP server implementation; it uses only identity metadata and an MCP
 client boundary.
 
+## Data Agent Symbol Discovery Preflight
+
+Chunks 22A through 22G add provider-aware symbol discovery and validation to the Data Agent:
+
+```text
+data_discover_symbols
+data_get_inventory
+data_summarize_quality
+data_ensure_loaded
+data_summarize_quality
+```
+
+`data_discover_symbols` resolves provider, provider-scoped `instrument_type`, provider-scoped `bar_type`, and the
+compatibility `asset_class` before any local query, quality check, load branch, or provider catalog adapter runs. Current
+registered Alpaca data capabilities are `instrument_type="stock"` and `instrument_type="crypto"` with
+`bar_type="trade_bar"`. A request for `provider="polygon"` while the bounded config/default provider is Alpaca returns a
+Data Agent error envelope with `code="provider_not_configured"` and does not fall back to local bars or backfill.
+
+The existing Data Agent tools also accept optional `provider`, `instrument_type`, and `bar_type`. Direct MCP callers get
+the same fail-fast behavior as the LangGraph workflow: provider mismatch, unsupported instrument type, or unsupported
+bar type fails before query construction or loading. Successful manifests, quality reports, and load results include
+`provider_context`, `resolved_provider`, `instrument_type`, `bar_type`, and `legacy_asset_class` audit fields.
+
+Discovery sources:
+
+- `local`: reads distinct symbols already present in local bar tables through typed core query helpers.
+- `configured`: validates against the configured `market_data.symbols` universe when a bounded trader config is present.
+- `configured_source`: default Data Agent graph preflight; uses configured symbols when present, otherwise local evidence.
+- `provider`: uses a policy-gated provider catalog adapter. The Alpaca adapter calls the read-only asset-listing API only
+  when explicitly enabled and configured; tests use fake clients and do not make network calls.
+
+Reproduce the symbol-discovery evidence with:
+
+```bash
+uv run pytest tests/test_data_symbol_discovery.py tests/test_alpaca_symbol_provider.py tests/test_mcp_tools.py tests/test_langgraph_agents.py tests/test_langgraph_data_workflow.py tests/test_market_data_queries.py
+```
+
+The tests prove local discovery, configured crypto canonicalization, fake provider catalog injection, missing credential
+errors, direct MCP provider mismatch, mandatory graph preflight, missing-symbol blockers, provider mismatch blockers, and
+no raw SQL in research/MCP layers.
+
 ## Data Agent Quality And Loading Workflow
 
 Chunks 10 through 16 complete the deterministic Data Agent workflow:
@@ -113,6 +168,7 @@ Chunks 10 through 16 complete the deterministic Data Agent workflow:
 ```text
 mcp_health
 mcp_get_config
+data_discover_symbols
 data_get_inventory
 data_summarize_quality
 data_ensure_loaded
@@ -169,3 +225,59 @@ The tests assert these supervisor handoff fields and boundaries:
   explicit blockers when required; ML artifacts can be represented as optional when the request does not require them.
 - Boundary evidence: the supervisor does not call MCP tools, fetch raw bars, run backtests, invoke LLMs, mutate broker
   state, or import platform data/query modules. It consumes Data Agent artifact references and summaries only.
+
+## Data Agent LLM Control Loop
+
+Chunk 22H adds the first LLM-backed control loop, scoped narrowly to the Data Agent. The LLM does not live inside MCP
+tools and does not query data sources directly. It emits one typed Data Agent action proposal at a time; a deterministic
+router validates that proposal before any existing MCP tool is called.
+
+Runtime LLM configuration is provider-neutral:
+
+```bash
+TRADER_AGENTS_LLM_PROVIDER=ollama
+TRADER_AGENTS_LLM_MODEL=llama3.1
+TRADER_AGENTS_LLM_BASE_URL=http://localhost:11434
+TRADER_AGENTS_LLM_TIMEOUT_SECONDS=30
+```
+
+or for an OpenAI-compatible hosted gateway such as OpenRouter-style APIs:
+
+```bash
+TRADER_AGENTS_LLM_PROVIDER=openrouter
+TRADER_AGENTS_LLM_MODEL=provider/model-name
+TRADER_AGENTS_LLM_API_KEY=...
+TRADER_AGENTS_LLM_TIMEOUT_SECONDS=30
+```
+
+If `TRADER_AGENTS_LLM_PROVIDER` or the required model configuration is missing, the LLM policy graph fails fast with a
+structured `llm_not_configured` blocker and does not call MCP tools.
+
+Allowed Data Agent LLM actions are:
+
+- `discover_symbols`
+- `inspect_inventory`
+- `summarize_quality`
+- `ensure_loaded`
+- `retry_with_changes`
+- `block`
+- `finish`
+
+The router enforces these invariants before tool execution:
+
+- `data_discover_symbols` must run successfully before inventory, quality, or loading.
+- Downstream requests cannot contradict the resolved provider, instrument type, or bar type from symbol discovery.
+- `data_ensure_loaded` requires `policy.allow_data_loading=true` and an explicit bounded mode.
+- The Data Agent LLM cannot call SQL, broker, strategy, backtest, supervisor, or non-Data-Agent tools.
+- Graph state stores sanitized public decisions only, not raw prompts, hidden reasoning, messages, or scratchpads.
+
+Reproduce the 22H evidence with:
+
+```bash
+uv run pytest tests/test_llm_client.py tests/test_data_agent_llm_policy.py tests/test_langgraph_agents.py tests/test_langgraph_data_workflow.py
+```
+
+The tests use fake LLM clients and fake HTTP transports. They prove OpenRouter-style and Ollama-style runtime adapter
+request construction without external network calls, plus policy-graph happy path, invalid tool rejection,
+missing-symbol blockers, provider-context mismatch, loading-policy refusal, loop limits, and missing-config fail-fast
+behavior.

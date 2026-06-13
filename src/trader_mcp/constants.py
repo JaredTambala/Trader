@@ -20,6 +20,9 @@ MCP_CONFIG_TOOL: Final = "mcp_get_config"
 DATA_GET_INVENTORY_TOOL: Final = "data_get_inventory"
 """Tool name for read-only Data Agent inventory."""
 
+DATA_DISCOVER_SYMBOLS_TOOL: Final = "data_discover_symbols"
+"""Tool name for read-only Data Agent symbol discovery."""
+
 DATA_SUMMARIZE_QUALITY_TOOL: Final = "data_summarize_quality"
 """Tool name for read-only Data Agent data-quality summaries."""
 
@@ -30,6 +33,7 @@ SUPPORT_TOOL_NAMES: Final = (MCP_HEALTH_TOOL, MCP_CONFIG_TOOL)
 """Read-only support tool names exposed by the MCP server."""
 
 DATA_TOOL_NAMES: Final = (
+    DATA_DISCOVER_SYMBOLS_TOOL,
     DATA_GET_INVENTORY_TOOL,
     DATA_SUMMARIZE_QUALITY_TOOL,
     DATA_ENSURE_LOADED_TOOL,
@@ -46,6 +50,7 @@ SUPPORT_TOOL_DESCRIPTIONS: Final = {
 """Descriptions for read-only support tools exposed by the MCP server."""
 
 DATA_TOOL_DESCRIPTIONS: Final = {
+    DATA_DISCOVER_SYMBOLS_TOOL: "Discover or validate provider-scoped market-data symbols before data queries.",
     DATA_GET_INVENTORY_TOOL: "Return bounded market-data inventory and dataset manifest.",
     DATA_SUMMARIZE_QUALITY_TOOL: "Return bounded market-data quality gaps and completeness.",
     DATA_ENSURE_LOADED_TOOL: "Inspect, sample-load, or plan bounded market-data loading.",
@@ -55,6 +60,7 @@ DATA_TOOL_DESCRIPTIONS: Final = {
 CAPABILITY_REGISTRATION_FLAGS: Final = {
     "broker_mutating_tools_registered": False,
     "raw_sql_tools_registered": False,
+    "symbol_discovery_tools_registered": True,
     "data_loading_tools_registered": True,
     "backtest_tools_registered": False,
 }
@@ -63,6 +69,7 @@ CAPABILITY_REGISTRATION_FLAGS: Final = {
 UNREGISTERED_CAPABILITY_FLAGS: Final = {
     "broker_mutating_tools_registered": False,
     "raw_sql_tools_registered": False,
+    "symbol_discovery_tools_registered": False,
     "data_loading_tools_registered": False,
     "backtest_tools_registered": False,
 }

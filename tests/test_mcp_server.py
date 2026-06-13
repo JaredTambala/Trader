@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import timedelta
 import os
 from pathlib import Path
@@ -25,7 +26,7 @@ from trader_mcp.server import create_server
 
 
 def test_local_env_loads_portable_configuration() -> None:
-    local_env = load_local_environment()
+    local_env = load_local_environment("env.template")
 
     assert local_env.environment == "local"
     assert local_env.transport == "stdio"
@@ -34,13 +35,14 @@ def test_local_env_loads_portable_configuration() -> None:
     assert local_env.policy_flags() == {
         "allow_broker_mutation": False,
         "allow_raw_sql": False,
+        "allow_symbol_provider_discovery": False,
         "allow_data_loading": False,
         "allow_backtests": False,
     }
 
 
 def test_create_server_registers_support_and_data_tools() -> None:
-    local_env = load_local_environment()
+    local_env = load_local_environment("env.template")
     server = create_server(local_env)
 
     async def _run() -> None:
@@ -51,8 +53,89 @@ def test_create_server_registers_support_and_data_tools() -> None:
     anyio.run(_run)
 
 
+def test_create_server_defers_tool_runtime_config_errors(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("MISSING_MCP_TEST_PG_PORT", raising=False)
+    trader_config = tmp_path / "bad_tool_runtime.yaml"
+    trader_config.write_text(
+        """
+database:
+  event_store: postgres
+  pg:
+    port: ${MISSING_MCP_TEST_PG_PORT}
+""".strip(),
+        encoding="utf-8",
+    )
+    local_env = replace(load_local_environment("env.template"), trader_config_path=trader_config)
+    server = create_server(local_env)
+
+    async def _run() -> None:
+        tools = await server.list_tools()
+        health = await server.call_tool(MCP_HEALTH_TOOL, {})
+        data_result = await server.call_tool(
+            DATA_GET_INVENTORY_TOOL,
+            {
+                "symbols": ["DEMO"],
+                "asset_class": "stocks",
+                "timeframe": "1Min",
+                "start": "2026-01-20T12:00:00Z",
+                "end": "2026-01-20T12:11:00Z",
+            },
+        )
+
+        assert {tool.name for tool in tools} == set(REGISTERED_TOOL_NAMES)
+        assert health.isError is False
+        assert data_result.isError is True
+        assert data_result.structuredContent is not None
+        assert data_result.structuredContent["errors"][0]["code"] == "tool_runtime_configuration_error"
+        assert data_result.structuredContent["data"]["trader_config_path"] == str(trader_config)
+
+    anyio.run(_run)
+
+
+def test_tool_runtime_env_file_is_used_for_trader_config(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("MCP_TEST_TOOL_PORT", raising=False)
+    tool_env = tmp_path / "tool.env"
+    tool_env.write_text("MCP_TEST_TOOL_PORT=5432\n", encoding="utf-8")
+    trader_config = tmp_path / "tool_runtime.yaml"
+    trader_config.write_text(
+        """
+database:
+  event_store: noop
+  pg:
+    port: ${MCP_TEST_TOOL_PORT}
+market_data:
+  source: alpaca
+  asset_class: stocks
+""".strip(),
+        encoding="utf-8",
+    )
+    local_env = replace(load_local_environment("env.template"), trader_config_path=trader_config, tool_env_path=tool_env)
+    server = create_server(local_env)
+
+    async def _run() -> None:
+        config = await server.call_tool(MCP_CONFIG_TOOL, {})
+        data_result = await server.call_tool(
+            DATA_GET_INVENTORY_TOOL,
+            {
+                "symbols": ["DEMO"],
+                "asset_class": "stocks",
+                "timeframe": "1Min",
+                "start": "2026-01-20T12:00:00Z",
+                "end": "2026-01-20T12:11:00Z",
+            },
+        )
+
+        assert config.structuredContent is not None
+        assert config.structuredContent["data"]["tool_runtime"]["env_path"] == str(tool_env)
+        assert data_result.isError is True
+        assert data_result.structuredContent is not None
+        assert data_result.structuredContent["errors"][0]["code"] == "event_store_connection_unavailable"
+
+    anyio.run(_run)
+
+
 def test_health_tool_returns_read_only_mcp_server_envelope() -> None:
-    local_env = load_local_environment()
+    local_env = load_local_environment("env.template")
     server = create_server(local_env)
 
     async def _run() -> None:
@@ -70,7 +153,7 @@ def test_health_tool_returns_read_only_mcp_server_envelope() -> None:
 
 
 def test_config_tool_excludes_broker_raw_sql_and_backtest_tools() -> None:
-    local_env = load_local_environment()
+    local_env = load_local_environment("env.template")
     server = create_server(local_env)
 
     async def _run() -> None:
@@ -91,6 +174,7 @@ def test_config_tool_excludes_broker_raw_sql_and_backtest_tools() -> None:
         assert data["policy"] == local_env.policy_flags()
         assert data["safety"] == {
             **CAPABILITY_REGISTRATION_FLAGS,
+            "symbol_provider_discovery_allowed": local_env.allow_symbol_provider_discovery,
             "data_loading_mutation_allowed": local_env.allow_data_loading,
         }
 

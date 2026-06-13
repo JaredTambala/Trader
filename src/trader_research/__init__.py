@@ -21,7 +21,14 @@ from .contracts import (
     success_envelope,
     write_json_artifact,
 )
-from .data import DataInventoryRequest, get_data_inventory
+from .data import (
+    DataInventoryRequest,
+    DataProviderContext,
+    DataSymbolDiscoveryRequest,
+    data_discover_symbols,
+    get_data_inventory,
+    resolve_data_provider_context,
+)
 from .domain import (
     BoundedResearchRequest,
     DataRequirement,
@@ -37,6 +44,8 @@ __all__ = [
     "ArtifactReference",
     "BoundedResearchRequest",
     "DataInventoryRequest",
+    "DataProviderContext",
+    "DataSymbolDiscoveryRequest",
     "DataRequirement",
     "ResearchIssue",
     "SideEffect",
@@ -46,8 +55,10 @@ __all__ = [
     "agent_owner_for_tool",
     "envelope_json",
     "error_envelope",
+    "data_discover_symbols",
     "get_data_inventory",
     "get_agent_definition",
+    "resolve_data_provider_context",
     "success_envelope",
     "write_json_artifact",
 ]

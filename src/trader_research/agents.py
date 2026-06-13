@@ -28,6 +28,7 @@ class AgentDefinition:
 READ_ONLY_SUPPORT_TOOLS = ("mcp_health", "mcp_get_config")
 
 DATA_AGENT_TOOLS = (
+    "data_discover_symbols",
     "data_get_inventory",
     "data_summarize_quality",
     "data_ensure_loaded",
@@ -79,6 +80,7 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
         display_name="Data Agent",
         mission="Produce trustworthy bounded market-data manifests and quality evidence.",
         owned_artifacts=(
+            "symbol_discovery_report.json",
             "dataset_manifest.json",
             "data_quality_report.json",
             "load_result_envelope.json",

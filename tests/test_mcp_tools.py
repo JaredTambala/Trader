@@ -10,6 +10,7 @@ from trader.data import NoOpEventStore
 from trader.sample_data import load_sample_market_data_csv
 from trader_mcp.constants import (
     CAPABILITY_REGISTRATION_FLAGS,
+    DATA_DISCOVER_SYMBOLS_TOOL,
     DATA_ENSURE_LOADED_TOOL,
     DATA_GET_INVENTORY_TOOL,
     DATA_SUMMARIZE_QUALITY_TOOL,
@@ -37,7 +38,7 @@ def _inventory_args(**overrides: object) -> dict[str, object]:
 
 def test_server_registers_inventory_tool_with_injected_event_store(tmp_path: Path) -> None:
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
-    server = create_server(load_local_environment(), event_store_provider=lambda: store)
+    server = create_server(load_local_environment("env.template"), event_store_provider=lambda: store)
 
     async def _run() -> None:
         tools = await server.list_tools()
@@ -51,7 +52,7 @@ def test_server_registers_inventory_tool_with_injected_event_store(tmp_path: Pat
 def test_data_inventory_mcp_tool_returns_sample_manifest(tmp_path: Path) -> None:
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
     load_sample_market_data_csv(store, SAMPLE_CSV)
-    server = create_server(load_local_environment(), event_store_provider=lambda: store)
+    server = create_server(load_local_environment("env.template"), event_store_provider=lambda: store)
 
     async def _run() -> None:
         result = await server.call_tool(DATA_GET_INVENTORY_TOOL, _inventory_args())
@@ -78,9 +79,76 @@ def test_data_inventory_mcp_tool_returns_sample_manifest(tmp_path: Path) -> None
     anyio.run(_run)
 
 
+def test_data_discover_symbols_mcp_tool_returns_local_report(tmp_path: Path) -> None:
+    store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
+    load_sample_market_data_csv(store, SAMPLE_CSV)
+    server = create_server(load_local_environment("env.template"), event_store_provider=lambda: store)
+
+    async def _run() -> None:
+        result = await server.call_tool(
+            DATA_DISCOVER_SYMBOLS_TOOL,
+            {
+                "symbols": ["DEMO", "MISSING"],
+                "asset_class": "stocks",
+                "source": "local",
+                "include_local_coverage": True,
+            },
+        )
+
+        assert result.isError is False
+        assert result.structuredContent is not None
+        report = result.structuredContent["data"]["symbol_discovery_report"]
+        assert report["all_requested_symbols_exist"] is False
+        assert report["missing_symbols"] == ["MISSING"]
+        assert report["symbols"][0]["symbol"] == "DEMO"
+        assert report["symbols"][0]["local_coverage"]["row_count"] == 12
+
+    anyio.run(_run)
+
+
+def test_data_discover_symbols_mcp_tool_rejects_provider_without_policy(tmp_path: Path) -> None:
+    store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
+    server = create_server(load_local_environment("env.template"), event_store_provider=lambda: store)
+
+    async def _run() -> None:
+        result = await server.call_tool(
+            DATA_DISCOVER_SYMBOLS_TOOL,
+            {
+                "symbols": ["DEMO"],
+                "asset_class": "stocks",
+                "source": "provider",
+            },
+        )
+
+        assert result.isError is True
+        assert result.structuredContent is not None
+        assert result.structuredContent["errors"][0]["code"] == "provider_discovery_not_allowed"
+
+    anyio.run(_run)
+
+
+def test_data_inventory_mcp_tool_rejects_provider_mismatch_before_query(tmp_path: Path) -> None:
+    store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
+    server = create_server(load_local_environment("env.template"), event_store_provider=lambda: store)
+
+    async def _run() -> None:
+        result = await server.call_tool(
+            DATA_GET_INVENTORY_TOOL,
+            _inventory_args(provider="polygon"),
+        )
+
+        assert result.isError is True
+        assert result.structuredContent is not None
+        assert result.structuredContent["errors"][0]["code"] == "provider_not_configured"
+        assert result.structuredContent["data"]["requested_provider"] == "polygon"
+        assert result.structuredContent["data"]["configured_provider"] == "alpaca"
+
+    anyio.run(_run)
+
+
 def test_data_inventory_mcp_tool_rejects_invalid_datetime(tmp_path: Path) -> None:
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
-    server = create_server(load_local_environment(), event_store_provider=lambda: store)
+    server = create_server(load_local_environment("env.template"), event_store_provider=lambda: store)
 
     async def _run() -> None:
         result = await server.call_tool(DATA_GET_INVENTORY_TOOL, _inventory_args(start="not-a-date"))
@@ -96,7 +164,7 @@ def test_data_inventory_mcp_tool_rejects_invalid_datetime(tmp_path: Path) -> Non
 
 def test_data_inventory_mcp_tool_rejects_invalid_timeframe(tmp_path: Path) -> None:
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
-    server = create_server(load_local_environment(), event_store_provider=lambda: store)
+    server = create_server(load_local_environment("env.template"), event_store_provider=lambda: store)
 
     async def _run() -> None:
         result = await server.call_tool(DATA_GET_INVENTORY_TOOL, _inventory_args(timeframe="bad"))
@@ -111,7 +179,7 @@ def test_data_inventory_mcp_tool_rejects_invalid_timeframe(tmp_path: Path) -> No
 
 
 def test_data_inventory_mcp_tool_reports_unavailable_connection() -> None:
-    server = create_server(load_local_environment(), event_store_provider=NoOpEventStore)
+    server = create_server(load_local_environment("env.template"), event_store_provider=NoOpEventStore)
 
     async def _run() -> None:
         result = await server.call_tool(DATA_GET_INVENTORY_TOOL, _inventory_args())
@@ -125,7 +193,7 @@ def test_data_inventory_mcp_tool_reports_unavailable_connection() -> None:
 
 
 def test_config_output_includes_data_tools_and_excludes_unsafe_tools() -> None:
-    server = create_server(load_local_environment(), event_store_provider=NoOpEventStore)
+    server = create_server(load_local_environment("env.template"), event_store_provider=NoOpEventStore)
 
     async def _run() -> None:
         result = await server.call_tool(MCP_CONFIG_TOOL, {})
@@ -133,12 +201,14 @@ def test_config_output_includes_data_tools_and_excludes_unsafe_tools() -> None:
         assert result.structuredContent is not None
         data = result.structuredContent["data"]
         tool_names = {tool["name"] for tool in data["tools"]}
+        assert DATA_DISCOVER_SYMBOLS_TOOL in tool_names
         assert DATA_GET_INVENTORY_TOOL in tool_names
         assert DATA_SUMMARIZE_QUALITY_TOOL in tool_names
         assert DATA_ENSURE_LOADED_TOOL in tool_names
         assert "research_run_backtest" not in tool_names
         assert data["safety"] == {
             **CAPABILITY_REGISTRATION_FLAGS,
+            "symbol_provider_discovery_allowed": False,
             "data_loading_mutation_allowed": False,
         }
 
@@ -148,7 +218,7 @@ def test_config_output_includes_data_tools_and_excludes_unsafe_tools() -> None:
 def test_data_inventory_mcp_tool_treats_naive_datetimes_as_utc(tmp_path: Path) -> None:
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
     load_sample_market_data_csv(store, SAMPLE_CSV)
-    server = create_server(load_local_environment(), event_store_provider=lambda: store)
+    server = create_server(load_local_environment("env.template"), event_store_provider=lambda: store)
 
     async def _run() -> None:
         result = await server.call_tool(

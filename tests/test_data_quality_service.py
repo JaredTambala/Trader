@@ -134,25 +134,30 @@ def test_data_quality_summarizes_more_than_default_fetch_limit(tmp_path: Path) -
 
 
 @pytest.mark.parametrize(
-    ("quality_request", "message"),
+    ("quality_request", "code", "message"),
     [
-        (_request(symbols=("BAD;DROP",)), "Invalid bar query symbol"),
-        (_request(asset_class="forex"), "Unsupported bar query asset class"),
-        (_request(timeframe="bad"), "Invalid timeframe"),
+        (_request(symbols=("BAD;DROP",)), "validation_error", "Invalid bar query symbol"),
+        (_request(asset_class="forex"), "unsupported_instrument_type", "does not support instrument type forex"),
+        (_request(timeframe="bad"), "validation_error", "Invalid timeframe"),
         (
             _request(
                 start=datetime(2026, 1, 20, 12, 11, tzinfo=timezone.utc),
                 end=datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc),
             ),
+            "validation_error",
             "end must be at or after start",
         ),
     ],
 )
-def test_data_quality_validation_failures(quality_request: DataQualityRequest, message: str) -> None:
+def test_data_quality_validation_failures(
+    quality_request: DataQualityRequest,
+    code: str,
+    message: str,
+) -> None:
     envelope = data_summarize_quality(NoOpEventStore(), quality_request)
 
     assert envelope.ok is False
-    assert envelope.errors[0]["code"] == "validation_error"
+    assert envelope.errors[0]["code"] == code
     assert message in str(envelope.errors[0]["message"])
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 
+from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from mcp.types import CallToolResult
 
@@ -13,6 +14,7 @@ from trader.data import EventStore, NoOpEventStore, build_event_store
 from trader_mcp.adapters import envelope_to_mcp_result
 from trader_mcp.constants import (
     CAPABILITY_REGISTRATION_FLAGS,
+    DATA_DISCOVER_SYMBOLS_TOOL,
     DATA_ENSURE_LOADED_TOOL,
     DATA_GET_INVENTORY_TOOL,
     DATA_SUMMARIZE_QUALITY_TOOL,
@@ -32,20 +34,32 @@ from trader_research.data import (
     DataEnsureLoadedRequest,
     DataInventoryRequest,
     DataQualityRequest,
+    DataSymbolDiscoveryPolicy,
+    DataSymbolDiscoveryRequest,
     data_ensure_loaded as ensure_loaded_service,
+    data_discover_symbols as discover_symbols_service,
     data_summarize_quality as summarize_quality_service,
     get_data_inventory,
 )
+from trader_research.providers import AlpacaSymbolCatalogProvider
 
 
 EventStoreProvider = Callable[[], EventStore]
 """Callable that returns the event store used by read-only MCP tools."""
+
+SymbolDiscoveryPolicyProvider = Callable[[], DataSymbolDiscoveryPolicy]
+"""Callable that returns the symbol-discovery policy for Data Agent tools."""
+
+
+class ToolRuntimeConfigurationError(ValueError):
+    """Raised when a registered tool's execution environment is invalid."""
 
 
 def create_server(
     environment: McpEnvironment | None = None,
     event_store_provider: EventStoreProvider | None = None,
     data_loading_policy: DataEnsureLoadedPolicy | None = None,
+    symbol_discovery_policy: DataSymbolDiscoveryPolicy | None = None,
 ) -> FastMCP:
     """Create the MCP server and register read-only tools.
 
@@ -63,6 +77,11 @@ def create_server(
     resolved_data_loading_policy = data_loading_policy or DataEnsureLoadedPolicy(
         allow_data_loading=local_env.allow_data_loading,
         backfill_config_path=local_env.trader_config_path,
+    )
+    resolved_symbol_discovery_policy_provider = (
+        (lambda: symbol_discovery_policy)
+        if symbol_discovery_policy is not None
+        else build_symbol_discovery_policy_provider(local_env)
     )
     server = FastMCP(SERVER_NAME)
 
@@ -85,6 +104,46 @@ def create_server(
         return CallToolResult(**envelope_to_mcp_result(build_config_envelope(local_env)))
 
     @server.tool(
+        name=DATA_DISCOVER_SYMBOLS_TOOL,
+        description=DATA_TOOL_DESCRIPTIONS[DATA_DISCOVER_SYMBOLS_TOOL],
+    )
+    def data_discover_symbols(
+        symbols: list[str] | None = None,
+        asset_class: str | None = None,
+        instrument_type: str | None = None,
+        bar_type: str | None = None,
+        query: str | None = None,
+        source: str = "local",
+        provider: str | None = None,
+        timeframe: str | None = None,
+        source_filter: str | None = None,
+        limit: int = 50,
+        active_only: bool = True,
+        tradable_only: bool = True,
+        include_local_coverage: bool = False,
+    ) -> CallToolResult:
+        """Return a read-only Data Agent symbol discovery envelope."""
+        envelope = build_data_symbol_discovery_envelope(
+            event_store_provider=data_event_store_provider,
+            environment=local_env,
+            symbols=symbols,
+            asset_class=asset_class,
+            instrument_type=instrument_type,
+            bar_type=bar_type,
+            query=query,
+            source=source,
+            provider=provider,
+            timeframe=timeframe,
+            source_filter=source_filter,
+            limit=limit,
+            active_only=active_only,
+            tradable_only=tradable_only,
+            include_local_coverage=include_local_coverage,
+            policy_provider=resolved_symbol_discovery_policy_provider,
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
         name=DATA_GET_INVENTORY_TOOL,
         description=DATA_TOOL_DESCRIPTIONS[DATA_GET_INVENTORY_TOOL],
     )
@@ -95,6 +154,9 @@ def create_server(
         start: str,
         end: str,
         source: str | None = None,
+        provider: str | None = None,
+        instrument_type: str | None = None,
+        bar_type: str | None = None,
     ) -> CallToolResult:
         """Return a read-only Data Agent inventory envelope.
 
@@ -111,12 +173,16 @@ def create_server(
         """
         envelope = build_data_inventory_envelope(
             event_store_provider=data_event_store_provider,
+            environment=local_env,
             symbols=symbols,
             asset_class=asset_class,
             timeframe=timeframe,
             start=start,
             end=end,
             source=source,
+            provider=provider,
+            instrument_type=instrument_type,
+            bar_type=bar_type,
         )
         return CallToolResult(**envelope_to_mcp_result(envelope))
 
@@ -131,6 +197,9 @@ def create_server(
         start: str,
         end: str,
         source: str | None = None,
+        provider: str | None = None,
+        instrument_type: str | None = None,
+        bar_type: str | None = None,
     ) -> CallToolResult:
         """Return a read-only Data Agent quality envelope.
 
@@ -147,12 +216,16 @@ def create_server(
         """
         envelope = build_data_quality_envelope(
             event_store_provider=data_event_store_provider,
+            environment=local_env,
             symbols=symbols,
             asset_class=asset_class,
             timeframe=timeframe,
             start=start,
             end=end,
             source=source,
+            provider=provider,
+            instrument_type=instrument_type,
+            bar_type=bar_type,
         )
         return CallToolResult(**envelope_to_mcp_result(envelope))
 
@@ -169,6 +242,9 @@ def create_server(
         mode: str,
         source: str | None = None,
         dry_run: bool = True,
+        provider: str | None = None,
+        instrument_type: str | None = None,
+        bar_type: str | None = None,
     ) -> CallToolResult:
         """Return a Data Agent data inspection/loading envelope.
 
@@ -196,6 +272,9 @@ def create_server(
             mode=mode,
             source=source,
             dry_run=dry_run,
+            provider=provider,
+            instrument_type=instrument_type,
+            bar_type=bar_type,
             policy=resolved_data_loading_policy,
         )
         return CallToolResult(**envelope_to_mcp_result(envelope))
@@ -204,7 +283,7 @@ def create_server(
 
 
 def build_event_store_provider(environment: McpEnvironment | None = None) -> EventStoreProvider:
-    """Build the event-store provider used by read-only MCP tools.
+    """Build the lazy event-store provider used by Data Agent tools.
 
     Args:
         environment: Optional resolved local MCP environment.
@@ -216,9 +295,51 @@ def build_event_store_provider(environment: McpEnvironment | None = None) -> Eve
     local_env = environment or load_local_environment()
     if local_env.trader_config_path is None:
         return NoOpEventStore
-    config = build_config(load_yaml_config(local_env.trader_config_path))
-    event_store = build_event_store(config)
-    return lambda: event_store
+
+    event_store: EventStore | None = None
+
+    def _provider() -> EventStore:
+        nonlocal event_store
+        if event_store is None:
+            event_store = build_event_store(_load_tool_config(local_env))
+        return event_store
+
+    return _provider
+
+
+def build_symbol_discovery_policy_provider(environment: McpEnvironment | None = None) -> SymbolDiscoveryPolicyProvider:
+    """Build the lazy symbol-discovery policy provider used by Data Agent tools."""
+    local_env = environment or load_local_environment()
+    policy: DataSymbolDiscoveryPolicy | None = None
+
+    def _provider() -> DataSymbolDiscoveryPolicy:
+        nonlocal policy
+        if policy is None:
+            policy = build_symbol_discovery_policy(local_env)
+        return policy
+
+    return _provider
+
+
+def build_symbol_discovery_policy(environment: McpEnvironment | None = None) -> DataSymbolDiscoveryPolicy:
+    """Build the read-only symbol discovery policy for the MCP runtime."""
+    local_env = environment or load_local_environment()
+    if not local_env.allow_symbol_provider_discovery or local_env.trader_config_path is None:
+        return DataSymbolDiscoveryPolicy(
+            allow_provider_discovery=local_env.allow_symbol_provider_discovery,
+        )
+    config = _load_tool_config(local_env)
+    providers = {}
+    if config.market_data_source.strip().lower() == "alpaca":
+        providers["alpaca"] = AlpacaSymbolCatalogProvider(
+            api_key=config.alpaca_api_key,
+            secret_key=config.alpaca_secret_key,
+            base_url=config.alpaca_base_url,
+        )
+    return DataSymbolDiscoveryPolicy(
+        allow_provider_discovery=local_env.allow_symbol_provider_discovery,
+        catalog_providers=providers,
+    )
 
 
 def build_health_envelope(environment: McpEnvironment | None = None) -> ToolEnvelope:
@@ -270,6 +391,12 @@ def build_config_envelope(environment: McpEnvironment | None = None) -> ToolEnve
             "description": SUPPORT_TOOL_DESCRIPTIONS[MCP_CONFIG_TOOL],
         },
         {
+            "name": DATA_DISCOVER_SYMBOLS_TOOL,
+            "agent_owner": agent_owner_for_tool(DATA_DISCOVER_SYMBOLS_TOOL),
+            "side_effect": SideEffect.READ_ONLY.value,
+            "description": DATA_TOOL_DESCRIPTIONS[DATA_DISCOVER_SYMBOLS_TOOL],
+        },
+        {
             "name": DATA_GET_INVENTORY_TOOL,
             "agent_owner": agent_owner_for_tool(DATA_GET_INVENTORY_TOOL),
             "side_effect": SideEffect.READ_ONLY.value,
@@ -290,6 +417,7 @@ def build_config_envelope(environment: McpEnvironment | None = None) -> ToolEnve
     ]
     safety = {
         **CAPABILITY_REGISTRATION_FLAGS,
+        "symbol_provider_discovery_allowed": local_env.allow_symbol_provider_discovery,
         "data_loading_mutation_allowed": local_env.allow_data_loading,
     }
     return success_envelope(
@@ -302,6 +430,12 @@ def build_config_envelope(environment: McpEnvironment | None = None) -> ToolEnve
             "transport": local_env.transport,
             "artifact_root": str(local_env.artifact_root),
             "trader_config_path": str(local_env.trader_config_path) if local_env.trader_config_path else None,
+            "tool_runtime": {
+                "trader_config_path": str(local_env.trader_config_path) if local_env.trader_config_path else None,
+                "env_path": str(local_env.tool_env_path) if local_env.tool_env_path else None,
+                "config_loaded_at_startup": False,
+                "event_store_provider": "configured" if local_env.trader_config_path else "noop",
+            },
             "tool_count": len(tool_metadata),
             "tools": tool_metadata,
             "policy": local_env.policy_flags(),
@@ -319,6 +453,10 @@ def build_data_inventory_envelope(
     start: str,
     end: str,
     source: str | None = None,
+    provider: str | None = None,
+    instrument_type: str | None = None,
+    bar_type: str | None = None,
+    environment: McpEnvironment | None = None,
 ) -> ToolEnvelope:
     """Build a Data Agent inventory envelope from MCP-native inputs.
 
@@ -342,6 +480,17 @@ def build_data_inventory_envelope(
             start=start,
             end=end,
             source=source,
+            provider=provider,
+            instrument_type=instrument_type,
+            bar_type=bar_type,
+            environment=environment,
+        )
+    except ToolRuntimeConfigurationError as exc:
+        return _tool_runtime_configuration_error_envelope(
+            command=DATA_GET_INVENTORY_TOOL,
+            side_effect=SideEffect.READ_ONLY,
+            error=exc,
+            environment=environment,
         )
     except ValueError as exc:
         return error_envelope(
@@ -350,7 +499,16 @@ def build_data_inventory_envelope(
             code="validation_error",
             message=str(exc),
         )
-    return get_data_inventory(event_store_provider(), request)
+    try:
+        event_store = event_store_provider()
+    except Exception as exc:
+        return _tool_runtime_configuration_error_envelope(
+            command=DATA_GET_INVENTORY_TOOL,
+            side_effect=SideEffect.READ_ONLY,
+            error=exc,
+            environment=environment,
+        )
+    return get_data_inventory(event_store, request)
 
 
 def build_data_quality_envelope(
@@ -362,6 +520,10 @@ def build_data_quality_envelope(
     start: str,
     end: str,
     source: str | None = None,
+    provider: str | None = None,
+    instrument_type: str | None = None,
+    bar_type: str | None = None,
+    environment: McpEnvironment | None = None,
 ) -> ToolEnvelope:
     """Build a Data Agent quality envelope from MCP-native inputs.
 
@@ -385,6 +547,17 @@ def build_data_quality_envelope(
             start=start,
             end=end,
             source=source,
+            provider=provider,
+            instrument_type=instrument_type,
+            bar_type=bar_type,
+            environment=environment,
+        )
+    except ToolRuntimeConfigurationError as exc:
+        return _tool_runtime_configuration_error_envelope(
+            command=DATA_SUMMARIZE_QUALITY_TOOL,
+            side_effect=SideEffect.READ_ONLY,
+            error=exc,
+            environment=environment,
         )
     except ValueError as exc:
         return error_envelope(
@@ -393,7 +566,16 @@ def build_data_quality_envelope(
             code="validation_error",
             message=str(exc),
         )
-    return summarize_quality_service(event_store_provider(), request)
+    try:
+        event_store = event_store_provider()
+    except Exception as exc:
+        return _tool_runtime_configuration_error_envelope(
+            command=DATA_SUMMARIZE_QUALITY_TOOL,
+            side_effect=SideEffect.READ_ONLY,
+            error=exc,
+            environment=environment,
+        )
+    return summarize_quality_service(event_store, request)
 
 
 def build_data_ensure_loaded_envelope(
@@ -408,6 +590,9 @@ def build_data_ensure_loaded_envelope(
     mode: str,
     source: str | None = None,
     dry_run: bool = True,
+    provider: str | None = None,
+    instrument_type: str | None = None,
+    bar_type: str | None = None,
     policy: DataEnsureLoadedPolicy | None = None,
 ) -> ToolEnvelope:
     """Build a Data Agent ensure-loaded envelope from MCP-native inputs.
@@ -438,6 +623,17 @@ def build_data_ensure_loaded_envelope(
             mode=mode,
             source=source,
             dry_run=dry_run,
+            provider=provider,
+            instrument_type=instrument_type,
+            bar_type=bar_type,
+            environment=environment,
+        )
+    except ToolRuntimeConfigurationError as exc:
+        return _tool_runtime_configuration_error_envelope(
+            command=DATA_ENSURE_LOADED_TOOL,
+            side_effect=SideEffect.LOCAL_MUTATING,
+            error=exc,
+            environment=environment,
         )
     except ValueError as exc:
         return error_envelope(
@@ -446,8 +642,17 @@ def build_data_ensure_loaded_envelope(
             code="validation_error",
             message=str(exc),
         )
+    try:
+        event_store = event_store_provider()
+    except Exception as exc:
+        return _tool_runtime_configuration_error_envelope(
+            command=DATA_ENSURE_LOADED_TOOL,
+            side_effect=SideEffect.LOCAL_MUTATING,
+            error=exc,
+            environment=environment,
+        )
     return ensure_loaded_service(
-        event_store_provider(),
+        event_store,
         request,
         policy=policy
         or DataEnsureLoadedPolicy(
@@ -455,6 +660,76 @@ def build_data_ensure_loaded_envelope(
             backfill_config_path=environment.trader_config_path,
         ),
     )
+
+
+def build_data_symbol_discovery_envelope(
+    *,
+    event_store_provider: EventStoreProvider,
+    environment: McpEnvironment,
+    symbols: Sequence[str] | None = None,
+    asset_class: str | None = None,
+    instrument_type: str | None = None,
+    bar_type: str | None = None,
+    query: str | None = None,
+    source: str = "local",
+    provider: str | None = None,
+    timeframe: str | None = None,
+    source_filter: str | None = None,
+    limit: int = 50,
+    active_only: bool = True,
+    tradable_only: bool = True,
+    include_local_coverage: bool = False,
+    policy: DataSymbolDiscoveryPolicy | None = None,
+    policy_provider: SymbolDiscoveryPolicyProvider | None = None,
+) -> ToolEnvelope:
+    """Build a Data Agent symbol discovery envelope from MCP-native inputs."""
+    try:
+        request = _data_symbol_discovery_request_from_inputs(
+            environment=environment,
+            symbols=symbols,
+            asset_class=asset_class,
+            instrument_type=instrument_type,
+            bar_type=bar_type,
+            query=query,
+            source=source,
+            provider=provider,
+            timeframe=timeframe,
+            source_filter=source_filter,
+            limit=limit,
+            active_only=active_only,
+            tradable_only=tradable_only,
+            include_local_coverage=include_local_coverage,
+        )
+    except ToolRuntimeConfigurationError as exc:
+        return _tool_runtime_configuration_error_envelope(
+            command=DATA_DISCOVER_SYMBOLS_TOOL,
+            side_effect=SideEffect.READ_ONLY,
+            error=exc,
+            environment=environment,
+        )
+    except ValueError as exc:
+        return error_envelope(
+            command=DATA_DISCOVER_SYMBOLS_TOOL,
+            side_effect=SideEffect.READ_ONLY,
+            code="validation_error",
+            message=str(exc),
+        )
+    try:
+        event_store = event_store_provider()
+        runtime_policy = policy
+        if runtime_policy is None and policy_provider is not None and str(source).strip().lower() in {
+            "provider",
+            "merged",
+        }:
+            runtime_policy = policy_provider()
+    except Exception as exc:
+        return _tool_runtime_configuration_error_envelope(
+            command=DATA_DISCOVER_SYMBOLS_TOOL,
+            side_effect=SideEffect.READ_ONLY,
+            error=exc,
+            environment=environment,
+        )
+    return discover_symbols_service(event_store, request, policy=runtime_policy)
 
 
 def _data_inventory_request_from_inputs(
@@ -465,6 +740,10 @@ def _data_inventory_request_from_inputs(
     start: str,
     end: str,
     source: str | None,
+    provider: str | None,
+    instrument_type: str | None,
+    bar_type: str | None,
+    environment: McpEnvironment | None,
 ) -> DataInventoryRequest:
     """Build a Data Agent inventory request from MCP tool inputs.
 
@@ -482,6 +761,7 @@ def _data_inventory_request_from_inputs(
     Raises:
         ValueError: If MCP inputs are not JSON-native values expected by the tool.
     """
+    provider_context = _configured_market_data_context(environment)
     return DataInventoryRequest(
         symbols=_parse_symbols(symbols),
         asset_class=str(asset_class),
@@ -489,6 +769,11 @@ def _data_inventory_request_from_inputs(
         start=_parse_iso_datetime(start, field_name="start"),
         end=_parse_iso_datetime(end, field_name="end"),
         source=str(source) if source is not None else None,
+        provider=_optional_str(provider),
+        instrument_type=_optional_str(instrument_type),
+        bar_type=_optional_str(bar_type),
+        configured_provider=provider_context["configured_provider"],
+        configured_asset_class=provider_context["configured_asset_class"],
     )
 
 
@@ -500,6 +785,10 @@ def _data_quality_request_from_inputs(
     start: str,
     end: str,
     source: str | None,
+    provider: str | None,
+    instrument_type: str | None,
+    bar_type: str | None,
+    environment: McpEnvironment | None,
 ) -> DataQualityRequest:
     """Build a Data Agent quality request from MCP tool inputs.
 
@@ -517,6 +806,7 @@ def _data_quality_request_from_inputs(
     Raises:
         ValueError: If MCP inputs are not JSON-native values expected by the tool.
     """
+    provider_context = _configured_market_data_context(environment)
     return DataQualityRequest(
         symbols=_parse_symbols(symbols),
         asset_class=str(asset_class),
@@ -524,6 +814,11 @@ def _data_quality_request_from_inputs(
         start=_parse_iso_datetime(start, field_name="start"),
         end=_parse_iso_datetime(end, field_name="end"),
         source=str(source) if source is not None else None,
+        provider=_optional_str(provider),
+        instrument_type=_optional_str(instrument_type),
+        bar_type=_optional_str(bar_type),
+        configured_provider=provider_context["configured_provider"],
+        configured_asset_class=provider_context["configured_asset_class"],
     )
 
 
@@ -537,6 +832,10 @@ def _data_ensure_loaded_request_from_inputs(
     mode: str,
     source: str | None,
     dry_run: bool,
+    provider: str | None,
+    instrument_type: str | None,
+    bar_type: str | None,
+    environment: McpEnvironment,
 ) -> DataEnsureLoadedRequest:
     """Build a Data Agent ensure-loaded request from MCP tool inputs.
 
@@ -556,6 +855,7 @@ def _data_ensure_loaded_request_from_inputs(
     Raises:
         ValueError: If MCP inputs are not JSON-native values expected by the tool.
     """
+    provider_context = _configured_market_data_context(environment)
     return DataEnsureLoadedRequest(
         symbols=_parse_symbols(symbols),
         asset_class=str(asset_class),
@@ -565,6 +865,120 @@ def _data_ensure_loaded_request_from_inputs(
         mode=str(mode),
         source=str(source) if source is not None else None,
         dry_run=_parse_bool(dry_run, field_name="dry_run"),
+        provider=_optional_str(provider),
+        instrument_type=_optional_str(instrument_type),
+        bar_type=_optional_str(bar_type),
+        configured_provider=provider_context["configured_provider"],
+        configured_asset_class=provider_context["configured_asset_class"],
+    )
+
+
+def _data_symbol_discovery_request_from_inputs(
+    *,
+    environment: McpEnvironment,
+    symbols: Sequence[str] | None,
+    asset_class: str | None,
+    instrument_type: str | None,
+    bar_type: str | None,
+    query: str | None,
+    source: str,
+    provider: str | None,
+    timeframe: str | None,
+    source_filter: str | None,
+    limit: int,
+    active_only: bool,
+    tradable_only: bool,
+    include_local_coverage: bool,
+) -> DataSymbolDiscoveryRequest:
+    """Build a Data Agent symbol discovery request from MCP tool inputs."""
+    provider_context = _configured_market_data_context(environment)
+    return DataSymbolDiscoveryRequest(
+        symbols=_parse_optional_symbols(symbols),
+        asset_class=_optional_str(asset_class),
+        instrument_type=_optional_str(instrument_type),
+        bar_type=_optional_str(bar_type),
+        query=_optional_str(query),
+        source=str(source),
+        provider=_optional_str(provider),
+        configured_provider=provider_context["configured_provider"],
+        configured_asset_class=provider_context["configured_asset_class"],
+        configured_symbols=tuple(provider_context["configured_symbols"]),
+        timeframe=_optional_str(timeframe),
+        source_filter=_optional_str(source_filter),
+        limit=int(limit),
+        active_only=_parse_bool(active_only, field_name="active_only"),
+        tradable_only=_parse_bool(tradable_only, field_name="tradable_only"),
+        include_local_coverage=_parse_bool(include_local_coverage, field_name="include_local_coverage"),
+        configured_universe_available=bool(provider_context["configured_universe_available"]),
+    )
+
+
+def _configured_market_data_context(environment: McpEnvironment | None) -> dict[str, object]:
+    """Return configured market-data provider context for MCP tool requests."""
+    if environment is None or environment.trader_config_path is None:
+        return {
+            "configured_provider": None,
+            "configured_asset_class": None,
+            "configured_symbols": tuple(),
+            "configured_universe_available": False,
+        }
+    try:
+        config = _load_tool_config(environment)
+    except ToolRuntimeConfigurationError:
+        return {
+            "configured_provider": None,
+            "configured_asset_class": None,
+            "configured_symbols": tuple(),
+            "configured_universe_available": False,
+        }
+    return {
+        "configured_provider": config.market_data_source,
+        "configured_asset_class": config.market_data_asset_class,
+        "configured_symbols": tuple(config.market_data_symbols),
+        "configured_universe_available": True,
+    }
+
+
+def _load_tool_config(environment: McpEnvironment) -> object:
+    """Load trader config for tool execution without making MCP startup depend on it."""
+    if environment.trader_config_path is None:
+        raise ToolRuntimeConfigurationError("Tool execution requires a trader config path.")
+    _load_tool_env(environment)
+    try:
+        return build_config(load_yaml_config(environment.trader_config_path))
+    except (OSError, ValueError) as exc:
+        raise ToolRuntimeConfigurationError(
+            f"Unable to build tool execution config from {environment.trader_config_path}: {exc}"
+        ) from exc
+
+
+def _load_tool_env(environment: McpEnvironment) -> None:
+    """Load the optional tool-runtime env file used by trader YAML expansion."""
+    if environment.tool_env_path is None:
+        return
+    if not environment.tool_env_path.exists():
+        raise ToolRuntimeConfigurationError(f"Tool runtime env file not found: {environment.tool_env_path}")
+    load_dotenv(environment.tool_env_path, override=False)
+
+
+def _tool_runtime_configuration_error_envelope(
+    *,
+    command: str,
+    side_effect: SideEffect,
+    error: Exception,
+    environment: McpEnvironment | None,
+) -> ToolEnvelope:
+    """Return a structured tool-level failure for invalid execution config."""
+    return error_envelope(
+        command=command,
+        side_effect=side_effect,
+        code="tool_runtime_configuration_error",
+        message=str(error),
+        data={
+            "trader_config_path": str(environment.trader_config_path)
+            if environment is not None and environment.trader_config_path is not None
+            else None,
+        },
     )
 
 
@@ -583,6 +997,21 @@ def _parse_symbols(symbols: Sequence[str]) -> tuple[str, ...]:
     if isinstance(symbols, str) or not isinstance(symbols, Sequence):
         raise ValueError("symbols must be a JSON array of strings")
     return tuple(str(symbol) for symbol in symbols)
+
+
+def _parse_optional_symbols(symbols: Sequence[str] | None) -> tuple[str, ...]:
+    """Parse an optional MCP symbol input into a tuple."""
+    if symbols is None:
+        return tuple()
+    return _parse_symbols(symbols)
+
+
+def _optional_str(value: object) -> str | None:
+    """Return a stripped string or None for omitted optional MCP inputs."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _parse_bool(value: object, *, field_name: str) -> bool:

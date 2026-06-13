@@ -19,8 +19,10 @@ class McpEnvironment:
         transport: Transport used by the local MCP server.
         artifact_root: Root directory for future MCP/research artifacts.
         trader_config_path: Optional trader YAML config used to build the event store.
+        tool_env_path: Optional dotenv file loaded only before tool execution config is built.
         allow_broker_mutation: Whether broker-mutating MCP tools may be enabled.
         allow_raw_sql: Whether raw SQL MCP tools may be enabled.
+        allow_symbol_provider_discovery: Whether provider catalog discovery may make read-only network calls.
         allow_data_loading: Whether data-loading MCP tools may be enabled.
         allow_backtests: Whether backtest MCP tools may be enabled.
     """
@@ -29,8 +31,10 @@ class McpEnvironment:
     transport: str
     artifact_root: Path
     trader_config_path: Path | None
+    tool_env_path: Path | None
     allow_broker_mutation: bool
     allow_raw_sql: bool
+    allow_symbol_provider_discovery: bool
     allow_data_loading: bool
     allow_backtests: bool
 
@@ -43,6 +47,7 @@ class McpEnvironment:
         return {
             "allow_broker_mutation": self.allow_broker_mutation,
             "allow_raw_sql": self.allow_raw_sql,
+            "allow_symbol_provider_discovery": self.allow_symbol_provider_discovery,
             "allow_data_loading": self.allow_data_loading,
             "allow_backtests": self.allow_backtests,
         }
@@ -75,8 +80,10 @@ def load_local_environment(env_path: str | Path | None = None) -> McpEnvironment
         transport=transport,
         artifact_root=Path(_required_env("TRADER_MCP_ARTIFACT_ROOT", file_values)),
         trader_config_path=_optional_path_env("TRADER_MCP_TRADER_CONFIG_PATH", file_values),
+        tool_env_path=_optional_path_env("TRADER_MCP_TOOL_ENV_PATH", file_values),
         allow_broker_mutation=_bool_env("TRADER_MCP_ALLOW_BROKER_MUTATION", file_values),
         allow_raw_sql=_bool_env("TRADER_MCP_ALLOW_RAW_SQL", file_values),
+        allow_symbol_provider_discovery=_bool_env("TRADER_MCP_ALLOW_SYMBOL_PROVIDER_DISCOVERY", file_values),
         allow_data_loading=_bool_env("TRADER_MCP_ALLOW_DATA_LOADING", file_values),
         allow_backtests=_bool_env("TRADER_MCP_ALLOW_BACKTESTS", file_values),
     )

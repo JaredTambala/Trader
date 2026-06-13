@@ -13,6 +13,39 @@ artifacts that match the owning agent's responsibilities in [agent_operating_mod
 The Quant Research Supervisor Agent may coordinate specialist work, but each specialist-owned artifact keeps its own
 `agent_owner`.
 
+## Control Plane And Execution Plane
+
+Research tooling has two separate configuration planes.
+
+The MCP server is the control plane. It owns only:
+
+- process startup and stdio transport
+- server identity, registered tool names, descriptions, and static metadata
+- artifact root and server-local policy flags
+- capability gates such as `TRADER_MCP_ALLOW_DATA_LOADING`
+
+The tool/runtime layer is the execution plane. It owns only:
+
+- typed tool requests and deterministic service contracts
+- injected dependencies such as event stores, catalog providers, runners, and policies
+- trader runtime YAML used to build execution dependencies
+- runtime dotenv values used by that YAML, such as Postgres and Alpaca credentials
+
+These planes must remain one-way and lazy:
+
+- The MCP server must be able to start, list tools, and answer `mcp_health` / `mcp_get_config` without a valid trader
+  YAML, broker credentials, database connection, or backtest runtime.
+- A broken execution-plane config must fail inside the affected tool call as a structured envelope. It must not prevent
+  MCP server startup or tool registration.
+- Execution services in `trader_research` must not read `local.env`, inspect MCP transport details, depend on MCP client
+  identity, or branch on which process called them.
+- MCP adapters may translate JSON-native tool inputs into typed requests and inject dependencies, but deterministic
+  services must know only their request objects, dependency interfaces, and explicit runtime policy.
+- Runtime `.env` files are for execution-plane YAML expansion only. They are loaded lazily before building the trader
+  config for a tool, never as a prerequisite for MCP server startup.
+- Duplicating values across env files is acceptable when those values serve different planes. Avoid "DRY" env loading
+  that couples MCP process startup to execution runtime secrets, broker settings, database settings, or script defaults.
+
 ## Envelope
 
 Every MCP tool returns a stable envelope:

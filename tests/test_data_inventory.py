@@ -80,26 +80,31 @@ def test_data_inventory_warns_for_missing_symbol(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("inventory_request", "message"),
+    ("inventory_request", "code", "message"),
     [
-        (_request(symbols=()), "at least one symbol"),
-        (_request(symbols=tuple(f"SYM{index}" for index in range(21))), "at most 20 symbols"),
-        (_request(asset_class="forex"), "Unsupported bar query asset class"),
-        (_request(timeframe="bad"), "Invalid timeframe"),
+        (_request(symbols=()), "validation_error", "at least one symbol"),
+        (_request(symbols=tuple(f"SYM{index}" for index in range(21))), "validation_error", "at most 20 symbols"),
+        (_request(asset_class="forex"), "unsupported_instrument_type", "does not support instrument type forex"),
+        (_request(timeframe="bad"), "validation_error", "Invalid timeframe"),
         (
             _request(
                 start=datetime(2026, 1, 20, 12, 11, tzinfo=timezone.utc),
                 end=datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc),
             ),
+            "validation_error",
             "end must be at or after start",
         ),
     ],
 )
-def test_data_inventory_validation_failures(inventory_request: DataInventoryRequest, message: str) -> None:
+def test_data_inventory_validation_failures(
+    inventory_request: DataInventoryRequest,
+    code: str,
+    message: str,
+) -> None:
     envelope = get_data_inventory(NoOpEventStore(), inventory_request)
 
     assert envelope.ok is False
-    assert envelope.errors[0]["code"] == "validation_error"
+    assert envelope.errors[0]["code"] == code
     assert message in str(envelope.errors[0]["message"])
 
 

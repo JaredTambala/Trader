@@ -14,6 +14,7 @@ def test_new_research_packages_import_cleanly() -> None:
 
 
 def test_data_inventory_tool_is_owned_by_data_agent() -> None:
+    assert agent_owner_for_tool("data_discover_symbols") == "Data Agent"
     assert agent_owner_for_tool("data_get_inventory") == "Data Agent"
     assert agent_owner_for_tool("data_summarize_quality") == "Data Agent"
     assert agent_owner_for_tool("data_ensure_loaded") == "Data Agent"
@@ -27,10 +28,12 @@ def test_data_agent_identity_has_only_initial_data_allowlist() -> None:
     assert set(identity.tool_allowlist) == {
         "mcp_health",
         "mcp_get_config",
+        "data_discover_symbols",
         "data_get_inventory",
         "data_summarize_quality",
         "data_ensure_loaded",
     }
+    assert "symbol_discovery_report.json" in identity.output_artifacts
     assert "dataset_manifest.json" in identity.output_artifacts
     assert "data_quality_report.json" in identity.output_artifacts
 

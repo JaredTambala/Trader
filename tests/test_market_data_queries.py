@@ -9,11 +9,13 @@ from tests.support.duckdb_store import DuckDBEventStore
 from trader.data import NoOpEventStore
 from trader.market_data_queries import (
     BarQuery,
+    BarSymbolDiscoveryQuery,
     EventStoreConnectionUnavailable,
     MarketDataQueryValidationError,
     count_bar_rows,
     count_bar_sources,
     count_bar_symbols,
+    discover_bar_symbols,
     fetch_bar_ranges,
     fetch_bars,
     normalize_bar_query,
@@ -67,6 +69,28 @@ def test_market_data_queries_count_rows_ranges_sources_and_symbols(tmp_path: Pat
     assert [(item.symbol, item.source, item.row_count) for item in count_bar_sources(store, query)] == [
         ("DEMO", "sample", 12),
     ]
+
+
+def test_market_data_queries_discover_local_symbols_with_coverage(tmp_path: Path) -> None:
+    store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
+    load_sample_market_data_csv(store, SAMPLE_CSV)
+
+    symbols = discover_bar_symbols(
+        store,
+        BarSymbolDiscoveryQuery(
+            asset_class="stocks",
+            query="dem",
+            include_coverage=True,
+        ),
+    )
+
+    assert len(symbols) == 1
+    assert symbols[0].symbol == "DEMO"
+    assert symbols[0].row_count == 12
+    assert symbols[0].first_ts == datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    assert symbols[0].last_ts == datetime(2026, 1, 20, 12, 11, tzinfo=timezone.utc)
+    assert symbols[0].timeframes == ("1Min",)
+    assert symbols[0].sources == ("sample",)
 
 
 def test_fetch_bars_is_bounded_and_ordered(tmp_path: Path) -> None:

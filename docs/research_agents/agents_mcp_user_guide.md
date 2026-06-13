@@ -17,6 +17,7 @@ Available tools:
 | --- | --- | --- | --- |
 | `mcp_health` | MCP Server | `read_only` | Confirm the server is running and list registered tools. |
 | `mcp_get_config` | MCP Server | `read_only` | Return server settings, registered tool metadata, and safety policy. |
+| `data_discover_symbols` | Data Agent | `read_only` | Discover or validate provider-scoped market-data symbols. |
 | `data_get_inventory` | Data Agent | `read_only` | Return a dataset manifest for bounded bar data. |
 | `data_summarize_quality` | Data Agent | `read_only` | Return a quality report with bar counts, missing gaps, and completeness. |
 | `data_ensure_loaded` | Data Agent | `local_mutating` | Inspect existing data, sample-load checked-in data, or run/plan bounded backfill. |
@@ -26,13 +27,22 @@ Current safety boundaries:
 - No raw SQL tool is exposed.
 - No broker-mutating or live-trading tool is exposed.
 - No backtest tool is exposed through MCP yet.
-- No LLM call is made by the MCP server or Data Agent graphs.
+- No LLM call is made by the MCP server. The optional Data Agent LLM policy graph runs outside MCP and calls only
+  validated Data Agent MCP tools.
 - `TRADER_MCP_ALLOW_DATA_LOADING=false` is the default policy, so sample-loading requests are rejected unless
   explicitly enabled.
 
 ## Start The MCP Server
 
-The MCP server runs over stdio and reads local defaults from [../../local.env](../../local.env):
+The MCP server runs over stdio and reads local defaults from an ignored `local.env` file. Create it from the tracked
+[../../env.template](../../env.template):
+
+```bash
+cp env.template local.env
+```
+
+See [../../README_ENV.md](../../README_ENV.md) for the full local environment setup, including Data Agent LLM provider
+configuration.
 
 ```bash
 uv run python -m trader_mcp.server
@@ -46,13 +56,18 @@ args: ["run", "python", "-m", "trader_mcp.server"]
 cwd: /home/jared/Trader
 ```
 
-Local policy and data-store wiring are controlled by environment variables:
+The MCP server is the control plane. It must be able to start, list tools, and return health/config without a valid
+database, broker credential, or trader runtime YAML. Tool execution is the execution plane. Execution is lazy and should
+know only typed requests, injected dependencies, explicit policy, and runtime config needed to perform the tool call.
+
+Local MCP control-plane policy and tool execution wiring are controlled by environment variables:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `TRADER_MCP_TRANSPORT` | `stdio` | Only stdio is supported right now. |
 | `TRADER_MCP_ARTIFACT_ROOT` | `artifacts/research` | Reserved root for future artifacts. |
-| `TRADER_MCP_TRADER_CONFIG_PATH` | empty | Optional trader YAML config used to build the event store. |
+| `TRADER_MCP_TRADER_CONFIG_PATH` | empty | Optional execution-plane trader YAML config used by data tools to build an event store. |
+| `TRADER_MCP_TOOL_ENV_PATH` | `.env` | Optional execution-plane dotenv file loaded lazily before the trader YAML is built. |
 | `TRADER_MCP_ALLOW_DATA_LOADING` | `false` | Enables local sample-load and non-dry-run loading behavior when true. |
 | `TRADER_MCP_ALLOW_BROKER_MUTATION` | `false` | Must stay false; broker-mutating tools are not registered. |
 | `TRADER_MCP_ALLOW_RAW_SQL` | `false` | Must stay false; raw SQL tools are not registered. |
@@ -61,6 +76,11 @@ Local policy and data-store wiring are controlled by environment variables:
 If `TRADER_MCP_TRADER_CONFIG_PATH` is empty, production server calls use `NoOpEventStore`. Data tools still return
 normal envelopes, but inventory and quality calls fail with `event_store_connection_unavailable` because there is no
 queryable store. Tests inject DuckDB stores for reproducible evidence.
+
+If `TRADER_MCP_TRADER_CONFIG_PATH` points at a YAML containing placeholders such as `${PG_PORT}` or
+`${ALPACA_API_KEY}`, set `TRADER_MCP_TOOL_ENV_PATH` to the runtime dotenv file that supplies those values. A missing or
+invalid execution-plane config should appear only as a failed Data Agent envelope from the affected tool. It should not
+break `mcp_health`, `mcp_get_config`, or tool listing.
 
 ## Envelope Format
 
@@ -177,9 +197,10 @@ Non-dry-run `mode="backfill"` is also rejected unless `TRADER_MCP_ALLOW_DATA_LOA
 For real external stock backfill through MCP:
 
 1. Set `TRADER_MCP_TRADER_CONFIG_PATH` to a trader YAML config that contains the event-store and Alpaca settings.
-2. Set `TRADER_MCP_ALLOW_DATA_LOADING=true`.
-3. Call `data_ensure_loaded` with `mode="backfill"` and `dry_run=false`.
-4. Call `data_summarize_quality` again on the same bounded request.
+2. Set `TRADER_MCP_TOOL_ENV_PATH` to the runtime dotenv file that supplies any YAML substitutions.
+3. Set `TRADER_MCP_ALLOW_DATA_LOADING=true`.
+4. Call `data_ensure_loaded` with `mode="backfill"` and `dry_run=false`.
+5. Call `data_summarize_quality` again on the same bounded request.
 
 The tool runs the core `MarketDataBackfillRunner` through the Data Agent service boundary and returns load evidence
 including `rows_loaded`, `runner_result`, `pre_load_manifest`, `post_load_manifest`, and `post_load_quality_report`.

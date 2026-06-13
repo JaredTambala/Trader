@@ -7,7 +7,7 @@ from typing import Any, Mapping
 
 import anyio
 
-from trader_mcp.constants import DATA_GET_INVENTORY_TOOL
+from trader_mcp.constants import DATA_DISCOVER_SYMBOLS_TOOL, DATA_GET_INVENTORY_TOOL
 from trader_agents.data_agent import build_data_agent_inventory_graph
 from trader_agents.state import build_data_agent_initial_state
 from trader_agents.tool_client import StdioMcpToolClient
@@ -23,14 +23,43 @@ def _inventory_state() -> dict[str, Any]:
     )
 
 
-class FakeMcpToolClient:
-    def __init__(self, result: Mapping[str, Any]) -> None:
-        self.result = dict(result)
+def _success_result(command: str, data_key: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "content": [{"type": "text", "text": "{}"}],
+        "structuredContent": {
+            "ok": True,
+            "command": command,
+            "agent_owner": "Data Agent",
+            "side_effect": "read_only",
+            "data": {data_key: dict(payload)},
+            "warnings": [],
+            "errors": [],
+        },
+        "isError": False,
+    }
+
+
+def _discovery_report(**overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "all_requested_symbols_exist": True,
+        "missing_symbols": [],
+        "resolved_provider": "alpaca",
+        "instrument_type": "stock",
+        "bar_type": "trade_bar",
+        "legacy_asset_class": "stocks",
+    }
+    payload.update(overrides)
+    return payload
+
+
+class SequenceMcpToolClient:
+    def __init__(self, results: list[Mapping[str, Any]]) -> None:
+        self._results = [dict(result) for result in results]
         self.calls: list[tuple[str, dict[str, Any]]] = []
 
     async def call_tool(self, tool_name: str, arguments: Mapping[str, Any]) -> Mapping[str, Any]:
         self.calls.append((tool_name, dict(arguments)))
-        return self.result
+        return self._results.pop(0)
 
 
 class FailingIfCalledClient:
@@ -60,7 +89,7 @@ def test_data_agent_graph_refuses_non_allowlisted_inventory_tool() -> None:
         assert output["errors"] == [
             {
                 "code": "tool_not_allowlisted",
-                "message": "data_get_inventory is not allowlisted for this Data Agent identity.",
+                "message": "data_discover_symbols is not allowlisted for this Data Agent identity.",
             }
         ]
         assert output["called_tools"] == []
@@ -82,7 +111,12 @@ def test_data_agent_graph_preserves_failed_mcp_envelope() -> None:
         },
         "isError": True,
     }
-    client = FakeMcpToolClient(result)
+    client = SequenceMcpToolClient(
+        [
+            _success_result(DATA_DISCOVER_SYMBOLS_TOOL, "symbol_discovery_report", _discovery_report()),
+            result,
+        ]
+    )
     graph = build_data_agent_inventory_graph(client)
 
     async def _run() -> None:
@@ -91,8 +125,9 @@ def test_data_agent_graph_preserves_failed_mcp_envelope() -> None:
         assert output["status"] == "failed"
         assert output["tool_envelope"]["ok"] is False
         assert output["errors"] == [{"code": "missing_data", "message": "No bars found."}]
-        assert output["called_tools"] == [DATA_GET_INVENTORY_TOOL]
-        assert client.calls[0][0] == DATA_GET_INVENTORY_TOOL
+        assert output["called_tools"] == [DATA_DISCOVER_SYMBOLS_TOOL, DATA_GET_INVENTORY_TOOL]
+        assert client.calls[0][0] == DATA_DISCOVER_SYMBOLS_TOOL
+        assert client.calls[1][0] == DATA_GET_INVENTORY_TOOL
 
     anyio.run(_run)
 
@@ -120,7 +155,7 @@ def test_data_agent_graph_calls_inventory_through_stdio_mcp() -> None:
         assert output["dataset_manifest"]["symbols"] == ["DEMO"]
         assert output["dataset_manifest"]["total_rows"] == 12
         assert output["dataset_manifest"]["symbols_detail"][0]["sources"] == {"sample": 12}
-        assert output["called_tools"] == [DATA_GET_INVENTORY_TOOL]
+        assert output["called_tools"] == [DATA_DISCOVER_SYMBOLS_TOOL, DATA_GET_INVENTORY_TOOL]
 
     anyio.run(_run)
 

@@ -67,6 +67,13 @@ trader_agents
 - Do not expose SQL tools through MCP.
 - Do not expose broker-mutating or live-trading tools.
 - Do not persist raw LLM messages, hidden reasoning, or every tool-call payload.
+- Real LLM-backed control is needed at two levels: inside mature specialist agents for bounded domain decisions, and
+  inside the Quant Research Supervisor for cross-agent orchestration. LLM-backed control belongs in LangGraph
+  control-policy nodes, not in MCP tools. A specialist agent may use an LLM to choose among its own validated MCP tool
+  allowlist after its deterministic tool surface is complete. The Quant Research Supervisor uses an LLM to assess
+  specialist artifacts, decide which agent/tool should run next, block, retry, or finish. In both cases, the LLM may
+  only emit typed decisions that a deterministic router validates against state, provider context, allowlists,
+  side-effect policy, loop limits, and artifact ownership.
 - Persist or write reproducible agent artifacts: dataset manifests, data-quality reports, hypothesis cards, experiment plans, strategy hashes, backtest configs/results, evaluation reports, robustness reports, recommendation reports, and paper-promotion packets.
 - Use existing platform services where possible before adding new abstractions.
 - Use a single stdio MCP server as soon as the first data service exists. Do not wait for the full research stack before proving MCP behavior.
@@ -82,7 +89,7 @@ This plan follows `docs/research_agents/agent_operating_model.md`: agents are im
 | Agent | First MCP responsibility in this plan | Owned artifacts |
 | --- | --- | --- |
 | Quant Research Supervisor Agent | Supervisor state, handoff ledger, strategy planning, validation, backtest orchestration, recommendations | experiment plans, suites, comparison reports, recommendation reports |
-| Data Agent | Data inventory, data quality, explicit load/backfill | `dataset_manifest.json`, `data_quality_report.json`, load result envelopes |
+| Data Agent | Symbol discovery/preflight, data inventory, data quality, explicit load/backfill | `symbol_discovery_report.json`, `dataset_manifest.json`, `data_quality_report.json`, load result envelopes |
 | Math Coder Agent | Indicator/stat-test contract listing and validation | indicator metadata, indicator test reports, statistical-test reports |
 | ML Agent | Feature/model artifact registration and summary | feature manifests, model cards, prediction artifacts, drift reports |
 | Hypothesis Agent | Hypothesis-card creation from available ingredients | `hypothesis_card.json` |
@@ -97,8 +104,8 @@ LangGraph is the identity and orchestration layer for agents. MCP is the tool bo
 
 | Agent | LangGraph identity requirement | MCP tool access pattern |
 | --- | --- | --- |
-| Data Agent | Owns `DataAgentState`, dataset-manifest state, quality status, and load policy. | May call only Data Agent MCP tools plus read-only health/config tools. |
-| Quant Research Supervisor Agent | Owns `QuantResearchSupervisorState`, request decomposition, handoff ledger, experiment plan state, comparison state, and recommendation synthesis. | May consume specialist artifact references and call Quant Research MCP tools; may request specialist reports through graph handoffs. |
+| Data Agent | Owns `DataAgentState`, dataset-manifest state, quality status, load policy, symbol-discovery state, and optional Data Agent LLM control decisions. | May call only Data Agent MCP tools plus read-only health/config tools. |
+| Quant Research Supervisor Agent | Owns `QuantResearchSupervisorState`, request decomposition, handoff ledger, LLM control-policy decisions, experiment plan state, comparison state, and recommendation synthesis. | May consume specialist artifact references, assess evidence, request/reuse allowed specialist tools through graph routing, stop early, and call Quant Research MCP tools; deterministic routers validate every LLM-proposed action. |
 | Evaluation Agent | Owns `EvaluationState` and skeptical critique policy. | May read data/backtest artifacts and call evaluation tools; cannot create new hypotheses or mutate data. |
 | Adversarial Agent | Owns `AdversarialState` and robustness attack policy. | May call robustness tools against supplied baseline artifacts; cannot recommend promotion. |
 | Hypothesis Agent | Owns `HypothesisState` and hypothesis-card generation policy. | May read known ingredients and prior results; cannot run backtests or make verdicts. |
@@ -116,14 +123,17 @@ The intended progression is:
 ```text
 MCP server boots
   -> health/config tool works
+  -> Data Agent symbol discovery and exact-symbol validation works
   -> Data Agent inventory tool works
   -> Data Agent LangGraph identity uses the inventory tool
   -> Data Agent quality tool works
   -> Data Agent explicit loading/backfill tool works
+  -> Data Agent LLM control loop turns natural-language data requests into validated Data Agent tool calls
   -> Quant Research Supervisor identity consumes Data Agent artifacts
   -> Math Coder tool and identity produce indicator/stat-test artifacts
   -> ML tool and identity produce model-artifact references
   -> Hypothesis tool and identity produce hypothesis cards
+  -> Quant Research Supervisor LLM control loop assesses state and chooses validated next actions
   -> Quant Research Supervisor strategy and backtest tools
   -> Evaluation and Adversarial tool/identity checkpoints
   -> Quant Research Supervisor synthesis/runner tools
@@ -160,6 +170,14 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 20. Research Domain Schemas | Done | `tests/test_research_domain.py` | Bounded requests, data requirements, specialist handoffs, artifact slots, planned artifact refs, run refs, and verdict schemas serialize to JSON-safe dictionaries and validate ownership/bounds. |
 | 21. Quant Research Supervisor Graph Skeleton | Done | `tests/test_quant_research_supervisor.py`; `uv run python -c "from trader_agents.quant_research import build_quant_research_supervisor_graph"` | Supervisor graph records bounded requests, distinct identity, handoff ledger, artifact slots, public status, empty `called_tools`, and explicit missing-specialist blockers. |
 | 22. Supervisor Consumes Data Agent Handoff | Done | `tests/test_supervisor_data_handoff.py`; `tests/test_quant_research_supervisor.py` | Supervisor accepts Data Agent manifest/quality handoffs, preserves ownership/provenance, blocks incomplete quality, rejects forged/mismatched handoffs, and does not fetch raw data. |
+| 22A. Shared Provider Context and Capability Resolver | Done | `tests/test_data_symbol_discovery.py`; `uv run pytest -m 'not postgres'`; `uv run ruff check src tests` | Shared provider resolution covers configured Alpaca, omitted provider, matching/mismatched providers, unsupported instrument types, unsupported bar types, and asset-class compatibility aliases. |
+| 22B. Provider-Aware Existing Data Tools | Done | `tests/test_data_symbol_discovery.py`; `tests/test_data_inventory.py`; `tests/test_data_quality_service.py`; `tests/test_data_ensure_loaded.py`; `uv run pytest -m 'not postgres'` | `data_get_inventory`, `data_summarize_quality`, and `data_ensure_loaded` accept optional provider context, fail fast on provider/instrument/bar mismatch before query/loading branches, and include provider context in successful payloads. |
+| 22C. Data Symbol Discovery Service and Local/Configured Sources | Done | `tests/test_data_symbol_discovery.py`; `tests/test_market_data_queries.py`; `uv run pytest -m 'not postgres'` | `data_discover_symbols` supports local event-store discovery, configured-universe discovery, exact-symbol validation, crypto canonicalization, limits, and typed core local symbol queries without SQL in research/MCP layers. |
+| 22D. Register Symbol Discovery MCP Tool | Done | `tests/test_mcp_tools.py`; `tests/test_mcp_server.py`; `uv run pytest -m 'not postgres'` | MCP registers `data_discover_symbols`, exposes provider policy metadata, parses provider/instrument/bar fields on Data Agent tools, and returns shared Data Agent envelopes. |
+| 22E. Data Agent Symbol Discovery Graph | Done | `tests/test_langgraph_agents.py`; `tests/test_langgraph_data_workflow.py`; `tests/test_supervisor_data_handoff.py`; `uv run pytest -m 'not postgres'` | Data Agent graphs call `data_discover_symbols` through MCP before inventory, quality, or loading, propagate resolved provider context, and block downstream tools on missing symbols or provider mismatch. |
+| 22F. Provider Catalog Adapters | Done | `tests/test_alpaca_symbol_provider.py`; `tests/test_data_symbol_discovery.py`; `uv run pytest -m 'not postgres'` | Provider catalog discovery is policy-gated; fake provider injection and the Alpaca read-only asset-listing adapter are tested without network calls or broker mutation APIs. |
+| 22G. Symbol Discovery Documentation and Evidence | Done | `docs/research_agents/mcp_trading_research_tools.md`; `docs/research_agents/ai_tool_workflows.md`; `plans/data_agent_symbol_discovery_tool_plan.md`; `uv run pytest -m 'not postgres'` | Docs describe provider-scoped stock/crypto discovery, provider/instrument/bar selection, mandatory preflight, provider policy, and discovery versus inventory/loading/backtest behavior. |
+| 22H. Data Agent LLM Control Loop | Done | `tests/test_llm_client.py`; `tests/test_data_agent_llm_policy.py`; `tests/test_langgraph_agents.py`; `tests/test_langgraph_data_workflow.py`; `uv run pytest tests/test_langgraph_agents.py tests/test_langgraph_data_workflow.py tests/test_data_agent_llm_policy.py tests/test_llm_client.py` | Provider-neutral LLM client boundary, runtime OpenAI-compatible/OpenRouter-style and Ollama-style adapters, fake LLM test client, bounded Data Agent LLM policy graph, deterministic action router, mandatory discovery enforcement, provider-context validation, loading policy checks, loop limit, missing-config fail-fast behavior, and no raw prompt/scratchpad state persistence are implemented. |
 | 23. Math Coder Tool Contracts | Not started |  |  |
 | 24. Register Math Coder MCP Tools | Not started |  |  |
 | 25. Math Coder Agent Graph | Not started |  |  |
@@ -172,6 +190,7 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 32. Register Hypothesis MCP Tool | Not started |  |  |
 | 33. Hypothesis Agent Graph | Not started |  |  |
 | 34. Supervisor Consumes Hypothesis Handoff | Not started |  |  |
+| 34A. Supervisor LLM Control Loop | Not started |  |  |
 | 35. Strategy Template Catalog | Not started |  |  |
 | 36. Register Strategy Catalog MCP Tool | Not started |  |  |
 | 37. Strategy Candidate Validation | Not started |  |  |
@@ -235,8 +254,11 @@ src/trader_agents/
   identities.py          # Agent identities, role policies, and tool allowlists
   state.py               # LangGraph state schemas per agent
   tool_client.py         # MCP client wrappers used by LangGraph nodes
+  llm_client.py          # Provider-neutral LLM client protocol, config, and test fake
   data_agent.py          # Data Agent graph
+  data_agent_policy.py   # Typed Data Agent LLM decisions and deterministic routing validation
   quant_research.py      # Quant Research graph and handoffs
+  supervisor_policy.py   # Typed supervisor LLM decisions and deterministic routing validation
   evaluation_agent.py    # Evaluation Agent graph
   adversarial_agent.py   # Adversarial Agent graph
   hypothesis_agent.py    # Hypothesis-card graph
@@ -322,6 +344,7 @@ These are the Data Agent tools that prove MCP functionality before broader Quant
 | 20. Research Domain Schemas | Define schemas for specialist artifacts and supervisor handoffs: `hypothesis_card.json`, indicator metadata, statistical-test reports, feature manifests, model cards, `ExperimentPlan`, `DataRequirement`, `StrategyCandidate`, `BacktestRunRef`, `evaluation_report.json`, `robustness_report.json`, recommendation reports, and `ResearchVerdict`. Prefer stdlib dataclasses unless validation complexity justifies Pydantic. | `src/trader_research/domain.py`, tests | Schemas serialize to JSON-compatible dicts and preserve agent-owned artifact boundaries. |
 | 21. Quant Research Supervisor Graph Skeleton | Add the supervisor LangGraph identity, state, handoff ledger, and empty specialist artifact slots before broad Quant Research tools exist. | `src/trader_agents/quant_research.py`, tests | Supervisor graph can start, record a bounded research request, consume Data Agent artifact references, and mark missing specialist artifacts as blockers. |
 | 22. Supervisor Consumes Data Agent Handoff | Add a supervisor node that accepts Data Agent manifest/quality references produced by the Data Agent graph. | `src/trader_agents/quant_research.py`, tests | Supervisor state preserves Data Agent ownership and does not fetch raw data directly. |
+| 22H. Data Agent LLM Control Loop | Add a provider-neutral LLM client protocol/configuration layer, then add a Data Agent policy node that converts natural-language data requests into typed Data Agent action proposals. The deterministic router validates every proposal before a tool call and rejects attempts to bypass mandatory discovery or leave the Data Agent tool allowlist. | `src/trader_agents/llm_client.py`, `src/trader_agents/data_agent_policy.py`, `src/trader_agents/data_agent.py`, tests | The Data Agent can plan and execute discovery, inventory, quality, and permitted loading through existing MCP tools only. LLM access is selected at runtime so hosted gateways such as OpenRouter-style APIs or local backends such as Ollama can be used without changing Data Agent tools. Tests cover fake-LLM happy paths, invalid tool rejection, provider mismatch blocking, missing-symbol blocking, loading permission checks, loop limits, invalid-output repair/fail-closed behavior, missing LLM config fail-fast behavior, and no persistence of raw prompts, hidden reasoning, or scratchpads. |
 | 23. Math Coder Tool Contracts | Implement the first Math Coder service for maintained indicator/stat-test contract listing and validation. | `src/trader_research/math_tools.py`, tests | Unsupported indicators fail closed; maintained indicator metadata and fixture expectations are returned as structured artifacts. |
 | 24. Register Math Coder MCP Tools | Expose `math_list_indicator_contracts` and `math_validate_indicator_contract`. | `src/trader_mcp/server.py`, tests | MCP returns Math Coder envelopes with indicator metadata or validation reports. |
 | 25. Math Coder Agent Graph | Add LangGraph identity, state, and tool allowlist for the Math Coder Agent. | `src/trader_agents/math_coder_agent.py`, tests | Math Coder graph calls only Math Coder MCP tools and returns indicator/stat-test artifact references. |
@@ -334,6 +357,7 @@ These are the Data Agent tools that prove MCP functionality before broader Quant
 | 32. Register Hypothesis MCP Tool | Expose `hypothesis_create_card`. | `src/trader_mcp/server.py`, tests | MCP returns a Hypothesis Agent envelope with `hypothesis_card.json` payload/path. |
 | 33. Hypothesis Agent Graph | Add LangGraph identity, state, and tool allowlist for the Hypothesis Agent. | `src/trader_agents/hypothesis_agent.py`, tests | Hypothesis graph can read ingredient references and produce hypothesis-card handoffs without running backtests. |
 | 34. Supervisor Consumes Hypothesis Handoff | Add supervisor handoff consumption for hypothesis cards. | `src/trader_agents/quant_research.py`, tests | Supervisor can convert accepted hypothesis references into planning state and reject incomplete cards. |
+| 34A. Supervisor LLM Control Loop | Add the LLM-backed supervisor policy node after Data, Math, ML, and Hypothesis artifact contracts exist. The LLM sees bounded state and artifact summaries, then emits a typed decision such as `request_specialist`, `call_tool`, `retry_with_changes`, `accept_artifact`, `block`, or `finish`. A deterministic router validates the proposal before any action is taken. | `src/trader_agents/supervisor_policy.py`, `src/trader_agents/quant_research.py`, tests | Supervisor can assess outputs, reuse allowed tools, request missing specialist work, stop early, or finish through typed actions only. Tests prove schema validation, allowlist enforcement, loop limits, early block/finish behavior, repair/fail-closed behavior for invalid LLM output, and no persistence of raw prompts, hidden reasoning, or scratchpads. |
 | 35. Strategy Template Catalog | Expose Quant Research strategy-template discovery over maintained `trader_standard` families: `trend_following`, `mean_reversion`, and `bollinger_band` initially. | `src/trader_research/strategies.py`, tests | Tool returns family names, required/optional parameters, defaults, and known constraints. |
 | 36. Register Strategy Catalog MCP Tool | Expose `research_list_strategy_templates`. | `src/trader_mcp/server.py`, tests | MCP returns maintained strategy templates with `agent_owner=Quant Research Supervisor Agent` and without importing arbitrary strategy code. |
 | 37. Strategy Candidate Validation | Implement Quant Research validation for existing maintained strategies first. Defer generated-code candidates until the maintained strategy path is stable. | `src/trader_research/strategies.py`, tests | Unsupported strategy families fail closed; maintained strategies can be instantiated on deterministic fixtures. |
@@ -422,6 +446,44 @@ Quant Research Supervisor graph starts
   -> records missing Math Coder, ML, Hypothesis, Evaluation, and Adversarial artifacts as blockers
 ```
 
+### Slice 4A: Data Agent LLM Control Loop
+
+Implement chunk 22H after the provider-aware Data Agent tools, symbol discovery preflight, and supervisor handoff are
+proven, and before starting new specialist tool families. This is the first LLM integration point because the Data
+Agent now has a complete bounded action surface: symbol discovery, inventory, quality, and explicit loading. It does
+not replace the later supervisor LLM loop; it proves the specialist-agent LLM pattern in the narrowest complete domain.
+
+The LLM belongs inside a Data Agent control-policy node, not inside the Data Agent MCP tools. It should turn
+natural-language data requests into typed action proposals such as `discover_symbols`, `inspect_inventory`,
+`summarize_quality`, `ensure_loaded`, `retry_with_changes`, `block`, or `finish`. A deterministic router validates the
+proposal before any MCP tool call.
+
+The policy node should use a provider-neutral LLM client selected by runtime configuration. `22H` should include the
+interface and fake test implementation first, then add adapters for the configured external model backend. Hosted
+gateways such as OpenRouter-style APIs and local servers such as Ollama are runtime backends; they must not leak into
+Data Agent tool schemas or deterministic MCP services.
+
+Evidence target:
+
+```text
+natural-language bounded data request
+  -> runtime LLM backend is configured and reachable, or the graph fails fast with a structured blocker
+  -> Data Agent LLM policy node emits typed action proposal
+  -> deterministic router validates provider context, mandatory discovery, allowlist, side-effect policy, and loop budget
+  -> graph calls existing Data Agent MCP tools, blocks early, or finishes
+```
+
+Required guardrails:
+
+- MCP tools remain deterministic and provider-aware
+- symbol discovery cannot be skipped before inventory, quality, or loading
+- provider, instrument type, and bar type are validated before any data-source query
+- local-mutating loading remains policy-gated and bounded
+- no SQL, broker mutation, strategy, backtest, or supervisor tools are available to the Data Agent LLM
+- missing or unsupported LLM provider configuration fails fast before tool execution
+- invalid structured output fails closed or enters a bounded repair path
+- no raw prompt, hidden reasoning, or scratchpad persistence
+
 ### Slice 5: Math Coder MCP Tool Creation
 
 Implement chunks 23-24. This creates and proves the first Math Coder MCP tools before the Math Coder LangGraph identity
@@ -461,10 +523,36 @@ tool produces structured, falsifiable `hypothesis_card.json` artifacts.
 Implement chunks 33-34. This proves that the Hypothesis Agent can produce candidate ideas while the supervisor retains
 responsibility for planning, validation, and verdicts.
 
+### Slice 10A: Supervisor LLM Control Loop
+
+Implement chunk 34A after Data, Math Coder, optional ML, and Hypothesis handoff contracts exist. The supervisor also
+needs real LLM backing, but its action space is cross-agent and should wait until enough specialist artifact contracts
+exist to make orchestration meaningful. The LLM belongs inside the Quant Research Supervisor as a bounded control-policy
+node: it assesses artifact summaries and public state, then emits a typed action proposal. A deterministic router
+validates that proposal before any specialist request, MCP tool call, retry, early block, or finish transition is
+allowed.
+
+Evidence target:
+
+```text
+supervisor state + artifact summaries
+  -> LLM policy node emits typed action proposal
+  -> deterministic router validates action, allowlist, ownership, and loop budget
+  -> graph routes to next specialist/tool, blocks early, or finishes
+```
+
+Required guardrails:
+
+- no raw prompt, hidden reasoning, or scratchpad persistence
+- no arbitrary tool names or unbounded parameters from the LLM
+- invalid structured output fails closed or enters a bounded repair path
+- repeated tool use is allowed only through explicit loop limits and state diffs
+- `block` and `finish` are first-class supervisor states, not exceptions
+
 ### Slice 11: Quant Research Strategy Planning Tools
 
 Implement chunks 35-39. Strategy template discovery, candidate validation, and supervisor planning occur only after
-specialist artifact handoffs exist.
+specialist artifact handoffs and the supervisor control-policy loop exist.
 
 Evidence target:
 
@@ -515,22 +603,28 @@ verification should be updated at every evidence checkpoint rather than saved fo
 4. The Data Agent LangGraph workflow can be exercised against sample or existing data: health -> inventory -> quality -> ensure/load -> quality.
 5. The Quant Research Supervisor identity exists before broad strategy/backtest work and consumes specialist handoffs rather than replacing them.
 6. Math Coder, ML, Hypothesis, Evaluation, and Adversarial capabilities are each introduced as MCP tool evidence first, then as separate LangGraph identities, then as supervisor handoffs.
-7. Every tool returns the shared JSON envelope and declares its side-effect class.
-8. Every tool declares the owning agent and returns/links the artifact owned by that agent.
-9. Every LangGraph agent has a distinct identity, state schema, role policy, output artifact contract, and MCP tool allowlist.
-10. `src/trader/` contains no research experiment, agent-tool, MCP schema/definition, or LangGraph agent modules.
-11. Missing/incomplete data fails closed or produces Data Agent warnings and downstream Evaluation blockers.
-12. Strategy validation happens before any backtest run.
-13. Baseline backtest artifacts include reproducible config/provenance, dataset manifest references, data-quality report references, and result summaries.
-14. Robustness includes at least slippage sensitivity, fee sensitivity, chronological split, and one concentration check.
-15. The final recommendation consumes Evaluation and Adversarial artifacts when available and includes a skeptical verdict with concrete failure analysis.
-16. No MCP tool or LangGraph agent can place live orders, mutate broker state, run raw SQL, or bypass existing platform validation.
+7. The Data Agent LLM control loop emits only typed Data Agent decisions and cannot bypass provider validation, mandatory symbol discovery, tool allowlists, side-effect policy, or loop limits.
+8. The Quant Research Supervisor LLM control loop emits only typed supervisor decisions and can reuse allowed tools, request specialist work, block early, or finish through deterministic validation and loop limits.
+9. Every tool returns the shared JSON envelope and declares its side-effect class.
+10. Every tool declares the owning agent and returns/links the artifact owned by that agent.
+11. Every LangGraph agent has a distinct identity, state schema, role policy, output artifact contract, and MCP tool allowlist.
+12. `src/trader/` contains no research experiment, agent-tool, MCP schema/definition, or LangGraph agent modules.
+13. Missing/incomplete data fails closed or produces Data Agent warnings and downstream Evaluation blockers.
+14. Strategy validation happens before any backtest run.
+15. Baseline backtest artifacts include reproducible config/provenance, dataset manifest references, data-quality report references, and result summaries.
+16. Robustness includes at least slippage sensitivity, fee sensitivity, chronological split, and one concentration check.
+17. The final recommendation consumes Evaluation and Adversarial artifacts when available and includes a skeptical verdict with concrete failure analysis.
+18. No MCP tool or LangGraph agent can place live orders, mutate broker state, run raw SQL, or bypass existing platform validation.
 
 ## Open Decisions
 
 - MCP SDK dependency and version pin: resolved for the server skeleton as `mcp>=1.27.1,<2`.
 - LangGraph dependency/version and persistence choice: choose the smallest graph/checkpoint setup that supports agent identity and state without persisting hidden reasoning.
 - Persistence shape for first release: `trader.data.EventStore` may provide platform persistence primitives, but research-specific persistence adapters and artifact policies belong in `trader_research`.
-- Natural-language planning: start with structured input and a narrow parser; add LLM structured-output planning only after deterministic services are tested.
+- Natural-language planning: both the Data Agent and Quant Research Supervisor need real LLM-backed control. Add the Data
+  Agent LLM loop first because its provider-aware tool surface is already complete and bounded. Add the Quant Research
+  Supervisor LLM loop later after Data, Math Coder, optional ML, and Hypothesis artifact contracts exist, because its
+  job is cross-agent orchestration. Both must use structured output, deterministic routing validation, allowlists, and
+  loop limits; MCP tools remain deterministic.
 - Generated strategy code: defer until maintained strategies plus validation/reporting are useful.
 - Transport: stdio for the server skeleton; HTTP/SSE later only if another client requires it.
