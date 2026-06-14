@@ -170,6 +170,8 @@ Responsibilities:
   chunks, method cards, evidence retrieval reports, and citation-validation reports.
 - Treat PostgreSQL full-text search and pgvector retrieval indexes as retrieval infrastructure, not as authority. The
   authority is the approved source registry plus approved method cards.
+- Use retrieval reports as citeable evidence handles and `knowledge_get_evidence_chunks` as the explicit local
+  dereference step for bounded real chunk text needed by downstream agents.
 - Implement and validate maintained indicators such as SMA, EMA, MACD, Bollinger Bands, RSI, z-score, spread, rolling
   volatility, drawdown, cross-sectional ranks, and regime/session-aware transforms.
 - Define method metadata: name, version, family, parameters, lookback, warmup behavior, input schema, output schema,
@@ -191,6 +193,7 @@ Inputs:
 
 - Dataset manifests and data-quality report references.
 - Approved method cards, retrieved evidence reports, and citation-validation reports.
+- Dereferenced evidence chunk reports for local agent reasoning when real stored chunk text is required.
 - Existing method contracts.
 - Indicator observations or deterministic method output references.
 - Forward-return label references when running signal diagnostics.
@@ -216,6 +219,7 @@ Outputs:
 - `method_card_draft.json`.
 - `method_card.json`.
 - `evidence_retrieval_report.json`.
+- `evidence_chunk_dereference_report.json`.
 - `citation_validation_report.json`.
 
 Boundaries:
@@ -231,7 +235,8 @@ Boundaries:
 - Does not create production method contracts from unapproved method cards, uncited retrieved chunks, or invalid
   locators.
 - Does not expose arbitrary filesystem access, execute code from documents, or reproduce large source passages in
-  artifacts.
+  artifacts. Full chunk text may be passed inside local MCP/tool outputs for downstream agent reasoning, but final
+  user-facing outputs should cite source locators rather than republishing long excerpts.
 
 ## ML Agent
 

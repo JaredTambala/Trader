@@ -360,6 +360,7 @@ Knowledge-base tools should be deterministic MCP tools.
 | `knowledge_list_sources` | `read_only` | List registered sources and approval status. |
 | `knowledge_search_methods` | `read_only` | Search approved method cards. |
 | `knowledge_retrieve_evidence` | `read_only` | Run hybrid retrieval and return citeable chunks. |
+| `knowledge_get_evidence_chunks` | `read_only` | Dereference retrieved chunk IDs into bounded stored text for local downstream agent context. |
 | `knowledge_validate_citations` | `read_only` | Validate source IDs, locators, and source approval. |
 | `knowledge_create_method_card` | `local_mutating` | Create a draft method card from approved sources and retrieved evidence. |
 | `knowledge_approve_method_card` | `local_mutating` | Maintainer-only approval of a method card. |
@@ -460,6 +461,8 @@ Implementation note for the first durable chunk:
 - Postgres stores source, chunk, embedding-index, embedding-vector, and ingestion-run records in `knowledge_*` tables.
 - PostgreSQL full-text search provides lexical retrieval; pgvector provides dense retrieval.
 - `knowledge_retrieve_evidence` merges lexical and vector candidates with deterministic reciprocal-rank fusion.
+- `knowledge_get_evidence_chunks` dereferences selected `chunk_id` values into real stored chunk text with locators,
+  source metadata, hash verification, and truncation flags.
 - Method-card draft/publish tools, reranking, OCR, external vector databases, and Quantitative Methods LangGraph handoff remain later chunks.
 
 ## 14. Embedding Provider Abstraction
@@ -559,7 +562,7 @@ Register knowledge ingestion and retrieval tools through MCP.
 
 Acceptance criteria:
 
-- MCP exposes source registration, ingestion, source listing, method search, evidence retrieval, and citation validation.
+- MCP exposes source registration, ingestion, source listing, method search, evidence retrieval, chunk dereferencing, and citation validation.
 - Tools return shared envelopes with side-effect class and artifact references.
 - Tools do not expose raw SQL or arbitrary vector queries.
 

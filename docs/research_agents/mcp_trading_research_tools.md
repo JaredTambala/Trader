@@ -306,6 +306,7 @@ Knowledge artifacts:
 | `method_card_draft.json` | Non-executable draft method summary from source evidence. |
 | `method_card.json` | Approved method card with assumptions, inputs, outputs, failure modes, and locators. |
 | `evidence_retrieval_report.json` | Retrieved evidence chunks for a request, query, method, and source set. |
+| `evidence_chunk_dereference_report.json` | Bounded real chunk text dereferenced from retrieved chunk IDs for local downstream agent context. |
 | `citation_validation_report.json` | Source ID, chunk ID, locator, method-card approval, and claim-coverage validation. |
 
 Initial knowledge MCP tools:
@@ -318,6 +319,7 @@ Initial knowledge MCP tools:
 | `knowledge_list_sources` | `read_only` | List source manifests by topic, source type, method family, or status. |
 | `knowledge_search_methods` | `read_only` | Search approved method cards and optionally draft cards when policy permits. |
 | `knowledge_retrieve_evidence` | `read_only` | Run hybrid full-text/pgvector retrieval with reciprocal-rank fusion and return citeable chunks plus lexical/vector/combined rank diagnostics. |
+| `knowledge_get_evidence_chunks` | `read_only` | Dereference retrieved chunk IDs into bounded stored text with source metadata, locators, text hashes, and truncation flags. |
 | `knowledge_create_method_card_draft` | `local_mutating` | Deferred: create a non-approved draft method card from source evidence. |
 | `knowledge_publish_method_card` | `local_mutating` | Deferred: promote a draft to approved status with explicit maintainer/operator approval. |
 | `knowledge_validate_citations` | `read_only` | Validate source IDs, chunk IDs, locators, method-card approval, and claim coverage. |
@@ -330,6 +332,8 @@ Knowledge guardrails:
 - Sophisticated statistical methods must cite approved method cards.
 - Artifacts cite source IDs and locators rather than reproducing large source passages.
 - Knowledge tools must not expose arbitrary filesystem access or execute code from documents.
+- `knowledge_get_evidence_chunks` may return full local chunk text to trusted downstream agents, bounded by
+  `max_chars_per_chunk`; final user-facing reports should cite locators and avoid reproducing large passages.
 - Embedding model and chunking configuration must be versioned.
 - Re-indexing should be reproducible for unchanged sources and config.
 - `mcp_get_config` reports `knowledge_store_runtime`; missing Postgres config, missing embedding config, pgvector
@@ -374,10 +378,11 @@ knowledge_ingest_documents
 knowledge_get_ingestion_status
 knowledge_search_methods
 knowledge_retrieve_evidence
+knowledge_get_evidence_chunks
 knowledge_validate_citations
 math_list_method_contracts
 math_validate_method_contract
-  -> source manifests, ingestion reports, retrieved evidence, citation validation, and method metadata
+  -> source manifests, ingestion reports, retrieved refs, dereferenced chunk text, citation validation, and method metadata
   -> declares agent_owner = Quantitative Methods Agent
   -> records source IDs, locators, assumptions, fixture status, and failure modes
 ```

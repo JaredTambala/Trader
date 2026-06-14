@@ -110,6 +110,7 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | `knowledge_list_sources` | Quantitative Methods Agent | source manifest listing |
 | `knowledge_search_methods` | Quantitative Methods Agent | approved method-card search result |
 | `knowledge_retrieve_evidence` | Quantitative Methods Agent | `evidence_retrieval_report.json` with lexical/vector/combined rank diagnostics |
+| `knowledge_get_evidence_chunks` | Quantitative Methods Agent | `evidence_chunk_dereference_report.json` with bounded stored chunk text |
 | `knowledge_create_method_card_draft` | Quantitative Methods Agent | `method_card_draft.json` |
 | `knowledge_publish_method_card` | Quantitative Methods Agent | approved `method_card.json` |
 | `knowledge_validate_citations` | Quantitative Methods Agent | `citation_validation_report.json` |
@@ -155,11 +156,25 @@ Knowledge-base rules:
 - The authority is the approved source registry plus approved method cards.
 - Evidence retrieval should return citeable chunks with source IDs, locators, source approval status, and lexical/vector
   rank metadata rather than opaque context blobs.
+- Evidence dereferencing is explicit: agents call `knowledge_get_evidence_chunks` with retrieved `chunk_id` values to
+  receive real stored chunk text, source metadata, locators, text hashes, `hash_verified`, text length metadata, and
+  `text_truncated`.
 - Ingestion does not imply approval; `method_card_draft.json` is not executable.
 - Sophisticated statistical-test and multiple-testing contracts must cite approved method cards and pass
   `knowledge_validate_citations`.
 - Knowledge tools must not expose arbitrary filesystem access, execute code from documents, or reproduce large source
   passages in artifacts.
+
+`knowledge_get_evidence_chunks` contract:
+
+- Request: `chunk_ids: list[str]` required, maximum 25; optional `source_id`; `include_text: bool = true`;
+  `max_chars_per_chunk: int = 4000`, bounded to 1-20000.
+- Success data: `evidence_chunk_dereference_report`, top-level `chunks`, `chunk_count`, and `missing_chunk_ids`.
+- Each chunk includes `chunk_id`, `source_id`, source title/type/status, `approved_source`, `locator`, `topics`,
+  `method_families`, `text_hash`, `hash_verified`, `text_char_count`, `text_word_count`, `text_truncated`, and `text`
+  when requested.
+- Missing chunk IDs or source mismatches fail closed with `code="chunk_dereference_error"` and structured
+  `missing_chunk_ids` / `source_mismatch_chunk_ids`; no embedding vectors are returned.
 
 ## LangGraph Use
 

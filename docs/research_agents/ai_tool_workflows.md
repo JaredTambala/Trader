@@ -241,6 +241,7 @@ source document or fixture reference
   -> knowledge_get_ingestion_status
   -> knowledge_search_methods
   -> knowledge_retrieve_evidence
+  -> knowledge_get_evidence_chunks
   -> knowledge_validate_citations
   -> math_list_method_contracts
   -> math_validate_method_contract
@@ -255,6 +256,7 @@ Owned artifacts:
 - `method_card_draft.json`
 - `method_card.json`
 - `evidence_retrieval_report.json`
+- `evidence_chunk_dereference_report.json`
 - `citation_validation_report.json`
 - `indicator_contract.json`
 - `statistical_test_contract.json`

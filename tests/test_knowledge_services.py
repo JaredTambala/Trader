@@ -8,7 +8,7 @@ from trader_research.knowledge.citation_validation import validate_citations
 from trader_research.knowledge.embeddings import DeterministicEmbeddingProvider, RuntimeConfiguredEmbeddingProvider
 from trader_research.knowledge.extractors import extract_text
 from trader_research.knowledge.ingestion import ingest_documents
-from trader_research.knowledge.retrieval import retrieve_evidence
+from trader_research.knowledge.retrieval import get_evidence_chunks, retrieve_evidence
 from trader_research.knowledge.sources import register_source
 
 
@@ -93,6 +93,29 @@ def test_ingest_retrieve_and_validate_citations(tmp_path: Path) -> None:
         top_k=1,
     )
     result = retrieved.data["evidence_retrieval_report"]["results"][0]
+    dereferenced = get_evidence_chunks(
+        artifact_root=artifact_root,
+        chunk_ids=(result["chunk_id"],),
+        source_id=source_id,
+    )
+    truncated = get_evidence_chunks(
+        artifact_root=artifact_root,
+        chunk_ids=(result["chunk_id"],),
+        max_chars_per_chunk=12,
+    )
+    missing_chunk = get_evidence_chunks(
+        artifact_root=artifact_root,
+        chunk_ids=("missing_chunk",),
+    )
+    source_mismatch = get_evidence_chunks(
+        artifact_root=artifact_root,
+        chunk_ids=(result["chunk_id"],),
+        source_id="other_source",
+    )
+    oversized = get_evidence_chunks(
+        artifact_root=artifact_root,
+        chunk_ids=tuple(f"chunk_{index}" for index in range(26)),
+    )
     citation = validate_citations(
         artifact_root=artifact_root,
         artifact={
@@ -117,6 +140,21 @@ def test_ingest_retrieve_and_validate_citations(tmp_path: Path) -> None:
     assert result["source_id"] == source_id
     assert result["retrieval_scores"]["combined_rank"] == 1
     assert result["source_status"] == "registered"
+    assert dereferenced.ok is True
+    dereferenced_chunk = dereferenced.data["evidence_chunk_dereference_report"]["chunks"][0]
+    assert "simple moving average computes the arithmetic mean" in dereferenced_chunk["text"]
+    assert "warmup observations exist" in dereferenced_chunk["text"]
+    assert dereferenced_chunk["hash_verified"] is True
+    assert dereferenced_chunk["text_truncated"] is False
+    assert truncated.data["chunks"][0]["text"] == dereferenced_chunk["text"][:12]
+    assert truncated.data["chunks"][0]["text_truncated"] is True
+    assert missing_chunk.ok is False
+    assert missing_chunk.errors[0]["code"] == "chunk_dereference_error"
+    assert missing_chunk.data["missing_chunk_ids"] == ["missing_chunk"]
+    assert source_mismatch.ok is False
+    assert source_mismatch.data["source_mismatch_chunk_ids"] == [result["chunk_id"]]
+    assert oversized.ok is False
+    assert oversized.errors[0]["code"] == "validation_error"
     assert citation.ok is True
     assert citation.data["citation_validation_report"]["valid"] is True
     assert bad_citation.ok is False

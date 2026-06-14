@@ -9,6 +9,7 @@ from mcp.types import CallToolResult
 
 from trader_mcp.adapters import envelope_to_mcp_result
 from trader_mcp.constants import (
+    KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL,
     KNOWLEDGE_GET_INGESTION_STATUS_TOOL,
     KNOWLEDGE_INGEST_DOCUMENTS_TOOL,
     KNOWLEDGE_LIST_SOURCES_TOOL,
@@ -31,6 +32,7 @@ from trader_research.knowledge.ingestion import (
     ingest_documents as ingest_documents_service,
 )
 from trader_research.knowledge.retrieval import (
+    get_evidence_chunks as get_evidence_chunks_service,
     retrieve_evidence as retrieve_evidence_service,
     search_methods as search_methods_service,
 )
@@ -169,6 +171,26 @@ def register_quant_methods_tools(
             embedding_provider=resolved_embedding_provider,
             top_k=top_k,
             approved_only=approved_only,
+            knowledge_store=_knowledge_store(),
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL,
+        description=KNOWLEDGE_TOOL_DESCRIPTIONS[KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL],
+    )
+    def knowledge_get_evidence_chunks(
+        chunk_ids: list[str],
+        source_id: str | None = None,
+        include_text: bool = True,
+        max_chars_per_chunk: int = 4000,
+    ) -> CallToolResult:
+        envelope = get_evidence_chunks_service(
+            artifact_root=environment.artifact_root,
+            chunk_ids=chunk_ids,
+            source_id=source_id,
+            include_text=include_text,
+            max_chars_per_chunk=max_chars_per_chunk,
             knowledge_store=_knowledge_store(),
         )
         return CallToolResult(**envelope_to_mcp_result(envelope))

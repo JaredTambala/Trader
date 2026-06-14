@@ -200,6 +200,7 @@ The knowledge base should produce structured artifacts, not just rows in a vecto
 | `method_card_draft.json` | Draft structured summary of a method extracted or synthesized from source evidence. Not executable by default. |
 | `method_card.json` | Approved method card with assumptions, inputs, outputs, failure modes, and source locators. |
 | `evidence_retrieval_report.json` | Records retrieved evidence chunks for a specific request, query, method, and source set. |
+| `evidence_chunk_dereference_report.json` | Records bounded real chunk text dereferenced from retrieved chunk IDs for local downstream agent context. |
 | `citation_validation_report.json` | Validates that a method contract or report cites approved source IDs and valid locators. |
 
 ### Source Manifest Sketch
@@ -304,10 +305,12 @@ The Quantitative Methods Agent should use knowledge retrieval before creating or
 2. Quantitative Methods calls `knowledge_search_methods` to find approved method cards.
 3. If no approved method card exists, Quantitative Methods blocks or requests source ingestion.
 4. Quantitative Methods calls `knowledge_retrieve_evidence` for the selected method and assumptions.
-5. Quantitative Methods calls `knowledge_validate_citations` against the proposed method contract.
-6. Quantitative Methods creates or validates the method contract from the approved method card.
-7. Quantitative Methods calls deterministic implementation/fixture/diagnostic tools.
-8. Quantitative Methods packages the method artifact with source and citation provenance.
+5. Quantitative Methods calls `knowledge_get_evidence_chunks` for selected chunk IDs when downstream local reasoning
+   needs real stored chunk text.
+6. Quantitative Methods calls `knowledge_validate_citations` against the proposed method contract.
+7. Quantitative Methods creates or validates the method contract from the approved method card.
+8. Quantitative Methods calls deterministic implementation/fixture/diagnostic tools.
+9. Quantitative Methods packages the method artifact with source and citation provenance.
 ```
 
 Failure cases should be explicit:
@@ -332,6 +335,7 @@ The knowledge base should be exposed through MCP tools. The first release can as
 | `knowledge_list_sources` | Quantitative Methods Agent | `read_only` | List approved or available source manifests by topic, source type, method family, or status. |
 | `knowledge_search_methods` | Quantitative Methods Agent | `read_only` | Search approved method cards and optionally draft method cards. |
 | `knowledge_retrieve_evidence` | Quantitative Methods Agent | `read_only` | Retrieve citeable chunks for a method, assumption, implementation convention, or statistical test. |
+| `knowledge_get_evidence_chunks` | Quantitative Methods Agent | `read_only` | Dereference retrieved chunk IDs into bounded real stored chunk text with source metadata, locators, hash verification, and truncation flags. |
 | `knowledge_create_method_card_draft` | Quantitative Methods Agent | `local_mutating` | Create a non-approved draft method card from retrieved source evidence. |
 | `knowledge_publish_method_card` | Quantitative Methods Agent | `local_mutating` | Promote a draft method card to approved status after maintainer/operator approval. |
 | `knowledge_validate_citations` | Quantitative Methods Agent | `read_only` | Validate source IDs, chunk IDs, locators, and method-card coverage for a contract/report. |
@@ -351,6 +355,7 @@ knowledge_get_ingestion_status
 knowledge_list_sources
 knowledge_search_methods
 knowledge_retrieve_evidence
+knowledge_get_evidence_chunks
 knowledge_create_method_card_draft
 knowledge_publish_method_card
 knowledge_validate_citations
@@ -613,8 +618,8 @@ tests/test_mcp_knowledge_tools.py
 
 Acceptance criteria:
 
-- MCP exposes `knowledge_list_sources`, `knowledge_search_methods`, `knowledge_retrieve_evidence`, `knowledge_create_method_card_draft`, `knowledge_publish_method_card`, and `knowledge_validate_citations`.
-- Retrieval runs lexical search and vector search, merges/deduplicates results with deterministic rank fusion, and returns source IDs, chunk IDs, locators, source titles, approval status, lexical rank, vector rank, combined rank, vector score, and short excerpts/summaries.
+- MCP exposes `knowledge_list_sources`, `knowledge_search_methods`, `knowledge_retrieve_evidence`, `knowledge_get_evidence_chunks`, `knowledge_create_method_card_draft`, `knowledge_publish_method_card`, and `knowledge_validate_citations`.
+- Retrieval runs lexical search and vector search, merges/deduplicates results with deterministic rank fusion, and returns source IDs, chunk IDs, locators, source titles, approval status, lexical rank, vector rank, combined rank, vector score, and short excerpts/summaries; dereferencing returns bounded real chunk text by chunk ID with hash verification and truncation flags.
 - Citation validation fails if a method contract references unknown source IDs, invalid locators, unapproved sources, unapproved method cards, unsupported claims, excessive direct quotation, or high-risk methods backed only by broad foundation sources.
 - Retrieval can be filtered to approved sources/method cards only.
 
@@ -816,10 +821,11 @@ knowledge_ingest_documents
 knowledge_get_ingestion_status
 knowledge_search_methods
 knowledge_retrieve_evidence
+knowledge_get_evidence_chunks
 knowledge_validate_citations
 math_list_method_contracts
 math_validate_method_contract
-  -> source manifests, ingestion reports, retrieved evidence, citation validation, and method metadata
+  -> source manifests, ingestion reports, retrieved refs, dereferenced chunk text, citation validation, and method metadata
   -> declares agent_owner = Quantitative Methods Agent for first release
   -> records source IDs, locators, assumptions, fixture status, and failure modes
 ```
@@ -862,7 +868,7 @@ The smallest useful version is:
 4. Implement runtime embedding-provider configuration with fake deterministic embeddings only for tests.
 5. Implement Postgres-backed lexical and vector knowledge indexes.
 6. Register knowledge_register_source, knowledge_ingest_documents, and knowledge_get_ingestion_status.
-7. Add knowledge_search_methods and hybrid knowledge_retrieve_evidence over approved method cards and indexed sources.
+7. Add knowledge_search_methods, hybrid knowledge_retrieve_evidence, and knowledge_get_evidence_chunks over approved method cards and indexed sources.
 8. Add citation validation.
 9. Add method_card_draft and explicit publish/approval flow.
 10. Define math artifact schemas that can reference knowledge evidence.

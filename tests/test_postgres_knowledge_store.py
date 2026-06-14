@@ -8,7 +8,7 @@ from trader_research.knowledge.citation_validation import validate_citations
 from trader_research.knowledge.embeddings import DeterministicEmbeddingProvider
 from trader_research.knowledge.ingestion import ingest_documents
 from trader_research.knowledge.postgres_store import PostgresKnowledgeStore
-from trader_research.knowledge.retrieval import retrieve_evidence
+from trader_research.knowledge.retrieval import get_evidence_chunks, retrieve_evidence
 from trader_research.knowledge.sources import register_source
 
 
@@ -45,6 +45,12 @@ def test_postgres_knowledge_store_register_ingest_retrieve_validate(
         knowledge_store=postgres_knowledge_store,
     )
     evidence = retrieved.data["evidence_retrieval_report"]["results"][0]
+    dereferenced = get_evidence_chunks(
+        artifact_root=tmp_path / "artifacts",
+        chunk_ids=(evidence["chunk_id"],),
+        source_id=source_id,
+        knowledge_store=postgres_knowledge_store,
+    )
     citations = validate_citations(
         artifact_root=tmp_path / "artifacts",
         artifact={
@@ -68,5 +74,9 @@ def test_postgres_knowledge_store_register_ingest_retrieve_validate(
     assert evidence["retrieval_scores"]["combined_rank"] == 1
     assert evidence["retrieval_scores"]["lexical_rank"] is not None
     assert evidence["retrieval_scores"]["vector_rank"] is not None
+    assert dereferenced.ok is True
+    assert "simple moving average computes the arithmetic mean" in dereferenced.data["chunks"][0]["text"]
+    assert dereferenced.data["chunks"][0]["hash_verified"] is True
+    assert dereferenced.data["chunks"][0]["locator"] == evidence["locator"]
     assert citations.ok is True
     assert runtime["pgvector_available"] is True

@@ -47,6 +47,9 @@ KNOWLEDGE_SEARCH_METHODS_TOOL: Final = "knowledge_search_methods"
 KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL: Final = "knowledge_retrieve_evidence"
 """Tool name for retrieving citeable method evidence."""
 
+KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL: Final = "knowledge_get_evidence_chunks"
+"""Tool name for dereferencing citeable evidence chunks into stored text."""
+
 KNOWLEDGE_VALIDATE_CITATIONS_TOOL: Final = "knowledge_validate_citations"
 """Tool name for validating method evidence citations."""
 
@@ -74,6 +77,7 @@ KNOWLEDGE_TOOL_NAMES: Final = (
     KNOWLEDGE_LIST_SOURCES_TOOL,
     KNOWLEDGE_SEARCH_METHODS_TOOL,
     KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL,
+    KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL,
     KNOWLEDGE_VALIDATE_CITATIONS_TOOL,
 )
 """Quant Methods knowledge tool names exposed by the MCP server."""
@@ -108,6 +112,7 @@ KNOWLEDGE_TOOL_DESCRIPTIONS: Final = {
     KNOWLEDGE_LIST_SOURCES_TOOL: "List registered Quant Methods knowledge sources.",
     KNOWLEDGE_SEARCH_METHODS_TOOL: "Search approved Quant Methods method-card metadata.",
     KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL: "Retrieve citeable Quant Methods evidence chunks.",
+    KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL: "Dereference citeable Quant Methods evidence chunks into bounded stored text.",
     KNOWLEDGE_VALIDATE_CITATIONS_TOOL: "Validate source, chunk, locator, and method-card citations.",
 }
 """Descriptions for Quant Methods knowledge tools exposed by the MCP server."""

@@ -58,6 +58,7 @@ def test_json_knowledge_store_contract_indexes_active_chunks(tmp_path: Path) -> 
     assert duplicate[0].source_id == source.source_id
     assert store.load_source(source.source_id) == source
     assert store.load_chunks(source.source_id)
+    assert store.load_chunks_by_ids((chunks[0].chunk_id, "missing")) == (chunks[0],)
     assert store.list_ingestion_reports(source_ids=(source.source_id,))[0].ingestion_id == report.ingestion_id
     assert lexical
     assert vector

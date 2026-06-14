@@ -102,6 +102,10 @@ class PostgresKnowledgeStore:
         payloads = _translate_errors(lambda: self._records.list_chunks(source_ids=source_ids))
         return tuple(KnowledgeChunk.from_dict(payload) for payload in payloads)
 
+    def load_chunks_by_ids(self, chunk_ids: Sequence[str]) -> tuple[KnowledgeChunk, ...]:
+        payloads = _translate_errors(lambda: self._records.load_chunks_by_ids(chunk_ids))
+        return tuple(KnowledgeChunk.from_dict(payload) for payload in payloads)
+
     def index_embeddings(
         self,
         manifest: KnowledgeEmbeddingManifest,

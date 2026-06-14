@@ -76,6 +76,9 @@ class KnowledgeStore(Protocol):
     def list_chunks(self, *, source_ids: Sequence[str] | None = None) -> tuple[KnowledgeChunk, ...]:
         """List active chunks."""
 
+    def load_chunks_by_ids(self, chunk_ids: Sequence[str]) -> tuple[KnowledgeChunk, ...]:
+        """Load active chunks by stable chunk ID."""
+
     def index_embeddings(
         self,
         manifest: KnowledgeEmbeddingManifest,
@@ -207,6 +210,13 @@ class JsonKnowledgeStore:
         if not source_filter:
             return chunks
         return tuple(chunk for chunk in chunks if chunk.source_id in source_filter)
+
+    def load_chunks_by_ids(self, chunk_ids: Sequence[str]) -> tuple[KnowledgeChunk, ...]:
+        requested = tuple(dict.fromkeys(str(chunk_id).strip() for chunk_id in chunk_ids if str(chunk_id).strip()))
+        if not requested:
+            return tuple()
+        by_chunk_id = {chunk.chunk_id: chunk for chunk in self.repository.list_chunks()}
+        return tuple(by_chunk_id[chunk_id] for chunk_id in requested if chunk_id in by_chunk_id)
 
     def index_embeddings(
         self,

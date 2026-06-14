@@ -6,6 +6,7 @@ from pathlib import Path
 import anyio
 
 from trader_mcp.constants import (
+    KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL,
     KNOWLEDGE_INGEST_DOCUMENTS_TOOL,
     KNOWLEDGE_REGISTER_SOURCE_TOOL,
     KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL,
@@ -55,6 +56,10 @@ def test_mcp_quant_methods_core_evidence_flow(tmp_path: Path) -> None:
             {"query": "moving average warmup", "source_ids": [source_id], "top_k": 1},
         )
         evidence = retrieved.structuredContent["data"]["evidence_retrieval_report"]["results"][0]
+        dereferenced = await server.call_tool(
+            KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL,
+            {"chunk_ids": [evidence["chunk_id"]], "source_id": source_id},
+        )
         citations = await server.call_tool(
             KNOWLEDGE_VALIDATE_CITATIONS_TOOL,
             {
@@ -90,9 +95,15 @@ def test_mcp_quant_methods_core_evidence_flow(tmp_path: Path) -> None:
         assert config.structuredContent["data"]["knowledge_store_runtime"]["provider"] == "injected"
         assert config_tools[KNOWLEDGE_REGISTER_SOURCE_TOOL]["agent_owner"] == "Quantitative Methods Agent"
         assert config_tools[KNOWLEDGE_REGISTER_SOURCE_TOOL]["side_effect"] == "local_mutating"
+        assert config_tools[KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL]["side_effect"] == "read_only"
         assert config_tools[MATH_VALIDATE_METHOD_CONTRACT_TOOL]["side_effect"] == "read_only"
         assert registered.isError is False
         assert ingested.isError is False
+        assert dereferenced.isError is False
+        assert dereferenced.structuredContent["agent_owner"] == "Quantitative Methods Agent"
+        dereferenced_chunk = dereferenced.structuredContent["data"]["chunks"][0]
+        assert "simple moving average computes the arithmetic mean" in dereferenced_chunk["text"]
+        assert dereferenced_chunk["hash_verified"] is True
         assert citations.isError is False
         assert methods.structuredContent["data"]["method_count"] >= 5
         assert valid_contract.isError is False

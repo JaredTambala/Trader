@@ -369,6 +369,34 @@ class EvidenceRetrievalReport:
 
 
 @dataclass(frozen=True)
+class EvidenceChunkDereferenceReport:
+    """Report containing resolved evidence chunks for downstream agent context."""
+
+    dereference_id: str
+    requested_chunk_ids: tuple[str, ...]
+    chunks: tuple[Mapping[str, Any], ...]
+    missing_chunk_ids: tuple[str, ...] = tuple()
+    filters: Mapping[str, Any] = field(default_factory=dict)
+    warnings: tuple[str, ...] = tuple()
+    created_at: datetime = field(default_factory=_utc_now)
+    schema_version: str = KNOWLEDGE_SCHEMA_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "artifact_type": "evidence_chunk_dereference_report",
+            "schema_version": self.schema_version,
+            "dereference_id": self.dereference_id,
+            "requested_chunk_ids": list(self.requested_chunk_ids),
+            "filters": _jsonable(self.filters),
+            "chunk_count": len(self.chunks),
+            "chunks": _jsonable(list(self.chunks)),
+            "missing_chunk_ids": list(self.missing_chunk_ids),
+            "warnings": list(self.warnings),
+            "created_at": _jsonable(self.created_at),
+        }
+
+
+@dataclass(frozen=True)
 class CitationValidationReport:
     """Citation validation report for a method contract or artifact."""
 

@@ -318,6 +318,21 @@ class PostgresKnowledgeRecordStore:
         ).fetchall()
         return tuple(_mapping(row["payload"]) for row in rows)
 
+    def load_chunks_by_ids(self, chunk_ids: Sequence[str]) -> tuple[Mapping[str, Any], ...]:
+        requested = list(dict.fromkeys(str(chunk_id).strip() for chunk_id in chunk_ids if str(chunk_id).strip()))
+        if not requested:
+            return tuple()
+        rows = self._connection.execute(
+            """
+            SELECT payload
+            FROM knowledge_chunks
+            WHERE active = TRUE AND chunk_id = ANY(%s)
+            """,
+            [requested],
+        ).fetchall()
+        by_chunk_id = {str(row["payload"].get("chunk_id") or ""): _mapping(row["payload"]) for row in rows}
+        return tuple(by_chunk_id[chunk_id] for chunk_id in requested if chunk_id in by_chunk_id)
+
     def index_embeddings(
         self,
         manifest: Mapping[str, Any],

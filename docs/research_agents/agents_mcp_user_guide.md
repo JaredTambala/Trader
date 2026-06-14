@@ -307,13 +307,17 @@ knowledge_register_source(path, title, source_type, topics, method_families)
 knowledge_ingest_documents([source_id])
 knowledge_get_ingestion_status([source_id])
 knowledge_retrieve_evidence(query, source_ids=[source_id])
+knowledge_get_evidence_chunks(chunk_ids=[chunk_id], source_id=source_id)
 knowledge_validate_citations({knowledge_evidence_refs: [...]})
 ```
 
 `knowledge_retrieve_evidence` runs PostgreSQL full-text search and pgvector search, merges results with deterministic
 rank fusion, and returns source IDs, chunk IDs, locators, source status, excerpts, and lexical/vector/combined rank
-metadata. Retrieved chunks are evidence, not approval. Method-card draft/publish tooling, reranking, OCR, external
-vector databases, and Quantitative Methods LangGraph handoff are later chunks.
+metadata. Pass the returned `chunk_id` values to `knowledge_get_evidence_chunks` when a downstream local agent needs
+the real stored chunk text; the dereference response includes source metadata, locators, text hashes, `hash_verified`,
+text length metadata, and truncation flags. Retrieved and dereferenced chunks are evidence, not approval.
+Method-card draft/publish tooling, reranking, OCR, external vector databases, and Quantitative Methods LangGraph handoff
+are later chunks.
 
 ## Current Limitations
 
