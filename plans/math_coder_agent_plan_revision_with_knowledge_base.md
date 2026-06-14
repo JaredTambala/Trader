@@ -63,7 +63,7 @@ The knowledge base is not a separate autonomous agent in the first release. It i
 Core rule:
 
 ```text
-The vector store is retrieval infrastructure, not the authority.
+Hybrid lexical/vector retrieval indexes are retrieval infrastructure, not the authority.
 The authority is the approved source registry plus approved method cards.
 ```
 
@@ -396,9 +396,11 @@ src/trader_research/
     sources.py              # source registration and metadata validation
     extractors.py           # PDF/Markdown/text extraction adapters
     chunking.py             # chunk creation and locator preservation
-    embeddings.py           # embedding provider protocol and local/test implementations
-    index.py                # vector index / relational metadata access
-    retrieval.py            # search and evidence retrieval services
+    embeddings.py           # embedding provider protocol plus runtime/test implementations
+    store.py                # KnowledgeStore interface plus JSON compatibility adapter
+    postgres_store.py       # adapter to core Postgres knowledge persistence
+    index.py                # embedding indexing, hybrid retrieval, and deterministic rank fusion
+    retrieval.py            # hybrid retrieval, rank fusion, method-card search, and evidence services
     citation_validation.py  # source/locator/method-card coverage checks
     method_cards.py         # draft/publish method-card workflow
     ingestion.py            # end-to-end ingestion orchestration
@@ -409,9 +411,29 @@ src/trader_mcp/
 src/trader_agents/
   quant_methods_agent.py       # knowledge-aware allowlist and state
   quant_methods_policy.py      # typed LLM decisions that may request retrieval/ingestion
+
+src/trader/
+  knowledge_store.py           # SQL-owning Postgres knowledge tables, full-text search, and pgvector retrieval
 ```
 
-The first implementation can use a simple local/test embedding provider and a deterministic in-memory or SQLite/Postgres-backed store for tests. The production-oriented version can use the existing Postgres footprint with a vector extension or an external vector index, but the tool contracts should not depend on a specific backend.
+The durable implementation now uses a `KnowledgeStore` boundary. MCP runtime defaults to the Postgres implementation, using the existing trader Postgres config from `TRADER_MCP_TRADER_CONFIG_PATH`; tests can inject the JSON compatibility store or other fakes. Postgres owns source/chunk/embedding/ingestion records, PostgreSQL full-text search provides lexical retrieval, and pgvector provides dense retrieval. Deterministic embeddings are test doubles only; runtime ingestion requires explicit embedding-provider configuration. JSON artifacts remain compatibility/export records, while approved source registry records and approved method cards remain the authority.
+
+## Hybrid Retrieval Requirement
+
+`knowledge_retrieve_evidence` should use hybrid retrieval rather than pure vector search:
+
+```text
+query
+  -> lexical search top K
+  -> vector search top K
+  -> merge and deduplicate
+  -> deterministic rank fusion
+  -> optional rerank later
+  -> source/method/approval filters
+  -> citeable evidence chunks
+```
+
+Lexical retrieval is required for exact method names and acronyms such as `Newey-West`, `HAC`, `ADF`, `KPSS`, `White Reality Check`, `Hansen SPA`, `Benjamini-Hochberg`, and `Deflated Sharpe Ratio`. Vector retrieval is required for conceptual queries such as data snooping, dependent-return uncertainty, bootstrap inference, and multiple-testing controls. Retrieval reports should include lexical rank, vector rank, combined rank, vector score, source title, source approval status, chunk ID, source ID, and locators.
 
 ## Revised Backlog: Knowledge-Backed Quantitative Methods
 
@@ -499,26 +521,34 @@ Acceptance criteria:
 
 Description:
 
-Embed chunks and store them in a searchable knowledge index with relational metadata filters.
+Embed chunks and store them in a searchable Postgres-backed knowledge index with relational metadata filters, PostgreSQL full-text lexical search, and pgvector dense retrieval.
 
 Files affected:
 
 ```text
 src/trader_research/knowledge/embeddings.py
+src/trader_research/knowledge/store.py
+src/trader_research/knowledge/postgres_store.py
 src/trader_research/knowledge/index.py
 src/trader_research/knowledge/ingestion.py
 tests/test_knowledge_embeddings.py
-tests/test_knowledge_index.py
+tests/test_knowledge_store.py
+tests/test_postgres_knowledge_store.py
 ```
 
 Acceptance criteria:
 
-- A fake deterministic embedding provider exists for tests.
-- Embedding manifest records provider/model/version/dimension.
-- Indexed chunks can be retrieved by source ID, topic, method family, and vector similarity.
+- Runtime embedding configuration supports a real OpenAI-compatible embedding model.
+- A fake deterministic embedding provider exists only for tests.
+- Embedding manifest records provider/model/revision/dimension/distance metric/chunker version/source collection/index ID.
+- Source/chunk/embedding/ingestion metadata are stored in Postgres during MCP runtime.
+- Lexical terms are indexed with PostgreSQL full-text search initially.
+- Dense embeddings are stored in pgvector.
+- Indexed chunks can be retrieved by source ID, topic, method family, lexical match, and vector similarity.
 - Re-ingesting unchanged chunks does not create duplicate active chunks.
-- Changing embedding model/version creates a distinct embedding manifest.
+- Changing embedding model/chunker/source collection creates a distinct immutable index version.
 - The service can run without an external LLM provider in tests.
+- `mcp_get_config` reports `knowledge_store_runtime`; missing Postgres config or pgvector fails closed at tool execution.
 
 ### 23E. Knowledge Ingestion MCP Tools
 
@@ -568,7 +598,7 @@ Acceptance criteria:
 
 Description:
 
-Expose method-card search, evidence retrieval, and citation validation through MCP.
+Expose method-card search, hybrid evidence retrieval, and citation validation through MCP.
 
 Files affected:
 
@@ -584,8 +614,8 @@ tests/test_mcp_knowledge_tools.py
 Acceptance criteria:
 
 - MCP exposes `knowledge_list_sources`, `knowledge_search_methods`, `knowledge_retrieve_evidence`, `knowledge_create_method_card_draft`, `knowledge_publish_method_card`, and `knowledge_validate_citations`.
-- Retrieval returns source IDs, chunk IDs, locators, relevance score, and short evidence summaries.
-- Citation validation fails if a method contract references unknown source IDs, invalid locators, unapproved method cards, or unsupported claims.
+- Retrieval runs lexical search and vector search, merges/deduplicates results with deterministic rank fusion, and returns source IDs, chunk IDs, locators, source titles, approval status, lexical rank, vector rank, combined rank, vector score, and short excerpts/summaries.
+- Citation validation fails if a method contract references unknown source IDs, invalid locators, unapproved sources, unapproved method cards, unsupported claims, excessive direct quotation, or high-risk methods backed only by broad foundation sources.
 - Retrieval can be filtered to approved sources/method cards only.
 
 ### 23H. Knowledge-Backed Math Method Domain Schemas
@@ -829,12 +859,12 @@ The smallest useful version is:
 1. Define knowledge artifact schemas.
 2. Implement source registration for Markdown/text fixtures.
 3. Implement deterministic extraction and chunking.
-4. Implement fake deterministic embeddings for tests.
-5. Implement local searchable knowledge index.
+4. Implement runtime embedding-provider configuration with fake deterministic embeddings only for tests.
+5. Implement Postgres-backed lexical and vector knowledge indexes.
 6. Register knowledge_register_source, knowledge_ingest_documents, and knowledge_get_ingestion_status.
-7. Add knowledge_search_methods and knowledge_retrieve_evidence over approved method cards.
-8. Add method_card_draft and explicit publish/approval flow.
-9. Add citation validation.
+7. Add knowledge_search_methods and hybrid knowledge_retrieve_evidence over approved method cards and indexed sources.
+8. Add citation validation.
+9. Add method_card_draft and explicit publish/approval flow.
 10. Define math artifact schemas that can reference knowledge evidence.
 11. Build method registry linked to approved method cards.
 12. Register math_list_method_contracts and math_validate_method_contract.

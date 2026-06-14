@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+from typing import Any, Mapping
+from unittest.mock import patch
+
+import pytest
+
+from trader_research.knowledge.embeddings import (
+    EmbeddingConfigurationError,
+    EmbeddingRequestError,
+    build_embedding_provider_from_env,
+    embedding_runtime_summary,
+)
+
+
+def test_build_embedding_provider_from_env_requires_real_runtime_config() -> None:
+    with pytest.raises(EmbeddingConfigurationError, match="TRADER_RESEARCH_EMBEDDINGS_PROVIDER"):
+        build_embedding_provider_from_env({})
+
+    with pytest.raises(EmbeddingConfigurationError, match="TRADER_RESEARCH_EMBEDDINGS_MODEL"):
+        build_embedding_provider_from_env({"TRADER_RESEARCH_EMBEDDINGS_PROVIDER": "openai"})
+
+    with pytest.raises(EmbeddingConfigurationError, match="TRADER_RESEARCH_EMBEDDINGS_BASE_URL"):
+        build_embedding_provider_from_env(
+            {
+                "TRADER_RESEARCH_EMBEDDINGS_PROVIDER": "openai_compatible",
+                "TRADER_RESEARCH_EMBEDDINGS_MODEL": "embedding-model",
+            }
+        )
+
+
+def test_openai_embedding_provider_uses_embeddings_endpoint() -> None:
+    calls: list[dict[str, Any]] = []
+
+    def _fake_post_json(
+        url: str,
+        payload: Mapping[str, Any],
+        *,
+        headers: Mapping[str, str],
+        timeout_seconds: float,
+    ) -> Mapping[str, Any]:
+        calls.append(
+            {
+                "url": url,
+                "payload": dict(payload),
+                "headers": dict(headers),
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+        return {"data": [{"embedding": [0.25, -0.5, 0.75]}]}
+
+    provider = build_embedding_provider_from_env(
+        {
+            "TRADER_RESEARCH_EMBEDDINGS_PROVIDER": "openai",
+            "TRADER_RESEARCH_EMBEDDINGS_MODEL": "text-embedding-3-small",
+            "TRADER_RESEARCH_EMBEDDINGS_API_KEY": "secret",
+            "TRADER_RESEARCH_EMBEDDINGS_TIMEOUT_SECONDS": "11",
+        }
+    )
+    with patch("trader_research.knowledge.embeddings._post_json", _fake_post_json):
+        vector = provider.embed("rank information coefficient")
+
+    assert vector == (0.25, -0.5, 0.75)
+    assert calls[0]["url"] == "https://api.openai.com/v1/embeddings"
+    assert calls[0]["payload"] == {"model": "text-embedding-3-small", "input": "rank information coefficient"}
+    assert calls[0]["headers"]["Authorization"] == "Bearer secret"
+    assert calls[0]["timeout_seconds"] == 11.0
+
+
+def test_embedding_runtime_summary_omits_secrets() -> None:
+    summary = embedding_runtime_summary(
+        {
+            "TRADER_RESEARCH_EMBEDDINGS_PROVIDER": "openai",
+            "TRADER_RESEARCH_EMBEDDINGS_MODEL": "text-embedding-3-small",
+            "TRADER_RESEARCH_EMBEDDINGS_API_KEY": "secret",
+            "TRADER_RESEARCH_EMBEDDINGS_TIMEOUT_SECONDS": "30",
+        }
+    )
+
+    assert summary == {
+        "configured": True,
+        "provider": "openai",
+        "model": "text-embedding-3-small",
+        "base_url": "https://api.openai.com/v1",
+        "api_key_configured": True,
+        "timeout_seconds": 30.0,
+    }
+
+
+def test_embedding_response_must_include_numeric_vector() -> None:
+    provider = build_embedding_provider_from_env(
+        {
+            "TRADER_RESEARCH_EMBEDDINGS_PROVIDER": "openai_compatible",
+            "TRADER_RESEARCH_EMBEDDINGS_MODEL": "model",
+            "TRADER_RESEARCH_EMBEDDINGS_BASE_URL": "http://localhost:9999/v1",
+        }
+    )
+    with patch("trader_research.knowledge.embeddings._post_json", return_value={"data": [{"embedding": []}]}):
+        with pytest.raises(EmbeddingRequestError, match="embedding vector"):
+            provider.embed("text")

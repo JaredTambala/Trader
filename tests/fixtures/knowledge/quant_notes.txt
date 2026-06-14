@@ -1,0 +1,4 @@
+Rank information coefficient diagnostics compare a signal ordering with a
+forward return ordering. The candidate family and prediction horizon should be
+declared before inference so citation and multiple-testing controls can be
+audited.

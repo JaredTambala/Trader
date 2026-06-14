@@ -37,6 +37,12 @@ class McpEnvironment:
     allow_symbol_provider_discovery: bool
     allow_data_loading: bool
     allow_backtests: bool
+    embeddings_provider: str
+    embeddings_model: str
+    embeddings_base_url: str
+    embeddings_api_key: str
+    embeddings_timeout_seconds: float
+    knowledge_store: str
 
     def policy_flags(self) -> dict[str, bool]:
         """Return environment policy flags.
@@ -50,6 +56,22 @@ class McpEnvironment:
             "allow_symbol_provider_discovery": self.allow_symbol_provider_discovery,
             "allow_data_loading": self.allow_data_loading,
             "allow_backtests": self.allow_backtests,
+        }
+
+    def embeddings_env(self) -> dict[str, str]:
+        """Return embedding runtime environment values for knowledge tools."""
+        return {
+            "TRADER_RESEARCH_EMBEDDINGS_PROVIDER": self.embeddings_provider,
+            "TRADER_RESEARCH_EMBEDDINGS_MODEL": self.embeddings_model,
+            "TRADER_RESEARCH_EMBEDDINGS_BASE_URL": self.embeddings_base_url,
+            "TRADER_RESEARCH_EMBEDDINGS_API_KEY": self.embeddings_api_key,
+            "TRADER_RESEARCH_EMBEDDINGS_TIMEOUT_SECONDS": str(self.embeddings_timeout_seconds),
+        }
+
+    def knowledge_store_env(self) -> dict[str, str]:
+        """Return knowledge-store runtime environment values."""
+        return {
+            "TRADER_RESEARCH_KNOWLEDGE_STORE": self.knowledge_store,
         }
 
 
@@ -86,6 +108,12 @@ def load_local_environment(env_path: str | Path | None = None) -> McpEnvironment
         allow_symbol_provider_discovery=_bool_env("TRADER_MCP_ALLOW_SYMBOL_PROVIDER_DISCOVERY", file_values),
         allow_data_loading=_bool_env("TRADER_MCP_ALLOW_DATA_LOADING", file_values),
         allow_backtests=_bool_env("TRADER_MCP_ALLOW_BACKTESTS", file_values),
+        embeddings_provider=_optional_env("TRADER_RESEARCH_EMBEDDINGS_PROVIDER", file_values),
+        embeddings_model=_optional_env("TRADER_RESEARCH_EMBEDDINGS_MODEL", file_values),
+        embeddings_base_url=_optional_env("TRADER_RESEARCH_EMBEDDINGS_BASE_URL", file_values),
+        embeddings_api_key=_optional_env("TRADER_RESEARCH_EMBEDDINGS_API_KEY", file_values),
+        embeddings_timeout_seconds=_float_env("TRADER_RESEARCH_EMBEDDINGS_TIMEOUT_SECONDS", file_values, default=30.0),
+        knowledge_store=_optional_env("TRADER_RESEARCH_KNOWLEDGE_STORE", file_values) or "postgres",
     )
 
 
@@ -133,6 +161,11 @@ def _optional_path_env(name: str, file_values: Mapping[str, str]) -> Path | None
     return Path(value)
 
 
+def _optional_env(name: str, file_values: Mapping[str, str]) -> str:
+    """Return an optional string env value."""
+    return os.environ.get(name, file_values.get(name, "")).strip()
+
+
 def _bool_env(name: str, file_values: Mapping[str, str]) -> bool:
     """Return a boolean env value.
 
@@ -152,3 +185,14 @@ def _bool_env(name: str, file_values: Mapping[str, str]) -> bool:
     if value in {"0", "false", "no", "off"}:
         return False
     raise ValueError(f"Invalid boolean local MCP env value for {name}: {value}")
+
+
+def _float_env(name: str, file_values: Mapping[str, str], *, default: float) -> float:
+    """Return a floating-point env value with a default."""
+    value = os.environ.get(name, file_values.get(name, "")).strip()
+    if not value:
+        return default
+    try:
+        return float(value)
+    except ValueError as exc:
+        raise ValueError(f"Invalid numeric local MCP env value for {name}: {value}") from exc

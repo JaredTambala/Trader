@@ -168,8 +168,8 @@ Responsibilities:
   multiple-testing controls, and numerical kernels.
 - Maintain and query a curated Quant Methods Knowledge Base for approved sources, source manifests, locator-preserving
   chunks, method cards, evidence retrieval reports, and citation-validation reports.
-- Treat the vector store as retrieval infrastructure, not as authority. The authority is the approved source registry
-  plus approved method cards.
+- Treat PostgreSQL full-text search and pgvector retrieval indexes as retrieval infrastructure, not as authority. The
+  authority is the approved source registry plus approved method cards.
 - Implement and validate maintained indicators such as SMA, EMA, MACD, Bollinger Bands, RSI, z-score, spread, rolling
   volatility, drawdown, cross-sectional ranks, and regime/session-aware transforms.
 - Define method metadata: name, version, family, parameters, lookback, warmup behavior, input schema, output schema,
@@ -402,7 +402,7 @@ The intended operating loop is:
 | --- | --- | --- |
 | Research request decomposition | Supervisor graph state and handoffs | Quant Research Supervisor Agent |
 | Data inventory and quality | `data_get_inventory`, `data_summarize_quality`, `data_ensure_loaded` | Data Agent |
-| Knowledge-backed method contracts, diagnostics, and multiple-testing verification | planned `knowledge_*` and `math_*` tools | Quantitative Methods Agent |
+| Knowledge-backed method contracts, diagnostics, and multiple-testing verification | `knowledge_*` evidence tools and `math_*` method-contract tools, with later diagnostic/report tools planned | Quantitative Methods Agent |
 | Feature/model/drift artifacts | planned ML tools | ML Agent |
 | Hypothesis card creation | `hypothesis_create_card` | Hypothesis Agent |
 | Strategy catalog and validation | `research_list_strategy_templates`, `research_validate_strategy_candidate` | Quant Research Supervisor Agent |
@@ -415,9 +415,9 @@ The intended operating loop is:
 ## Future Work
 
 - Add a dataset manifest registry for the Data Agent.
-- Add first-class knowledge source manifests, approved method cards, citation-validation reports, method contracts,
-  signal diagnostics, multiple-testing reports, and optional parity-checked numerical kernels for the Quantitative
-  Methods Agent.
+- Add method-card draft/publish lifecycle, signal diagnostics, multiple-testing reports, and optional parity-checked
+  numerical kernels for the Quantitative Methods Agent. The first knowledge source/chunk/embedding/citation path is
+  Postgres-backed and exposed through MCP.
 - Add feature dataset, model card, prediction, and drift schemas for the ML Agent.
 - Add `hypothesis_card.json`, `evaluation_report.json`, and `robustness_report.json` schemas.
 - Extend research suite generation so it consumes hypothesis cards and robustness plans.

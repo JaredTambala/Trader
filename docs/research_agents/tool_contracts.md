@@ -104,12 +104,12 @@ These tools are implemented first because the Data Agent owns the ingredients th
 
 | Tool | Owning agent | Primary artifact |
 | --- | --- | --- |
-| `knowledge_register_source` | Quantitative Methods Agent | `knowledge_source_manifest.json` |
-| `knowledge_ingest_documents` | Quantitative Methods Agent | `knowledge_ingestion_report.json`, `knowledge_chunk_manifest.json`, `knowledge_embedding_manifest.json` |
+| `knowledge_register_source` | Quantitative Methods Agent | `knowledge_source_manifest.json` or `knowledge://postgres/knowledge_source_manifest/...` |
+| `knowledge_ingest_documents` | Quantitative Methods Agent | `knowledge_ingestion_report.json`, Postgres `knowledge_chunks`, `knowledge_embedding_manifest.json` or `knowledge://postgres/...` refs |
 | `knowledge_get_ingestion_status` | Quantitative Methods Agent | source and ingestion status summary |
 | `knowledge_list_sources` | Quantitative Methods Agent | source manifest listing |
 | `knowledge_search_methods` | Quantitative Methods Agent | approved method-card search result |
-| `knowledge_retrieve_evidence` | Quantitative Methods Agent | `evidence_retrieval_report.json` |
+| `knowledge_retrieve_evidence` | Quantitative Methods Agent | `evidence_retrieval_report.json` with lexical/vector/combined rank diagnostics |
 | `knowledge_create_method_card_draft` | Quantitative Methods Agent | `method_card_draft.json` |
 | `knowledge_publish_method_card` | Quantitative Methods Agent | approved `method_card.json` |
 | `knowledge_validate_citations` | Quantitative Methods Agent | `citation_validation_report.json` |
@@ -149,8 +149,12 @@ identity is Quantitative Methods Agent.
 
 Knowledge-base rules:
 
-- The vector index is retrieval infrastructure, not authority.
+- Hybrid retrieval combines lexical and vector indexes; those indexes are retrieval infrastructure, not authority.
+- Runtime MCP knowledge storage uses Postgres by default. PostgreSQL full-text search handles lexical retrieval and
+  pgvector handles dense retrieval; tests may inject a JSON compatibility store.
 - The authority is the approved source registry plus approved method cards.
+- Evidence retrieval should return citeable chunks with source IDs, locators, source approval status, and lexical/vector
+  rank metadata rather than opaque context blobs.
 - Ingestion does not imply approval; `method_card_draft.json` is not executable.
 - Sophisticated statistical-test and multiple-testing contracts must cite approved method cards and pass
   `knowledge_validate_citations`.

@@ -290,17 +290,19 @@ statistical inference procedures, signal diagnostics, multiple-testing controls,
 validation, and optional parity-checked numerical kernels.
 
 The Quant Methods Knowledge Base is a `trader_research` service, not a separate autonomous agent in the first release.
-The vector index is retrieval infrastructure, not authority. The authority is the approved source registry plus
-approved method cards. Later, Evaluation and Supervisor may get read-only access to the same evidence layer.
+The runtime store is Postgres-backed: source/chunk/embedding/ingestion records live in `knowledge_*` tables, lexical
+retrieval uses PostgreSQL full-text search, and dense retrieval uses pgvector. The vector index is retrieval
+infrastructure, not authority. The authority is the approved source registry plus approved method cards. Later,
+Evaluation and Supervisor may get read-only access to the same evidence layer.
 
 Knowledge artifacts:
 
 | Artifact | Purpose |
 | --- | --- |
-| `knowledge_source_manifest.json` | Source metadata, hash, access policy, topics, and citation. |
-| `knowledge_ingestion_report.json` | Ingestion run, parser version, chunks, warnings, and embedding model/version. |
-| `knowledge_chunk_manifest.json` | Chunk IDs, source IDs, locators, headings, hashes, and index status. |
-| `knowledge_embedding_manifest.json` | Embedding backend/model/version, dimension, created_at, and compatibility constraints. |
+| `knowledge_source_manifest.json` or `knowledge://postgres/knowledge_source_manifest/...` | Source metadata, hash, access policy, topics, and citation. |
+| `knowledge_ingestion_report.json` or `knowledge://postgres/knowledge_ingestion_report/...` | Ingestion run, parser version, chunks, warnings, and embedding model/version. |
+| Postgres `knowledge_chunks` records | Chunk IDs, source IDs, locators, headings, hashes, active status, and full-text search data. |
+| `knowledge_embedding_manifest.json` or `knowledge://postgres/knowledge_embedding_manifest/...` | Embedding backend/model/version, dimension, created_at, and compatibility constraints. |
 | `method_card_draft.json` | Non-executable draft method summary from source evidence. |
 | `method_card.json` | Approved method card with assumptions, inputs, outputs, failure modes, and locators. |
 | `evidence_retrieval_report.json` | Retrieved evidence chunks for a request, query, method, and source set. |
@@ -310,14 +312,14 @@ Initial knowledge MCP tools:
 
 | Tool | Side effect | Purpose |
 | --- | --- | --- |
-| `knowledge_register_source` | `local_mutating` | Register metadata, compute file hash, and create `knowledge_source_manifest.json`. |
-| `knowledge_ingest_documents` | `local_mutating` | Extract, chunk, embed, index, and produce ingestion/chunk/embedding manifests. |
-| `knowledge_get_ingestion_status` | `read_only` | Fetch source/ingestion status, warnings, parser details, and indexed chunk counts. |
+| `knowledge_register_source` | `local_mutating` | Register metadata, compute file hash, validate source type/path policy, and persist a source manifest. |
+| `knowledge_ingest_documents` | `local_mutating` | Extract, chunk, embed with the configured provider, update Postgres full-text/pgvector indexes, and produce an ingestion report. |
+| `knowledge_get_ingestion_status` | `read_only` | Fetch source/ingestion status, warnings, parser details, source type, and indexed chunk counts. |
 | `knowledge_list_sources` | `read_only` | List source manifests by topic, source type, method family, or status. |
 | `knowledge_search_methods` | `read_only` | Search approved method cards and optionally draft cards when policy permits. |
-| `knowledge_retrieve_evidence` | `read_only` | Retrieve citeable chunks for methods, assumptions, conventions, or tests. |
-| `knowledge_create_method_card_draft` | `local_mutating` | Create a non-approved draft method card from source evidence. |
-| `knowledge_publish_method_card` | `local_mutating` | Promote a draft to approved status with explicit maintainer/operator approval. |
+| `knowledge_retrieve_evidence` | `read_only` | Run hybrid full-text/pgvector retrieval with reciprocal-rank fusion and return citeable chunks plus lexical/vector/combined rank diagnostics. |
+| `knowledge_create_method_card_draft` | `local_mutating` | Deferred: create a non-approved draft method card from source evidence. |
+| `knowledge_publish_method_card` | `local_mutating` | Deferred: promote a draft to approved status with explicit maintainer/operator approval. |
 | `knowledge_validate_citations` | `read_only` | Validate source IDs, chunk IDs, locators, method-card approval, and claim coverage. |
 
 Knowledge guardrails:
@@ -330,6 +332,8 @@ Knowledge guardrails:
 - Knowledge tools must not expose arbitrary filesystem access or execute code from documents.
 - Embedding model and chunking configuration must be versioned.
 - Re-indexing should be reproducible for unchanged sources and config.
+- `mcp_get_config` reports `knowledge_store_runtime`; missing Postgres config, missing embedding config, pgvector
+  unavailability, and embedding dimension mismatch fail closed in tool envelopes.
 
 Initial MCP tools:
 

@@ -7,6 +7,8 @@ import pytest
 import psycopg
 
 from trader.data import PostgresEventStore
+from trader_research.knowledge.postgres_store import PostgresKnowledgeStore
+from trader_research.knowledge.store import KnowledgeVectorExtensionUnavailable
 
 
 def _postgres_settings_from_env() -> dict[str, object] | None:
@@ -49,6 +51,22 @@ def _truncate_runtime_tables(store: PostgresEventStore) -> None:
     )
 
 
+def _truncate_knowledge_tables(store: PostgresKnowledgeStore) -> None:
+    connection = store.connection()
+    connection.execute(
+        """
+        TRUNCATE TABLE
+            knowledge_embeddings,
+            knowledge_embedding_indexes,
+            knowledge_ingestion_runs,
+            knowledge_chunks,
+            knowledge_sources,
+            knowledge_method_cards
+        CASCADE
+        """
+    )
+
+
 @pytest.fixture
 def postgres_settings() -> dict[str, object]:
     settings = _postgres_settings_from_env()
@@ -76,3 +94,17 @@ def postgres_listener_connection(postgres_settings: dict[str, object]) -> Iterat
         yield connection
     finally:
         connection.close()
+
+
+@pytest.fixture
+def postgres_knowledge_store(postgres_settings: dict[str, object]) -> Iterator[PostgresKnowledgeStore]:
+    try:
+        store = PostgresKnowledgeStore(**postgres_settings)
+    except KnowledgeVectorExtensionUnavailable as exc:
+        pytest.skip(str(exc))
+    _truncate_knowledge_tables(store)
+    try:
+        yield store
+    finally:
+        _truncate_knowledge_tables(store)
+        store.close()

@@ -29,6 +29,33 @@ DATA_SUMMARIZE_QUALITY_TOOL: Final = "data_summarize_quality"
 DATA_ENSURE_LOADED_TOOL: Final = "data_ensure_loaded"
 """Tool name for explicit Data Agent data inspection/loading."""
 
+KNOWLEDGE_REGISTER_SOURCE_TOOL: Final = "knowledge_register_source"
+"""Tool name for registering Quant Methods knowledge sources."""
+
+KNOWLEDGE_INGEST_DOCUMENTS_TOOL: Final = "knowledge_ingest_documents"
+"""Tool name for ingesting registered knowledge sources."""
+
+KNOWLEDGE_GET_INGESTION_STATUS_TOOL: Final = "knowledge_get_ingestion_status"
+"""Tool name for reporting knowledge ingestion status."""
+
+KNOWLEDGE_LIST_SOURCES_TOOL: Final = "knowledge_list_sources"
+"""Tool name for listing registered knowledge sources."""
+
+KNOWLEDGE_SEARCH_METHODS_TOOL: Final = "knowledge_search_methods"
+"""Tool name for searching method-card metadata."""
+
+KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL: Final = "knowledge_retrieve_evidence"
+"""Tool name for retrieving citeable method evidence."""
+
+KNOWLEDGE_VALIDATE_CITATIONS_TOOL: Final = "knowledge_validate_citations"
+"""Tool name for validating method evidence citations."""
+
+MATH_LIST_METHOD_CONTRACTS_TOOL: Final = "math_list_method_contracts"
+"""Tool name for listing maintained Quant Methods contracts."""
+
+MATH_VALIDATE_METHOD_CONTRACT_TOOL: Final = "math_validate_method_contract"
+"""Tool name for validating one Quant Methods contract."""
+
 SUPPORT_TOOL_NAMES: Final = (MCP_HEALTH_TOOL, MCP_CONFIG_TOOL)
 """Read-only support tool names exposed by the MCP server."""
 
@@ -40,7 +67,24 @@ DATA_TOOL_NAMES: Final = (
 )
 """Data Agent tool names exposed by the MCP server."""
 
-REGISTERED_TOOL_NAMES: Final = (*SUPPORT_TOOL_NAMES, *DATA_TOOL_NAMES)
+KNOWLEDGE_TOOL_NAMES: Final = (
+    KNOWLEDGE_REGISTER_SOURCE_TOOL,
+    KNOWLEDGE_INGEST_DOCUMENTS_TOOL,
+    KNOWLEDGE_GET_INGESTION_STATUS_TOOL,
+    KNOWLEDGE_LIST_SOURCES_TOOL,
+    KNOWLEDGE_SEARCH_METHODS_TOOL,
+    KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL,
+    KNOWLEDGE_VALIDATE_CITATIONS_TOOL,
+)
+"""Quant Methods knowledge tool names exposed by the MCP server."""
+
+MATH_TOOL_NAMES: Final = (
+    MATH_LIST_METHOD_CONTRACTS_TOOL,
+    MATH_VALIDATE_METHOD_CONTRACT_TOOL,
+)
+"""Quant Methods math tool names exposed by the MCP server."""
+
+REGISTERED_TOOL_NAMES: Final = (*SUPPORT_TOOL_NAMES, *DATA_TOOL_NAMES, *KNOWLEDGE_TOOL_NAMES, *MATH_TOOL_NAMES)
 """All tool names currently exposed by the MCP server."""
 
 SUPPORT_TOOL_DESCRIPTIONS: Final = {
@@ -57,11 +101,30 @@ DATA_TOOL_DESCRIPTIONS: Final = {
 }
 """Descriptions for Data Agent tools exposed by the MCP server."""
 
+KNOWLEDGE_TOOL_DESCRIPTIONS: Final = {
+    KNOWLEDGE_REGISTER_SOURCE_TOOL: "Register a local PDF, Markdown, or text source for Quant Methods evidence.",
+    KNOWLEDGE_INGEST_DOCUMENTS_TOOL: "Extract, chunk, embed, and index registered Quant Methods knowledge sources.",
+    KNOWLEDGE_GET_INGESTION_STATUS_TOOL: "Return knowledge source and ingestion status.",
+    KNOWLEDGE_LIST_SOURCES_TOOL: "List registered Quant Methods knowledge sources.",
+    KNOWLEDGE_SEARCH_METHODS_TOOL: "Search approved Quant Methods method-card metadata.",
+    KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL: "Retrieve citeable Quant Methods evidence chunks.",
+    KNOWLEDGE_VALIDATE_CITATIONS_TOOL: "Validate source, chunk, locator, and method-card citations.",
+}
+"""Descriptions for Quant Methods knowledge tools exposed by the MCP server."""
+
+MATH_TOOL_DESCRIPTIONS: Final = {
+    MATH_LIST_METHOD_CONTRACTS_TOOL: "List maintained Quantitative Methods method contracts.",
+    MATH_VALIDATE_METHOD_CONTRACT_TOOL: "Validate a Quantitative Methods contract against registry and evidence rules.",
+}
+"""Descriptions for Quant Methods method tools exposed by the MCP server."""
+
 CAPABILITY_REGISTRATION_FLAGS: Final = {
     "broker_mutating_tools_registered": False,
     "raw_sql_tools_registered": False,
     "symbol_discovery_tools_registered": True,
     "data_loading_tools_registered": True,
+    "knowledge_tools_registered": True,
+    "math_method_tools_registered": True,
     "backtest_tools_registered": False,
 }
 """Safety flags for registered and intentionally unregistered tool families."""

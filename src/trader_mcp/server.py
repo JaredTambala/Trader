@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timezone
+from typing import Any
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
@@ -22,11 +23,18 @@ from trader_mcp.constants import (
     MCP_CONFIG_TOOL,
     MCP_HEALTH_TOOL,
     MCP_SERVER_OWNER,
+    KNOWLEDGE_INGEST_DOCUMENTS_TOOL,
+    KNOWLEDGE_REGISTER_SOURCE_TOOL,
+    KNOWLEDGE_TOOL_DESCRIPTIONS,
+    KNOWLEDGE_TOOL_NAMES,
+    MATH_TOOL_DESCRIPTIONS,
+    MATH_TOOL_NAMES,
     REGISTERED_TOOL_NAMES,
     SERVER_NAME,
     SUPPORT_TOOL_DESCRIPTIONS,
 )
 from trader_mcp.environment import McpEnvironment, load_local_environment
+from trader_mcp.knowledge_tools import register_quant_methods_tools
 from trader_research.agents import agent_owner_for_tool
 from trader_research.contracts import SCHEMA_VERSION, SideEffect, ToolEnvelope, error_envelope, success_envelope
 from trader_research.data import (
@@ -41,11 +49,17 @@ from trader_research.data import (
     data_summarize_quality as summarize_quality_service,
     get_data_inventory,
 )
+from trader_research.knowledge.embeddings import EmbeddingProvider, embedding_runtime_summary
+from trader_research.knowledge.postgres_store import PostgresKnowledgeStore
+from trader_research.knowledge.store import KnowledgeStore, UnavailableKnowledgeStore
 from trader_research.providers import AlpacaSymbolCatalogProvider
 
 
 EventStoreProvider = Callable[[], EventStore]
 """Callable that returns the event store used by read-only MCP tools."""
+
+KnowledgeStoreProvider = Callable[[], KnowledgeStore]
+"""Callable that returns the store used by Quant Methods knowledge tools."""
 
 SymbolDiscoveryPolicyProvider = Callable[[], DataSymbolDiscoveryPolicy]
 """Callable that returns the symbol-discovery policy for Data Agent tools."""
@@ -60,6 +74,8 @@ def create_server(
     event_store_provider: EventStoreProvider | None = None,
     data_loading_policy: DataEnsureLoadedPolicy | None = None,
     symbol_discovery_policy: DataSymbolDiscoveryPolicy | None = None,
+    knowledge_embedding_provider: EmbeddingProvider | None = None,
+    knowledge_store_provider: KnowledgeStoreProvider | None = None,
 ) -> FastMCP:
     """Create the MCP server and register read-only tools.
 
@@ -74,6 +90,7 @@ def create_server(
     """
     local_env = environment or load_local_environment()
     data_event_store_provider = event_store_provider or build_event_store_provider(local_env)
+    resolved_knowledge_store_provider = knowledge_store_provider or build_knowledge_store_provider(local_env)
     resolved_data_loading_policy = data_loading_policy or DataEnsureLoadedPolicy(
         allow_data_loading=local_env.allow_data_loading,
         backfill_config_path=local_env.trader_config_path,
@@ -101,7 +118,14 @@ def create_server(
         Returns:
             MCP call result containing a read-only configuration envelope.
         """
-        return CallToolResult(**envelope_to_mcp_result(build_config_envelope(local_env)))
+        return CallToolResult(
+            **envelope_to_mcp_result(
+                build_config_envelope(
+                    local_env,
+                    knowledge_store_provider_configured=knowledge_store_provider is not None,
+                )
+            )
+        )
 
     @server.tool(
         name=DATA_DISCOVER_SYMBOLS_TOOL,
@@ -279,6 +303,13 @@ def create_server(
         )
         return CallToolResult(**envelope_to_mcp_result(envelope))
 
+    register_quant_methods_tools(
+        server,
+        local_env,
+        embedding_provider=knowledge_embedding_provider,
+        knowledge_store_provider=resolved_knowledge_store_provider,
+    )
+
     return server
 
 
@@ -303,6 +334,39 @@ def build_event_store_provider(environment: McpEnvironment | None = None) -> Eve
         if event_store is None:
             event_store = build_event_store(_load_tool_config(local_env))
         return event_store
+
+    return _provider
+
+
+def build_knowledge_store_provider(environment: McpEnvironment | None = None) -> KnowledgeStoreProvider:
+    """Build the lazy knowledge-store provider used by Quant Methods tools."""
+    local_env = environment or load_local_environment()
+    backend = local_env.knowledge_store.strip().lower()
+    if backend != "postgres":
+        return lambda: UnavailableKnowledgeStore(f"Unsupported knowledge store backend: {local_env.knowledge_store}")
+    if local_env.trader_config_path is None:
+        return lambda: UnavailableKnowledgeStore(
+            "Postgres knowledge store requires TRADER_MCP_TRADER_CONFIG_PATH"
+        )
+
+    store: KnowledgeStore | None = None
+
+    def _provider() -> KnowledgeStore:
+        nonlocal store
+        if store is None:
+            try:
+                config = _load_tool_config(local_env)
+            except ToolRuntimeConfigurationError as exc:
+                return UnavailableKnowledgeStore(str(exc))
+            store = PostgresKnowledgeStore(
+                dsn=getattr(config, "pg_dsn", None) or None,
+                host=getattr(config, "pg_host", None) or None,
+                port=getattr(config, "pg_port", None) or None,
+                dbname=getattr(config, "pg_db", None) or None,
+                user=getattr(config, "pg_user", None) or None,
+                password=getattr(config, "pg_password", None) or None,
+            )
+        return store
 
     return _provider
 
@@ -367,7 +431,11 @@ def build_health_envelope(environment: McpEnvironment | None = None) -> ToolEnve
     )
 
 
-def build_config_envelope(environment: McpEnvironment | None = None) -> ToolEnvelope:
+def build_config_envelope(
+    environment: McpEnvironment | None = None,
+    *,
+    knowledge_store_provider_configured: bool = False,
+) -> ToolEnvelope:
     """Build the read-only MCP server configuration envelope.
 
     Args:
@@ -415,6 +483,26 @@ def build_config_envelope(environment: McpEnvironment | None = None) -> ToolEnve
             "description": DATA_TOOL_DESCRIPTIONS[DATA_ENSURE_LOADED_TOOL],
         },
     ]
+    tool_metadata.extend(
+        {
+            "name": tool_name,
+            "agent_owner": agent_owner_for_tool(tool_name),
+            "side_effect": SideEffect.LOCAL_MUTATING.value
+            if tool_name in {KNOWLEDGE_REGISTER_SOURCE_TOOL, KNOWLEDGE_INGEST_DOCUMENTS_TOOL}
+            else SideEffect.READ_ONLY.value,
+            "description": KNOWLEDGE_TOOL_DESCRIPTIONS[tool_name],
+        }
+        for tool_name in KNOWLEDGE_TOOL_NAMES
+    )
+    tool_metadata.extend(
+        {
+            "name": tool_name,
+            "agent_owner": agent_owner_for_tool(tool_name),
+            "side_effect": SideEffect.READ_ONLY.value,
+            "description": MATH_TOOL_DESCRIPTIONS[tool_name],
+        }
+        for tool_name in MATH_TOOL_NAMES
+    )
     safety = {
         **CAPABILITY_REGISTRATION_FLAGS,
         "symbol_provider_discovery_allowed": local_env.allow_symbol_provider_discovery,
@@ -436,12 +524,34 @@ def build_config_envelope(environment: McpEnvironment | None = None) -> ToolEnve
                 "config_loaded_at_startup": False,
                 "event_store_provider": "configured" if local_env.trader_config_path else "noop",
             },
+            "embedding_runtime": embedding_runtime_summary(local_env.embeddings_env()),
+            "knowledge_store_runtime": knowledge_store_runtime_summary(
+                local_env,
+                provider_injected=knowledge_store_provider_configured,
+            ),
             "tool_count": len(tool_metadata),
             "tools": tool_metadata,
             "policy": local_env.policy_flags(),
             "safety": safety,
         },
     )
+
+
+def knowledge_store_runtime_summary(
+    environment: McpEnvironment,
+    *,
+    provider_injected: bool = False,
+) -> Mapping[str, Any]:
+    """Return non-secret knowledge-store runtime metadata without opening the DB."""
+    backend = environment.knowledge_store.strip().lower() or "postgres"
+    configured = provider_injected or (backend == "postgres" and environment.trader_config_path is not None)
+    return {
+        "backend": backend,
+        "configured": configured,
+        "provider": "injected" if provider_injected else "trader_config_path" if configured else "unconfigured",
+        "trader_config_path": str(environment.trader_config_path) if environment.trader_config_path else None,
+        "pgvector_available": "not_checked" if backend == "postgres" else None,
+    }
 
 
 def build_data_inventory_envelope(

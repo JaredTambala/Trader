@@ -276,6 +276,45 @@ uv run python -c "from trader_agents.data_agent import build_data_agent_inventor
 uv run python -c "from trader_agents.quant_research import build_quant_research_supervisor_graph"
 ```
 
+## Quant Methods Knowledge Setup
+
+The Quantitative Methods knowledge tools are registered in the MCP server now. Production use expects a Postgres-backed
+knowledge store and a real embedding provider; tests can inject deterministic stores and embeddings.
+
+Minimal local setup:
+
+```bash
+# local.env
+TRADER_MCP_TRADER_CONFIG_PATH=config.yaml
+TRADER_RESEARCH_KNOWLEDGE_STORE=postgres
+TRADER_RESEARCH_EMBEDDINGS_PROVIDER=openai_compatible
+TRADER_RESEARCH_EMBEDDINGS_MODEL=<embedding-model>
+TRADER_RESEARCH_EMBEDDINGS_BASE_URL=http://localhost:8000/v1
+TRADER_RESEARCH_EMBEDDINGS_API_KEY=
+```
+
+The trader config referenced by `TRADER_MCP_TRADER_CONFIG_PATH` must point at the Postgres database. The knowledge store
+initializes `knowledge_*` tables lazily on first use and requires the `vector` extension:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+Operator flow:
+
+```text
+knowledge_register_source(path, title, source_type, topics, method_families)
+knowledge_ingest_documents([source_id])
+knowledge_get_ingestion_status([source_id])
+knowledge_retrieve_evidence(query, source_ids=[source_id])
+knowledge_validate_citations({knowledge_evidence_refs: [...]})
+```
+
+`knowledge_retrieve_evidence` runs PostgreSQL full-text search and pgvector search, merges results with deterministic
+rank fusion, and returns source IDs, chunk IDs, locators, source status, excerpts, and lexical/vector/combined rank
+metadata. Retrieved chunks are evidence, not approval. Method-card draft/publish tooling, reranking, OCR, external
+vector databases, and Quantitative Methods LangGraph handoff are later chunks.
+
 ## Current Limitations
 
 The current user-facing workflow is intentionally narrow:
@@ -283,6 +322,8 @@ The current user-facing workflow is intentionally narrow:
 - Data tools operate on bounded bar requests only.
 - Automated evidence uses DuckDB and checked-in sample CSV data.
 - Real Postgres-backed data inspection requires a valid trader config path and reachable event store.
+- Real Quant Methods knowledge ingestion requires a valid trader config path, reachable Postgres database with pgvector,
+  and configured `TRADER_RESEARCH_EMBEDDINGS_*` runtime.
 - Backfill mode is dry-run planning unless `TRADER_MCP_ALLOW_DATA_LOADING=true` and a bounded config path or injected
   runner is provided.
 - Data Agent outputs are embedded in envelopes; persisted research artifacts are planned but not part of the current
