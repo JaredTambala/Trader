@@ -54,6 +54,7 @@ The LLM decides:
 The platform owns:
 - data ingestion and data quality
 - market data versioning
+- deterministic quantitative method contracts, validation, signal diagnostics, and multiple-testing controls
 - strategy validation
 - backtest execution
 - fills, slippage, fees, and risk simulation
@@ -253,6 +254,84 @@ summarize_data_quality(data_snapshot_id) -> DataQualityReport
 
 Reports missing bars, duplicate bars, suspicious prices, timezone/calendar issues, corporate-action caveats, and symbol-level coverage.
 
+### Quantitative methods tools
+
+These tools are owned by the Quantitative Methods Agent, the successor to the earlier Math Coder Agent naming. They
+should create auditable deterministic method artifacts before strategy planning or backtesting consumes those methods.
+The agent should use a curated Quant Methods Knowledge Base for sophisticated statistical methods rather than relying
+only on latent LLM knowledge.
+
+```text
+register_knowledge_source(source_metadata, file_ref) -> KnowledgeSourceManifest
+```
+
+Registers source metadata, access policy, citation, file hash, topics, and intended method families.
+
+```text
+ingest_knowledge_documents(source_refs, ingestion_policy) -> KnowledgeIngestionReport
+```
+
+Extracts PDF/Markdown/text content, preserves locators, chunks text, embeds chunks, and records parser and embedding
+versions. Ingestion does not imply approval.
+
+```text
+search_method_cards(query, filters) -> list[MethodCard]
+```
+
+Searches approved method cards first. Draft cards may be visible for review, but they are not executable.
+
+```text
+retrieve_method_evidence(method_id, claim_or_assumption) -> EvidenceRetrievalReport
+```
+
+Returns source IDs, chunk IDs, locators, relevance scores, and short evidence summaries.
+
+```text
+validate_method_citations(contract_or_report_ref) -> CitationValidationReport
+```
+
+Fails closed when source IDs, chunk IDs, locators, method-card approval, or claim coverage are invalid.
+
+```text
+list_method_contracts(family=None) -> list[MethodContract]
+```
+
+Returns maintained indicator, transform, statistical-test, diagnostic, and multiple-testing contracts.
+
+```text
+validate_method_contract(method_id, parameters, input_schema, fixtures=None) -> MethodValidationReport
+```
+
+Validates parameters, input schema, warmup behavior, NaN policy, no-lookahead alignment, assumptions, and fixture
+expectations.
+
+```text
+run_signal_diagnostics(indicator_observations, forward_return_labels, data_quality_report) -> SignalDiagnosticReport
+```
+
+Reports IC, rank IC, hit rate, quantile monotonicity, forward-return decay, horizon sensitivity, turnover proxy, and
+symbol/session/regime breakdowns where possible.
+
+```text
+run_multiple_testing_report(candidate_family_manifest, metric_matrix, correction_methods) -> MultipleTestingReport
+```
+
+Records the declared candidate family, candidate count, parameter grid, raw p-values, adjusted p-values, accepted and
+rejected candidates, warnings, and blockers. The system should not report only a winning indicator without the tested
+family and correction method.
+
+Optional compiled kernels may be added later, but only through approved templates, isolated local builds, and
+Python/C++ parity reports. Generated kernels must not access broker APIs, raw SQL, network resources, or live-trading
+controls.
+
+Knowledge-base guardrails:
+
+- The vector index is retrieval infrastructure, not authority.
+- The authority is the approved source registry plus approved method cards.
+- Draft method cards are not executable method contracts.
+- Sophisticated statistical-test and multiple-testing contracts must cite approved method cards.
+- Artifacts should cite source IDs and locators rather than reproduce large source passages.
+
 ### Strategy tools
 
 ```text
@@ -326,6 +405,11 @@ Strategy Author
 - Writes or adapts strategy code from a constrained spec.
 - Must obey the existing strategy interface.
 - Must not bypass validation.
+
+Quantitative Methods Agent
+- Owns deterministic method contracts, fixtures, statistical tests, signal diagnostics, multiple-testing reports, and
+  optional parity-checked numerical kernels.
+- Must not fetch data, create hypotheses, train ML models, run broad research campaigns, or make promotion decisions.
 
 Skeptic / Robustness Analyst
 - Tries to falsify the result.

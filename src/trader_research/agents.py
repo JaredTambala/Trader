@@ -34,7 +34,21 @@ DATA_AGENT_TOOLS = (
     "data_ensure_loaded",
 )
 
-MATH_CODER_TOOLS = (
+QUANTITATIVE_METHODS_TOOLS = (
+    "knowledge_register_source",
+    "knowledge_ingest_documents",
+    "knowledge_get_ingestion_status",
+    "knowledge_list_sources",
+    "knowledge_search_methods",
+    "knowledge_retrieve_evidence",
+    "knowledge_create_method_card_draft",
+    "knowledge_publish_method_card",
+    "knowledge_validate_citations",
+    "math_list_method_contracts",
+    "math_validate_method_contract",
+)
+
+QUANTITATIVE_METHODS_COMPATIBILITY_TOOLS = (
     "math_list_indicator_contracts",
     "math_validate_indicator_contract",
 )
@@ -88,15 +102,32 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
         initial_tools=(*READ_ONLY_SUPPORT_TOOLS, *DATA_AGENT_TOOLS),
     ),
     AgentDefinition(
-        key="math_coder_agent",
-        display_name="Math Coder Agent",
-        mission="Produce auditable deterministic indicator and statistical-test artifacts.",
-        owned_artifacts=(
-            "indicator_metadata.json",
-            "indicator_test_report.json",
-            "statistical_test_report.json",
+        key="quant_methods_agent",
+        display_name="Quantitative Methods Agent",
+        mission=(
+            "Produce auditable deterministic method contracts, validation reports, diagnostics, and statistical "
+            "inference artifacts."
         ),
-        initial_tools=MATH_CODER_TOOLS,
+        owned_artifacts=(
+            "indicator_contract.json",
+            "statistical_test_contract.json",
+            "indicator_validation_report.json",
+            "signal_diagnostic_report.json",
+            "multiple_testing_report.json",
+            "cxx_kernel_manifest.json",
+            "python_cpp_parity_report.json",
+            "method_package_manifest.json",
+            "statistical_test_report.json",
+            "knowledge_source_manifest.json",
+            "knowledge_ingestion_report.json",
+            "knowledge_chunk_manifest.json",
+            "knowledge_embedding_manifest.json",
+            "method_card_draft.json",
+            "method_card.json",
+            "evidence_retrieval_report.json",
+            "citation_validation_report.json",
+        ),
+        initial_tools=(*READ_ONLY_SUPPORT_TOOLS, *QUANTITATIVE_METHODS_TOOLS),
     ),
     AgentDefinition(
         key="ml_agent",
@@ -153,11 +184,14 @@ _AGENTS_BY_KEY: Mapping[str, AgentDefinition] = {agent.key: agent for agent in A
 _AGENT_ALIASES: Mapping[str, str] = {
     **{agent.key: agent.key for agent in AGENT_DEFINITIONS},
     **{_normalize_lookup(agent.display_name): agent.key for agent in AGENT_DEFINITIONS},
+    "math_coder_agent": "quant_methods_agent",
+    "math_coder": "quant_methods_agent",
 }
 
 TOOL_OWNER_BY_NAME: Mapping[str, str] = {
     **{tool: "Data Agent" for tool in DATA_AGENT_TOOLS},
-    **{tool: "Math Coder Agent" for tool in MATH_CODER_TOOLS},
+    **{tool: "Quantitative Methods Agent" for tool in QUANTITATIVE_METHODS_TOOLS},
+    **{tool: "Quantitative Methods Agent" for tool in QUANTITATIVE_METHODS_COMPATIBILITY_TOOLS},
     **{tool: "ML Agent" for tool in ML_AGENT_TOOLS},
     **{tool: "Hypothesis Agent" for tool in HYPOTHESIS_AGENT_TOOLS},
     **{tool: "Quant Research Supervisor Agent" for tool in QUANT_RESEARCH_SUPERVISOR_TOOLS},

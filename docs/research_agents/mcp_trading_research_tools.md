@@ -8,7 +8,7 @@ Update it in the same change as each tool or graph slice:
 - Data Agent inventory, quality, and loading workflows
 - LangGraph agent identity evidence
 - Quant Research Supervisor handoff and synthesis evidence
-- Math Coder, ML, Hypothesis, Evaluation, and Adversarial tool/identity evidence
+- Quantitative Methods, ML, Hypothesis, Evaluation, and Adversarial tool/identity evidence
 - safety boundaries and tool allowlists
 
 The task register and detailed implementation sequence currently live in
@@ -221,7 +221,7 @@ The tests assert these supervisor handoff fields and boundaries:
   provenance from the Data Agent graph.
 - Supervisor state: distinct `Quant Research Supervisor Agent` identity, bounded `research_request`, handoff ledger,
   specialist artifact slots, structured blockers, structured errors, public status, and ordered `called_tools`.
-- Missing specialist evidence: absent Data, Math Coder, ML, Hypothesis, Evaluation, and Adversarial artifacts are
+- Missing specialist evidence: absent Data, Quantitative Methods, ML, Hypothesis, Evaluation, and Adversarial artifacts are
   explicit blockers when required; ML artifacts can be represented as optional when the request does not require them.
 - Boundary evidence: the supervisor does not call MCP tools, fetch raw bars, run backtests, invoke LLMs, mutate broker
   state, or import platform data/query modules. It consumes Data Agent artifact references and summaries only.
@@ -281,3 +281,103 @@ The tests use fake LLM clients and fake HTTP transports. They prove OpenRouter-s
 request construction without external network calls, plus policy-graph happy path, invalid tool rejection,
 missing-symbol blockers, provider-context mismatch, loading-policy refusal, loop limits, and missing-config fail-fast
 behavior.
+
+## Planned Knowledge-Backed Quantitative Methods Surface
+
+The Quantitative Methods Agent replaces the earlier Math Coder Agent identity. Its scope is deterministic,
+auditable quantitative methods rather than indicator coding alone. It owns method contracts, validation reports,
+statistical inference procedures, signal diagnostics, multiple-testing controls, approved method cards, citation
+validation, and optional parity-checked numerical kernels.
+
+The Quant Methods Knowledge Base is a `trader_research` service, not a separate autonomous agent in the first release.
+The vector index is retrieval infrastructure, not authority. The authority is the approved source registry plus
+approved method cards. Later, Evaluation and Supervisor may get read-only access to the same evidence layer.
+
+Knowledge artifacts:
+
+| Artifact | Purpose |
+| --- | --- |
+| `knowledge_source_manifest.json` | Source metadata, hash, access policy, topics, and citation. |
+| `knowledge_ingestion_report.json` | Ingestion run, parser version, chunks, warnings, and embedding model/version. |
+| `knowledge_chunk_manifest.json` | Chunk IDs, source IDs, locators, headings, hashes, and index status. |
+| `knowledge_embedding_manifest.json` | Embedding backend/model/version, dimension, created_at, and compatibility constraints. |
+| `method_card_draft.json` | Non-executable draft method summary from source evidence. |
+| `method_card.json` | Approved method card with assumptions, inputs, outputs, failure modes, and locators. |
+| `evidence_retrieval_report.json` | Retrieved evidence chunks for a request, query, method, and source set. |
+| `citation_validation_report.json` | Source ID, chunk ID, locator, method-card approval, and claim-coverage validation. |
+
+Initial knowledge MCP tools:
+
+| Tool | Side effect | Purpose |
+| --- | --- | --- |
+| `knowledge_register_source` | `local_mutating` | Register metadata, compute file hash, and create `knowledge_source_manifest.json`. |
+| `knowledge_ingest_documents` | `local_mutating` | Extract, chunk, embed, index, and produce ingestion/chunk/embedding manifests. |
+| `knowledge_get_ingestion_status` | `read_only` | Fetch source/ingestion status, warnings, parser details, and indexed chunk counts. |
+| `knowledge_list_sources` | `read_only` | List source manifests by topic, source type, method family, or status. |
+| `knowledge_search_methods` | `read_only` | Search approved method cards and optionally draft cards when policy permits. |
+| `knowledge_retrieve_evidence` | `read_only` | Retrieve citeable chunks for methods, assumptions, conventions, or tests. |
+| `knowledge_create_method_card_draft` | `local_mutating` | Create a non-approved draft method card from source evidence. |
+| `knowledge_publish_method_card` | `local_mutating` | Promote a draft to approved status with explicit maintainer/operator approval. |
+| `knowledge_validate_citations` | `read_only` | Validate source IDs, chunk IDs, locators, method-card approval, and claim coverage. |
+
+Knowledge guardrails:
+
+- Ingestion does not imply approval.
+- Retrieved chunks do not imply method support.
+- Draft method cards are not executable.
+- Sophisticated statistical methods must cite approved method cards.
+- Artifacts cite source IDs and locators rather than reproducing large source passages.
+- Knowledge tools must not expose arbitrary filesystem access or execute code from documents.
+- Embedding model and chunking configuration must be versioned.
+- Re-indexing should be reproducible for unchanged sources and config.
+
+Initial MCP tools:
+
+| Tool | Side effect | Purpose |
+| --- | --- | --- |
+| `math_list_method_contracts` | `read_only` | List maintained indicators, transforms, statistical tests, diagnostics, and multiple-testing methods. |
+| `math_validate_method_contract` | `read_only` | Validate parameters, input schema, warmup behavior, assumptions, fixture expectations, and failure modes. |
+
+Compatibility aliases may be kept during migration:
+
+| Alias | Canonical behavior |
+| --- | --- |
+| `math_list_indicator_contracts` | Calls `math_list_method_contracts` filtered to indicator/transform families. |
+| `math_validate_indicator_contract` | Calls `math_validate_method_contract` filtered to indicator/transform families. |
+
+Follow-on tools:
+
+| Tool | Side effect | Artifact |
+| --- | --- | --- |
+| `math_create_indicator_contract` | `local_mutating` | `indicator_contract.json` |
+| `math_run_indicator_fixtures` | `local_mutating` | `indicator_validation_report.json` |
+| `math_run_signal_diagnostics` | `local_mutating` | `signal_diagnostic_report.json` |
+| `math_run_multiple_testing_report` | `local_mutating` | `multiple_testing_report.json` |
+| `math_generate_cpp_kernel` | `local_mutating` | draft `cxx_kernel_manifest.json` from approved templates only |
+| `math_compile_kernel` | `local_mutating` | local build evidence for an approved deterministic kernel |
+| `math_run_python_cpp_parity` | `local_mutating` | `python_cpp_parity_report.json` |
+| `math_package_method_artifact` | `local_mutating` | `method_package_manifest.json` |
+
+The C++ path is template-restricted. Generated or maintained kernels must declare warmup, NaN, alignment, dtype, and
+lookahead policies; compile in an isolated local build directory; avoid broker, SQL, network, and live-trading access;
+and pass Python/C++ parity before downstream operational use.
+
+The first Quantitative Methods evidence should prove:
+
+```text
+knowledge_register_source
+knowledge_ingest_documents
+knowledge_get_ingestion_status
+knowledge_search_methods
+knowledge_retrieve_evidence
+knowledge_validate_citations
+math_list_method_contracts
+math_validate_method_contract
+  -> source manifests, ingestion reports, retrieved evidence, citation validation, and method metadata
+  -> declares agent_owner = Quantitative Methods Agent
+  -> records source IDs, locators, assumptions, fixture status, and failure modes
+```
+
+Stretch evidence should add method-card draft/publish, signal diagnostics, and multiple-testing reports that use
+approved method cards, record the declared candidate family, tested parameter grid, raw p-values, adjusted p-values,
+accepted/rejected candidates, warnings, and blockers.

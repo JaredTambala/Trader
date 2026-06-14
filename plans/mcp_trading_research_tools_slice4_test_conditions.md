@@ -33,7 +33,7 @@ reproducible command output.
 
 - No Slice 4 production code may expose raw SQL, arbitrary code execution, broker mutation, live trading, backtests,
   strategy execution, or LLM calls.
-- Do not register broad Quant Research, Math Coder, ML, Hypothesis, Evaluation, or Adversarial MCP tools in this slice.
+- Do not register broad Quant Research, Quantitative Methods, ML, Hypothesis, Evaluation, or Adversarial MCP tools in this slice.
   `server.list_tools()` should remain limited to support tools and Data Agent tools unless a compatibility test proves a
   temporary legacy command is intentionally outside the MCP surface.
 - `trader_agents` must not import `trader.data`, `trader.market_data_queries`, `trader_research.data`, or
@@ -122,7 +122,7 @@ reproducible command output.
   - robustness report reference
   - recommendation report reference
   - research verdict
-  - placeholders or reference types for hypothesis cards, indicator metadata/statistical reports, feature manifests,
+  - placeholders or reference types for hypothesis cards, deterministic method contracts/reports, feature manifests,
     model cards, prediction artifacts, and drift reports
 - Every handoff record must preserve:
   - producing `agent_owner`
@@ -161,8 +161,8 @@ reproducible command output.
 - Required tests:
   - graph construction imports cleanly
   - initial invocation records the bounded request and supervisor identity
-  - invocation with no specialist artifacts returns blockers for missing Data, Math Coder, Hypothesis, Evaluation, and
-    Adversarial evidence as appropriate for the request
+  - invocation with no specialist artifacts returns blockers for missing Data, Quantitative Methods, Hypothesis,
+    Evaluation, and Adversarial evidence as appropriate for the request
   - optional ML artifacts are represented distinctly from required artifacts
   - `called_tools` remains empty unless a future slice intentionally adds allowed supervisor MCP calls
   - boundary scan proves `src/trader_agents/quant_research.py` does not import platform data/query modules or
@@ -188,7 +188,7 @@ reproducible command output.
   - missing manifest, missing quality report, mismatched windows, unsupported artifact types, or forged non-Data-Agent
     owners are rejected with structured errors or blockers
   - Data Agent warnings are preserved in supervisor state
-  - supervisor still records missing Math Coder, Hypothesis, Evaluation, and Adversarial artifacts as blockers after
+  - supervisor still records missing Quantitative Methods, Hypothesis, Evaluation, and Adversarial artifacts as blockers after
     accepting the Data Agent handoff
 
 ## Full Slice 4 Evidence
@@ -227,7 +227,7 @@ git diff --check
 
 ## Out of Scope for Slice 4
 
-- New Math Coder, ML, Hypothesis, Evaluation, or Adversarial MCP tools.
+- New Quantitative Methods, ML, Hypothesis, Evaluation, or Adversarial MCP tools.
 - Strategy catalog, strategy candidate validation, backtest execution, attribution, evaluation reports, robustness
   reports, recommendations, or full experiment running.
 - LLM-backed planning, hidden scratchpads, or autonomous prompt routing.

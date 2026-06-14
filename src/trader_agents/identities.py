@@ -33,8 +33,9 @@ _ROLE_POLICIES = {
     "data_agent": (
         "Produce bounded dataset manifests, data-quality reports, and explicit load evidence without strategy verdicts."
     ),
-    "math_coder_agent": (
-        "Produce deterministic indicator and statistical-test artifacts without fetching data or making verdicts."
+    "quant_methods_agent": (
+        "Produce source-backed deterministic method, diagnostic, and statistical-inference artifacts without fetching "
+        "market data or making verdicts."
     ),
     "ml_agent": (
         "Produce feature, model, prediction, and drift artifacts without final trading recommendations."

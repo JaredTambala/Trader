@@ -9,7 +9,9 @@ and which agent features are planned next. It is a user-facing companion to the 
 The current MCP server is a deterministic local research-tool server. It exposes support tools plus a Data Agent
 workflow for bounded market-data inspection and explicit data loading. The LangGraph layer also includes a deterministic
 Quant Research Supervisor skeleton that consumes Data Agent artifact handoffs and records missing specialist evidence
-as blockers; it does not expose new MCP tools yet.
+as blockers; it does not expose new MCP tools yet. The planned Quantitative Methods Agent is the successor to the
+earlier Math Coder Agent naming and will be backed by a curated Quant Methods Knowledge Base for approved sources,
+method cards, retrieval evidence, and citation validation.
 
 Available tools:
 
@@ -285,7 +287,7 @@ The current user-facing workflow is intentionally narrow:
   runner is provided.
 - Data Agent outputs are embedded in envelopes; persisted research artifacts are planned but not part of the current
   MCP workflow.
-- The Quant Research Supervisor is an orchestration skeleton only. Math Coder, ML, Hypothesis, Evaluation, and
+- The Quant Research Supervisor is an orchestration skeleton only. Quantitative Methods, ML, Hypothesis, Evaluation, and
   Adversarial graphs are not implemented yet.
 
 ## Upcoming Features
@@ -297,7 +299,7 @@ Planned work after the current Data Agent slice:
 | Shared contracts | Move remaining legacy tool contracts into the research package boundary. |
 | Research helpers | Move research helper modules out of the core runtime package where appropriate. |
 | Quant Research Supervisor | Extend the skeleton to request specialist work and later synthesize evidenced recommendations. |
-| Math Coder Agent | List and validate indicator/stat-test contracts. |
+| Quantitative Methods Agent | Ingest curated method sources, approve source-backed method cards, validate citations, list and validate method contracts, run indicator fixtures, produce signal diagnostics, record multiple-testing controls, and optionally package parity-checked numerical kernels. |
 | ML Agent | Register and summarize feature, model, prediction, and drift artifacts. |
 | Hypothesis Agent | Create explicit hypothesis-card artifacts from known ingredients. |
 | Strategy research | List templates and validate strategy candidates before backtesting. |

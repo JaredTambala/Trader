@@ -27,7 +27,7 @@ that adds a specialist capability must prove two things:
 - the specialist LangGraph identity can use its allowed tools and hand the artifact back to the supervisor
 
 The supervisor may consume specialist artifacts and make orchestration decisions, but it must not fabricate Data,
-Math Coder, ML, Hypothesis, Evaluation, or Adversarial artifacts.
+Quantitative Methods, ML, Hypothesis, Evaluation, or Adversarial artifacts.
 
 ## Slice 1: First MCP Tool Evidence
 
@@ -227,43 +227,74 @@ Implemented evidence:
 - `tests/test_data_agent_llm_policy.py` covers the policy graph happy path, invalid tool rejection, missing-symbol
   blockers, provider-context mismatch, loading-policy refusal, loop limits, missing LLM config, and no raw prompt state.
 
-## Slice 5: Math Coder MCP Tool Creation
+## Slice 5: Knowledge-Backed Quantitative Methods MCP Tool Creation
 
-Goal: define and prove the first deterministic Math Coder tool surface before building its graph.
+Goal: define and prove the Quant Methods Knowledge Base plus the first deterministic Quantitative Methods tool surface
+before building its graph.
 
 Expected flow:
 
 ```text
-dataset manifest or fixture reference
-  -> math_list_indicator_contracts
-  -> math_validate_indicator_contract
+source document or fixture reference
+  -> knowledge_register_source
+  -> knowledge_ingest_documents
+  -> knowledge_get_ingestion_status
+  -> knowledge_search_methods
+  -> knowledge_retrieve_evidence
+  -> knowledge_validate_citations
+  -> math_list_method_contracts
+  -> math_validate_method_contract
 ```
 
 Owned artifacts:
 
-- indicator metadata
-- indicator test report
-- statistical-test report, when applicable
+- `knowledge_source_manifest.json`
+- `knowledge_ingestion_report.json`
+- `knowledge_chunk_manifest.json`
+- `knowledge_embedding_manifest.json`
+- `method_card_draft.json`
+- `method_card.json`
+- `evidence_retrieval_report.json`
+- `citation_validation_report.json`
+- `indicator_contract.json`
+- `statistical_test_contract.json`
+- `indicator_validation_report.json`
+- `signal_diagnostic_report.json`
+- `multiple_testing_report.json`
+- optional `cxx_kernel_manifest.json`
+- optional `python_cpp_parity_report.json`
+- `method_package_manifest.json`
 
 Evidence:
 
-- MCP returns maintained indicator contracts without importing arbitrary code.
-- Validation fails closed for unsupported indicators or parameter shapes.
+- MCP registers and ingests bounded local Markdown/text/PDF sources without arbitrary filesystem access.
+- The vector index is retrieval infrastructure; approved source manifests and method cards are the authority.
+- Draft method cards are not executable by method-contract tools.
+- Citation validation fails closed for unknown source IDs, invalid locators, unapproved method cards, or unsupported
+  claims.
+- MCP returns maintained method contracts without importing arbitrary code.
+- Validation fails closed for unsupported methods or parameter shapes.
+- Fixture evidence records warmup behavior, NaN policy, output schema, alignment, no-lookahead metadata, and failure
+  modes.
+- Signal diagnostics and multiple-testing reports record candidate family size, tested parameter grid, raw p-values,
+  adjusted p-values, warnings, and blockers before any winning configuration is promoted.
 
-## Slice 6: Math Coder Agent Identity
+## Slice 6: Knowledge-Aware Quantitative Methods Agent Identity
 
-Goal: create the Math Coder LangGraph identity after the first Math Coder MCP tools exist.
+Goal: create the Quantitative Methods LangGraph identity after the first knowledge and method MCP tools exist.
 
 Expected flow:
 
 ```text
-Math Coder graph starts
-  -> graph calls allowed Math Coder MCP tools
-  -> graph returns indicator metadata/test report artifact references
+Quantitative Methods graph starts
+  -> graph calls allowed knowledge_* and math_* MCP tools
+  -> graph blocks unsupported or uncited sophisticated methods
+  -> graph returns method artifact refs plus retrieval/citation refs
   -> supervisor records the handoff
 ```
 
-The Math Coder Agent cannot fetch market data directly or make research verdicts.
+The Quantitative Methods Agent cannot fetch market data directly, create hypotheses, train ML models, run backtests, or
+make research verdicts.
 
 ## Slice 7: ML MCP Tool Creation
 
@@ -272,7 +303,7 @@ Goal: define model-artifact and feature-artifact contracts before any ML graph t
 Expected flow:
 
 ```text
-dataset manifest + data-quality report + indicator artifacts
+dataset manifest + data-quality report + deterministic method artifacts
   -> ml_create_feature_manifest
   -> ml_summarize_model_artifact
 ```
@@ -304,7 +335,8 @@ The ML Agent cannot produce final trading recommendations.
 
 ## Slice 9: Hypothesis MCP Tool Creation
 
-Goal: create the first Hypothesis Agent tool after Data, Math Coder, and optional ML ingredient contracts are explicit.
+Goal: create the first Hypothesis Agent tool after Data, Quantitative Methods, and optional ML ingredient contracts are
+explicit.
 
 Expected flow:
 

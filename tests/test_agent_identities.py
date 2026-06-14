@@ -62,7 +62,7 @@ def test_agent_registry_keys_and_display_names_are_unique() -> None:
     assert set(display_names) == {
         "Quant Research Supervisor Agent",
         "Data Agent",
-        "Math Coder Agent",
+        "Quantitative Methods Agent",
         "ML Agent",
         "Hypothesis Agent",
         "Evaluation Agent",
@@ -73,3 +73,19 @@ def test_agent_registry_keys_and_display_names_are_unique() -> None:
 def test_agent_lookup_accepts_key_or_display_name() -> None:
     assert get_agent_definition("data_agent").display_name == "Data Agent"
     assert get_agent_definition("Data Agent").key == "data_agent"
+    assert get_agent_definition("Math Coder Agent").display_name == "Quantitative Methods Agent"
+    assert get_agent_definition("quant_methods_agent").display_name == "Quantitative Methods Agent"
+
+
+def test_quantitative_methods_tool_owner_and_identity_use_method_contract_tools() -> None:
+    identity = build_agent_identity("Quantitative Methods Agent")
+
+    assert identity.agent_key == "quant_methods_agent"
+    assert identity.display_name == "Quantitative Methods Agent"
+    assert "knowledge_search_methods" in identity.tool_allowlist
+    assert "knowledge_validate_citations" in identity.tool_allowlist
+    assert "math_list_method_contracts" in identity.tool_allowlist
+    assert "math_validate_method_contract" in identity.tool_allowlist
+    assert agent_owner_for_tool("knowledge_retrieve_evidence") == "Quantitative Methods Agent"
+    assert agent_owner_for_tool("math_list_method_contracts") == "Quantitative Methods Agent"
+    assert agent_owner_for_tool("math_list_indicator_contracts") == "Quantitative Methods Agent"

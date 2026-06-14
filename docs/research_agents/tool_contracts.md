@@ -104,8 +104,25 @@ These tools are implemented first because the Data Agent owns the ingredients th
 
 | Tool | Owning agent | Primary artifact |
 | --- | --- | --- |
-| `math_list_indicator_contracts` | Math Coder Agent | indicator/stat-test contract catalog |
-| `math_validate_indicator_contract` | Math Coder Agent | indicator/stat-test validation report |
+| `knowledge_register_source` | Quantitative Methods Agent | `knowledge_source_manifest.json` |
+| `knowledge_ingest_documents` | Quantitative Methods Agent | `knowledge_ingestion_report.json`, `knowledge_chunk_manifest.json`, `knowledge_embedding_manifest.json` |
+| `knowledge_get_ingestion_status` | Quantitative Methods Agent | source and ingestion status summary |
+| `knowledge_list_sources` | Quantitative Methods Agent | source manifest listing |
+| `knowledge_search_methods` | Quantitative Methods Agent | approved method-card search result |
+| `knowledge_retrieve_evidence` | Quantitative Methods Agent | `evidence_retrieval_report.json` |
+| `knowledge_create_method_card_draft` | Quantitative Methods Agent | `method_card_draft.json` |
+| `knowledge_publish_method_card` | Quantitative Methods Agent | approved `method_card.json` |
+| `knowledge_validate_citations` | Quantitative Methods Agent | `citation_validation_report.json` |
+| `math_list_method_contracts` | Quantitative Methods Agent | method contract catalog for indicators, transforms, statistical tests, diagnostics, and multiple-testing procedures |
+| `math_validate_method_contract` | Quantitative Methods Agent | method contract validation report |
+| `math_create_indicator_contract` | Quantitative Methods Agent | `indicator_contract.json` |
+| `math_run_indicator_fixtures` | Quantitative Methods Agent | `indicator_validation_report.json` |
+| `math_run_signal_diagnostics` | Quantitative Methods Agent | `signal_diagnostic_report.json` |
+| `math_run_multiple_testing_report` | Quantitative Methods Agent | `multiple_testing_report.json` |
+| `math_generate_cpp_kernel` | Quantitative Methods Agent | draft `cxx_kernel_manifest.json` from an approved template |
+| `math_compile_kernel` | Quantitative Methods Agent | local compiled-kernel build evidence |
+| `math_run_python_cpp_parity` | Quantitative Methods Agent | `python_cpp_parity_report.json` |
+| `math_package_method_artifact` | Quantitative Methods Agent | `method_package_manifest.json` |
 | `ml_create_feature_manifest` | ML Agent | `feature_dataset_manifest.json` |
 | `ml_summarize_model_artifact` | ML Agent | model card, prediction, or drift artifact summary |
 | `hypothesis_create_card` | Hypothesis Agent | `hypothesis_card.json` |
@@ -120,6 +137,26 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | `research_generate_recommendation` | Quant Research Supervisor Agent | recommendation report |
 | `research_run_experiment` | Quant Research Supervisor Agent | composed experiment output |
 
+Compatibility aliases may be kept while the older Math Coder naming is retired:
+
+| Alias | Canonical tool |
+| --- | --- |
+| `math_list_indicator_contracts` | `math_list_method_contracts` filtered to indicator and transform families |
+| `math_validate_indicator_contract` | `math_validate_method_contract` filtered to indicator and transform families |
+
+The `math_*` namespace is a tool namespace, not a claim that the agent is limited to coding indicators. The owning
+identity is Quantitative Methods Agent.
+
+Knowledge-base rules:
+
+- The vector index is retrieval infrastructure, not authority.
+- The authority is the approved source registry plus approved method cards.
+- Ingestion does not imply approval; `method_card_draft.json` is not executable.
+- Sophisticated statistical-test and multiple-testing contracts must cite approved method cards and pass
+  `knowledge_validate_citations`.
+- Knowledge tools must not expose arbitrary filesystem access, execute code from documents, or reproduce large source
+  passages in artifacts.
+
 ## LangGraph Use
 
 Each LangGraph agent has its own identity, state schema, role policy, tool allowlist, and required output artifact.
@@ -132,7 +169,7 @@ Minimal allowlists:
 | --- | --- |
 | Data Agent | `data_get_inventory`, `data_summarize_quality`, `data_ensure_loaded`, read-only health/config |
 | Quant Research Supervisor Agent | Specialist artifact reads, supervisor handoff tools, `research_*` tools |
-| Math Coder Agent | `math_list_indicator_contracts`, `math_validate_indicator_contract` |
+| Quantitative Methods Agent | `knowledge_*` retrieval/ingestion/citation tools, `math_list_method_contracts`, `math_validate_method_contract`, later fixture, diagnostic, multiple-testing, kernel, parity, and method-packaging tools |
 | ML Agent | `ml_create_feature_manifest`, `ml_summarize_model_artifact` |
 | Hypothesis Agent | Ingredient artifact reads, `hypothesis_create_card` |
 | Evaluation Agent | Data/backtest artifact reads, `evaluation_generate_report` |

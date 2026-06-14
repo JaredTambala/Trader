@@ -8,10 +8,13 @@ from trader_research.contracts import SideEffect
 from trader_research.domain import (
     DATA_QUALITY_REPORT,
     DATASET_MANIFEST,
+    CITATION_VALIDATION_REPORT,
+    EVIDENCE_RETRIEVAL_REPORT,
     EVALUATION_REPORT,
     FEATURE_MANIFEST,
     HYPOTHESIS_CARD,
     INDICATOR_METADATA,
+    METHOD_CARD,
     MODEL_CARD,
     ROBUSTNESS_REPORT,
     STATISTICAL_TEST_REPORT,
@@ -92,6 +95,9 @@ def test_domain_validation_rejects_missing_bounds_and_bad_handoffs() -> None:
 def test_planned_artifact_reference_types_are_json_safe() -> None:
     refs = [
         artifact_report_ref(HYPOTHESIS_CARD, "hypothesis_demo"),
+        artifact_report_ref(METHOD_CARD, "method_card_demo"),
+        artifact_report_ref(EVIDENCE_RETRIEVAL_REPORT, "evidence_demo"),
+        artifact_report_ref(CITATION_VALIDATION_REPORT, "citation_demo"),
         artifact_report_ref(INDICATOR_METADATA, "indicator_demo"),
         artifact_report_ref(STATISTICAL_TEST_REPORT, "stat_demo"),
         artifact_report_ref(FEATURE_MANIFEST, "feature_demo"),
@@ -103,8 +109,11 @@ def test_planned_artifact_reference_types_are_json_safe() -> None:
     payload = [ref.to_dict() for ref in refs]
 
     assert payload[0]["agent_owner"] == "Hypothesis Agent"
-    assert payload[1]["agent_owner"] == "Math Coder Agent"
-    assert payload[3]["agent_owner"] == "ML Agent"
-    assert payload[5]["agent_owner"] == "Evaluation Agent"
-    assert payload[6]["agent_owner"] == "Adversarial Agent"
+    assert payload[1]["agent_owner"] == "Quantitative Methods Agent"
+    assert payload[2]["agent_owner"] == "Quantitative Methods Agent"
+    assert payload[3]["agent_owner"] == "Quantitative Methods Agent"
+    assert payload[4]["agent_owner"] == "Quantitative Methods Agent"
+    assert payload[6]["agent_owner"] == "ML Agent"
+    assert payload[8]["agent_owner"] == "Evaluation Agent"
+    assert payload[9]["agent_owner"] == "Adversarial Agent"
     json.dumps(payload)

@@ -9,7 +9,8 @@ The key design principle is:
 
 MCP tools provide deterministic capabilities. LangGraph provides agent identity, state, tool allowlists, and
 supervision. The Quant Research Supervisor Agent is the overarching supervisor graph for research workflows, but it
-does not own the specialist artifacts produced by Data, Math Coder, ML, Hypothesis, Evaluation, or Adversarial agents.
+does not own the specialist artifacts produced by Data, Quantitative Methods, ML, Hypothesis, Evaluation, or
+Adversarial agents.
 
 No research agent controls the live trading hot path.
 
@@ -20,17 +21,21 @@ The research system is a supervised hierarchy:
 ```text
 Quant Research Supervisor Agent
   -> Data Agent
-  -> Math Coder Agent
+  -> Quantitative Methods Agent
   -> ML Agent
   -> Hypothesis Agent
   -> Evaluation Agent
   -> Adversarial Agent
 ```
 
+The Quantitative Methods Agent replaces the earlier "Math Coder Agent" role. Existing implementation plans, file names,
+or compatibility aliases may still use the `math_*` namespace during migration, but the agent identity and artifact
+boundary should be understood as deterministic quantitative methods rather than narrow indicator coding.
+
 The Quant Research Supervisor coordinates the loop, requests specialist work, consumes specialist artifacts, and
 produces final research synthesis. It must not forge or bypass specialist outputs. If a workflow needs data evidence,
-indicator evidence, model evidence, hypothesis cards, critique, or robustness reports, the supervisor routes to the
-agent that owns that artifact.
+deterministic method evidence, model evidence, hypothesis cards, critique, or robustness reports, the supervisor routes
+to the agent that owns that artifact.
 
 ## Agent Map
 
@@ -38,7 +43,7 @@ agent that owns that artifact.
 | --- | --- | --- | --- |
 | Quant Research Supervisor Agent | Research orchestration, experiment planning, synthesis, recommendation state | Experiment plans, research suites, comparison reports, recommendation reports | Raw data fetching, low-level indicator/model implementation, critique artifacts, robustness reports |
 | Data Agent | Market data acquisition and quality | Dataset manifests and data-quality reports | Strategy ideas, indicators, models, verdicts |
-| Math Coder Agent | Deterministic indicators and statistical tests | Indicator code, indicator metadata, statistical-test reports | Data fetching, broad research orchestration, promotion decisions |
+| Quantitative Methods Agent | Source-backed deterministic quantitative methods: indicators, transforms, statistical tests, signal diagnostics, multiple-testing controls, method cards, citation validation, and optional compiled kernels | Knowledge manifests, method cards, method contracts, validation reports, signal diagnostic reports, multiple-testing reports, kernel manifests, parity reports | Data fetching, strategy ideas, model training, broad research orchestration, promotion decisions |
 | ML Agent | Feature datasets, models, predictions, drift monitoring | Feature manifests, model cards, prediction artifacts, drift reports | Final trading recommendations |
 | Hypothesis Agent | Strategy ideas | Hypothesis cards | Backtest verdicts, promotion decisions |
 | Evaluation Agent | Research critique | Evaluation reports | New strategy ideas, final recommendations |
@@ -76,8 +81,8 @@ Responsibilities:
 
 - Accept a research request and decompose it into specialist work.
 - Request dataset manifests and quality reports from the Data Agent.
-- Request indicator/statistical-test artifacts from the Math Coder Agent when deterministic research logic is missing
-  or needs verification.
+- Request deterministic method, diagnostic, and statistical-inference artifacts from the Quantitative Methods Agent when
+  research logic is missing or needs verification.
 - Request feature, model, prediction, or drift artifacts from the ML Agent when a hypothesis depends on model output.
 - Request hypothesis cards from the Hypothesis Agent.
 - Convert accepted hypotheses into bounded experiment plans and research suites.
@@ -89,7 +94,8 @@ Responsibilities:
 Inputs:
 
 - Dataset manifests and data-quality reports.
-- Indicator metadata, indicator observations, and statistical-test reports.
+- Method contracts, method cards, retrieval/citation evidence, indicator observations, signal diagnostics,
+  multiple-testing reports, and statistical-test reports.
 - Feature manifests, model cards, prediction artifacts, and drift reports.
 - Hypothesis cards.
 - Experiment plans, backtest results, attribution summaries, evaluation reports, and robustness reports.
@@ -107,7 +113,8 @@ Outputs:
 Boundaries:
 
 - Does not fetch raw data directly when Data Agent tools can produce the required artifacts.
-- Does not hand-code low-level indicators when Math Coder Agent should own them.
+- Does not hand-code low-level indicators or deterministic method logic when the Quantitative Methods Agent should own
+  them.
 - Does not train models when ML Agent should own them.
 - Does not invent critique or robustness artifacts.
 - Does not bypass Evaluation or Adversarial review for promotion readiness.
@@ -147,40 +154,84 @@ Boundaries:
 - Does not train models.
 - Does not mutate broker state.
 
-## Math Coder Agent
+## Quantitative Methods Agent
 
-Mission: turn research math into auditable deterministic indicators and statistical tests.
+Mission: turn research math into source-backed, auditable deterministic methods, statistical inference procedures, and
+operational numerical kernels.
+
+Legacy name: Math Coder Agent. The legacy name may remain in historical plans, compatibility aliases, or transitional
+file names, but new agent-facing documentation should use Quantitative Methods Agent.
 
 Responsibilities:
 
-- Implement indicators such as SMA, EMA, MACD, Bollinger Bands, RSI, z-score, spread, rolling volatility, and drawdown
-  transforms.
-- Define indicator metadata: name, version, parameters, lookback, input schema, output schema, and warmup behavior.
-- Write unit tests against small known input/output examples.
-- Implement statistical tests such as correlation, stationarity checks, bootstrap confidence intervals, parameter
-  sensitivity, and hypothesis tests.
-- Make indicator observations independently inspectable.
+- Define deterministic method contracts for indicators, transforms, statistical tests, signal diagnostics,
+  multiple-testing controls, and numerical kernels.
+- Maintain and query a curated Quant Methods Knowledge Base for approved sources, source manifests, locator-preserving
+  chunks, method cards, evidence retrieval reports, and citation-validation reports.
+- Treat the vector store as retrieval infrastructure, not as authority. The authority is the approved source registry
+  plus approved method cards.
+- Implement and validate maintained indicators such as SMA, EMA, MACD, Bollinger Bands, RSI, z-score, spread, rolling
+  volatility, drawdown, cross-sectional ranks, and regime/session-aware transforms.
+- Define method metadata: name, version, family, parameters, lookback, warmup behavior, input schema, output schema,
+  NaN/inf policy, dtype policy, alignment, and no-lookahead guarantee.
+- Write deterministic fixture tests against small known input/output examples and seeded generated cases.
+- Implement statistical methods such as correlation and rank IC, stationarity checks, dependence-aware bootstrap
+  confidence intervals, HAC-style standard errors, parameter sensitivity, and hypothesis tests.
+- Produce signal diagnostics such as IC, rank IC, hit rate, quantile monotonicity, forward-return decay, horizon
+  sensitivity, turnover proxy, and symbol/session/regime breakdowns.
+- Produce multiple-testing and data-snooping controls that record candidate families, parameter grids, raw p-values,
+  adjusted p-values, selection rules, accepted/rejected candidates, warnings, and blockers.
+- Require approved method-card references and passing citation validation for sophisticated statistical-test and
+  multiple-testing contracts. Simple maintained arithmetic transforms may be allowed from the maintained registry
+  without external retrieval.
+- Own optional template-restricted C++ kernel artifacts and Python/C++ parity reports for deterministic methods.
+- Make method outputs independently inspectable and reproducible.
 
 Inputs:
 
-- Bar windows or dataset references.
-- Existing indicator contracts.
+- Dataset manifests and data-quality report references.
+- Approved method cards, retrieved evidence reports, and citation-validation reports.
+- Existing method contracts.
+- Indicator observations or deterministic method output references.
+- Forward-return label references when running signal diagnostics.
+- Declared candidate-family manifests when running multiple-testing controls.
 - Requested mathematical definition.
 - Test fixtures or expected values.
+- Optional approved C++ template references.
 
 Outputs:
 
-- Indicator implementation.
-- Indicator metadata.
-- Indicator observation schema.
-- Indicator test reports.
-- Statistical-test reports.
+- `indicator_contract.json`.
+- `statistical_test_contract.json`.
+- `indicator_validation_report.json`.
+- `signal_diagnostic_report.json`.
+- `multiple_testing_report.json`.
+- `cxx_kernel_manifest.json`.
+- `python_cpp_parity_report.json`.
+- `method_package_manifest.json`.
+- `knowledge_source_manifest.json`.
+- `knowledge_ingestion_report.json`.
+- `knowledge_chunk_manifest.json`.
+- `knowledge_embedding_manifest.json`.
+- `method_card_draft.json`.
+- `method_card.json`.
+- `evidence_retrieval_report.json`.
+- `citation_validation_report.json`.
 
 Boundaries:
 
 - Does not fetch market data.
+- Does not generate strategy hypotheses.
+- Does not train fitted ML models or own prediction artifacts.
 - Does not run broad research campaigns.
 - Does not make final promotion decisions.
+- Does not emit arbitrary runtime code or compiled kernels outside approved templates and parity checks.
+- Does not use unresolved data-quality warnings, undeclared candidate families, or unadjusted search results as proof of
+  alpha.
+- Does not create production method contracts from unapproved method cards, uncited retrieved chunks, or invalid
+  locators.
+- Does not expose arbitrary filesystem access, execute code from documents, or reproduce large source passages in
+  artifacts.
 
 ## ML Agent
 
@@ -201,7 +252,7 @@ Inputs:
 
 - Dataset manifests.
 - Data-quality reports.
-- Indicator outputs.
+- Deterministic method outputs and indicator observations.
 - Feature definitions.
 - Training and validation windows.
 
@@ -232,7 +283,7 @@ Mission: generate candidate strategy hypotheses from available ingredients.
 
 Responsibilities:
 
-- Read known indicators, model outputs, market regimes, and prior experiment results.
+- Read known deterministic method outputs, model outputs, market regimes, and prior experiment results.
 - Propose strategy ideas in explicit, testable form.
 - Attach expected mechanism, required features, target regime, data requirements, and falsification criteria.
 - Avoid vague ideas that cannot be converted into a bounded experiment suite.
@@ -334,7 +385,7 @@ The intended operating loop is:
 
 1. Quant Research Supervisor accepts a bounded research request.
 2. Data Agent produces a dataset manifest and data-quality report.
-3. Math Coder Agent produces or verifies deterministic indicators and statistical tests.
+3. Quantitative Methods Agent produces or verifies deterministic methods, diagnostics, and statistical tests.
 4. ML Agent produces model-backed features, predictions, and drift reports when needed.
 5. Hypothesis Agent proposes strategy hypotheses.
 6. Quant Research Supervisor converts accepted hypotheses into bounded research suites.
@@ -351,7 +402,7 @@ The intended operating loop is:
 | --- | --- | --- |
 | Research request decomposition | Supervisor graph state and handoffs | Quant Research Supervisor Agent |
 | Data inventory and quality | `data_get_inventory`, `data_summarize_quality`, `data_ensure_loaded` | Data Agent |
-| Indicator/stat-test verification | planned Math Coder tools | Math Coder Agent |
+| Knowledge-backed method contracts, diagnostics, and multiple-testing verification | planned `knowledge_*` and `math_*` tools | Quantitative Methods Agent |
 | Feature/model/drift artifacts | planned ML tools | ML Agent |
 | Hypothesis card creation | `hypothesis_create_card` | Hypothesis Agent |
 | Strategy catalog and validation | `research_list_strategy_templates`, `research_validate_strategy_candidate` | Quant Research Supervisor Agent |
@@ -364,7 +415,9 @@ The intended operating loop is:
 ## Future Work
 
 - Add a dataset manifest registry for the Data Agent.
-- Add first-class indicator metadata and observation export for the Math Coder Agent.
+- Add first-class knowledge source manifests, approved method cards, citation-validation reports, method contracts,
+  signal diagnostics, multiple-testing reports, and optional parity-checked numerical kernels for the Quantitative
+  Methods Agent.
 - Add feature dataset, model card, prediction, and drift schemas for the ML Agent.
 - Add `hypothesis_card.json`, `evaluation_report.json`, and `robustness_report.json` schemas.
 - Extend research suite generation so it consumes hypothesis cards and robustness plans.

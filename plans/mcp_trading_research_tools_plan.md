@@ -49,7 +49,7 @@ trader_agents
 
 ## Current Repository Signals
 
-- `docs/research_agents/agent_operating_model.md` defines a supervisor hierarchy. This plan should preserve that boundary: Data Agent tools produce dataset manifests and data-quality reports; Math Coder tools produce indicator/stat-test artifacts; ML tools produce feature/model/prediction artifacts; Hypothesis tools produce hypothesis cards; Quant Research Supervisor tools consume those artifacts and produce experiment/comparison/recommendation artifacts; Evaluation and Adversarial tools produce critique and robustness reports.
+- `docs/research_agents/agent_operating_model.md` defines a supervisor hierarchy. This plan should preserve that boundary: Data Agent tools produce dataset manifests and data-quality reports; Quantitative Methods tools produce deterministic method contracts, validation reports, signal diagnostics, multiple-testing reports, and optional parity-checked kernel artifacts; ML tools produce feature/model/prediction artifacts; Hypothesis tools produce hypothesis cards; Quant Research Supervisor tools consume those artifacts and produce experiment/comparison/recommendation artifacts; Evaluation and Adversarial tools produce critique and robustness reports.
 - `src/trader/research.py` currently contains useful research helper behavior, but it is misplaced in the core platform package and should be moved or re-created under `src/trader_research/`.
 - `src/trader/tools/` currently contains useful tool-facing behavior, but it is also misplaced in the core platform package and should be moved or re-created under `src/trader_research/` or `src/trader_mcp/` depending on whether the code is research-domain logic or MCP transport logic.
 - Existing backtest entry points are centered on `trader.backtest.BacktestRunner`, `BacktestSpec`, `BacktestAssumptions`, and export helpers.
@@ -90,7 +90,7 @@ This plan follows `docs/research_agents/agent_operating_model.md`: agents are im
 | --- | --- | --- |
 | Quant Research Supervisor Agent | Supervisor state, handoff ledger, strategy planning, validation, backtest orchestration, recommendations | experiment plans, suites, comparison reports, recommendation reports |
 | Data Agent | Symbol discovery/preflight, data inventory, data quality, explicit load/backfill | `symbol_discovery_report.json`, `dataset_manifest.json`, `data_quality_report.json`, load result envelopes |
-| Math Coder Agent | Indicator/stat-test contract listing and validation | indicator metadata, indicator test reports, statistical-test reports |
+| Quantitative Methods Agent | Knowledge-backed method contract listing, validation, signal diagnostics, multiple-testing controls, and optional numerical kernel packaging | source manifests, method cards, retrieval/citation reports, method contracts, validation reports, signal diagnostics, multiple-testing reports, kernel manifests, parity reports |
 | ML Agent | Feature/model artifact registration and summary | feature manifests, model cards, prediction artifacts, drift reports |
 | Hypothesis Agent | Hypothesis-card creation from available ingredients | `hypothesis_card.json` |
 | Evaluation Agent | Skeptical review of data and research evidence | `evaluation_report.json` |
@@ -109,7 +109,7 @@ LangGraph is the identity and orchestration layer for agents. MCP is the tool bo
 | Evaluation Agent | Owns `EvaluationState` and skeptical critique policy. | May read data/backtest artifacts and call evaluation tools; cannot create new hypotheses or mutate data. |
 | Adversarial Agent | Owns `AdversarialState` and robustness attack policy. | May call robustness tools against supplied baseline artifacts; cannot recommend promotion. |
 | Hypothesis Agent | Owns `HypothesisState` and hypothesis-card generation policy. | May read known ingredients and prior results; cannot run backtests or make verdicts. |
-| Math Coder Agent | Owns `MathCoderState` and indicator/stat-test implementation policy. | May call Math Coder tools for indicator/stat-test artifacts; cannot fetch data or promote strategies. |
+| Quantitative Methods Agent | Owns `QuantMethodsState`, knowledge source/card/retrieval/citation state, method-contract state, validation status, diagnostic state, multiple-testing state, optional kernel/parity state, and optional bounded LLM control decisions. | May call only Quantitative Methods `knowledge_*` and `math_*` tools plus read-only health/config tools; cannot fetch data, create hypotheses, train models, run backtests, or promote strategies. |
 | ML Agent | Owns `MLAgentState` and model-artifact policy. | May call ML tools for feature/model/prediction/drift artifacts; cannot produce final trading recommendations. |
 
 The first LangGraph evidence should be the Data Agent graph calling `data_get_inventory` through the MCP client and returning a dataset manifest-style artifact reference or envelope. Do not wait for all planned MCP tools before creating the first LangGraph identity.
@@ -130,7 +130,7 @@ MCP server boots
   -> Data Agent explicit loading/backfill tool works
   -> Data Agent LLM control loop turns natural-language data requests into validated Data Agent tool calls
   -> Quant Research Supervisor identity consumes Data Agent artifacts
-  -> Math Coder tool and identity produce indicator/stat-test artifacts
+  -> Quantitative Methods knowledge/method tools and identity produce source-backed deterministic method artifacts
   -> ML tool and identity produce model-artifact references
   -> Hypothesis tool and identity produce hypothesis cards
   -> Quant Research Supervisor LLM control loop assesses state and chooses validated next actions
@@ -178,10 +178,21 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 22F. Provider Catalog Adapters | Done | `tests/test_alpaca_symbol_provider.py`; `tests/test_data_symbol_discovery.py`; `uv run pytest -m 'not postgres'` | Provider catalog discovery is policy-gated; fake provider injection and the Alpaca read-only asset-listing adapter are tested without network calls or broker mutation APIs. |
 | 22G. Symbol Discovery Documentation and Evidence | Done | `docs/research_agents/mcp_trading_research_tools.md`; `docs/research_agents/ai_tool_workflows.md`; `plans/data_agent_symbol_discovery_tool_plan.md`; `uv run pytest -m 'not postgres'` | Docs describe provider-scoped stock/crypto discovery, provider/instrument/bar selection, mandatory preflight, provider policy, and discovery versus inventory/loading/backtest behavior. |
 | 22H. Data Agent LLM Control Loop | Done | `tests/test_llm_client.py`; `tests/test_data_agent_llm_policy.py`; `tests/test_langgraph_agents.py`; `tests/test_langgraph_data_workflow.py`; `uv run pytest tests/test_langgraph_agents.py tests/test_langgraph_data_workflow.py tests/test_data_agent_llm_policy.py tests/test_llm_client.py` | Provider-neutral LLM client boundary, runtime OpenAI-compatible/OpenRouter-style and Ollama-style adapters, fake LLM test client, bounded Data Agent LLM policy graph, deterministic action router, mandatory discovery enforcement, provider-context validation, loading policy checks, loop limit, missing-config fail-fast behavior, and no raw prompt/scratchpad state persistence are implemented. |
-| 23. Math Coder Tool Contracts | Not started |  |  |
-| 24. Register Math Coder MCP Tools | Not started |  |  |
-| 25. Math Coder Agent Graph | Not started |  |  |
-| 26. Supervisor Consumes Math Coder Handoff | Not started |  |  |
+| 23A. Quant Methods Knowledge Domain Schemas | Not started |  | Define knowledge source, ingestion, chunk, embedding, method-card, retrieval, and citation-validation artifact schemas. |
+| 23B. Knowledge Source Registration | Not started |  | Register local documents/artifact refs with source metadata, file hashes, access policy, duplicate detection, and allowed-directory checks. |
+| 23C. Knowledge Text Extraction and Chunking | Not started |  | Extract PDF/Markdown/text sources and create deterministic locator-preserving chunks without silent OCR. |
+| 23D. Knowledge Embedding and Indexing Service | Not started |  | Add fake deterministic embeddings for tests plus searchable indexed chunks with relational metadata filters. |
+| 23E. Knowledge Ingestion MCP Tools | Not started |  | Register source, ingest documents, and get ingestion status through shared envelopes. |
+| 23F. Method Card Drafting and Approval | Not started |  | Create draft method cards from source evidence and publish approved immutable method-card versions only with explicit approval. |
+| 23G. Knowledge Retrieval and Citation Validation MCP Tools | Not started |  | Search approved method cards, retrieve citeable evidence chunks, and validate source IDs, locators, and claim coverage. |
+| 23H. Knowledge-Backed Math Method Domain Schemas | Not started |  | Define method contracts/reports with knowledge evidence refs required for sophisticated statistical methods. |
+| 23I. Knowledge-Backed Math Method Registry | Not started |  | Link non-trivial statistical methods to approved method cards; keep unsupported methods fail-closed and legacy indicator filters. |
+| 23J. Indicator Contract and Fixture Validation | Not started |  | Validate deterministic indicator/transform parameters, warmup, NaN policy, output schema, no-lookahead metadata, and fixture behavior. |
+| 23K. Signal Diagnostics and Multiple-Testing Reports | Not started |  | Produce signal diagnostics and family-level inference reports with approved method-card references where required. |
+| 23L. C++ Kernel Path | Not started |  | Add template-restricted local kernel generation/compile/parity artifact flow for approved deterministic transforms. |
+| 24. Register Quantitative Methods MCP Tools | Not started |  |  |
+| 25. Quantitative Methods Agent Graph | Not started |  |  |
+| 26. Supervisor Consumes Quantitative Methods Handoff | Not started |  |  |
 | 27. ML Artifact Tool Contracts | Not started |  |  |
 | 28. Register ML MCP Tools | Not started |  |  |
 | 29. ML Agent Graph | Not started |  |  |
@@ -227,7 +238,24 @@ src/trader_research/
   domain.py              # ExperimentPlan, Experiment, StrategyCandidate, reports, verdicts
   contracts.py           # ToolEnvelope, side-effect declarations, shared JSON helpers
   data.py                # Data Agent inventory, manifests, quality, and loading wrappers
-  math_tools.py          # Math Coder indicator/stat-test contracts and validation
+  math_domain.py         # Quantitative Methods artifact schemas and validation
+  math_registry.py       # Maintained method registry and approved families
+  math_tools.py          # Quantitative Methods service wrappers and envelopes
+  signal_diagnostics.py  # IC, rank IC, hit-rate, quantile, decay, and breakdown reports
+  multiple_testing.py    # Multiple-testing and data-snooping controls
+  cpp_kernel_artifacts.py # Template-restricted compiled-kernel manifests and parity reports
+  knowledge/
+    __init__.py
+    domain.py            # Source, chunk, embedding, method-card, retrieval, and citation schemas
+    sources.py           # Source registration and metadata validation
+    extractors.py        # PDF, Markdown, and text extraction adapters
+    chunking.py          # Chunk creation and locator preservation
+    embeddings.py        # Embedding provider protocol plus local/test implementations
+    index.py             # Vector index and relational metadata access
+    retrieval.py         # Method-card search and evidence retrieval services
+    citation_validation.py # Source/locator/method-card coverage checks
+    method_cards.py      # Draft and publish method-card workflow
+    ingestion.py         # End-to-end ingestion orchestration
   ml.py                  # ML feature/model/prediction/drift artifact contracts and summaries
   hypotheses.py          # Hypothesis-card creation and validation
   strategies.py          # Template listing and candidate validation
@@ -245,6 +273,7 @@ src/trader_research/
 src/trader_mcp/
   __init__.py
   server.py              # MCP server factory and tool registration
+  knowledge_tools.py     # MCP registrations/adapters for Quant Methods knowledge tools
   schemas.py             # MCP-facing request/response models if needed
   adapters.py            # ToolEnvelope <-> MCP response helpers
   settings.py            # Config path, artifact root, read/write policy
@@ -262,11 +291,21 @@ src/trader_agents/
   evaluation_agent.py    # Evaluation Agent graph
   adversarial_agent.py   # Adversarial Agent graph
   hypothesis_agent.py    # Hypothesis-card graph
-  math_coder_agent.py    # Math Coder graph
+  quant_methods_agent.py # Quantitative Methods graph
+  quant_methods_policy.py # Typed Quantitative Methods LLM decisions and deterministic routing validation
   ml_agent.py            # ML graph
 
 tests/
   test_research_domain.py
+  test_knowledge_domain.py
+  test_knowledge_sources.py
+  test_knowledge_extraction.py
+  test_knowledge_embeddings.py
+  test_knowledge_index.py
+  test_knowledge_retrieval.py
+  test_citation_validation.py
+  test_method_cards.py
+  test_mcp_knowledge_tools.py
   test_agent_identities.py
   test_research_runner.py
   test_research_robustness.py
@@ -293,8 +332,25 @@ These are the Data Agent tools that prove MCP functionality before broader Quant
 
 | Tool | Owning agent | Side Effect | Artifact / Purpose |
 | --- | --- | --- | --- |
-| `math_list_indicator_contracts` | Math Coder Agent | `read_only` | Return maintained indicator/stat-test contracts and metadata requirements. |
-| `math_validate_indicator_contract` | Math Coder Agent | `read_only` | Validate indicator/stat-test parameters and fixture behavior. |
+| `knowledge_register_source` | Quantitative Methods Agent | `local_mutating` | Register document metadata, compute file hash, and create `knowledge_source_manifest.json`. |
+| `knowledge_ingest_documents` | Quantitative Methods Agent | `local_mutating` | Extract text, chunk, embed, index, and produce `knowledge_ingestion_report.json`. |
+| `knowledge_get_ingestion_status` | Quantitative Methods Agent | `read_only` | Fetch source/ingestion status, warnings, parser details, embedding metadata, and indexed chunk counts. |
+| `knowledge_list_sources` | Quantitative Methods Agent | `read_only` | List source manifests by topic, source type, method family, approval/index status, or access policy. |
+| `knowledge_search_methods` | Quantitative Methods Agent | `read_only` | Search approved method cards and optionally draft method cards when policy permits. |
+| `knowledge_retrieve_evidence` | Quantitative Methods Agent | `read_only` | Retrieve citeable chunks for a method, assumption, implementation convention, or statistical test. |
+| `knowledge_create_method_card_draft` | Quantitative Methods Agent | `local_mutating` | Create a non-approved draft method card from retrieved source evidence. |
+| `knowledge_publish_method_card` | Quantitative Methods Agent | `local_mutating` | Promote a draft method card to approved status after explicit maintainer/operator approval. |
+| `knowledge_validate_citations` | Quantitative Methods Agent | `read_only` | Validate source IDs, chunk IDs, locators, method-card approval, and claim coverage for a contract/report. |
+| `math_list_method_contracts` | Quantitative Methods Agent | `read_only` | Return maintained indicators, transforms, statistical tests, diagnostics, multiple-testing methods, assumptions, and metadata requirements. |
+| `math_validate_method_contract` | Quantitative Methods Agent | `read_only` | Validate method parameters, input schema, warmup behavior, assumptions, fixture expectations, and failure modes. |
+| `math_create_indicator_contract` | Quantitative Methods Agent | `local_mutating` | Create `indicator_contract.json` from an approved method family/template. |
+| `math_run_indicator_fixtures` | Quantitative Methods Agent | `local_mutating` | Run deterministic fixtures and produce `indicator_validation_report.json`. |
+| `math_run_signal_diagnostics` | Quantitative Methods Agent | `local_mutating` | Produce `signal_diagnostic_report.json` from method observations and forward-return labels. |
+| `math_run_multiple_testing_report` | Quantitative Methods Agent | `local_mutating` | Produce `multiple_testing_report.json` for a declared candidate family and metric matrix. |
+| `math_generate_cpp_kernel` | Quantitative Methods Agent | `local_mutating` | Generate C++ only from approved deterministic templates and produce draft kernel metadata. |
+| `math_compile_kernel` | Quantitative Methods Agent | `local_mutating` | Compile an approved kernel locally and return build evidence. |
+| `math_run_python_cpp_parity` | Quantitative Methods Agent | `local_mutating` | Compare Python reference and C++ outputs and produce `python_cpp_parity_report.json`. |
+| `math_package_method_artifact` | Quantitative Methods Agent | `local_mutating` | Bundle contracts, implementations, validation reports, parity reports, and provenance for handoff. |
 | `ml_create_feature_manifest` | ML Agent | `local_mutating` | Produce `feature_dataset_manifest.json` from explicit data and feature inputs. |
 | `ml_summarize_model_artifact` | ML Agent | `read_only` | Return or validate `model_card.json`, prediction, and drift artifact references. |
 | `hypothesis_create_card` | Hypothesis Agent | `read_only` | Produce `hypothesis_card.json` from structured input. |
@@ -308,6 +364,13 @@ These are the Data Agent tools that prove MCP functionality before broader Quant
 | `research_analyze_return_attribution` | Quant Research Supervisor Agent | `read_only` | Summarize PnL by symbol, period, side if available, and top trades. |
 | `research_generate_recommendation` | Quant Research Supervisor Agent | `local_mutating` | Produce recommendation report by synthesizing experiment, evaluation, and robustness artifacts. |
 | `research_run_experiment` | Quant Research Supervisor Agent | `local_mutating` | High-level orchestrator for the full workflow; should compose earlier tools and run last. |
+
+Backward-compatible aliases may be retained initially:
+
+| Alias | Canonical behavior |
+| --- | --- |
+| `math_list_indicator_contracts` | Calls `math_list_method_contracts` filtered to indicator and transform families. |
+| `math_validate_indicator_contract` | Calls `math_validate_method_contract` filtered to indicator and transform families. |
 
 ### Explicitly Out of Scope
 
@@ -341,14 +404,25 @@ These are the Data Agent tools that prove MCP functionality before broader Quant
 | 17. Move Shared Tool Contracts | Move or delete the old `trader.tools.contracts` surface after the replacement contract is proven through MCP and the Data Agent graph. Update CLIs/tests that should remain. | `src/trader_research/contracts.py`, `run_*.py`, tests | Tool contracts no longer live under `src/trader/`; compatibility needs are explicit and temporary. |
 | 18. Move Research Helpers | Move or re-create the useful parts of `src/trader/research.py` under `src/trader_research/` with imports pointed at `trader` platform primitives. | `src/trader_research/*`, `src/trader/research.py`, tests | `src/trader/research.py` is deleted or reduced to a temporary compatibility shim only if needed for one migration commit. Final target has no research module in `trader`. |
 | 19. Move Research Tool Modules | Move `trader.tools.artifacts`, `discovery`, `promotion`, `recommendations`, and `suites` into `trader_research` only as their capabilities are needed. Keep MCP-specific code out of these modules. | `src/trader_research/*`, `src/trader/tools/*`, CLIs, tests | `src/trader/tools/` is deleted after imports are updated; research CLIs import from `trader_research`. |
-| 20. Research Domain Schemas | Define schemas for specialist artifacts and supervisor handoffs: `hypothesis_card.json`, indicator metadata, statistical-test reports, feature manifests, model cards, `ExperimentPlan`, `DataRequirement`, `StrategyCandidate`, `BacktestRunRef`, `evaluation_report.json`, `robustness_report.json`, recommendation reports, and `ResearchVerdict`. Prefer stdlib dataclasses unless validation complexity justifies Pydantic. | `src/trader_research/domain.py`, tests | Schemas serialize to JSON-compatible dicts and preserve agent-owned artifact boundaries. |
+| 20. Research Domain Schemas | Define schemas for specialist artifacts and supervisor handoffs: `hypothesis_card.json`, method contracts, deterministic method validation reports, statistical-test reports, feature manifests, model cards, `ExperimentPlan`, `DataRequirement`, `StrategyCandidate`, `BacktestRunRef`, `evaluation_report.json`, `robustness_report.json`, recommendation reports, and `ResearchVerdict`. Prefer stdlib dataclasses unless validation complexity justifies Pydantic. | `src/trader_research/domain.py`, tests | Schemas serialize to JSON-compatible dicts and preserve agent-owned artifact boundaries. |
 | 21. Quant Research Supervisor Graph Skeleton | Add the supervisor LangGraph identity, state, handoff ledger, and empty specialist artifact slots before broad Quant Research tools exist. | `src/trader_agents/quant_research.py`, tests | Supervisor graph can start, record a bounded research request, consume Data Agent artifact references, and mark missing specialist artifacts as blockers. |
 | 22. Supervisor Consumes Data Agent Handoff | Add a supervisor node that accepts Data Agent manifest/quality references produced by the Data Agent graph. | `src/trader_agents/quant_research.py`, tests | Supervisor state preserves Data Agent ownership and does not fetch raw data directly. |
 | 22H. Data Agent LLM Control Loop | Add a provider-neutral LLM client protocol/configuration layer, then add a Data Agent policy node that converts natural-language data requests into typed Data Agent action proposals. The deterministic router validates every proposal before a tool call and rejects attempts to bypass mandatory discovery or leave the Data Agent tool allowlist. | `src/trader_agents/llm_client.py`, `src/trader_agents/data_agent_policy.py`, `src/trader_agents/data_agent.py`, tests | The Data Agent can plan and execute discovery, inventory, quality, and permitted loading through existing MCP tools only. LLM access is selected at runtime so hosted gateways such as OpenRouter-style APIs or local backends such as Ollama can be used without changing Data Agent tools. Tests cover fake-LLM happy paths, invalid tool rejection, provider mismatch blocking, missing-symbol blocking, loading permission checks, loop limits, invalid-output repair/fail-closed behavior, missing LLM config fail-fast behavior, and no persistence of raw prompts, hidden reasoning, or scratchpads. |
-| 23. Math Coder Tool Contracts | Implement the first Math Coder service for maintained indicator/stat-test contract listing and validation. | `src/trader_research/math_tools.py`, tests | Unsupported indicators fail closed; maintained indicator metadata and fixture expectations are returned as structured artifacts. |
-| 24. Register Math Coder MCP Tools | Expose `math_list_indicator_contracts` and `math_validate_indicator_contract`. | `src/trader_mcp/server.py`, tests | MCP returns Math Coder envelopes with indicator metadata or validation reports. |
-| 25. Math Coder Agent Graph | Add LangGraph identity, state, and tool allowlist for the Math Coder Agent. | `src/trader_agents/math_coder_agent.py`, tests | Math Coder graph calls only Math Coder MCP tools and returns indicator/stat-test artifact references. |
-| 26. Supervisor Consumes Math Coder Handoff | Add supervisor handoff consumption for Math Coder artifacts. | `src/trader_agents/quant_research.py`, tests | Supervisor state can require, accept, or block on indicator/stat-test evidence without rewriting it. |
+| 23A. Quant Methods Knowledge Domain Schemas | Define schemas for `knowledge_source_manifest.json`, `knowledge_ingestion_report.json`, `knowledge_chunk_manifest.json`, `knowledge_embedding_manifest.json`, `method_card_draft.json`, `method_card.json`, `evidence_retrieval_report.json`, and `citation_validation_report.json`. | `src/trader_research/knowledge/domain.py`, `tests/test_knowledge_domain.py` | Schemas serialize to JSON-safe dictionaries; source manifests include source ID, title, source type, file hash, access policy, topics, and warnings; chunks preserve source/page/section/heading locators, offsets, and hashes; embedding manifests record provider/model/version/dimensions; method cards include assumptions, inputs, outputs, failure modes, source evidence, and approval status; drafts are not executable method contracts. |
+| 23B. Knowledge Source Registration | Implement source registration for local documents or artifact references. | `src/trader_research/knowledge/sources.py`, `src/trader_research/knowledge/ingestion.py`, `tests/test_knowledge_sources.py` | Valid metadata produces `knowledge_source_manifest.json`; missing metadata fails closed when policy requires it; duplicate hashes are detected; unsupported file types and sources outside allowed directories are rejected; registration does not embed or index content yet. |
+| 23C. Knowledge Text Extraction and Chunking | Extract text from PDF, Markdown, and plain text sources and create locator-preserving chunks. | `src/trader_research/knowledge/extractors.py`, `src/trader_research/knowledge/chunking.py`, `tests/test_knowledge_extraction.py`, `tests/fixtures/knowledge/*` | Markdown/text fixtures extract deterministically; PDF extraction preserves pages where available; warnings are reported; chunk IDs/hashes are deterministic for unchanged content/config; chunks include source IDs and locators; OCR is disabled unless explicitly permitted. |
+| 23D. Knowledge Embedding and Indexing Service | Embed chunks and store them in a searchable knowledge index with relational metadata filters. | `src/trader_research/knowledge/embeddings.py`, `src/trader_research/knowledge/index.py`, `src/trader_research/knowledge/ingestion.py`, `tests/test_knowledge_embeddings.py`, `tests/test_knowledge_index.py` | A fake deterministic embedding provider exists for tests; embedding manifests record provider/model/version/dimension; indexed chunks can be retrieved by source ID, topic, method family, and vector similarity; unchanged chunks do not create duplicate active chunks; changing embedding model/version creates a distinct manifest; tests require no external LLM provider. |
+| 23E. Knowledge Ingestion MCP Tools | Expose source registration, document ingestion, and ingestion status through MCP. | `src/trader_mcp/knowledge_tools.py`, `src/trader_mcp/server.py`, `tests/test_mcp_knowledge_tools.py` | MCP exposes `knowledge_register_source`, `knowledge_ingest_documents`, and `knowledge_get_ingestion_status`; every tool returns a shared envelope; ingestion tools are `local_mutating`; unsupported file types and unbounded directories are rejected; smoke tests ingest Markdown/text fixtures and retrieve status. |
+| 23F. Method Card Drafting and Approval | Create draft method cards from source evidence and allow explicit approval/publishing. | `src/trader_research/knowledge/method_cards.py`, `src/trader_research/knowledge/retrieval.py`, `tests/test_method_cards.py` | Draft cards require source evidence and include assumptions, inputs, outputs, and failure modes; drafts are not executable by method-contract tools; publishing requires explicit approval input or policy flag; approved cards are immutable by default and updates create a new version. |
+| 23G. Knowledge Retrieval and Citation Validation MCP Tools | Expose method-card search, evidence retrieval, and citation validation through MCP. | `src/trader_research/knowledge/retrieval.py`, `src/trader_research/knowledge/citation_validation.py`, `src/trader_mcp/knowledge_tools.py`, `tests/test_knowledge_retrieval.py`, `tests/test_citation_validation.py`, `tests/test_mcp_knowledge_tools.py` | MCP exposes `knowledge_list_sources`, `knowledge_search_methods`, `knowledge_retrieve_evidence`, `knowledge_create_method_card_draft`, `knowledge_publish_method_card`, and `knowledge_validate_citations`; retrieval returns source IDs, chunk IDs, locators, relevance scores, and short summaries; citation validation fails on unknown sources/chunks, invalid locators, unapproved method cards, or unsupported claims; retrieval can filter to approved sources/cards only. |
+| 23H. Knowledge-Backed Math Method Domain Schemas | Define Quantitative Methods schemas that require knowledge provenance for non-trivial statistical methods. | `src/trader_research/math_domain.py`, `src/trader_research/domain.py`, `tests/test_math_domain.py` | `indicator_contract.json`, `statistical_test_contract.json`, `signal_diagnostic_report.json`, `multiple_testing_report.json`, `cxx_kernel_manifest.json`, `python_cpp_parity_report.json`, and `method_package_manifest.json` include optional/required `knowledge_evidence_refs` by method complexity; statistical-test and multiple-testing contracts require approved method cards; simple arithmetic transforms may use maintained registry entries; unknown or uncited sophisticated methods fail closed. |
+| 23I. Knowledge-Backed Math Method Registry | Create the maintained registry of approved methods, linked to approved method cards where required. | `src/trader_research/math_registry.py`, `src/trader_research/math_tools.py`, `tests/test_math_registry.py` | Registry lists maintained methods by family; each non-trivial statistical method links to one or more approved method cards; unsupported methods fail closed; legacy indicator-only views remain filterable for compatibility. |
+| 23J. Indicator Contract and Fixture Validation | Implement deterministic indicator/transform validation. | `src/trader_research/math_tools.py`, `src/trader_standard/indicators/python/*`, `tests/test_math_indicator_contracts.py`, `tests/fixtures/math_indicators/*` | Contract validation checks parameter bounds, warmup behavior, NaN policy, output schema, and no-lookahead metadata; fixture tests cover small known cases; validation returns `indicator_validation_report.json` or an embedded equivalent envelope; unsupported indicators and invalid grids fail closed. |
+| 23K. Signal Diagnostics and Multiple-Testing Reports | Implement first-pass signal diagnostics and family-level inference over declared candidate families. | `src/trader_research/signal_diagnostics.py`, `src/trader_research/multiple_testing.py`, `src/trader_research/math_tools.py`, `tests/test_signal_diagnostics.py`, `tests/test_multiple_testing.py` | Computes IC/rank IC, hit rate, quantile buckets, monotonicity, horizon decay, and symbol/session/regime breakdowns where inputs exist; requires candidate-family manifests for family inference; records raw p-values, adjusted p-values, correction method, tested grid, and candidate count; sophisticated procedures require approved method-card references; outputs include warnings and blockers. |
+| 23L. C++ Kernel Path | Implement a controlled compiled-kernel path for approved deterministic transforms. | `src/trader_research/cpp_kernel_artifacts.py`, `src/trader_research/math_tools.py`, `src/trader_standard/indicators/cpp/*`, `src/trader_standard/indicators/bindings/*`, `tests/test_cpp_kernel_artifacts.py`, `tests/test_python_cpp_parity.py` | C++ generation is template-based only; compilation occurs in an isolated local build directory; manifests record build settings, ABI/binding info, provenance, and benchmark summary; parity tests run on fixtures and seeded generated cases; failed compile/parity returns a blocking envelope; kernels cannot access broker mutation, SQL, network, or live trading controls. |
+| 24. Register Quantitative Methods MCP Tools | Expose the deterministic method surface through MCP after knowledge ingestion/retrieval tools exist. | `src/trader_mcp/server.py`, `src/trader_mcp/schemas.py`, `tests/test_mcp_math_tools.py`, `tests/test_mcp_server.py` | MCP exposes `math_list_method_contracts` and `math_validate_method_contract` first; backward-compatible indicator aliases may exist; follow-on tools register only after direct services pass tests; every tool returns a shared envelope with `agent_owner="Quantitative Methods Agent"`, declares side effect, rejects unbounded inputs or unknown methods, and requires approved method-card references for sophisticated statistical procedures where configured. |
+| 25. Quantitative Methods Agent Graph | Add knowledge-aware LangGraph identity, state, policy, and tool allowlist for the Quantitative Methods Agent. | `src/trader_agents/quant_methods_agent.py`, `src/trader_agents/quant_methods_policy.py`, `src/trader_agents/state.py`, `tests/test_quant_methods_agent.py`, `tests/test_langgraph_agents.py` | Graph has distinct identity and state; may call only knowledge and Quantitative Methods MCP tools; cannot fetch data, create hypotheses, train models, run backtests, call evaluation tools, or promote strategies; blocks sophisticated methods without approved source-backed method cards; returns method artifact refs, retrieval refs, citation-validation refs, and blockers; no raw prompts, hidden reasoning, or scratchpads are persisted. |
+| 26. Supervisor Consumes Quantitative Methods Handoff | Allow the Quant Research Supervisor to consume Quantitative Methods artifacts and knowledge provenance without rewriting them. | `src/trader_agents/quant_research.py`, `src/trader_research/domain.py`, `tests/test_supervisor_quant_methods_handoff.py` | Supervisor accepts valid Quantitative Methods handoffs with method artifacts and knowledge evidence refs; rejects wrong owner, missing provenance, missing artifact refs, unresolved blockers, or failed citation validation; can require method artifacts before strategy planning; stores refs, warnings, blockers, and public status only; does not modify method artifacts or knowledge evidence. |
 | 27. ML Artifact Tool Contracts | Implement initial ML artifact services for feature manifests and model-card/prediction/drift summaries. Do not start with automated training. | `src/trader_research/ml.py`, tests | ML artifact references are validated for required provenance, data inputs, feature definitions, and metrics/warnings. |
 | 28. Register ML MCP Tools | Expose `ml_create_feature_manifest` and `ml_summarize_model_artifact`. | `src/trader_mcp/server.py`, tests | MCP returns ML Agent envelopes for feature/model artifact references and rejects incomplete metadata. |
 | 29. ML Agent Graph | Add LangGraph identity, state, and tool allowlist for the ML Agent. | `src/trader_agents/ml_agent.py`, tests | ML graph calls only ML MCP tools and returns feature/model/prediction/drift artifact references. |
@@ -357,12 +431,12 @@ These are the Data Agent tools that prove MCP functionality before broader Quant
 | 32. Register Hypothesis MCP Tool | Expose `hypothesis_create_card`. | `src/trader_mcp/server.py`, tests | MCP returns a Hypothesis Agent envelope with `hypothesis_card.json` payload/path. |
 | 33. Hypothesis Agent Graph | Add LangGraph identity, state, and tool allowlist for the Hypothesis Agent. | `src/trader_agents/hypothesis_agent.py`, tests | Hypothesis graph can read ingredient references and produce hypothesis-card handoffs without running backtests. |
 | 34. Supervisor Consumes Hypothesis Handoff | Add supervisor handoff consumption for hypothesis cards. | `src/trader_agents/quant_research.py`, tests | Supervisor can convert accepted hypothesis references into planning state and reject incomplete cards. |
-| 34A. Supervisor LLM Control Loop | Add the LLM-backed supervisor policy node after Data, Math, ML, and Hypothesis artifact contracts exist. The LLM sees bounded state and artifact summaries, then emits a typed decision such as `request_specialist`, `call_tool`, `retry_with_changes`, `accept_artifact`, `block`, or `finish`. A deterministic router validates the proposal before any action is taken. | `src/trader_agents/supervisor_policy.py`, `src/trader_agents/quant_research.py`, tests | Supervisor can assess outputs, reuse allowed tools, request missing specialist work, stop early, or finish through typed actions only. Tests prove schema validation, allowlist enforcement, loop limits, early block/finish behavior, repair/fail-closed behavior for invalid LLM output, and no persistence of raw prompts, hidden reasoning, or scratchpads. |
+| 34A. Supervisor LLM Control Loop | Add the LLM-backed supervisor policy node after Data, Quantitative Methods, ML, and Hypothesis artifact contracts exist. The LLM sees bounded state and artifact summaries, then emits a typed decision such as `request_specialist`, `call_tool`, `retry_with_changes`, `accept_artifact`, `block`, or `finish`. A deterministic router validates the proposal before any action is taken. | `src/trader_agents/supervisor_policy.py`, `src/trader_agents/quant_research.py`, tests | Supervisor can assess outputs, reuse allowed tools, request missing specialist work, stop early, or finish through typed actions only. Tests prove schema validation, allowlist enforcement, loop limits, early block/finish behavior, repair/fail-closed behavior for invalid LLM output, and no persistence of raw prompts, hidden reasoning, or scratchpads. |
 | 35. Strategy Template Catalog | Expose Quant Research strategy-template discovery over maintained `trader_standard` families: `trend_following`, `mean_reversion`, and `bollinger_band` initially. | `src/trader_research/strategies.py`, tests | Tool returns family names, required/optional parameters, defaults, and known constraints. |
 | 36. Register Strategy Catalog MCP Tool | Expose `research_list_strategy_templates`. | `src/trader_mcp/server.py`, tests | MCP returns maintained strategy templates with `agent_owner=Quant Research Supervisor Agent` and without importing arbitrary strategy code. |
 | 37. Strategy Candidate Validation | Implement Quant Research validation for existing maintained strategies first. Defer generated-code candidates until the maintained strategy path is stable. | `src/trader_research/strategies.py`, tests | Unsupported strategy families fail closed; maintained strategies can be instantiated on deterministic fixtures. |
 | 38. Register Strategy Validation MCP Tool | Expose `research_validate_strategy_candidate`. | `src/trader_mcp/server.py`, tests | MCP validation fails closed for unsupported families and returns fixture validation evidence for maintained strategies. |
-| 39. Supervisor Strategy Planning Graph | Extend the supervisor graph to call strategy catalog/validation tools through MCP using Data, Math Coder, ML, and Hypothesis handoffs. | `src/trader_agents/quant_research.py`, tests | Supervisor creates an experiment-plan state only from specialist artifact references and validated strategy candidates. |
+| 39. Supervisor Strategy Planning Graph | Extend the supervisor graph to call strategy catalog/validation tools through MCP using Data, Quantitative Methods, ML, and Hypothesis handoffs. | `src/trader_agents/quant_research.py`, tests | Supervisor creates an experiment-plan state only from specialist artifact references and validated strategy candidates. |
 | 40. Baseline Backtest Service | Wrap `trader.backtest.BacktestRunner` for Quant Research using explicit `BacktestSpec`, symbols, asset class, assumptions, strategy, event store, and artifact output directory. | `src/trader_research/backtests.py`, tests | A fixture-backed baseline run produces metrics, provenance, and artifact paths tied to dataset manifest and data-quality report references when available. |
 | 41. Register Backtest MCP Tools | Expose `research_run_backtest` and `research_get_backtest_results`. | `src/trader_mcp/server.py`, tests | MCP can run one fixture/sample-data backtest and fetch its result envelope with `agent_owner=Quant Research Supervisor Agent`. |
 | 42. Result Lookup Service | Load persisted or artifact-backed backtest summaries using existing `list_experiment_runs`, exported `metrics.json`, and result bundles. | `src/trader_research/backtests.py`, tests | Unknown IDs return structured errors; known runs return summary metrics and artifact references. |
@@ -377,7 +451,7 @@ These are the Data Agent tools that prove MCP functionality before broader Quant
 | 51. Robustness Backtest Variants | Add backtest variants for 2x/5x slippage and elevated fees by modifying only explicit assumptions. | `src/trader_research/robustness.py`, tests | Higher-cost variants are linked to the baseline and exported as separate reproducible runs. |
 | 52. Supervisor Consumes Adversarial Handoff | Add supervisor handoff consumption for robustness reports. | `src/trader_agents/quant_research.py`, tests | Supervisor state can block promotion readiness on robustness failures without modifying the Adversarial artifact. |
 | 53. Recommendation Renderer and MCP Tool | Generate Quant Research recommendation reports and expose `research_generate_recommendation`; recommendations must consume evaluation and robustness artifacts when present. | `src/trader_research/reports.py`, `src/trader_mcp/server.py`, tests | MCP returns recommendation artifact paths and JSON summary; paper-promotion readiness is blocked without required critique artifacts. |
-| 54. Quant Research Supervisor Synthesis Graph | Extend the supervisor graph to synthesize Data, Math Coder, ML, Hypothesis, Evaluation, and Adversarial artifact handoffs into recommendation state. | `src/trader_agents/quant_research.py`, tests | Supervisor synthesizes artifacts but does not bypass specialist graphs or MCP tools. |
+| 54. Quant Research Supervisor Synthesis Graph | Extend the supervisor graph to synthesize Data, Quantitative Methods, ML, Hypothesis, Evaluation, and Adversarial artifact handoffs into recommendation state. | `src/trader_agents/quant_research.py`, tests | Supervisor synthesizes artifacts but does not bypass specialist graphs or MCP tools. |
 | 55. Experiment Runner and MCP Tool | Implement `ResearchExperimentRunner.run(plan_or_request)` and expose `research_run_experiment` last. | `src/trader_research/runner.py`, `src/trader_mcp/server.py`, tests | Full MCP experiment composes specialist artifacts and returns recommendation paths, verdict, and warnings. |
 | 56. Import Boundary Tests | Add tests that assert `trader` does not import `trader_research`, `trader_mcp`, `trader_agents`, or other agent/tool packages, and that dependencies flow one way. | `tests/test_package_boundaries.py` | The architectural separation is executable, not just documented. |
 | 57. MCP and LangGraph Contract Tests | Add tests that call MCP tool functions directly and exercise LangGraph agent allowlists/state transitions. Expand these tests at every tool/agent-registration chunk. | `tests/test_mcp_tools.py`, `tests/test_langgraph_agents.py` | Tool names, required schemas, side effects, envelope shapes, agent owners, and graph boundaries are stable incrementally. |
@@ -443,7 +517,7 @@ Evidence target:
 ```text
 Quant Research Supervisor graph starts
   -> consumes Data Agent manifest/quality references
-  -> records missing Math Coder, ML, Hypothesis, Evaluation, and Adversarial artifacts as blockers
+  -> records missing Quantitative Methods, ML, Hypothesis, Evaluation, and Adversarial artifacts as blockers
 ```
 
 ### Slice 4A: Data Agent LLM Control Loop
@@ -484,24 +558,54 @@ Required guardrails:
 - invalid structured output fails closed or enters a bounded repair path
 - no raw prompt, hidden reasoning, or scratchpad persistence
 
-### Slice 5: Math Coder MCP Tool Creation
+### Slice 5: Knowledge-Backed Quantitative Methods MCP Tool Creation
 
-Implement chunks 23-24. This creates and proves the first Math Coder MCP tools before the Math Coder LangGraph identity
-exists.
+Implement chunks 23A-24. This creates the Quant Methods Knowledge Base ingestion/retrieval layer, then proves the first
+Quantitative Methods MCP tools before the Quantitative Methods LangGraph identity exists.
 
 Evidence target:
 
 ```text
-math_list_indicator_contracts
-math_validate_indicator_contract
-  -> returns indicator metadata or validation report
-  -> declares agent_owner = Math Coder Agent
+knowledge_register_source
+knowledge_ingest_documents
+knowledge_get_ingestion_status
+knowledge_search_methods
+knowledge_retrieve_evidence
+knowledge_validate_citations
+math_list_method_contracts
+math_validate_method_contract
+  -> source manifests, ingestion reports, retrieved evidence, citation validation, and method metadata
+  -> declares agent_owner = Quantitative Methods Agent
+  -> records source IDs, locators, assumptions, fixture status, and failure modes
 ```
 
-### Slice 6: Math Coder Agent Identity and Handoff
+Stretch evidence:
 
-Implement chunks 25-26. This proves that the Math Coder graph has its own identity and that the supervisor consumes,
-but does not rewrite, Math Coder artifacts.
+```text
+knowledge_create_method_card_draft
+knowledge_publish_method_card
+math_run_signal_diagnostics
+math_run_multiple_testing_report
+  -> approved method card used to validate a statistical-test or multiple-testing contract
+  -> records candidate family size, tested parameter grid, raw p-values, adjusted p-values, warnings, and blockers
+```
+
+### Slice 6: Knowledge-Aware Quantitative Methods Agent Identity and Handoff
+
+Implement chunks 25-26. This proves that the Quantitative Methods graph has its own identity and that the supervisor
+can consume, but does not rewrite, Quantitative Methods artifacts or their knowledge provenance.
+
+Evidence target:
+
+```text
+Quantitative Methods graph starts
+  -> graph state includes Quantitative Methods identity
+  -> graph calls only knowledge_* and math_* MCP tools
+  -> graph blocks unsupported or uncited sophisticated methods
+  -> graph returns method artifact refs plus retrieval/citation refs
+  -> supervisor consumes Quantitative Methods handoff
+  -> supervisor preserves ownership/provenance and blocks unresolved method warnings
+```
 
 ### Slice 7: ML MCP Tool Creation
 
@@ -515,8 +619,8 @@ model dependencies separately from non-ML hypotheses.
 
 ### Slice 9: Hypothesis MCP Tool Creation
 
-Implement chunks 31-32 after Data, Math Coder, and optional ML ingredient contracts are explicit. The first hypothesis
-tool produces structured, falsifiable `hypothesis_card.json` artifacts.
+Implement chunks 31-32 after Data, Quantitative Methods, and optional ML ingredient contracts are explicit. The first
+hypothesis tool produces structured, falsifiable `hypothesis_card.json` artifacts.
 
 ### Slice 10: Hypothesis Agent Identity and Handoff
 
@@ -525,7 +629,7 @@ responsibility for planning, validation, and verdicts.
 
 ### Slice 10A: Supervisor LLM Control Loop
 
-Implement chunk 34A after Data, Math Coder, optional ML, and Hypothesis handoff contracts exist. The supervisor also
+Implement chunk 34A after Data, Quantitative Methods, optional ML, and Hypothesis handoff contracts exist. The supervisor also
 needs real LLM backing, but its action space is cross-agent and should wait until enough specialist artifact contracts
 exist to make orchestration meaningful. The LLM belongs inside the Quant Research Supervisor as a bounded control-policy
 node: it assesses artifact summaries and public state, then emits a typed action proposal. A deterministic router
@@ -557,7 +661,7 @@ specialist artifact handoffs and the supervisor control-policy loop exist.
 Evidence target:
 
 ```text
-hypothesis_card.json + Data/Math/ML artifact references
+hypothesis_card.json + Data/Quantitative Methods/ML artifact references
   -> research_list_strategy_templates
   -> research_validate_strategy_candidate
   -> supervisor experiment-plan state
@@ -582,7 +686,7 @@ work after the identity boundary is proven.
 ### Slice 15: Recommendation and Supervisor Synthesis
 
 Implement chunks 53-54. First create the recommendation MCP tool, then extend the Quant Research Supervisor graph so it
-synthesizes Data, Math Coder, ML, Hypothesis, Evaluation, and Adversarial artifacts without bypassing the specialist
+synthesizes Data, Quantitative Methods, ML, Hypothesis, Evaluation, and Adversarial artifacts without bypassing the specialist
 graphs.
 
 ### Slice 16: Supervised Experiment Runner
@@ -602,28 +706,34 @@ verification should be updated at every evidence checkpoint rather than saved fo
 3. The MCP server exposes data inventory, data quality, and bounded data-loading tools before strategy/backtest/report tools are complete.
 4. The Data Agent LangGraph workflow can be exercised against sample or existing data: health -> inventory -> quality -> ensure/load -> quality.
 5. The Quant Research Supervisor identity exists before broad strategy/backtest work and consumes specialist handoffs rather than replacing them.
-6. Math Coder, ML, Hypothesis, Evaluation, and Adversarial capabilities are each introduced as MCP tool evidence first, then as separate LangGraph identities, then as supervisor handoffs.
-7. The Data Agent LLM control loop emits only typed Data Agent decisions and cannot bypass provider validation, mandatory symbol discovery, tool allowlists, side-effect policy, or loop limits.
-8. The Quant Research Supervisor LLM control loop emits only typed supervisor decisions and can reuse allowed tools, request specialist work, block early, or finish through deterministic validation and loop limits.
-9. Every tool returns the shared JSON envelope and declares its side-effect class.
-10. Every tool declares the owning agent and returns/links the artifact owned by that agent.
-11. Every LangGraph agent has a distinct identity, state schema, role policy, output artifact contract, and MCP tool allowlist.
-12. `src/trader/` contains no research experiment, agent-tool, MCP schema/definition, or LangGraph agent modules.
-13. Missing/incomplete data fails closed or produces Data Agent warnings and downstream Evaluation blockers.
-14. Strategy validation happens before any backtest run.
-15. Baseline backtest artifacts include reproducible config/provenance, dataset manifest references, data-quality report references, and result summaries.
-16. Robustness includes at least slippage sensitivity, fee sensitivity, chronological split, and one concentration check.
-17. The final recommendation consumes Evaluation and Adversarial artifacts when available and includes a skeptical verdict with concrete failure analysis.
-18. No MCP tool or LangGraph agent can place live orders, mutate broker state, run raw SQL, or bypass existing platform validation.
+6. Quantitative Methods, ML, Hypothesis, Evaluation, and Adversarial capabilities are each introduced as MCP tool evidence first, then as separate LangGraph identities, then as supervisor handoffs.
+7. Quant Methods Knowledge Base ingestion produces source, chunk, embedding, ingestion, method-card, retrieval, and citation-validation artifacts before sophisticated method contracts depend on retrieved evidence.
+8. Ingestion does not imply approval: draft method cards are not executable, and sophisticated statistical methods require approved method-card references plus passing citation validation.
+9. Knowledge tools reject arbitrary filesystem access, unsupported source types, code execution from documents, and uncited/unsupported claims.
+10. The Data Agent LLM control loop emits only typed Data Agent decisions and cannot bypass provider validation, mandatory symbol discovery, tool allowlists, side-effect policy, or loop limits.
+11. The Quant Research Supervisor LLM control loop emits only typed supervisor decisions and can reuse allowed tools, request specialist work, block early, or finish through deterministic validation and loop limits.
+12. Every tool returns the shared JSON envelope and declares its side-effect class.
+13. Every tool declares the owning agent and returns/links the artifact owned by that agent.
+14. Every LangGraph agent has a distinct identity, state schema, role policy, output artifact contract, and MCP tool allowlist.
+15. `src/trader/` contains no research experiment, agent-tool, MCP schema/definition, or LangGraph agent modules.
+16. Missing/incomplete data fails closed or produces Data Agent warnings and downstream Evaluation blockers.
+17. Strategy validation happens before any backtest run.
+18. Baseline backtest artifacts include reproducible config/provenance, dataset manifest references, data-quality report references, and result summaries.
+19. Robustness includes at least slippage sensitivity, fee sensitivity, chronological split, and one concentration check.
+20. The final recommendation consumes Evaluation and Adversarial artifacts when available and includes a skeptical verdict with concrete failure analysis.
+21. No MCP tool or LangGraph agent can place live orders, mutate broker state, run raw SQL, or bypass existing platform validation.
 
 ## Open Decisions
 
 - MCP SDK dependency and version pin: resolved for the server skeleton as `mcp>=1.27.1,<2`.
 - LangGraph dependency/version and persistence choice: choose the smallest graph/checkpoint setup that supports agent identity and state without persisting hidden reasoning.
 - Persistence shape for first release: `trader.data.EventStore` may provide platform persistence primitives, but research-specific persistence adapters and artifact policies belong in `trader_research`.
+- Quant Methods Knowledge Base backend: start with deterministic local/test embeddings and a simple searchable local
+  index; production storage may use Postgres/vector extension or an external vector index later, but tool contracts must
+  remain backend-neutral and source manifests/method cards remain the authority.
 - Natural-language planning: both the Data Agent and Quant Research Supervisor need real LLM-backed control. Add the Data
   Agent LLM loop first because its provider-aware tool surface is already complete and bounded. Add the Quant Research
-  Supervisor LLM loop later after Data, Math Coder, optional ML, and Hypothesis artifact contracts exist, because its
+  Supervisor LLM loop later after Data, Quantitative Methods, optional ML, and Hypothesis artifact contracts exist, because its
   job is cross-agent orchestration. Both must use structured output, deterministic routing validation, allowlists, and
   loop limits; MCP tools remain deterministic.
 - Generated strategy code: defer until maintained strategies plus validation/reporting are useful.
