@@ -6,8 +6,10 @@ from pathlib import Path
 import anyio
 
 from trader_mcp.constants import (
+    KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
     KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL,
     KNOWLEDGE_INGEST_DOCUMENTS_TOOL,
+    KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL,
     KNOWLEDGE_REGISTER_SOURCE_TOOL,
     KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL,
     KNOWLEDGE_VALIDATE_CITATIONS_TOOL,
@@ -60,6 +62,36 @@ def test_mcp_quant_methods_core_evidence_flow(tmp_path: Path) -> None:
             KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL,
             {"chunk_ids": [evidence["chunk_id"]], "source_id": source_id},
         )
+        draft = await server.call_tool(
+            KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
+            {
+                "method_id": "sma",
+                "title": "Persisted SMA Method Card",
+                "family": "indicator",
+                "assumptions": ["input observations are ordered"],
+                "inputs": ["price series"],
+                "outputs": ["rolling mean series"],
+                "failure_modes": ["insufficient warmup observations"],
+                "evidence_refs": [
+                    {
+                        "source_id": evidence["source_id"],
+                        "chunk_id": evidence["chunk_id"],
+                        "locator": evidence["locator"],
+                    }
+                ],
+            },
+        )
+        draft_id = draft.structuredContent["data"]["method_card_draft"]["method_card_id"]
+        published = await server.call_tool(
+            KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL,
+            {
+                "draft_method_card_id": draft_id,
+                "approved_method_card_id": "method_card_persisted_sma_v1",
+                "approved_by": "test",
+                "approval_note": "fixture evidence reviewed",
+                "approve": True,
+            },
+        )
         citations = await server.call_tool(
             KNOWLEDGE_VALIDATE_CITATIONS_TOOL,
             {
@@ -69,7 +101,7 @@ def test_mcp_quant_methods_core_evidence_flow(tmp_path: Path) -> None:
                             "source_id": evidence["source_id"],
                             "chunk_id": evidence["chunk_id"],
                             "locator": evidence["locator"],
-                            "method_card_id": "method_card_sma_seed_v1",
+                            "method_card_id": "method_card_persisted_sma_v1",
                         }
                     ]
                 }
@@ -96,10 +128,16 @@ def test_mcp_quant_methods_core_evidence_flow(tmp_path: Path) -> None:
         assert config_tools[KNOWLEDGE_REGISTER_SOURCE_TOOL]["agent_owner"] == "Quantitative Methods Agent"
         assert config_tools[KNOWLEDGE_REGISTER_SOURCE_TOOL]["side_effect"] == "local_mutating"
         assert config_tools[KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL]["side_effect"] == "read_only"
+        assert config_tools[KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL]["side_effect"] == "local_mutating"
+        assert config_tools[KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL]["side_effect"] == "local_mutating"
         assert config_tools[MATH_VALIDATE_METHOD_CONTRACT_TOOL]["side_effect"] == "read_only"
         assert registered.isError is False
         assert ingested.isError is False
         assert dereferenced.isError is False
+        assert draft.isError is False
+        assert draft.structuredContent["data"]["method_card_draft"]["status"] == "draft"
+        assert published.isError is False
+        assert published.structuredContent["data"]["method_card"]["status"] == "approved"
         assert dereferenced.structuredContent["agent_owner"] == "Quantitative Methods Agent"
         dereferenced_chunk = dereferenced.structuredContent["data"]["chunks"][0]
         assert "simple moving average computes the arithmetic mean" in dereferenced_chunk["text"]

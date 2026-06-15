@@ -34,7 +34,15 @@ def validate_citations(
     for ref in refs:
         checked_ref: dict[str, Any] = ref.to_dict()
         if ref.method_card_id is not None:
-            card = get_method_card(artifact_root, ref.method_card_id, include_drafts=True)
+            try:
+                card = get_method_card(
+                    artifact_root,
+                    ref.method_card_id,
+                    include_drafts=True,
+                    knowledge_store=store,
+                )
+            except KnowledgeStoreError as exc:
+                return _store_error(str(exc))
             if card is None:
                 blockers.append(f"unknown method_card_id: {ref.method_card_id}")
             elif require_approved_method_card and not card.approved:
@@ -106,10 +114,8 @@ def _evidence_refs(artifact: Mapping[str, Any]) -> tuple[EvidenceReference, ...]
 
 
 def _find_chunk(repository: KnowledgeStore, chunk_id: str):
-    for chunk in repository.list_chunks():
-        if chunk.chunk_id == chunk_id:
-            return chunk
-    return None
+    chunks = repository.load_chunks_by_ids((chunk_id,))
+    return chunks[0] if chunks else None
 
 
 def _store_error(message: str) -> ToolEnvelope:

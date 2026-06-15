@@ -172,6 +172,8 @@ Responsibilities:
   authority is the approved source registry plus approved method cards.
 - Use retrieval reports as citeable evidence handles and `knowledge_get_evidence_chunks` as the explicit local
   dereference step for bounded real chunk text needed by downstream agents.
+- Create draft method cards from validated evidence refs and publish approved cards only with explicit local approval
+  metadata.
 - Implement and validate maintained indicators such as SMA, EMA, MACD, Bollinger Bands, RSI, z-score, spread, rolling
   volatility, drawdown, cross-sectional ranks, and regime/session-aware transforms.
 - Define method metadata: name, version, family, parameters, lookback, warmup behavior, input schema, output schema,
@@ -420,9 +422,9 @@ The intended operating loop is:
 ## Future Work
 
 - Add a dataset manifest registry for the Data Agent.
-- Add method-card draft/publish lifecycle, signal diagnostics, multiple-testing reports, and optional parity-checked
-  numerical kernels for the Quantitative Methods Agent. The first knowledge source/chunk/embedding/citation path is
-  Postgres-backed and exposed through MCP.
+- Add signal diagnostics, multiple-testing reports, optional parity-checked numerical kernels, and Quantitative Methods
+  graph handoff. The knowledge source/chunk/embedding/method-card/citation path is Postgres-backed and exposed through
+  MCP.
 - Add feature dataset, model card, prediction, and drift schemas for the ML Agent.
 - Add `hypothesis_card.json`, `evaluation_report.json`, and `robustness_report.json` schemas.
 - Extend research suite generation so it consumes hypothesis cards and robustness plans.

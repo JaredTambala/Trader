@@ -30,6 +30,7 @@ def search_methods(
     family: str | None = None,
     include_drafts: bool = False,
     limit: int = 10,
+    knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
     """Search approved method cards and return method metadata."""
     if limit < 1 or limit > 50:
@@ -39,13 +40,22 @@ def search_methods(
             code="validation_error",
             message="limit must be between 1 and 50",
         )
-    cards = search_method_cards(
-        artifact_root,
-        query,
-        family=family,
-        include_drafts=include_drafts,
-        limit=limit,
-    )
+    try:
+        cards = search_method_cards(
+            artifact_root,
+            query,
+            family=family,
+            include_drafts=include_drafts,
+            limit=limit,
+            knowledge_store=knowledge_store,
+        )
+    except KnowledgeStoreError as exc:
+        return error_envelope(
+            command=KNOWLEDGE_SEARCH_METHODS,
+            side_effect=SideEffect.READ_ONLY,
+            code="knowledge_store_error",
+            message=str(exc),
+        )
     return success_envelope(
         command=KNOWLEDGE_SEARCH_METHODS,
         side_effect=SideEffect.READ_ONLY,

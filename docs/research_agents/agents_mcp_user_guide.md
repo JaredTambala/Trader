@@ -308,7 +308,10 @@ knowledge_ingest_documents([source_id])
 knowledge_get_ingestion_status([source_id])
 knowledge_retrieve_evidence(query, source_ids=[source_id])
 knowledge_get_evidence_chunks(chunk_ids=[chunk_id], source_id=source_id)
+knowledge_create_method_card_draft(method_id, title, family, assumptions, inputs, outputs, failure_modes, evidence_refs)
+knowledge_publish_method_card(draft_method_card_id, approved_method_card_id, approved_by, approval_note, approve=true)
 knowledge_validate_citations({knowledge_evidence_refs: [...]})
+math_validate_method_contract({method_id, parameters, knowledge_evidence_refs: [{method_card_id}]})
 ```
 
 `knowledge_retrieve_evidence` runs PostgreSQL full-text search and pgvector search, merges results with deterministic
@@ -316,8 +319,9 @@ rank fusion, and returns source IDs, chunk IDs, locators, source status, excerpt
 metadata. Pass the returned `chunk_id` values to `knowledge_get_evidence_chunks` when a downstream local agent needs
 the real stored chunk text; the dereference response includes source metadata, locators, text hashes, `hash_verified`,
 text length metadata, and truncation flags. Retrieved and dereferenced chunks are evidence, not approval.
-Method-card draft/publish tooling, reranking, OCR, external vector databases, and Quantitative Methods LangGraph handoff
-are later chunks.
+Draft method cards created from evidence refs are not executable. `knowledge_publish_method_card` requires explicit local
+approval metadata and creates the approved card used by citation and method-contract validation. Reranking, OCR,
+external vector databases, and Quantitative Methods LangGraph handoff are later chunks.
 
 ## Current Limitations
 

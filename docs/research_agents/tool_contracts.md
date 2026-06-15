@@ -161,7 +161,8 @@ Knowledge-base rules:
   `text_truncated`.
 - Ingestion does not imply approval; `method_card_draft.json` is not executable.
 - Sophisticated statistical-test and multiple-testing contracts must cite approved method cards and pass
-  `knowledge_validate_citations`.
+  `knowledge_validate_citations`. Seeded cards and persisted approved cards in the configured `KnowledgeStore` are both
+  visible to citation and math validation.
 - Knowledge tools must not expose arbitrary filesystem access, execute code from documents, or reproduce large source
   passages in artifacts.
 
@@ -175,6 +176,21 @@ Knowledge-base rules:
   when requested.
 - Missing chunk IDs or source mismatches fail closed with `code="chunk_dereference_error"` and structured
   `missing_chunk_ids` / `source_mismatch_chunk_ids`; no embedding vectors are returned.
+
+`knowledge_create_method_card_draft` contract:
+
+- Request: `method_id`, `title`, `family`, non-empty `assumptions`, `inputs`, `outputs`, `failure_modes`, and
+  `evidence_refs`; optional `version`.
+- Evidence refs must include at least one source or chunk reference and pass citation validation with
+  `require_approved_method_card=false`.
+- Success data contains `method_card_draft`; draft cards are persisted but excluded from default approved method search.
+
+`knowledge_publish_method_card` contract:
+
+- Request: `draft_method_card_id`, `approved_method_card_id`, `approved_by`, `approval_note`, and `approve=true`.
+- Publishing preserves the draft and creates a separate approved `method_card` with approval provenance.
+- Re-publishing the same approved card is idempotent only when the persisted content matches; conflicting content fails
+  closed.
 
 ## LangGraph Use
 

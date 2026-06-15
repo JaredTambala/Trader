@@ -153,6 +153,7 @@ class JsonKnowledgeStore:
             "knowledge_source_manifest": self.repository.source_path,
             "knowledge_ingestion_report": self.repository.ingestion_path,
             "knowledge_embedding_manifest": self.repository.embedding_path,
+            "method_card_draft": self.repository.method_card_path,
             "method_card": self.repository.method_card_path,
         }
         path_factory = path_by_type.get(artifact_type)

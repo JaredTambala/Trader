@@ -7,7 +7,8 @@ from typing import Any, Mapping
 
 from trader_research.contracts import SideEffect, ToolEnvelope, error_envelope, success_envelope
 from trader_research.knowledge.citation_validation import validate_citations
-from trader_research.knowledge.method_cards import has_approved_method_card
+from trader_research.knowledge.method_cards import get_method_card, has_approved_method_card
+from trader_research.knowledge.store import KnowledgeStore, KnowledgeStoreError
 
 from .math_domain import MethodContract, MethodRegistryEntry, MethodValidationReport, ParameterSpec
 from .math_registry import get_method, list_methods
@@ -45,6 +46,7 @@ def math_validate_method_contract(
     artifact_root: str | Path,
     method_contract: Mapping[str, Any],
     require_evidence: bool = True,
+    knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
     """Validate a method contract against the maintained registry."""
     contract = MethodContract.from_mapping(method_contract)
@@ -78,15 +80,39 @@ def math_validate_method_contract(
         )
         if not method_card_ids:
             blockers.append("approved method-card evidence is required")
-        elif not set(method_card_ids).intersection(entry.approved_method_card_ids):
-            blockers.append("method-card evidence does not match the requested method")
-        elif not has_approved_method_card(artifact_root, method_card_ids):
-            blockers.append("no approved method-card evidence matched this method contract")
         else:
+            try:
+                approved_card_matches = has_approved_method_card(
+                    artifact_root,
+                    method_card_ids,
+                    knowledge_store=knowledge_store,
+                    method_id=entry.method_id,
+                )
+                any_card_matches = _method_card_ids_match_requested_method(
+                    artifact_root,
+                    method_card_ids,
+                    method_id=entry.method_id,
+                    knowledge_store=knowledge_store,
+                )
+            except KnowledgeStoreError as exc:
+                return error_envelope(
+                    command=MATH_VALIDATE_METHOD_CONTRACT,
+                    side_effect=SideEffect.READ_ONLY,
+                    code="knowledge_store_error",
+                    message=str(exc),
+                )
+            if not approved_card_matches and not any_card_matches:
+                blockers.append("method-card evidence does not match the requested method")
+            elif not approved_card_matches:
+                blockers.append("no approved method-card evidence matched this method contract")
+            elif entry.approved_method_card_ids and not set(method_card_ids).intersection(entry.approved_method_card_ids):
+                warnings.append("method-card evidence matched requested method but is not in the seeded registry allowlist")
+        if method_card_ids and not blockers:
             citation_result = validate_citations(
                 artifact_root=artifact_root,
                 artifact=contract.to_dict(),
                 require_approved_method_card=True,
+                knowledge_store=knowledge_store,
             )
             if not citation_result.ok:
                 blockers.append("knowledge citation validation failed")
@@ -171,3 +197,22 @@ def _convert_parameter(value: Any, spec: ParameterSpec) -> Any:
     except (TypeError, ValueError):
         return None
     return value
+
+
+def _method_card_ids_match_requested_method(
+    artifact_root: str | Path,
+    method_card_ids: tuple[str, ...],
+    *,
+    method_id: str,
+    knowledge_store: KnowledgeStore | None,
+) -> bool:
+    for card_id in method_card_ids:
+        card = get_method_card(
+            artifact_root,
+            card_id,
+            include_drafts=True,
+            knowledge_store=knowledge_store,
+        )
+        if card is not None and card.method_id == method_id:
+            return True
+    return False

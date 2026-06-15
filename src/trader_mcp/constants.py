@@ -50,6 +50,12 @@ KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL: Final = "knowledge_retrieve_evidence"
 KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL: Final = "knowledge_get_evidence_chunks"
 """Tool name for dereferencing citeable evidence chunks into stored text."""
 
+KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL: Final = "knowledge_create_method_card_draft"
+"""Tool name for creating draft method cards from validated evidence."""
+
+KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL: Final = "knowledge_publish_method_card"
+"""Tool name for publishing approved method cards from drafts."""
+
 KNOWLEDGE_VALIDATE_CITATIONS_TOOL: Final = "knowledge_validate_citations"
 """Tool name for validating method evidence citations."""
 
@@ -78,6 +84,8 @@ KNOWLEDGE_TOOL_NAMES: Final = (
     KNOWLEDGE_SEARCH_METHODS_TOOL,
     KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL,
     KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL,
+    KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
+    KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL,
     KNOWLEDGE_VALIDATE_CITATIONS_TOOL,
 )
 """Quant Methods knowledge tool names exposed by the MCP server."""
@@ -113,6 +121,8 @@ KNOWLEDGE_TOOL_DESCRIPTIONS: Final = {
     KNOWLEDGE_SEARCH_METHODS_TOOL: "Search approved Quant Methods method-card metadata.",
     KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL: "Retrieve citeable Quant Methods evidence chunks.",
     KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL: "Dereference citeable Quant Methods evidence chunks into bounded stored text.",
+    KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL: "Create a draft Quant Methods method card from validated evidence.",
+    KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL: "Publish an approved Quant Methods method card from a draft with explicit approval.",
     KNOWLEDGE_VALIDATE_CITATIONS_TOOL: "Validate source, chunk, locator, and method-card citations.",
 }
 """Descriptions for Quant Methods knowledge tools exposed by the MCP server."""

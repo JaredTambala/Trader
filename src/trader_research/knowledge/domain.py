@@ -293,6 +293,9 @@ class MethodCard:
     failure_modes: tuple[str, ...]
     evidence_refs: tuple[EvidenceReference, ...] = tuple()
     version: int = 1
+    source_method_card_id: str | None = None
+    approved_by: str | None = None
+    approval_note: str | None = None
     created_at: datetime = field(default_factory=_utc_now)
     schema_version: str = KNOWLEDGE_SCHEMA_VERSION
 
@@ -310,7 +313,7 @@ class MethodCard:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "artifact_type": "method_card",
+            "artifact_type": "method_card_draft" if self.status == "draft" else "method_card",
             "schema_version": self.schema_version,
             "method_card_id": self.method_card_id,
             "method_id": self.method_id,
@@ -323,6 +326,9 @@ class MethodCard:
             "outputs": list(self.outputs),
             "failure_modes": list(self.failure_modes),
             "evidence_refs": [ref.to_dict() for ref in self.evidence_refs],
+            "source_method_card_id": self.source_method_card_id,
+            "approved_by": self.approved_by,
+            "approval_note": self.approval_note,
             "created_at": _jsonable(self.created_at),
         }
 
@@ -340,6 +346,11 @@ class MethodCard:
             failure_modes=_string_tuple(payload.get("failure_modes")),
             evidence_refs=tuple(EvidenceReference.from_dict(_mapping(item)) for item in _sequence(payload.get("evidence_refs"))),
             version=int(payload.get("version") or 1),
+            source_method_card_id=str(payload["source_method_card_id"])
+            if payload.get("source_method_card_id") is not None
+            else None,
+            approved_by=str(payload["approved_by"]) if payload.get("approved_by") is not None else None,
+            approval_note=str(payload["approval_note"]) if payload.get("approval_note") is not None else None,
             created_at=_parse_datetime(payload.get("created_at")),
             schema_version=str(payload.get("schema_version") or KNOWLEDGE_SCHEMA_VERSION),
         )

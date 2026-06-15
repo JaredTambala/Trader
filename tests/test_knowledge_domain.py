@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from trader_research.knowledge.chunking import chunk_sections
 from trader_research.knowledge.domain import (
     DEFAULT_SOURCE_TYPE,
     EvidenceReference,
@@ -12,6 +13,7 @@ from trader_research.knowledge.domain import (
     MethodCard,
     SOURCE_TYPE_LABELS,
 )
+from trader_research.knowledge.extractors import ExtractedSection
 
 
 def test_knowledge_artifacts_round_trip_json() -> None:
@@ -87,3 +89,24 @@ def test_source_type_labels_are_closed_registry() -> None:
         "internal_note",
     }
     assert DEFAULT_SOURCE_TYPE == "internal_note"
+
+
+def test_chunking_sanitizes_nul_bytes_before_hashing() -> None:
+    source = KnowledgeSourceManifest(
+        source_id="knowledge_source_nul",
+        title="NUL Source",
+        source_type="internal_note",
+        path="tests/fixtures/knowledge/quant_notes.txt",
+        file_hash="abc123",
+        file_size_bytes=42,
+    )
+
+    chunks = chunk_sections(
+        source,
+        (ExtractedSection(text="alpha\x00beta", section="demo", heading="demo"),),
+    )
+
+    assert len(chunks) == 1
+    assert chunks[0].text == "alpha beta"
+    assert "\x00" not in chunks[0].text
+    assert chunks[0].text_hash

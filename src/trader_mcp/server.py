@@ -20,10 +20,12 @@ from trader_mcp.constants import (
     DATA_GET_INVENTORY_TOOL,
     DATA_SUMMARIZE_QUALITY_TOOL,
     DATA_TOOL_DESCRIPTIONS,
+    KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
     MCP_CONFIG_TOOL,
     MCP_HEALTH_TOOL,
     MCP_SERVER_OWNER,
     KNOWLEDGE_INGEST_DOCUMENTS_TOOL,
+    KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL,
     KNOWLEDGE_REGISTER_SOURCE_TOOL,
     KNOWLEDGE_TOOL_DESCRIPTIONS,
     KNOWLEDGE_TOOL_NAMES,
@@ -488,7 +490,13 @@ def build_config_envelope(
             "name": tool_name,
             "agent_owner": agent_owner_for_tool(tool_name),
             "side_effect": SideEffect.LOCAL_MUTATING.value
-            if tool_name in {KNOWLEDGE_REGISTER_SOURCE_TOOL, KNOWLEDGE_INGEST_DOCUMENTS_TOOL}
+            if tool_name
+            in {
+                KNOWLEDGE_REGISTER_SOURCE_TOOL,
+                KNOWLEDGE_INGEST_DOCUMENTS_TOOL,
+                KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
+                KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL,
+            }
             else SideEffect.READ_ONLY.value,
             "description": KNOWLEDGE_TOOL_DESCRIPTIONS[tool_name],
         }

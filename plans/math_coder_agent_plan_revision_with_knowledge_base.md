@@ -340,7 +340,8 @@ The knowledge base should be exposed through MCP tools. The first release can as
 | `knowledge_publish_method_card` | Quantitative Methods Agent | `local_mutating` | Promote a draft method card to approved status after maintainer/operator approval. |
 | `knowledge_validate_citations` | Quantitative Methods Agent | `read_only` | Validate source IDs, chunk IDs, locators, and method-card coverage for a contract/report. |
 
-In the first implementation, `knowledge_publish_method_card` can require an explicit local flag such as `allow_method_card_publish=True`. Without that flag, draft cards remain non-executable.
+`knowledge_publish_method_card` requires `approve=True`, an approver, and an approval note. Without explicit publish,
+draft cards remain non-executable.
 
 ## Knowledge-Aware Quantitative Methods Tool Policy
 
@@ -581,7 +582,8 @@ Acceptance criteria:
 
 Description:
 
-Create draft method cards from source evidence and allow explicit approval/publishing.
+Create draft method cards from source evidence and allow explicit approval/publishing. This tranche is implemented as
+deterministic structured validation and persistence; it does not ask an LLM to author cards internally.
 
 Files affected:
 
@@ -593,11 +595,11 @@ tests/test_method_cards.py
 
 Acceptance criteria:
 
-- Draft method cards require at least one source evidence reference.
+- Draft method cards require at least one validated source evidence reference.
 - Draft method cards include assumptions, inputs, outputs, and failure modes.
 - Draft cards are not executable by Quantitative Methods method-contract tools.
-- Publishing requires explicit approval input or local policy flag.
-- Approved method cards are immutable by default; updates create a new version.
+- Publishing requires explicit approval input, approver, and approval note.
+- Approved method cards are immutable by default; conflicting duplicate publishes fail closed.
 
 ### 23G. Knowledge Retrieval and Citation Validation MCP Tools
 
@@ -822,10 +824,12 @@ knowledge_get_ingestion_status
 knowledge_search_methods
 knowledge_retrieve_evidence
 knowledge_get_evidence_chunks
+knowledge_create_method_card_draft
+knowledge_publish_method_card
 knowledge_validate_citations
 math_list_method_contracts
 math_validate_method_contract
-  -> source manifests, ingestion reports, retrieved refs, dereferenced chunk text, citation validation, and method metadata
+  -> source manifests, ingestion reports, retrieved refs, dereferenced chunk text, approved method cards, citation validation, and method metadata
   -> declares agent_owner = Quantitative Methods Agent for first release
   -> records source IDs, locators, assumptions, fixture status, and failure modes
 ```
@@ -833,8 +837,6 @@ math_validate_method_contract
 Stretch evidence:
 
 ```text
-knowledge_create_method_card_draft
-knowledge_publish_method_card
 math_run_signal_diagnostics
 math_run_multiple_testing_report
   -> approved method card used to validate a statistical-test/multiple-testing contract

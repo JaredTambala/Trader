@@ -61,7 +61,7 @@ def chunk_sections(
 
 
 def _split_text(text: str, *, max_chars: int) -> tuple[str, ...]:
-    cleaned = text.strip()
+    cleaned = text.replace("\x00", " ").strip()
     if not cleaned:
         return tuple()
     paragraphs = [paragraph.strip() for paragraph in cleaned.split("\n\n") if paragraph.strip()]

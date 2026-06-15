@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from trader_research.knowledge.citation_validation import validate_citations
+from trader_research.knowledge.domain import MethodCard
 from trader_research.knowledge.embeddings import DeterministicEmbeddingProvider
 from trader_research.knowledge.ingestion import ingest_documents
 from trader_research.knowledge.postgres_store import PostgresKnowledgeStore
@@ -65,6 +66,18 @@ def test_postgres_knowledge_store_register_ingest_retrieve_validate(
         },
         knowledge_store=postgres_knowledge_store,
     )
+    method_card = MethodCard(
+        method_card_id="method_card_postgres_demo",
+        method_id="sma",
+        title="Postgres Method Card Demo",
+        family="indicator",
+        status="draft",
+        assumptions=("ordered observations",),
+        inputs=("prices",),
+        outputs=("average",),
+        failure_modes=("warmup",),
+    )
+    postgres_knowledge_store.save_method_card(method_card)
     runtime = postgres_knowledge_store.runtime_summary()
 
     assert registered.ok is True
@@ -79,4 +92,5 @@ def test_postgres_knowledge_store_register_ingest_retrieve_validate(
     assert dereferenced.data["chunks"][0]["hash_verified"] is True
     assert dereferenced.data["chunks"][0]["locator"] == evidence["locator"]
     assert citations.ok is True
+    assert postgres_knowledge_store.list_persisted_method_cards() == (method_card,)
     assert runtime["pgvector_available"] is True

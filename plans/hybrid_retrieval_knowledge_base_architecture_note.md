@@ -463,7 +463,7 @@ Implementation note for the first durable chunk:
 - `knowledge_retrieve_evidence` merges lexical and vector candidates with deterministic reciprocal-rank fusion.
 - `knowledge_get_evidence_chunks` dereferences selected `chunk_id` values into real stored chunk text with locators,
   source metadata, hash verification, and truncation flags.
-- Method-card draft/publish tools, reranking, OCR, external vector databases, and Quantitative Methods LangGraph handoff remain later chunks.
+- Reranking, OCR, external vector databases, and Quantitative Methods LangGraph handoff remain later chunks.
 
 ## 14. Embedding Provider Abstraction
 
@@ -568,7 +568,7 @@ Acceptance criteria:
 
 ### 23G. Method Card Lifecycle
 
-Implement draft and approval flow for method cards.
+Implement draft and approval flow for method cards with explicit local approval metadata.
 
 Acceptance criteria:
 

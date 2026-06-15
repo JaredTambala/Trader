@@ -242,6 +242,8 @@ source document or fixture reference
   -> knowledge_search_methods
   -> knowledge_retrieve_evidence
   -> knowledge_get_evidence_chunks
+  -> knowledge_create_method_card_draft
+  -> knowledge_publish_method_card
   -> knowledge_validate_citations
   -> math_list_method_contracts
   -> math_validate_method_contract

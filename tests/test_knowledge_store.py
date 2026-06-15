@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from trader_research.knowledge.domain import KnowledgeIngestionReport, KnowledgeSourceManifest
+from trader_research.knowledge.domain import KnowledgeIngestionReport, KnowledgeSourceManifest, MethodCard
 from trader_research.knowledge.embeddings import DeterministicEmbeddingProvider
 from trader_research.knowledge.extractors import extract_text
 from trader_research.knowledge.index import index_chunks, reciprocal_rank_fusion, search_chunks
@@ -39,6 +39,18 @@ def test_json_knowledge_store_contract_indexes_active_chunks(tmp_path: Path) -> 
         embedding_manifest_id=manifest.embedding_manifest_id,
     )
     store.save_ingestion_report(report)
+    method_card = MethodCard(
+        method_card_id="method_card_store_demo",
+        method_id="sma",
+        title="SMA Store Demo",
+        family="indicator",
+        status="draft",
+        assumptions=("ordered observations",),
+        inputs=("prices",),
+        outputs=("average",),
+        failure_modes=("warmup",),
+    )
+    store.save_method_card(method_card)
 
     lexical = store.search_lexical("simple moving average", limit=3)
     vector = store.search_vector(
@@ -60,6 +72,7 @@ def test_json_knowledge_store_contract_indexes_active_chunks(tmp_path: Path) -> 
     assert store.load_chunks(source.source_id)
     assert store.load_chunks_by_ids((chunks[0].chunk_id, "missing")) == (chunks[0],)
     assert store.list_ingestion_reports(source_ids=(source.source_id,))[0].ingestion_id == report.ingestion_id
+    assert store.list_persisted_method_cards() == (method_card,)
     assert lexical
     assert vector
     assert hybrid[0]["retrieval_scores"]["combined_rank"] == 1

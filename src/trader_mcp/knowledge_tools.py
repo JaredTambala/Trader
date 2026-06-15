@@ -9,10 +9,12 @@ from mcp.types import CallToolResult
 
 from trader_mcp.adapters import envelope_to_mcp_result
 from trader_mcp.constants import (
+    KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
     KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL,
     KNOWLEDGE_GET_INGESTION_STATUS_TOOL,
     KNOWLEDGE_INGEST_DOCUMENTS_TOOL,
     KNOWLEDGE_LIST_SOURCES_TOOL,
+    KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL,
     KNOWLEDGE_REGISTER_SOURCE_TOOL,
     KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL,
     KNOWLEDGE_SEARCH_METHODS_TOOL,
@@ -30,6 +32,10 @@ from trader_research.knowledge.store import KnowledgeStore
 from trader_research.knowledge.ingestion import (
     get_ingestion_status as get_ingestion_status_service,
     ingest_documents as ingest_documents_service,
+)
+from trader_research.knowledge.method_cards import (
+    create_method_card_draft as create_method_card_draft_service,
+    publish_method_card as publish_method_card_service,
 )
 from trader_research.knowledge.retrieval import (
     get_evidence_chunks as get_evidence_chunks_service,
@@ -149,6 +155,7 @@ def register_quant_methods_tools(
             family=family,
             include_drafts=include_drafts,
             limit=limit,
+            knowledge_store=_knowledge_store(),
         )
         return CallToolResult(**envelope_to_mcp_result(envelope))
 
@@ -191,6 +198,58 @@ def register_quant_methods_tools(
             source_id=source_id,
             include_text=include_text,
             max_chars_per_chunk=max_chars_per_chunk,
+            knowledge_store=_knowledge_store(),
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
+        description=KNOWLEDGE_TOOL_DESCRIPTIONS[KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL],
+    )
+    def knowledge_create_method_card_draft(
+        method_id: str,
+        title: str,
+        family: str,
+        assumptions: list[str],
+        inputs: list[str],
+        outputs: list[str],
+        failure_modes: list[str],
+        evidence_refs: list[dict[str, Any]],
+        version: int = 1,
+    ) -> CallToolResult:
+        envelope = create_method_card_draft_service(
+            artifact_root=environment.artifact_root,
+            method_id=method_id,
+            title=title,
+            family=family,
+            assumptions=assumptions,
+            inputs=inputs,
+            outputs=outputs,
+            failure_modes=failure_modes,
+            evidence_refs=evidence_refs,
+            version=version,
+            knowledge_store=_knowledge_store(),
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL,
+        description=KNOWLEDGE_TOOL_DESCRIPTIONS[KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL],
+    )
+    def knowledge_publish_method_card(
+        draft_method_card_id: str,
+        approved_method_card_id: str,
+        approved_by: str,
+        approval_note: str,
+        approve: bool = False,
+    ) -> CallToolResult:
+        envelope = publish_method_card_service(
+            artifact_root=environment.artifact_root,
+            draft_method_card_id=draft_method_card_id,
+            approved_method_card_id=approved_method_card_id,
+            approved_by=approved_by,
+            approval_note=approval_note,
+            approve=approve,
             knowledge_store=_knowledge_store(),
         )
         return CallToolResult(**envelope_to_mcp_result(envelope))
@@ -241,5 +300,6 @@ def register_quant_methods_tools(
             artifact_root=environment.artifact_root,
             method_contract=method_contract,
             require_evidence=require_evidence,
+            knowledge_store=_knowledge_store(),
         )
         return CallToolResult(**envelope_to_mcp_result(envelope))
