@@ -32,6 +32,9 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+trader_research = ["method_contracts_seed.json"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 addopts = "-q"

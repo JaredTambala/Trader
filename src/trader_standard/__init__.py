@@ -6,8 +6,10 @@ from .indicators import (
     EmaIndicator,
     MacdIndicator,
     MacdValue,
+    RollingVolatilityIndicator,
     RsiIndicator,
     SmaIndicator,
+    ZScoreIndicator,
 )
 from .risk import (
     HaltRiskManager,
@@ -55,6 +57,8 @@ __all__ = [
     "MacdValue",
     "BollingerBandsIndicator",
     "BollingerBandValue",
+    "RollingVolatilityIndicator",
+    "ZScoreIndicator",
     "SmaCrossoverSignal",
     "EmaCrossoverSignal",
     "RsiThresholdSignal",

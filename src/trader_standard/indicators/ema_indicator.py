@@ -1,4 +1,21 @@
-"""Exponential moving average (EMA) indicator."""
+"""Citation-backed exponential moving average implementation.
+
+Source reference:
+- Approved method card: ``method_card_ema_seed_v1``.
+- Registry method: ``ema``.
+- Detailed bibliographic/source evidence belongs in the approved method card and
+  citation-validation report used when this implementation is registered.
+
+Implements:
+- Entrypoint ``trader_standard.indicators:EmaIndicator``.
+- Trader runtime contract ``trader.indicators.Indicator``.
+- Input bars are expected latest-first, matching Trader runtime convention.
+- The chronological seed is the simple average of the first ``period`` closes.
+- Subsequent values use smoothing multiplier ``2 / (period + 1)``.
+- Outputs are latest-first and omit warmup observations; fixture validation
+  expands warmup nulls for report comparison.
+- No lookahead: every output uses only current and earlier chronological closes.
+"""
 
 from __future__ import annotations
 

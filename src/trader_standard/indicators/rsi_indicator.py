@@ -1,4 +1,23 @@
-"""Relative strength index (RSI) indicator."""
+"""Citation-backed relative strength index implementation.
+
+Source reference:
+- Approved method card: ``method_card_rsi_seed_v1``.
+- Registry method: ``rsi``.
+- Detailed bibliographic/source evidence belongs in the approved method card and
+  citation-validation report used when this implementation is registered.
+
+Implements:
+- Entrypoint ``trader_standard.indicators:RsiIndicator``.
+- Trader runtime contract ``trader.indicators.Indicator``.
+- Input bars are expected latest-first, matching Trader runtime convention.
+- Compute close-to-close deltas in chronological order, average the first
+  ``period`` gains and losses, then apply Wilder-style recursive smoothing.
+- Return ``100 - (100 / (1 + RS))`` where ``RS = avg_gain / avg_loss``; a zero
+  average loss returns ``100``.
+- Outputs are latest-first and omit the ``period + 1`` warmup window; fixture
+  validation expands warmup nulls for report comparison.
+- No lookahead: every output uses only current and earlier chronological closes.
+"""
 
 from __future__ import annotations
 

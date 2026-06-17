@@ -362,8 +362,9 @@ knowledge_publish_method_card
 knowledge_validate_citations
 math_list_method_contracts
 math_validate_method_contract
-math_create_indicator_contract
+math_register_method_implementation
 math_run_indicator_fixtures
+math_generate_python_method
 math_run_signal_diagnostics
 math_run_multiple_testing_report
 math_generate_cpp_kernel
@@ -667,29 +668,65 @@ Acceptance criteria:
 - Unsupported methods fail closed.
 - Registry can filter to legacy indicator-only views for compatibility.
 
-### 23J. Indicator Contract and Fixture Validation
+### 23J. Citation-Backed Python Implementation Validation
 
 Description:
 
-Implement deterministic indicator/transform validation.
+Implement the first real implementation gate for deterministic indicators/transforms by validating Python reference
+implementations against approved method cards, method contracts, and deterministic fixtures.
 
 Files affected:
 
 ```text
+src/trader_research/method_implementations.py
 src/trader_research/math_tools.py
-src/trader_standard/indicators/python/*
-tests/test_math_indicator_contracts.py
-tests/fixtures/math_indicators/*
+src/trader_mcp/knowledge_tools.py
+src/trader_standard/indicators/*
+tests/test_method_implementations.py
+tests/test_mcp_quant_methods_tools.py
 ```
 
 Acceptance criteria:
 
-- Contract validation checks parameter bounds, warmup behavior, NaN policy, output schema, and no-lookahead metadata.
-- Fixture tests cover small known input/output cases.
-- Validation returns `indicator_validation_report.json` or an embedded equivalent envelope.
-- Unsupported indicators and invalid parameter grids fail closed.
+- A Python reference implementation manifest records method ID, language, entrypoint, source hash, dependency allowlist,
+  safety profile, source provenance docstring, approved method-card refs, and method-contract refs.
+- Trader `Indicator` and `IndicatorObservation` remain the runtime implementation contract; this slice does not create a
+  parallel executable indicator-contract system.
+- Maintained implementations for `sma`, `ema`, `rsi`, `rolling_volatility`, and `z_score` pass deterministic fixtures.
+- Validation checks warmup/null behavior, output length, source hashes, approved method-card refs, parsed module-level
+  `Source reference` / `Implements` provenance docstrings, and no-lookahead prefix behavior.
+- Validation returns `indicator_validation_report.json`.
+- Unsupported indicators, unknown entrypoints, non-`Indicator` classes, unsafe dependencies, missing provenance
+  docstrings, unapproved method cards, hash mismatches, and fixture mismatches fail
+  closed.
 
-### 23K. Signal Diagnostics and Multiple-Testing Reports
+### 23K. Python Method Artifact Generation and Registration
+
+Description:
+
+Add the controlled Python implementation artifact path after the 23J validation gate exists.
+
+Files affected:
+
+```text
+src/trader_research/method_implementations.py
+src/trader_research/math_tools.py
+src/trader_mcp/knowledge_tools.py
+tests/test_method_implementations.py
+tests/test_mcp_quant_methods_tools.py
+```
+
+Acceptance criteria:
+
+- Existing Python implementations can be registered as `method_implementation_manifest.json` records.
+- Optionally generated Python reference artifacts are written only to `artifacts/research/method_implementations/quarantine/`,
+  not directly into runtime packages.
+- Generated artifacts cite approved method cards, declare method contracts, record source hashes and dependency
+  allowlists, start with the required provenance docstring, pass static safety checks, and pass 23J fixture validation
+  before downstream use.
+- Unsafe or fixture-failing generated artifacts remain quarantined and blocked.
+
+### 23L. Signal Diagnostics and Multiple-Testing Reports
 
 Description:
 
@@ -710,14 +747,15 @@ Acceptance criteria:
 - Computes IC/rank IC, hit rate, quantile buckets, monotonicity, horizon decay, and symbol/session/regime breakdowns where inputs exist.
 - Requires candidate family manifests for family-level inference.
 - Records raw p-values, adjusted p-values, correction method, tested grid, and candidate count.
-- Requires approved method-card references for sophisticated inference procedures.
+- Requires approved method-card references and, where executable methods are used, validated implementation refs for
+  sophisticated inference procedures.
 - Produces `signal_diagnostic_report.json` and `multiple_testing_report.json` with warnings and blockers.
 
-### 23L. C++ Kernel Path
+### 23M. C++ / Compiled Kernel Path
 
 Description:
 
-Implement a controlled compiled-kernel path for approved deterministic transforms.
+Implement a controlled compiled-kernel path for approved deterministic transforms after Python references are validated.
 
 Files affected:
 
@@ -727,17 +765,39 @@ src/trader_research/math_tools.py
 src/trader_standard/indicators/cpp/*
 src/trader_standard/indicators/bindings/*
 tests/test_cpp_kernel_artifacts.py
-tests/test_python_cpp_parity.py
 ```
 
 Acceptance criteria:
 
-- C++ generation is template-based only.
+- C++ generation is template-based only and requires an approved Python reference implementation manifest plus passing
+  fixture validation.
 - Compilation occurs in an isolated local build directory.
 - Kernel manifest records build settings, ABI/binding info, source/template provenance, and benchmark summary.
+- Failed compile returns a blocking Quantitative Methods envelope.
+- No generated kernel has access to broker mutation, SQL, network, filesystem mutation, or live trading controls.
+
+### 23N. Python/C++ Parity and Method Packaging
+
+Description:
+
+Compare optimized implementations against approved Python references and package validated method artifacts for handoff.
+
+Files affected:
+
+```text
+src/trader_research/cpp_kernel_artifacts.py
+src/trader_research/method_implementations.py
+src/trader_research/math_tools.py
+tests/test_python_cpp_parity.py
+tests/test_method_package_artifacts.py
+```
+
+Acceptance criteria:
+
 - Python/C++ parity tests run on deterministic fixtures and seeded generated cases.
-- Failed compile or failed parity returns a blocking Quantitative Methods envelope.
-- No generated kernel has access to broker mutation, SQL, network, or live trading controls.
+- Parity reports identify tolerance policy, mismatches, dtype/alignment assumptions, warnings, and blockers.
+- Packaging bundles method cards, contracts, Python implementation manifests, fixture reports, optional kernel manifests,
+  parity reports, and citation-validation refs into `method_package_manifest.json`.
 
 ### 24. Register Quantitative Methods MCP Tools
 
@@ -876,26 +936,28 @@ The smallest useful version is:
 10. Define math artifact schemas that can reference knowledge evidence.
 11. Build method registry linked to approved method cards.
 12. Register math_list_method_contracts and math_validate_method_contract.
-13. Implement deterministic fixtures for a tiny indicator set:
+13. Register and validate Python reference implementations for a tiny indicator set:
     - SMA
     - EMA
     - rolling volatility
     - z-score
     - RSI
-14. Add signal diagnostics:
+14. Add optional quarantined Python method artifact generation after registration/fixture validation exists.
+15. Add signal diagnostics:
     - IC
     - rank IC
     - quantile buckets
     - horizon decay
-15. Add multiple-testing report:
+16. Add multiple-testing report:
     - candidate family manifest
     - raw p-values
     - Bonferroni
     - Holm
     - Benjamini-Hochberg
-16. Add Quantitative Methods LangGraph identity.
-17. Add supervisor handoff consumption with knowledge provenance.
-18. Add C++ path only after Python contracts, citations, and reports are stable.
+17. Add Quantitative Methods LangGraph identity.
+18. Add supervisor handoff consumption with knowledge provenance.
+19. Add C++ path only after Python references, contracts, citations, and reports are stable.
+20. Add Python/C++ parity and method packaging.
 ```
 
 ## Additional Guardrails
@@ -1152,23 +1214,28 @@ math_validate_indicator_contract -> math_validate_method_contract filtered to in
 
 | Tool | Owner | Side effect | Purpose |
 | --- | --- | --- | --- |
-| `math_create_indicator_contract` | Quantitative Methods Agent | `local_mutating` | Create a structured indicator contract from an approved template family. |
-| `math_run_indicator_fixtures` | Quantitative Methods Agent | `local_mutating` | Run deterministic fixture tests and produce `indicator_validation_report.json`. |
+| `math_register_method_implementation` | Quantitative Methods Agent | `local_mutating` | Register a Python reference implementation manifest with entrypoint, source hash, dependency allowlist, safety profile, method contract refs, and approved method-card refs. |
+| `math_generate_python_method` | Quantitative Methods Agent | `local_mutating` | Create a quarantined Python reference artifact from an approved method card/contract and require fixture validation before use. |
+| `math_run_indicator_fixtures` | Quantitative Methods Agent | `local_mutating` | Run deterministic fixture tests against a registered Python reference implementation and produce `indicator_validation_report.json`. |
 | `math_run_signal_diagnostics` | Quantitative Methods Agent | `local_mutating` | Given indicator observations and forward-return labels, produce `signal_diagnostic_report.json`. |
 | `math_run_multiple_testing_report` | Quantitative Methods Agent | `local_mutating` | Given a declared candidate family and metric matrix, produce `multiple_testing_report.json`. |
-| `math_generate_cpp_kernel` | Quantitative Methods Agent | `local_mutating` | Generate C++ only from approved templates and produce draft kernel metadata. |
+| `math_generate_cpp_kernel` | Quantitative Methods Agent | `local_mutating` | Generate C++ only from approved templates after a validated Python reference exists. |
 | `math_compile_kernel` | Quantitative Methods Agent | `local_mutating` | Compile the generated/maintained kernel locally and return build evidence. |
 | `math_run_python_cpp_parity` | Quantitative Methods Agent | `local_mutating` | Compare Python reference output against C++ output on fixtures and seeded generated cases. |
 | `math_package_method_artifact` | Quantitative Methods Agent | `local_mutating` | Bundle contracts, implementation refs, validation reports, parity reports, and provenance for handoff. |
 
-## C++ Kernel Policy
+## Python Reference and C++ Kernel Policy
 
-The C++ path is valuable, but it should be template-restricted. The Quantitative Methods Agent should not emit arbitrary runtime code into the trading system.
+Python reference implementations are the first executable target. The C++ path is valuable, but it is an optimization
+path after the Python reference implementation, method contract, citations, and fixtures are stable. The Quantitative
+Methods Agent should not emit arbitrary runtime code into the trading system.
 
 Recommended flow:
 
 ```text
-Python reference implementation
+Approved method card
+  -> method contract
+  -> registered or quarantined Python reference implementation
   -> deterministic fixtures
   -> approved C++ template selection
   -> C++ implementation
@@ -1249,8 +1316,9 @@ mcp_health
 mcp_get_config
 math_list_method_contracts
 math_validate_method_contract
-math_create_indicator_contract
+math_register_method_implementation
 math_run_indicator_fixtures
+math_generate_python_method
 math_run_signal_diagnostics
 math_run_multiple_testing_report
 math_generate_cpp_kernel
@@ -1414,18 +1482,21 @@ Implement deterministic indicator/transform validation.
 Files affected:
 
 ```text
+src/trader_research/method_implementations.py
 src/trader_research/math_tools.py
-src/trader_standard/indicators/python/*
-tests/test_math_indicator_contracts.py
-tests/fixtures/math_indicators/*
+src/trader_standard/indicators/*
+tests/test_method_implementations.py
 ```
 
 Acceptance criteria:
 
-- Contract validation checks parameter bounds, warmup behavior, NaN policy, output schema, and no-lookahead metadata.
-- Fixture tests cover small known input/output cases.
-- Validation returns `indicator_validation_report.json` or an embedded equivalent envelope.
-- Unsupported indicators and invalid parameter grids fail closed.
+- Trader `Indicator` remains the executable runtime contract.
+- Method implementation manifests record approved method-card refs, source hash, entrypoint, dependency allowlist, and
+  fixture evidence.
+- Fixture tests cover small known input/output cases and no-lookahead prefix behavior.
+- Validation returns `indicator_validation_report.json`.
+- Unsupported indicators, invalid method-card refs, unsafe dependencies, hash mismatches, and fixture mismatches fail
+  closed.
 
 ### 23D. Signal Diagnostics
 
@@ -1675,13 +1746,16 @@ The Quantitative Methods Agent should not:
 4. Signal diagnostics are artifact-producing and include sample-size warnings.
 5. Multiple-testing reports require a declared candidate family and record the full tested universe.
 6. Raw and adjusted p-values are stored together with the correction method and assumptions.
-7. Python reference implementations exist before C++ operational kernels are promoted.
-8. C++ kernels are template-restricted, compiled locally, and parity-tested against Python.
-9. Failed fixture, failed compile, or failed parity creates a blocker.
-10. Quantitative Methods MCP tools return shared envelopes with `agent_owner = "Quantitative Methods Agent"` and explicit side-effect class.
-11. The Quantitative Methods LangGraph graph can call only Quantitative Methods MCP tools.
-12. Supervisor handoffs preserve Quantitative Methods ownership and provenance.
-13. No Quantitative Methods output claims final alpha or promotion readiness.
+7. Python reference implementations exist, are source-hashed, and pass fixture validation before C++ operational kernels
+   are promoted.
+8. Generated Python artifacts are quarantined until they cite approved method cards, declare method contracts, and pass
+   fixture validation.
+9. C++ kernels are template-restricted, compiled locally, and parity-tested against Python.
+10. Failed fixture, failed compile, or failed parity creates a blocker.
+11. Quantitative Methods MCP tools return shared envelopes with `agent_owner = "Quantitative Methods Agent"` and explicit side-effect class.
+12. The Quantitative Methods LangGraph graph can call only Quantitative Methods MCP tools.
+13. Supervisor handoffs preserve Quantitative Methods ownership and provenance.
+14. No Quantitative Methods output claims final alpha or promotion readiness.
 
 ## Practical First Implementation Order
 
@@ -1691,29 +1765,32 @@ The smallest useful version is:
 1. Define math artifact schemas.
 2. Build method registry.
 3. Register list/validate MCP tools.
-4. Implement deterministic fixtures for a tiny indicator set:
+4. Register and validate Python reference implementations for a tiny indicator set:
    - SMA
    - EMA
    - rolling volatility
    - z-score
    - RSI
-5. Add signal diagnostics:
+5. Add optional quarantined Python method generation after the validation gate exists.
+6. Add signal diagnostics:
    - IC
    - rank IC
    - quantile buckets
    - horizon decay
-6. Add multiple-testing report:
+7. Add multiple-testing report:
    - candidate family manifest
    - raw p-values
    - Bonferroni
    - Holm
    - Benjamini-Hochberg
-7. Add Quantitative Methods LangGraph identity.
-8. Add supervisor handoff consumption.
-9. Add C++ path only after Python contracts and reports are stable.
+8. Add Quantitative Methods LangGraph identity.
+9. Add supervisor handoff consumption.
+10. Add C++ path only after Python references, contracts, citations, and reports are stable.
+11. Add Python/C++ parity and method packaging.
 ```
 
-This avoids building a premature C++ system before the artifact contracts and statistical evidence layer are stable.
+This avoids building a premature C++ system before the Python reference, artifact contracts, and statistical evidence
+layer are stable.
 
 ## Summary
 

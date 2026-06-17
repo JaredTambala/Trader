@@ -29,6 +29,18 @@ class ParameterSpec:
             "default": self.default,
         }
 
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ParameterSpec":
+        return cls(
+            name=str(payload.get("name") or ""),
+            kind=str(payload.get("kind") or ""),
+            required=bool(payload.get("required", True)),
+            min_value=float(payload["min_value"]) if payload.get("min_value") is not None else None,
+            max_value=float(payload["max_value"]) if payload.get("max_value") is not None else None,
+            allowed_values=tuple(_sequence(payload.get("allowed_values"))),
+            default=payload.get("default"),
+        )
+
 
 @dataclass(frozen=True)
 class MethodRegistryEntry:
@@ -52,6 +64,7 @@ class MethodRegistryEntry:
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "artifact_type": "method_contract",
             "method_id": self.method_id,
             "family": self.family,
             "status": self.status,
@@ -68,6 +81,26 @@ class MethodRegistryEntry:
             "requires_evidence": self.requires_evidence,
             "approved_method_card_ids": list(self.approved_method_card_ids),
         }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "MethodRegistryEntry":
+        return cls(
+            method_id=str(payload.get("method_id") or ""),
+            family=str(payload.get("family") or ""),
+            status=str(payload.get("status") or "planned"),
+            purpose=str(payload.get("purpose") or ""),
+            parameters=tuple(ParameterSpec.from_dict(_mapping(item)) for item in _sequence(payload.get("parameters"))),
+            inputs=_string_tuple(payload.get("inputs")),
+            outputs=_string_tuple(payload.get("outputs")),
+            assumptions=_string_tuple(payload.get("assumptions")),
+            failure_modes=_string_tuple(payload.get("failure_modes")),
+            artifact_outputs=_string_tuple(payload.get("artifact_outputs")),
+            warmup=str(payload.get("warmup") or ""),
+            nan_policy=str(payload.get("nan_policy") or ""),
+            no_lookahead=bool(payload.get("no_lookahead", False)),
+            requires_evidence=bool(payload.get("requires_evidence", False)),
+            approved_method_card_ids=_string_tuple(payload.get("approved_method_card_ids")),
+        )
 
 
 @dataclass(frozen=True)
@@ -146,3 +179,17 @@ class MethodValidationReport:
 
 def _mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
+
+
+def _sequence(value: Any) -> Sequence[Any]:
+    if value is None:
+        return ()
+    if isinstance(value, (str, bytes)):
+        return (value,)
+    if isinstance(value, Sequence):
+        return value
+    return (value,)
+
+
+def _string_tuple(value: Any) -> tuple[str, ...]:
+    return tuple(str(item) for item in _sequence(value) if str(item))

@@ -116,8 +116,9 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | `knowledge_validate_citations` | Quantitative Methods Agent | `citation_validation_report.json` |
 | `math_list_method_contracts` | Quantitative Methods Agent | method contract catalog for indicators, transforms, statistical tests, diagnostics, and multiple-testing procedures |
 | `math_validate_method_contract` | Quantitative Methods Agent | method contract validation report |
-| `math_create_indicator_contract` | Quantitative Methods Agent | `indicator_contract.json` |
+| `math_register_method_implementation` | Quantitative Methods Agent | `method_implementation_manifest.json` |
 | `math_run_indicator_fixtures` | Quantitative Methods Agent | `indicator_validation_report.json` |
+| `math_generate_python_method` | Quantitative Methods Agent | quarantined generated Python source plus registration and fixture-validation results |
 | `math_run_signal_diagnostics` | Quantitative Methods Agent | `signal_diagnostic_report.json` |
 | `math_run_multiple_testing_report` | Quantitative Methods Agent | `multiple_testing_report.json` |
 | `math_generate_cpp_kernel` | Quantitative Methods Agent | draft `cxx_kernel_manifest.json` from an approved template |
@@ -191,6 +192,51 @@ Knowledge-base rules:
 - Publishing preserves the draft and creates a separate approved `method_card` with approval provenance.
 - Re-publishing the same approved card is idempotent only when the persisted content matches; conflicting content fails
   closed.
+
+`math_register_method_implementation` contract:
+
+- Request: `method_id`, non-empty `method_card_ids`, optional `method_contract`, optional `entrypoint`, optional
+  `source_path`, optional `class_name`, optional `constructor_kwargs`, optional `implementation_kind`
+  (`maintained` or `generated`), optional `dependency_allowlist`, and optional `expected_source_hash`.
+- Runtime contract: the entrypoint must resolve to a class that subclasses `trader.indicators.Indicator`; this reuses
+  the Trader package contract instead of creating a parallel indicator-contract schema.
+- Source provenance contract: the implementation source file must have a module-level docstring with `Source reference`
+  and `Implements` sections. The docstring must name the registry method, at least one approved method-card reference,
+  implementation class, Trader `Indicator` runtime contract, implemented formula/algorithm, input ordering, warmup
+  behavior, output ordering, and no-lookahead boundary. For generated quarantined implementations, the docstring must
+  name the exact method-card IDs passed to the tool.
+- Validation: method ID must exist in `math_registry`; approved method-card refs must match the method; source hash must
+  match when supplied; provenance docstring checks must pass; imports and calls must pass the static safety allowlist;
+  generated implementations must resolve from their artifact source path.
+- Success data contains `method_implementation_manifest` with method ID, language, implementation kind, entrypoint,
+  class name, source path, source hash, constructor kwargs, approved method-card refs, method contract,
+  source provenance, dependency allowlist, safety profile, and `status="registered"`.
+
+`math_run_indicator_fixtures` contract:
+
+- Request: either `implementation_id` for a persisted manifest or `implementation_manifest` inline; optional `fixtures`.
+- Fixture inputs use ascending close values. The service builds latest-first `Bar` sequences, calls
+  `Indicator.compute_series(bars)`, expands warmup nulls, compares expected values, and runs prefix checks for
+  no-lookahead behavior.
+- Before fixtures run, the service revalidates the manifest, approved method cards, source hash, entrypoint, and static
+  safety checks.
+- Success data contains an updated `method_implementation_manifest` with `status="validated"` and an
+  `indicator_validation_report` with validation ID, implementation ID, method ID, entrypoint, source hash,
+  fixture results, warnings, and blockers. Fixture mismatches return `ok=false` and leave the manifest blocked.
+
+`math_generate_python_method` contract:
+
+- Request: `method_id`, non-empty `method_card_ids`, `method_contract`, and optional `fixtures`.
+- MCP calls the configured provider-neutral LLM client and requires JSON with `class_name` and `source_code`.
+- The generation prompt requires `source_code` to start with the same module-level provenance docstring enforced by
+  `math_register_method_implementation`.
+- Generated code is written only under `artifacts/research/method_implementations/quarantine/`; it is never written to
+  `src/` or imported as a maintained package.
+- Static safety checks reject filesystem access, network/process/SQL/broker imports, dynamic imports, `eval`, `exec`,
+  `open`, global/nonlocal mutation, and dependencies outside the allowlist.
+- Passing generated drafts immediately run through `math_register_method_implementation` and
+  `math_run_indicator_fixtures`. Success data reports the generated source path, registration result,
+  fixture-validation result, and `status="validated"`; failures remain quarantined with `status="blocked"`.
 
 ## LangGraph Use
 

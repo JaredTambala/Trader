@@ -11,6 +11,7 @@ from trader.knowledge_store import (
     PostgresKnowledgeVectorExtensionUnavailable,
 )
 from trader_research.contracts import ArtifactReference
+from trader_research.math_domain import MethodRegistryEntry
 
 from .domain import KnowledgeChunk, KnowledgeEmbeddingManifest, KnowledgeIngestionReport, KnowledgeSourceManifest, MethodCard
 from .store import (
@@ -188,6 +189,13 @@ class PostgresKnowledgeStore:
     def list_persisted_method_cards(self) -> tuple[MethodCard, ...]:
         payloads = _translate_errors(self._records.list_persisted_method_cards)
         return tuple(MethodCard.from_dict(payload) for payload in payloads)
+
+    def save_method_contract(self, method: MethodRegistryEntry) -> None:
+        _translate_errors(lambda: self._records.save_method_contract(method.to_dict()))
+
+    def list_persisted_method_contracts(self) -> tuple[MethodRegistryEntry, ...]:
+        payloads = _translate_errors(self._records.list_persisted_method_contracts)
+        return tuple(MethodRegistryEntry.from_dict(payload) for payload in payloads)
 
     def close(self) -> None:
         self._records.close()

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping, Protocol, Sequence
 
 from trader_research.contracts import ArtifactReference
+from trader_research.math_domain import MethodRegistryEntry
 
 from .domain import KnowledgeChunk, KnowledgeEmbeddingManifest, KnowledgeIngestionReport, KnowledgeSourceManifest, MethodCard
 from .embeddings import TOKEN_PATTERN, cosine_similarity
@@ -131,6 +132,12 @@ class KnowledgeStore(Protocol):
     def list_persisted_method_cards(self) -> tuple[MethodCard, ...]:
         """List persisted method cards."""
 
+    def save_method_contract(self, method: MethodRegistryEntry) -> None:
+        """Persist a method contract."""
+
+    def list_persisted_method_contracts(self) -> tuple[MethodRegistryEntry, ...]:
+        """List persisted method contracts."""
+
 
 class JsonKnowledgeStore:
     """Compatibility store backed by the existing local JSON repository."""
@@ -155,6 +162,7 @@ class JsonKnowledgeStore:
             "knowledge_embedding_manifest": self.repository.embedding_path,
             "method_card_draft": self.repository.method_card_path,
             "method_card": self.repository.method_card_path,
+            "method_contract": self.repository.method_contract_path,
         }
         path_factory = path_by_type.get(artifact_type)
         return ArtifactReference(
@@ -337,6 +345,12 @@ class JsonKnowledgeStore:
 
     def list_persisted_method_cards(self) -> tuple[MethodCard, ...]:
         return self.repository.list_persisted_method_cards()
+
+    def save_method_contract(self, method: MethodRegistryEntry) -> None:
+        self.repository.save_method_contract(method)
+
+    def list_persisted_method_contracts(self) -> tuple[MethodRegistryEntry, ...]:
+        return self.repository.list_persisted_method_contracts()
 
     def _filtered_index_entries(
         self,

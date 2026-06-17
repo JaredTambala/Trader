@@ -11,6 +11,7 @@ from trader_research.knowledge.ingestion import ingest_documents
 from trader_research.knowledge.postgres_store import PostgresKnowledgeStore
 from trader_research.knowledge.retrieval import get_evidence_chunks, retrieve_evidence
 from trader_research.knowledge.sources import register_source
+from trader_research.math_domain import MethodRegistryEntry, ParameterSpec
 
 
 pytestmark = pytest.mark.postgres
@@ -78,6 +79,22 @@ def test_postgres_knowledge_store_register_ingest_retrieve_validate(
         failure_modes=("warmup",),
     )
     postgres_knowledge_store.save_method_card(method_card)
+    method_contract = MethodRegistryEntry(
+        method_id="postgres_db_backed_demo",
+        family="indicator",
+        status="approved",
+        purpose="Demonstrate Postgres-backed method contract persistence.",
+        parameters=(ParameterSpec("period", "int", min_value=2, max_value=50),),
+        inputs=("price series",),
+        outputs=("derived series",),
+        assumptions=("ordered observations",),
+        failure_modes=("warmup",),
+        artifact_outputs=("indicator_validation_report.json",),
+        warmup="period - 1 observations",
+        nan_policy="propagate",
+        no_lookahead=True,
+    )
+    postgres_knowledge_store.save_method_contract(method_contract)
     runtime = postgres_knowledge_store.runtime_summary()
 
     assert registered.ok is True
@@ -93,4 +110,5 @@ def test_postgres_knowledge_store_register_ingest_retrieve_validate(
     assert dereferenced.data["chunks"][0]["locator"] == evidence["locator"]
     assert citations.ok is True
     assert postgres_knowledge_store.list_persisted_method_cards() == (method_card,)
+    assert postgres_knowledge_store.list_persisted_method_contracts() == (method_contract,)
     assert runtime["pgvector_available"] is True

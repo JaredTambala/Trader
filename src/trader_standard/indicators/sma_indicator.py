@@ -1,4 +1,21 @@
-"""Simple moving average (SMA) indicator."""
+"""Citation-backed simple moving average implementation.
+
+Source reference:
+- Approved method card: ``method_card_sma_seed_v1``.
+- Registry method: ``sma``.
+- Detailed bibliographic/source evidence belongs in the approved method card and
+  citation-validation report used when this implementation is registered.
+
+Implements:
+- Entrypoint ``trader_standard.indicators:SmaIndicator``.
+- Trader runtime contract ``trader.indicators.Indicator``.
+- Input bars are expected latest-first, matching Trader runtime convention.
+- For each completed trailing window of ``period`` close values, return the
+  arithmetic mean ``sum(close) / period``.
+- Outputs are latest-first and omit warmup observations; fixture validation
+  expands warmup nulls for report comparison.
+- No lookahead: every output uses only close values inside its trailing window.
+"""
 
 from __future__ import annotations
 

@@ -23,14 +23,27 @@ Available tools:
 | `data_get_inventory` | Data Agent | `read_only` | Return a dataset manifest for bounded bar data. |
 | `data_summarize_quality` | Data Agent | `read_only` | Return a quality report with bar counts, missing gaps, and completeness. |
 | `data_ensure_loaded` | Data Agent | `local_mutating` | Inspect existing data, sample-load checked-in data, or run/plan bounded backfill. |
+| `knowledge_register_source` | Quantitative Methods Agent | `local_mutating` | Register source metadata and file hash for a curated knowledge document. |
+| `knowledge_ingest_documents` | Quantitative Methods Agent | `local_mutating` | Extract, chunk, embed, and index registered documents. |
+| `knowledge_retrieve_evidence` | Quantitative Methods Agent | `read_only` | Retrieve citeable evidence refs through hybrid lexical/vector search. |
+| `knowledge_get_evidence_chunks` | Quantitative Methods Agent | `read_only` | Dereference retrieved chunk IDs into bounded stored text. |
+| `knowledge_create_method_card_draft` | Quantitative Methods Agent | `local_mutating` | Persist a structured draft method card from validated evidence refs. |
+| `knowledge_publish_method_card` | Quantitative Methods Agent | `local_mutating` | Publish an explicitly approved method card from a draft. |
+| `knowledge_validate_citations` | Quantitative Methods Agent | `read_only` | Validate source, chunk, locator, and method-card refs. |
+| `math_list_method_contracts` | Quantitative Methods Agent | `read_only` | List maintained Quant Methods contracts. |
+| `math_validate_method_contract` | Quantitative Methods Agent | `read_only` | Validate method parameters and required approved evidence. |
+| `math_register_method_implementation` | Quantitative Methods Agent | `local_mutating` | Register a Trader `Indicator` implementation manifest with source hash and approved method-card refs. |
+| `math_run_indicator_fixtures` | Quantitative Methods Agent | `local_mutating` | Run deterministic fixtures and no-lookahead checks for a registered implementation. |
+| `math_generate_python_method` | Quantitative Methods Agent | `local_mutating` | Generate quarantined Python, then require registration and fixture validation. |
 
 Current safety boundaries:
 
 - No raw SQL tool is exposed.
 - No broker-mutating or live-trading tool is exposed.
 - No backtest tool is exposed through MCP yet.
-- No LLM call is made by the MCP server. The optional Data Agent LLM policy graph runs outside MCP and calls only
-  validated Data Agent MCP tools.
+- The only MCP tool that calls an LLM is `math_generate_python_method`; it uses the provider-neutral
+  `TRADER_AGENTS_LLM_*` runtime and writes generated code only to quarantine before validation. The optional Data Agent
+  LLM policy graph runs outside MCP and calls only validated Data Agent MCP tools.
 - `TRADER_MCP_ALLOW_DATA_LOADING=false` is the default policy, so sample-loading requests are rejected unless
   explicitly enabled.
 
@@ -291,6 +304,12 @@ TRADER_RESEARCH_EMBEDDINGS_PROVIDER=openai_compatible
 TRADER_RESEARCH_EMBEDDINGS_MODEL=<embedding-model>
 TRADER_RESEARCH_EMBEDDINGS_BASE_URL=http://localhost:8000/v1
 TRADER_RESEARCH_EMBEDDINGS_API_KEY=
+
+# Only needed for math_generate_python_method.
+TRADER_AGENTS_LLM_PROVIDER=ollama
+TRADER_AGENTS_LLM_MODEL=<code-capable-model>
+TRADER_AGENTS_LLM_BASE_URL=http://localhost:11434
+TRADER_AGENTS_LLM_TIMEOUT_SECONDS=60
 ```
 
 The trader config referenced by `TRADER_MCP_TRADER_CONFIG_PATH` must point at the Postgres database. The knowledge store
@@ -312,6 +331,9 @@ knowledge_create_method_card_draft(method_id, title, family, assumptions, inputs
 knowledge_publish_method_card(draft_method_card_id, approved_method_card_id, approved_by, approval_note, approve=true)
 knowledge_validate_citations({knowledge_evidence_refs: [...]})
 math_validate_method_contract({method_id, parameters, knowledge_evidence_refs: [{method_card_id}]})
+math_register_method_implementation(method_id, method_card_ids, method_contract, entrypoint, constructor_kwargs)
+math_run_indicator_fixtures(implementation_id)
+math_generate_python_method(method_id, method_card_ids, method_contract, fixtures)
 ```
 
 `knowledge_retrieve_evidence` runs PostgreSQL full-text search and pgvector search, merges results with deterministic
@@ -322,6 +344,25 @@ text length metadata, and truncation flags. Retrieved and dereferenced chunks ar
 Draft method cards created from evidence refs are not executable. `knowledge_publish_method_card` requires explicit local
 approval metadata and creates the approved card used by citation and method-contract validation. Reranking, OCR,
 external vector databases, and Quantitative Methods LangGraph handoff are later chunks.
+
+Implementation flow:
+
+1. Use approved method cards to validate a method contract.
+2. Register a maintained implementation, such as `trader_standard.indicators:SmaIndicator`, with
+   `math_register_method_implementation`.
+3. The source file must include a module-level provenance docstring with `Source reference` and `Implements` sections
+   naming the registry method, an approved method-card reference, implementation class, Trader `Indicator` contract,
+   exact algorithm, input/output ordering, warmup behavior, and no-lookahead boundary. The registration tool parses this
+   docstring and writes the validated provenance into `method_implementation_manifest.json`.
+4. Run `math_run_indicator_fixtures`; the service builds latest-first `Bar` sequences, calls
+   `Indicator.compute_series`, checks warmup/null behavior, compares expected values, and runs no-lookahead prefix
+   checks.
+5. For LLM-authored Python, call `math_generate_python_method`. The generated source must start with the same
+   provenance docstring and name the exact method-card IDs passed to the tool. The generated class must subclass
+   `trader.indicators.Indicator`, pass static safety checks, register as a generated implementation, and pass the same
+   fixtures before it is marked `validated`.
+6. Treat `method_implementation_manifest.json` plus `indicator_validation_report.json` as the executable evidence
+   bundle for downstream Quantitative Methods work.
 
 ## Current Limitations
 

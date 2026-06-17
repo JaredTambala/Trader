@@ -43,7 +43,7 @@ to the agent that owns that artifact.
 | --- | --- | --- | --- |
 | Quant Research Supervisor Agent | Research orchestration, experiment planning, synthesis, recommendation state | Experiment plans, research suites, comparison reports, recommendation reports | Raw data fetching, low-level indicator/model implementation, critique artifacts, robustness reports |
 | Data Agent | Market data acquisition and quality | Dataset manifests and data-quality reports | Strategy ideas, indicators, models, verdicts |
-| Quantitative Methods Agent | Source-backed deterministic quantitative methods: indicators, transforms, statistical tests, signal diagnostics, multiple-testing controls, method cards, citation validation, and optional compiled kernels | Knowledge manifests, method cards, method contracts, validation reports, signal diagnostic reports, multiple-testing reports, kernel manifests, parity reports | Data fetching, strategy ideas, model training, broad research orchestration, promotion decisions |
+| Quantitative Methods Agent | Source-backed deterministic quantitative methods: indicators, transforms, statistical tests, signal diagnostics, multiple-testing controls, method cards, citation validation, Python reference implementations, and optional compiled kernels | Knowledge manifests, method cards, method contracts, implementation manifests, validation reports, signal diagnostic reports, multiple-testing reports, kernel manifests, parity reports | Data fetching, strategy ideas, model training, broad research orchestration, promotion decisions |
 | ML Agent | Feature datasets, models, predictions, drift monitoring | Feature manifests, model cards, prediction artifacts, drift reports | Final trading recommendations |
 | Hypothesis Agent | Strategy ideas | Hypothesis cards | Backtest verdicts, promotion decisions |
 | Evaluation Agent | Research critique | Evaluation reports | New strategy ideas, final recommendations |
@@ -188,7 +188,11 @@ Responsibilities:
 - Require approved method-card references and passing citation validation for sophisticated statistical-test and
   multiple-testing contracts. Simple maintained arithmetic transforms may be allowed from the maintained registry
   without external retrieval.
-- Own optional template-restricted C++ kernel artifacts and Python/C++ parity reports for deterministic methods.
+- Own Python reference implementation manifests, deterministic fixture validation reports, optional template-restricted
+  C++ kernel artifacts, and Python/C++ parity reports for deterministic methods.
+- Reuse `trader.indicators.Indicator` and `IndicatorObservation` as the runtime indicator contract; Quantitative
+  Methods metadata and method cards explain the methodology, while `method_implementation_manifest.json` ties that
+  evidence to a concrete implementation entrypoint and source hash.
 - Make method outputs independently inspectable and reproducible.
 
 Inputs:
@@ -197,6 +201,7 @@ Inputs:
 - Approved method cards, retrieved evidence reports, and citation-validation reports.
 - Dereferenced evidence chunk reports for local agent reasoning when real stored chunk text is required.
 - Existing method contracts.
+- Python reference implementation manifests with source hashes and allowed entrypoints.
 - Indicator observations or deterministic method output references.
 - Forward-return label references when running signal diagnostics.
 - Declared candidate-family manifests when running multiple-testing controls.
@@ -208,6 +213,7 @@ Outputs:
 
 - `indicator_contract.json`.
 - `statistical_test_contract.json`.
+- `method_implementation_manifest.json`.
 - `indicator_validation_report.json`.
 - `signal_diagnostic_report.json`.
 - `multiple_testing_report.json`.
@@ -231,7 +237,11 @@ Boundaries:
 - Does not train fitted ML models or own prediction artifacts.
 - Does not run broad research campaigns.
 - Does not make final promotion decisions.
-- Does not emit arbitrary runtime code or compiled kernels outside approved templates and parity checks.
+- Does not emit arbitrary runtime code. Generated Python artifacts stay quarantined until validated, and compiled kernels
+  stay inside approved templates and parity checks.
+- Does not create a parallel executable indicator-contract system for generated methods; generated and maintained
+  implementations must conform to the Trader `Indicator` runtime contract and pass fixture validation before downstream
+  use.
 - Does not use unresolved data-quality warnings, undeclared candidate families, or unadjusted search results as proof of
   alpha.
 - Does not create production method contracts from unapproved method cards, uncited retrieved chunks, or invalid

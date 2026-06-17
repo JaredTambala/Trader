@@ -9,6 +9,11 @@ from trader_research.contracts import SideEffect, ToolEnvelope, error_envelope, 
 from trader_research.knowledge.citation_validation import validate_citations
 from trader_research.knowledge.method_cards import get_method_card, has_approved_method_card
 from trader_research.knowledge.store import KnowledgeStore, KnowledgeStoreError
+from trader_research.method_implementations import (
+    generate_python_method_from_payload,
+    register_method_implementation,
+    run_indicator_fixtures,
+)
 
 from .math_domain import MethodContract, MethodRegistryEntry, MethodValidationReport, ParameterSpec
 from .math_registry import get_method, list_methods
@@ -24,6 +29,7 @@ def math_list_method_contracts(
     status: str | None = None,
     include_planned: bool = True,
     limit: int = 50,
+    knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
     """List maintained Quantitative Methods method contracts."""
     if limit < 1 or limit > 200:
@@ -33,7 +39,15 @@ def math_list_method_contracts(
             code="validation_error",
             message="limit must be between 1 and 200",
         )
-    methods = list_methods(family=family, status=status, include_planned=include_planned)
+    try:
+        methods = list_methods(family=family, status=status, include_planned=include_planned, knowledge_store=knowledge_store)
+    except KnowledgeStoreError as exc:
+        return error_envelope(
+            command=MATH_LIST_METHOD_CONTRACTS,
+            side_effect=SideEffect.READ_ONLY,
+            code="knowledge_store_error",
+            message=str(exc),
+        )
     return success_envelope(
         command=MATH_LIST_METHOD_CONTRACTS,
         side_effect=SideEffect.READ_ONLY,
@@ -57,7 +71,15 @@ def math_validate_method_contract(
             code="validation_error",
             message="method_id is required",
         )
-    entry = get_method(contract.method_id)
+    try:
+        entry = get_method(contract.method_id, knowledge_store=knowledge_store)
+    except KnowledgeStoreError as exc:
+        return error_envelope(
+            command=MATH_VALIDATE_METHOD_CONTRACT,
+            side_effect=SideEffect.READ_ONLY,
+            code="knowledge_store_error",
+            message=str(exc),
+        )
     if entry is None:
         return error_envelope(
             command=MATH_VALIDATE_METHOD_CONTRACT,
@@ -146,6 +168,78 @@ def math_validate_method_contract(
         side_effect=SideEffect.READ_ONLY,
         data=data,
         warnings=tuple(warnings),
+    )
+
+
+def math_register_method_implementation(
+    *,
+    artifact_root: str | Path,
+    method_id: str,
+    method_card_ids: list[str],
+    method_contract: Mapping[str, Any] | None = None,
+    entrypoint: str | None = None,
+    source_path: str | None = None,
+    class_name: str | None = None,
+    constructor_kwargs: Mapping[str, Any] | None = None,
+    implementation_kind: str = "maintained",
+    dependency_allowlist: list[str] | None = None,
+    expected_source_hash: str | None = None,
+    knowledge_store: KnowledgeStore | None = None,
+) -> ToolEnvelope:
+    """Register a Python Indicator implementation manifest."""
+    return register_method_implementation(
+        artifact_root=artifact_root,
+        method_id=method_id,
+        method_card_ids=method_card_ids,
+        method_contract=method_contract,
+        entrypoint=entrypoint,
+        source_path=source_path,
+        class_name=class_name,
+        constructor_kwargs=constructor_kwargs,
+        implementation_kind=implementation_kind,
+        dependency_allowlist=dependency_allowlist,
+        expected_source_hash=expected_source_hash,
+        knowledge_store=knowledge_store,
+    )
+
+
+def math_run_indicator_fixtures(
+    *,
+    artifact_root: str | Path,
+    implementation_id: str | None = None,
+    implementation_manifest: Mapping[str, Any] | None = None,
+    fixtures: list[dict[str, Any]] | None = None,
+    knowledge_store: KnowledgeStore | None = None,
+) -> ToolEnvelope:
+    """Run deterministic indicator fixtures for a registered implementation."""
+    return run_indicator_fixtures(
+        artifact_root=artifact_root,
+        implementation_id=implementation_id,
+        implementation_manifest=implementation_manifest,
+        fixtures=fixtures,
+        knowledge_store=knowledge_store,
+    )
+
+
+def math_generate_python_method(
+    *,
+    artifact_root: str | Path,
+    method_id: str,
+    method_card_ids: list[str],
+    method_contract: Mapping[str, Any],
+    llm_payload: Mapping[str, Any],
+    fixtures: list[dict[str, Any]] | None = None,
+    knowledge_store: KnowledgeStore | None = None,
+) -> ToolEnvelope:
+    """Persist and validate a quarantined Python method from an LLM JSON payload."""
+    return generate_python_method_from_payload(
+        artifact_root=artifact_root,
+        method_id=method_id,
+        method_card_ids=method_card_ids,
+        method_contract=method_contract,
+        llm_payload=llm_payload,
+        fixtures=fixtures,
+        knowledge_store=knowledge_store,
     )
 
 

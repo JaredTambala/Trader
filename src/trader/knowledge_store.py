@@ -148,6 +148,16 @@ class PostgresKnowledgeRecordStore:
                 payload JSONB NOT NULL
             )
             """,
+            """
+            CREATE TABLE IF NOT EXISTS knowledge_method_contracts (
+                method_id TEXT PRIMARY KEY,
+                family TEXT NOT NULL,
+                status TEXT NOT NULL,
+                purpose TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                payload JSONB NOT NULL
+            )
+            """,
             "CREATE INDEX IF NOT EXISTS knowledge_sources_file_hash_idx ON knowledge_sources(file_hash)",
             "CREATE INDEX IF NOT EXISTS knowledge_sources_status_idx ON knowledge_sources(status)",
             "CREATE INDEX IF NOT EXISTS knowledge_sources_topics_idx ON knowledge_sources USING GIN(topics)",
@@ -156,6 +166,7 @@ class PostgresKnowledgeRecordStore:
             "CREATE INDEX IF NOT EXISTS knowledge_chunks_search_idx ON knowledge_chunks USING GIN(search_vector)",
             "CREATE INDEX IF NOT EXISTS knowledge_embeddings_lookup_idx ON knowledge_embeddings(provider, model, version, dimension)",
             "CREATE INDEX IF NOT EXISTS knowledge_ingestion_runs_source_ids_idx ON knowledge_ingestion_runs USING GIN(source_ids)",
+            "CREATE INDEX IF NOT EXISTS knowledge_method_contracts_family_status_idx ON knowledge_method_contracts(family, status)",
         ]
         try:
             with self._connection.cursor() as cursor:
@@ -550,6 +561,30 @@ class PostgresKnowledgeRecordStore:
 
     def list_persisted_method_cards(self) -> tuple[Mapping[str, Any], ...]:
         rows = self._connection.execute("SELECT payload FROM knowledge_method_cards ORDER BY method_card_id").fetchall()
+        return tuple(_mapping(row["payload"]) for row in rows)
+
+    def save_method_contract(self, payload: Mapping[str, Any]) -> None:
+        self._connection.execute(
+            """
+            INSERT INTO knowledge_method_contracts (method_id, family, status, purpose, payload)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (method_id) DO UPDATE SET
+                family = EXCLUDED.family,
+                status = EXCLUDED.status,
+                purpose = EXCLUDED.purpose,
+                payload = EXCLUDED.payload
+            """,
+            [
+                payload["method_id"],
+                payload["family"],
+                payload["status"],
+                payload["purpose"],
+                Jsonb(dict(payload)),
+            ],
+        )
+
+    def list_persisted_method_contracts(self) -> tuple[Mapping[str, Any], ...]:
+        rows = self._connection.execute("SELECT payload FROM knowledge_method_contracts ORDER BY method_id").fetchall()
         return tuple(_mapping(row["payload"]) for row in rows)
 
     def close(self) -> None:

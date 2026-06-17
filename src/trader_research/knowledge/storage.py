@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from trader_research.contracts import write_json_artifact
+from trader_research.math_domain import MethodRegistryEntry
 
 from .domain import (
     KnowledgeChunk,
@@ -46,6 +47,10 @@ class KnowledgeRepository:
         return self.artifact_root / "method_cards"
 
     @property
+    def method_contract_dir(self) -> Path:
+        return self.artifact_root / "method_contracts"
+
+    @property
     def index_path(self) -> Path:
         return self.artifact_root / "index.json"
 
@@ -56,6 +61,7 @@ class KnowledgeRepository:
             self.embedding_dir,
             self.ingestion_dir,
             self.method_card_dir,
+            self.method_contract_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
 
@@ -84,6 +90,9 @@ class KnowledgeRepository:
 
     def method_card_path(self, method_card_id: str) -> Path:
         return self.method_card_dir / f"{method_card_id}.json"
+
+    def method_contract_path(self, method_id: str) -> Path:
+        return self.method_contract_dir / f"{method_id}.json"
 
     def save_source(self, manifest: KnowledgeSourceManifest) -> Path:
         self.ensure_dirs()
@@ -168,6 +177,15 @@ class KnowledgeRepository:
         if not self.method_card_dir.exists():
             return tuple()
         return tuple(MethodCard.from_dict(_read_json(path)) for path in sorted(self.method_card_dir.glob("*.json")))
+
+    def save_method_contract(self, method: MethodRegistryEntry) -> Path:
+        self.ensure_dirs()
+        return write_json_artifact(method.to_dict(), self.method_contract_path(method.method_id))
+
+    def list_persisted_method_contracts(self) -> tuple[MethodRegistryEntry, ...]:
+        if not self.method_contract_dir.exists():
+            return tuple()
+        return tuple(MethodRegistryEntry.from_dict(_read_json(path)) for path in sorted(self.method_contract_dir.glob("*.json")))
 
 
 def _read_json(path: Path) -> Mapping[str, Any]:

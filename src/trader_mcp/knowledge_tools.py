@@ -21,10 +21,14 @@ from trader_mcp.constants import (
     KNOWLEDGE_TOOL_DESCRIPTIONS,
     KNOWLEDGE_VALIDATE_CITATIONS_TOOL,
     MATH_LIST_METHOD_CONTRACTS_TOOL,
+    MATH_GENERATE_PYTHON_METHOD_TOOL,
+    MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL,
+    MATH_RUN_INDICATOR_FIXTURES_TOOL,
     MATH_TOOL_DESCRIPTIONS,
     MATH_VALIDATE_METHOD_CONTRACT_TOOL,
 )
 from trader_mcp.environment import McpEnvironment
+from trader_agents.llm_client import LlmJsonRequest, LlmMessage, RuntimeConfiguredLlmClient
 from trader_research.knowledge.citation_validation import validate_citations as validate_citations_service
 from trader_research.knowledge.domain import DEFAULT_SOURCE_TYPE
 from trader_research.knowledge.embeddings import EmbeddingProvider, RuntimeConfiguredEmbeddingProvider
@@ -45,9 +49,13 @@ from trader_research.knowledge.retrieval import (
 from trader_research.knowledge.sources import list_sources as list_sources_service
 from trader_research.knowledge.sources import register_source as register_source_service
 from trader_research.math_tools import (
+    math_generate_python_method as generate_python_method_service,
     math_list_method_contracts as list_method_contracts_service,
+    math_register_method_implementation as register_method_implementation_service,
+    math_run_indicator_fixtures as run_indicator_fixtures_service,
     math_validate_method_contract as validate_method_contract_service,
 )
+from trader_research.method_implementations import generation_messages, generation_response_schema
 
 
 def register_quant_methods_tools(
@@ -56,9 +64,11 @@ def register_quant_methods_tools(
     *,
     embedding_provider: EmbeddingProvider | None = None,
     knowledge_store_provider: Any | None = None,
+    method_generation_llm_client: Any | None = None,
 ) -> None:
     """Register Slice 5 Quantitative Methods tools on an MCP server."""
     resolved_embedding_provider = embedding_provider or RuntimeConfiguredEmbeddingProvider(env=environment.embeddings_env())
+    resolved_method_generation_llm_client = method_generation_llm_client or RuntimeConfiguredLlmClient()
 
     def _knowledge_store() -> KnowledgeStore | None:
         return knowledge_store_provider() if knowledge_store_provider is not None else None
@@ -285,6 +295,7 @@ def register_quant_methods_tools(
             status=status,
             include_planned=include_planned,
             limit=limit,
+            knowledge_store=_knowledge_store(),
         )
         return CallToolResult(**envelope_to_mcp_result(envelope))
 
@@ -300,6 +311,86 @@ def register_quant_methods_tools(
             artifact_root=environment.artifact_root,
             method_contract=method_contract,
             require_evidence=require_evidence,
+            knowledge_store=_knowledge_store(),
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL,
+        description=MATH_TOOL_DESCRIPTIONS[MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL],
+    )
+    def math_register_method_implementation(
+        method_id: str,
+        method_card_ids: list[str],
+        method_contract: dict[str, Any] | None = None,
+        entrypoint: str | None = None,
+        source_path: str | None = None,
+        class_name: str | None = None,
+        constructor_kwargs: dict[str, Any] | None = None,
+        implementation_kind: str = "maintained",
+        dependency_allowlist: list[str] | None = None,
+        expected_source_hash: str | None = None,
+    ) -> CallToolResult:
+        envelope = register_method_implementation_service(
+            artifact_root=environment.artifact_root,
+            method_id=method_id,
+            method_card_ids=method_card_ids,
+            method_contract=method_contract,
+            entrypoint=entrypoint,
+            source_path=source_path,
+            class_name=class_name,
+            constructor_kwargs=constructor_kwargs,
+            implementation_kind=implementation_kind,
+            dependency_allowlist=dependency_allowlist,
+            expected_source_hash=expected_source_hash,
+            knowledge_store=_knowledge_store(),
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=MATH_RUN_INDICATOR_FIXTURES_TOOL,
+        description=MATH_TOOL_DESCRIPTIONS[MATH_RUN_INDICATOR_FIXTURES_TOOL],
+    )
+    def math_run_indicator_fixtures(
+        implementation_id: str | None = None,
+        implementation_manifest: dict[str, Any] | None = None,
+        fixtures: list[dict[str, Any]] | None = None,
+    ) -> CallToolResult:
+        envelope = run_indicator_fixtures_service(
+            artifact_root=environment.artifact_root,
+            implementation_id=implementation_id,
+            implementation_manifest=implementation_manifest,
+            fixtures=fixtures,
+            knowledge_store=_knowledge_store(),
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=MATH_GENERATE_PYTHON_METHOD_TOOL,
+        description=MATH_TOOL_DESCRIPTIONS[MATH_GENERATE_PYTHON_METHOD_TOOL],
+    )
+    async def math_generate_python_method(
+        method_id: str,
+        method_card_ids: list[str],
+        method_contract: dict[str, Any],
+        fixtures: list[dict[str, Any]] | None = None,
+    ) -> CallToolResult:
+        llm_request = LlmJsonRequest(
+            messages=tuple(
+                LlmMessage(**message)
+                for message in generation_messages(method_id, method_contract, method_card_ids)
+            ),
+            response_schema=generation_response_schema(),
+            max_tokens=1800,
+        )
+        llm_payload = await resolved_method_generation_llm_client.complete_json(llm_request)
+        envelope = generate_python_method_service(
+            artifact_root=environment.artifact_root,
+            method_id=method_id,
+            method_card_ids=method_card_ids,
+            method_contract=method_contract,
+            llm_payload=llm_payload,
+            fixtures=fixtures,
             knowledge_store=_knowledge_store(),
         )
         return CallToolResult(**envelope_to_mcp_result(envelope))

@@ -29,6 +29,9 @@ from trader_mcp.constants import (
     KNOWLEDGE_REGISTER_SOURCE_TOOL,
     KNOWLEDGE_TOOL_DESCRIPTIONS,
     KNOWLEDGE_TOOL_NAMES,
+    MATH_GENERATE_PYTHON_METHOD_TOOL,
+    MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL,
+    MATH_RUN_INDICATOR_FIXTURES_TOOL,
     MATH_TOOL_DESCRIPTIONS,
     MATH_TOOL_NAMES,
     REGISTERED_TOOL_NAMES,
@@ -54,6 +57,7 @@ from trader_research.data import (
 from trader_research.knowledge.embeddings import EmbeddingProvider, embedding_runtime_summary
 from trader_research.knowledge.postgres_store import PostgresKnowledgeStore
 from trader_research.knowledge.store import KnowledgeStore, UnavailableKnowledgeStore
+from trader_research.math_registry import save_bootstrap_method_contracts
 from trader_research.providers import AlpacaSymbolCatalogProvider
 
 
@@ -78,6 +82,7 @@ def create_server(
     symbol_discovery_policy: DataSymbolDiscoveryPolicy | None = None,
     knowledge_embedding_provider: EmbeddingProvider | None = None,
     knowledge_store_provider: KnowledgeStoreProvider | None = None,
+    method_generation_llm_client: Any | None = None,
 ) -> FastMCP:
     """Create the MCP server and register read-only tools.
 
@@ -310,6 +315,7 @@ def create_server(
         local_env,
         embedding_provider=knowledge_embedding_provider,
         knowledge_store_provider=resolved_knowledge_store_provider,
+        method_generation_llm_client=method_generation_llm_client,
     )
 
     return server
@@ -368,6 +374,7 @@ def build_knowledge_store_provider(environment: McpEnvironment | None = None) ->
                 user=getattr(config, "pg_user", None) or None,
                 password=getattr(config, "pg_password", None) or None,
             )
+            save_bootstrap_method_contracts(store)
         return store
 
     return _provider
@@ -506,7 +513,14 @@ def build_config_envelope(
         {
             "name": tool_name,
             "agent_owner": agent_owner_for_tool(tool_name),
-            "side_effect": SideEffect.READ_ONLY.value,
+            "side_effect": SideEffect.LOCAL_MUTATING.value
+            if tool_name
+            in {
+                MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL,
+                MATH_RUN_INDICATOR_FIXTURES_TOOL,
+                MATH_GENERATE_PYTHON_METHOD_TOOL,
+            }
+            else SideEffect.READ_ONLY.value,
             "description": MATH_TOOL_DESCRIPTIONS[tool_name],
         }
         for tool_name in MATH_TOOL_NAMES

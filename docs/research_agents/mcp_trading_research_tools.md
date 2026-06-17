@@ -60,7 +60,8 @@ This boundary is intentionally not optimized for zero duplication. It is accepta
 repeat values when doing so avoids coupling MCP process startup to trader runtime secrets, database settings, broker
 settings, or script defaults.
 
-The server currently registers support tools plus the bounded Data Agent workflow tools:
+The server currently registers support tools, bounded Data Agent workflow tools, and the Quantitative Methods
+knowledge/method tools:
 
 - `mcp_health`
 - `mcp_get_config`
@@ -68,9 +69,12 @@ The server currently registers support tools plus the bounded Data Agent workflo
 - `data_get_inventory`
 - `data_summarize_quality`
 - `data_ensure_loaded`
+- `knowledge_*`
+- `math_*`
 
-No broker tools, raw SQL tools, backtest tools, resources, prompts, or LLM-backed workflows are exposed by this server.
-`data_discover_symbols`, `data_get_inventory`, and `data_summarize_quality` are read-only. `data_ensure_loaded` is
+No broker tools, raw SQL tools, backtest tools, resources, or prompts are exposed by this server. The only LLM-backed
+MCP workflow is `math_generate_python_method`; generated Python is written only to quarantine and must pass registration
+plus fixtures before use. `data_discover_symbols`, `data_get_inventory`, and `data_summarize_quality` are read-only. `data_ensure_loaded` is
 registered with `side_effect="local_mutating"`, but runtime mutation still requires
 `TRADER_MCP_ALLOW_DATA_LOADING=true`; the default local policy rejects sample-loading requests. Provider-catalog symbol
 discovery is separate and requires `TRADER_MCP_ALLOW_SYMBOL_PROVIDER_DISCOVERY=true`; local and configured-universe
@@ -354,20 +358,32 @@ Compatibility aliases may be kept during migration:
 | `math_list_indicator_contracts` | Calls `math_list_method_contracts` filtered to indicator/transform families. |
 | `math_validate_indicator_contract` | Calls `math_validate_method_contract` filtered to indicator/transform families. |
 
-Follow-on tools:
+Current and follow-on implementation tools:
 
 | Tool | Side effect | Artifact |
 | --- | --- | --- |
-| `math_create_indicator_contract` | `local_mutating` | `indicator_contract.json` |
-| `math_run_indicator_fixtures` | `local_mutating` | `indicator_validation_report.json` |
+| `math_register_method_implementation` | `local_mutating` | Python `method_implementation_manifest.json` with entrypoint, source hash, dependency allowlist, safety profile, and approved method-card refs |
+| `math_generate_python_method` | `local_mutating` | quarantined Python reference artifact requiring fixture validation before use |
+| `math_run_indicator_fixtures` | `local_mutating` | `indicator_validation_report.json` for a registered Python reference implementation |
 | `math_run_signal_diagnostics` | `local_mutating` | `signal_diagnostic_report.json` |
 | `math_run_multiple_testing_report` | `local_mutating` | `multiple_testing_report.json` |
-| `math_generate_cpp_kernel` | `local_mutating` | draft `cxx_kernel_manifest.json` from approved templates only |
+| `math_generate_cpp_kernel` | `local_mutating` | draft `cxx_kernel_manifest.json` from approved templates only, after a validated Python reference exists |
 | `math_compile_kernel` | `local_mutating` | local build evidence for an approved deterministic kernel |
 | `math_run_python_cpp_parity` | `local_mutating` | `python_cpp_parity_report.json` |
 | `math_package_method_artifact` | `local_mutating` | `method_package_manifest.json` |
 
-The C++ path is template-restricted. Generated or maintained kernels must declare warmup, NaN, alignment, dtype, and
+Python reference implementations are the first executable target. Maintained and generated implementation source files
+must carry a module-level provenance docstring with `Source reference` and `Implements` sections naming the registry
+method, approved method-card refs, implementation class, exact formula/algorithm, ordering, warmup behavior, and
+no-lookahead boundary. Maintained source must declare an approved method-card reference; generated source must declare
+the exact method-card IDs passed to the tool. `math_register_method_implementation` parses this docstring, fails closed
+when it is missing or inconsistent, and records it in `method_implementation_manifest.json`. Generated Python artifacts stay quarantined until
+they cite approved method cards, declare method contracts, record source hashes and dependency allowlists, and pass
+fixtures. 23J/23K reuse the existing runtime contract in `trader.indicators.Indicator` and
+`IndicatorObservation`; they do not create a parallel indicator-contract system. `method_implementation_manifest.json`
+is the bridge between an approved method card, the maintained `math_registry` contract, a concrete Trader `Indicator`
+entrypoint, the source hash, and fixture validation evidence. The C++ path is template-restricted and comes after a
+validated Python reference exists. Generated or maintained kernels must declare warmup, NaN, alignment, dtype, and
 lookahead policies; compile in an isolated local build directory; avoid broker, SQL, network, and live-trading access;
 and pass Python/C++ parity before downstream operational use.
 
@@ -385,9 +401,12 @@ knowledge_publish_method_card
 knowledge_validate_citations
 math_list_method_contracts
 math_validate_method_contract
-  -> source manifests, ingestion reports, retrieved refs, dereferenced chunk text, approved method cards, citation validation, and method metadata
+math_register_method_implementation
+math_run_indicator_fixtures
+math_generate_python_method
+  -> source manifests, ingestion reports, retrieved refs, dereferenced chunk text, approved method cards, citation validation, method metadata, Python implementation manifests, quarantined generated Python, and fixture validation reports
   -> declares agent_owner = Quantitative Methods Agent
-  -> records source IDs, locators, assumptions, fixture status, and failure modes
+  -> records source IDs, locators, assumptions, implementation source hashes, fixture status, and failure modes
 ```
 
 Stretch evidence should add signal diagnostics and multiple-testing reports that use approved method cards, record the
