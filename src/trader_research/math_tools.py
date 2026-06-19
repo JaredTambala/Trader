@@ -13,6 +13,7 @@ from trader_research.method_implementations import (
     generate_python_method_from_payload,
     register_method_implementation,
     run_indicator_fixtures,
+    run_signal_fixtures,
 )
 
 from .math_domain import MethodContract, MethodRegistryEntry, MethodValidationReport, ParameterSpec
@@ -213,6 +214,24 @@ def math_run_indicator_fixtures(
 ) -> ToolEnvelope:
     """Run deterministic indicator fixtures for a registered implementation."""
     return run_indicator_fixtures(
+        artifact_root=artifact_root,
+        implementation_id=implementation_id,
+        implementation_manifest=implementation_manifest,
+        fixtures=fixtures,
+        knowledge_store=knowledge_store,
+    )
+
+
+def math_run_signal_fixtures(
+    *,
+    artifact_root: str | Path,
+    implementation_id: str | None = None,
+    implementation_manifest: Mapping[str, Any] | None = None,
+    fixtures: list[dict[str, Any]] | None = None,
+    knowledge_store: KnowledgeStore | None = None,
+) -> ToolEnvelope:
+    """Run deterministic signal fixtures for a registered implementation."""
+    return run_signal_fixtures(
         artifact_root=artifact_root,
         implementation_id=implementation_id,
         implementation_manifest=implementation_manifest,

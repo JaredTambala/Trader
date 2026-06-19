@@ -49,6 +49,7 @@ QUANTITATIVE_METHODS_TOOLS = (
     "math_validate_method_contract",
     "math_register_method_implementation",
     "math_run_indicator_fixtures",
+    "math_run_signal_fixtures",
     "math_generate_python_method",
 )
 
@@ -117,6 +118,7 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
             "statistical_test_contract.json",
             "method_implementation_manifest.json",
             "indicator_validation_report.json",
+            "signal_implementation_validation_report.json",
             "signal_diagnostic_report.json",
             "multiple_testing_report.json",
             "cxx_kernel_manifest.json",

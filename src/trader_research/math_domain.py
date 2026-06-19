@@ -61,6 +61,7 @@ class MethodRegistryEntry:
     no_lookahead: bool
     requires_evidence: bool = False
     approved_method_card_ids: tuple[str, ...] = tuple()
+    runtime_contract: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -80,6 +81,7 @@ class MethodRegistryEntry:
             "no_lookahead": self.no_lookahead,
             "requires_evidence": self.requires_evidence,
             "approved_method_card_ids": list(self.approved_method_card_ids),
+            "runtime_contract": self.runtime_contract,
         }
 
     @classmethod
@@ -100,6 +102,7 @@ class MethodRegistryEntry:
             no_lookahead=bool(payload.get("no_lookahead", False)),
             requires_evidence=bool(payload.get("requires_evidence", False)),
             approved_method_card_ids=_string_tuple(payload.get("approved_method_card_ids")),
+            runtime_contract=str(payload["runtime_contract"]) if payload.get("runtime_contract") is not None else None,
         )
 
 

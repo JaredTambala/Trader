@@ -365,6 +365,7 @@ Current and follow-on implementation tools:
 | `math_register_method_implementation` | `local_mutating` | Python `method_implementation_manifest.json` with entrypoint, source hash, dependency allowlist, safety profile, and approved method-card refs |
 | `math_generate_python_method` | `local_mutating` | quarantined Python reference artifact requiring fixture validation before use |
 | `math_run_indicator_fixtures` | `local_mutating` | `indicator_validation_report.json` for a registered Python reference implementation |
+| `math_run_signal_fixtures` | `local_mutating` | `signal_implementation_validation_report.json` for a registered Python `trader.signals.Signal` implementation |
 | `math_run_signal_diagnostics` | `local_mutating` | `signal_diagnostic_report.json` |
 | `math_run_multiple_testing_report` | `local_mutating` | `multiple_testing_report.json` |
 | `math_generate_cpp_kernel` | `local_mutating` | draft `cxx_kernel_manifest.json` from approved templates only, after a validated Python reference exists |
@@ -374,18 +375,30 @@ Current and follow-on implementation tools:
 
 Python reference implementations are the first executable target. Maintained and generated implementation source files
 must carry a module-level provenance docstring with `Source reference` and `Implements` sections naming the registry
-method, approved method-card refs, implementation class, exact formula/algorithm, ordering, warmup behavior, and
-no-lookahead boundary. Maintained source must declare an approved method-card reference; generated source must declare
-the exact method-card IDs passed to the tool. `math_register_method_implementation` parses this docstring, fails closed
-when it is missing or inconsistent, and records it in `method_implementation_manifest.json`. Generated Python artifacts stay quarantined until
+method, approved method-card refs, implementation class, Trader runtime contract, exact formula/algorithm/action rule,
+ordering, warmup behavior, and no-lookahead boundary. Maintained source must declare an approved method-card reference;
+generated source must declare the exact method-card IDs passed to the tool. `math_register_method_implementation`
+parses this docstring, fails closed when it is missing or inconsistent, and records it in
+`method_implementation_manifest.json`. Generated Python artifacts stay quarantined until
 they cite approved method cards, declare method contracts, record source hashes and dependency allowlists, and pass
 fixtures. 23J/23K reuse the existing runtime contract in `trader.indicators.Indicator` and
-`IndicatorObservation`; they do not create a parallel indicator-contract system. `method_implementation_manifest.json`
-is the bridge between an approved method card, the maintained `math_registry` contract, a concrete Trader `Indicator`
-entrypoint, the source hash, and fixture validation evidence. The C++ path is template-restricted and comes after a
-validated Python reference exists. Generated or maintained kernels must declare warmup, NaN, alignment, dtype, and
-lookahead policies; compile in an isolated local build directory; avoid broker, SQL, network, and live-trading access;
-and pass Python/C++ parity before downstream operational use.
+`IndicatorObservation`, and 23K-A extends the same bridge to `trader.signals.Signal`; they do not create a parallel
+indicator or signal contract system. `method_implementation_manifest.json` is the bridge between an approved method
+card, the maintained method contract, a concrete Trader runtime entrypoint, the source hash, and fixture validation
+evidence. Indicator manifests run through `math_run_indicator_fixtures`; Signal manifests run through
+`math_run_signal_fixtures`. The C++ path is template-restricted and comes after a validated Python reference exists.
+Generated or maintained kernels must declare warmup, NaN, alignment, dtype, and lookahead policies; compile in an
+isolated local build directory; avoid broker, SQL, network, and live-trading access; and pass Python/C++ parity before
+downstream operational use.
+
+23K-A proves the non-indicator path with `method_id="bollinger_bwma_action_signal"`, `family="signal"`, and
+`runtime_contract="trader.signals.Signal"`. The maintained implementation
+`trader_standard.signals:BollingerBwmaActionSignal` is authorized by
+`method_card_bollinger_bwma_action_signal_algorithmic_trading_v1`; it emits `1.0` when the latest close is below the
+lower band, `-1.0` when it is above the upper band, and `0.0` between the bands. This is separate from the existing
+`BollingerBandSignal`, which has different re-entry/middle-exit semantics. Signal fixture validation checks lower-band
+buy, upper-band sell, in-band no action, insufficient-bars blocking, source hash/provenance, and prefix/no-lookahead
+behavior.
 
 The first Quantitative Methods evidence should prove:
 
@@ -403,6 +416,7 @@ math_list_method_contracts
 math_validate_method_contract
 math_register_method_implementation
 math_run_indicator_fixtures
+math_run_signal_fixtures
 math_generate_python_method
   -> source manifests, ingestion reports, retrieved refs, dereferenced chunk text, approved method cards, citation validation, method metadata, Python implementation manifests, quarantined generated Python, and fixture validation reports
   -> declares agent_owner = Quantitative Methods Agent

@@ -22,6 +22,7 @@ from .risk import (
 from .signal_generators import InMemoryBarsSignalGenerator, SimpleBarsSignalGenerator
 from .signals import (
     BollingerBandSignal,
+    BollingerBwmaActionSignal,
     EmaCrossoverSignal,
     MacdCrossoverSignal,
     RsiThresholdSignal,
@@ -65,6 +66,7 @@ __all__ = [
     "MacdCrossoverSignal",
     "SmaStretchSignal",
     "BollingerBandSignal",
+    "BollingerBwmaActionSignal",
     "SimpleBarsSignalGenerator",
     "InMemoryBarsSignalGenerator",
     "NoOpRiskManager",

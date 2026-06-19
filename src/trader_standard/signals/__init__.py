@@ -1,6 +1,7 @@
 """Standard signal implementations."""
 
 from .bollinger_band_signal import BollingerBandSignal
+from .bollinger_bwma_action_signal import BollingerBwmaActionSignal
 from .ema_crossover_signal import EmaCrossoverSignal
 from .macd_crossover_signal import MacdCrossoverSignal
 from .rsi_threshold_signal import RsiThresholdSignal
@@ -14,4 +15,5 @@ __all__ = [
     "MacdCrossoverSignal",
     "SmaStretchSignal",
     "BollingerBandSignal",
+    "BollingerBwmaActionSignal",
 ]

@@ -6,6 +6,7 @@
       "artifact_type": "method_contract",
       "method_id": "sma",
       "family": "indicator",
+      "runtime_contract": "trader.indicators.Indicator",
       "status": "approved",
       "purpose": "Compute a simple moving average over a fixed lookback window.",
       "parameters": [
@@ -26,6 +27,7 @@
       "artifact_type": "method_contract",
       "method_id": "ema",
       "family": "indicator",
+      "runtime_contract": "trader.indicators.Indicator",
       "status": "approved",
       "purpose": "Compute an exponentially weighted moving average over a fixed lookback window.",
       "parameters": [
@@ -46,6 +48,7 @@
       "artifact_type": "method_contract",
       "method_id": "rsi",
       "family": "indicator",
+      "runtime_contract": "trader.indicators.Indicator",
       "status": "approved",
       "purpose": "Compute relative strength index from ordered price observations.",
       "parameters": [
@@ -66,6 +69,7 @@
       "artifact_type": "method_contract",
       "method_id": "rolling_volatility",
       "family": "transform",
+      "runtime_contract": "trader.indicators.Indicator",
       "status": "approved",
       "purpose": "Compute rolling standard deviation for a return or numeric series.",
       "parameters": [
@@ -87,6 +91,7 @@
       "artifact_type": "method_contract",
       "method_id": "z_score",
       "family": "transform",
+      "runtime_contract": "trader.indicators.Indicator",
       "status": "approved",
       "purpose": "Standardize a numeric series with a rolling mean and standard deviation.",
       "parameters": [
@@ -107,6 +112,7 @@
       "artifact_type": "method_contract",
       "method_id": "bollinger_wma_band_rule",
       "family": "indicator",
+      "runtime_contract": "trader.indicators.Indicator",
       "status": "approved",
       "purpose": "Compute Bollinger-style middle, upper, lower, and bandwidth values for a fixed trailing price window.",
       "parameters": [
@@ -127,6 +133,32 @@
       "no_lookahead": true,
       "requires_evidence": true,
       "approved_method_card_ids": ["method_card_bollinger_wma_band_rule_algorithmic_trading_v1"]
+    },
+    {
+      "artifact_type": "method_contract",
+      "method_id": "bollinger_bwma_action_signal",
+      "family": "signal",
+      "runtime_contract": "trader.signals.Signal",
+      "status": "approved",
+      "purpose": "Emit a scalar Bollinger/BWMA band action signal from a fixed trailing price window.",
+      "parameters": [
+        {"name": "period", "kind": "int", "required": true, "min_value": 2, "max_value": 500, "allowed_values": [], "default": 20},
+        {"name": "stddev_multiplier", "kind": "float", "required": true, "min_value": 0, "max_value": 10, "allowed_values": [], "default": 2.0}
+      ],
+      "inputs": ["latest-first OHLCV bar window"],
+      "outputs": ["scalar action signal: +1 buy, -1 sell, 0 no action"],
+      "assumptions": [
+        "input bars are ordered latest first",
+        "period and multiplier are fixed before evaluation",
+        "upper and lower bands are computed from the same trailing price window"
+      ],
+      "failure_modes": ["insufficient warmup observations", "non-finite input values", "flat or unstable band estimate"],
+      "artifact_outputs": ["method_implementation_manifest.json", "signal_implementation_validation_report.json"],
+      "warmup": "period observations",
+      "nan_policy": "reject",
+      "no_lookahead": true,
+      "requires_evidence": true,
+      "approved_method_card_ids": ["method_card_bollinger_bwma_action_signal_algorithmic_trading_v1"]
     },
     {
       "artifact_type": "method_contract",

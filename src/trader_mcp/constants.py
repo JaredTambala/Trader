@@ -71,6 +71,9 @@ MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL: Final = "math_register_method_implemen
 MATH_RUN_INDICATOR_FIXTURES_TOOL: Final = "math_run_indicator_fixtures"
 """Tool name for running deterministic indicator fixtures."""
 
+MATH_RUN_SIGNAL_FIXTURES_TOOL: Final = "math_run_signal_fixtures"
+"""Tool name for running deterministic signal fixtures."""
+
 MATH_GENERATE_PYTHON_METHOD_TOOL: Final = "math_generate_python_method"
 """Tool name for generating and validating a quarantined Python method."""
 
@@ -104,6 +107,7 @@ MATH_TOOL_NAMES: Final = (
     MATH_VALIDATE_METHOD_CONTRACT_TOOL,
     MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL,
     MATH_RUN_INDICATOR_FIXTURES_TOOL,
+    MATH_RUN_SIGNAL_FIXTURES_TOOL,
     MATH_GENERATE_PYTHON_METHOD_TOOL,
 )
 """Quant Methods math tool names exposed by the MCP server."""
@@ -142,9 +146,10 @@ KNOWLEDGE_TOOL_DESCRIPTIONS: Final = {
 MATH_TOOL_DESCRIPTIONS: Final = {
     MATH_LIST_METHOD_CONTRACTS_TOOL: "List maintained Quantitative Methods method contracts.",
     MATH_VALIDATE_METHOD_CONTRACT_TOOL: "Validate a Quantitative Methods contract against registry and evidence rules.",
-    MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL: "Register a citation-backed Python Indicator implementation manifest.",
+    MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL: "Register a citation-backed Python method implementation manifest.",
     MATH_RUN_INDICATOR_FIXTURES_TOOL: "Run deterministic fixtures for a registered Python Indicator implementation.",
-    MATH_GENERATE_PYTHON_METHOD_TOOL: "Generate a quarantined Python Indicator draft and validate it with fixtures.",
+    MATH_RUN_SIGNAL_FIXTURES_TOOL: "Run deterministic fixtures for a registered Python Signal implementation.",
+    MATH_GENERATE_PYTHON_METHOD_TOOL: "Generate a quarantined Python method draft and validate it with fixtures.",
 }
 """Descriptions for Quant Methods method tools exposed by the MCP server."""
 

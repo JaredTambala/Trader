@@ -24,6 +24,7 @@ from trader_mcp.constants import (
     MATH_GENERATE_PYTHON_METHOD_TOOL,
     MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL,
     MATH_RUN_INDICATOR_FIXTURES_TOOL,
+    MATH_RUN_SIGNAL_FIXTURES_TOOL,
     MATH_TOOL_DESCRIPTIONS,
     MATH_VALIDATE_METHOD_CONTRACT_TOOL,
 )
@@ -53,6 +54,7 @@ from trader_research.math_tools import (
     math_list_method_contracts as list_method_contracts_service,
     math_register_method_implementation as register_method_implementation_service,
     math_run_indicator_fixtures as run_indicator_fixtures_service,
+    math_run_signal_fixtures as run_signal_fixtures_service,
     math_validate_method_contract as validate_method_contract_service,
 )
 from trader_research.method_implementations import generation_messages, generation_response_schema
@@ -357,6 +359,24 @@ def register_quant_methods_tools(
         fixtures: list[dict[str, Any]] | None = None,
     ) -> CallToolResult:
         envelope = run_indicator_fixtures_service(
+            artifact_root=environment.artifact_root,
+            implementation_id=implementation_id,
+            implementation_manifest=implementation_manifest,
+            fixtures=fixtures,
+            knowledge_store=_knowledge_store(),
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=MATH_RUN_SIGNAL_FIXTURES_TOOL,
+        description=MATH_TOOL_DESCRIPTIONS[MATH_RUN_SIGNAL_FIXTURES_TOOL],
+    )
+    def math_run_signal_fixtures(
+        implementation_id: str | None = None,
+        implementation_manifest: dict[str, Any] | None = None,
+        fixtures: list[dict[str, Any]] | None = None,
+    ) -> CallToolResult:
+        envelope = run_signal_fixtures_service(
             artifact_root=environment.artifact_root,
             implementation_id=implementation_id,
             implementation_manifest=implementation_manifest,

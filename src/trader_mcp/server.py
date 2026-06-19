@@ -32,6 +32,7 @@ from trader_mcp.constants import (
     MATH_GENERATE_PYTHON_METHOD_TOOL,
     MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL,
     MATH_RUN_INDICATOR_FIXTURES_TOOL,
+    MATH_RUN_SIGNAL_FIXTURES_TOOL,
     MATH_TOOL_DESCRIPTIONS,
     MATH_TOOL_NAMES,
     REGISTERED_TOOL_NAMES,
@@ -518,6 +519,7 @@ def build_config_envelope(
             in {
                 MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL,
                 MATH_RUN_INDICATOR_FIXTURES_TOOL,
+                MATH_RUN_SIGNAL_FIXTURES_TOOL,
                 MATH_GENERATE_PYTHON_METHOD_TOOL,
             }
             else SideEffect.READ_ONLY.value,

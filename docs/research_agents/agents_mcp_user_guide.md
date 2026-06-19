@@ -32,8 +32,9 @@ Available tools:
 | `knowledge_validate_citations` | Quantitative Methods Agent | `read_only` | Validate source, chunk, locator, and method-card refs. |
 | `math_list_method_contracts` | Quantitative Methods Agent | `read_only` | List maintained Quant Methods contracts. |
 | `math_validate_method_contract` | Quantitative Methods Agent | `read_only` | Validate method parameters and required approved evidence. |
-| `math_register_method_implementation` | Quantitative Methods Agent | `local_mutating` | Register a Trader `Indicator` implementation manifest with source hash and approved method-card refs. |
+| `math_register_method_implementation` | Quantitative Methods Agent | `local_mutating` | Register a Trader runtime implementation manifest with source hash, runtime contract, and approved method-card refs. |
 | `math_run_indicator_fixtures` | Quantitative Methods Agent | `local_mutating` | Run deterministic fixtures and no-lookahead checks for a registered implementation. |
+| `math_run_signal_fixtures` | Quantitative Methods Agent | `local_mutating` | Run deterministic scalar signal fixtures for a registered `trader.signals.Signal` implementation. |
 | `math_generate_python_method` | Quantitative Methods Agent | `local_mutating` | Generate quarantined Python, then require registration and fixture validation. |
 
 Current safety boundaries:
@@ -333,6 +334,7 @@ knowledge_validate_citations({knowledge_evidence_refs: [...]})
 math_validate_method_contract({method_id, parameters, knowledge_evidence_refs: [{method_card_id}]})
 math_register_method_implementation(method_id, method_card_ids, method_contract, entrypoint, constructor_kwargs)
 math_run_indicator_fixtures(implementation_id)
+math_run_signal_fixtures(implementation_id)
 math_generate_python_method(method_id, method_card_ids, method_contract, fixtures)
 ```
 
@@ -348,21 +350,36 @@ external vector databases, and Quantitative Methods LangGraph handoff are later 
 Implementation flow:
 
 1. Use approved method cards to validate a method contract.
-2. Register a maintained implementation, such as `trader_standard.indicators:SmaIndicator`, with
-   `math_register_method_implementation`.
+2. Register a maintained implementation, such as `trader_standard.indicators:SmaIndicator` or
+   `trader_standard.signals:BollingerBwmaActionSignal`, with `math_register_method_implementation`.
 3. The source file must include a module-level provenance docstring with `Source reference` and `Implements` sections
-   naming the registry method, an approved method-card reference, implementation class, Trader `Indicator` contract,
-   exact algorithm, input/output ordering, warmup behavior, and no-lookahead boundary. The registration tool parses this
-   docstring and writes the validated provenance into `method_implementation_manifest.json`.
-4. Run `math_run_indicator_fixtures`; the service builds latest-first `Bar` sequences, calls
+   naming the registry method, an approved method-card reference, implementation class, Trader runtime contract,
+   exact algorithm or action rule, input/output ordering, warmup behavior, and no-lookahead boundary. The registration
+   tool parses this docstring and writes the validated provenance into `method_implementation_manifest.json`.
+4. For indicator methods, run `math_run_indicator_fixtures`; the service builds latest-first `Bar` sequences, calls
    `Indicator.compute_series`, checks warmup/null behavior, compares expected values, and runs no-lookahead prefix
-   checks.
+   checks. For signal methods, run `math_run_signal_fixtures`; it calls `Signal.compute(bars) -> float`, checks scalar
+   action output, warmup/insufficient-bars behavior, source hash, method-card refs, provenance docstring, and prefix
+   no-lookahead behavior.
 5. For LLM-authored Python, call `math_generate_python_method`. The generated source must start with the same
    provenance docstring and name the exact method-card IDs passed to the tool. The generated class must subclass
-   `trader.indicators.Indicator`, pass static safety checks, register as a generated implementation, and pass the same
-   fixtures before it is marked `validated`.
-6. Treat `method_implementation_manifest.json` plus `indicator_validation_report.json` as the executable evidence
-   bundle for downstream Quantitative Methods work.
+   the runtime contract declared by the method, pass static safety checks, register as a generated implementation, and
+   pass the matching fixture runner before it is marked `validated`.
+6. Treat `method_implementation_manifest.json` plus `indicator_validation_report.json` or
+   `signal_implementation_validation_report.json` as the executable evidence bundle for downstream Quantitative
+   Methods work.
+
+Bollinger signal vertical slice:
+
+1. Retrieve textbook evidence for the BWMA/Bollinger band buy/sell rule with `knowledge_retrieve_evidence`, then
+   dereference the returned chunk IDs with `knowledge_get_evidence_chunks`.
+2. Create and publish `method_card_bollinger_bwma_action_signal_algorithmic_trading_v1` for
+   `method_id="bollinger_bwma_action_signal"` with `family="signal"`.
+3. Validate a method contract with `runtime_contract="trader.signals.Signal"`, `period=20`,
+   `stddev_multiplier=2.0`, and the approved method-card ref.
+4. Register `trader_standard.signals:BollingerBwmaActionSignal`.
+5. Run `math_run_signal_fixtures`; the maintained fixtures cover lower-band buy `1.0`, upper-band sell `-1.0`, in-band
+   no action `0.0`, warmup failure, and prefix/no-lookahead behavior.
 
 ## Current Limitations
 

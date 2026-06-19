@@ -176,6 +176,9 @@ Responsibilities:
   metadata.
 - Implement and validate maintained indicators such as SMA, EMA, MACD, Bollinger Bands, RSI, z-score, spread, rolling
   volatility, drawdown, cross-sectional ranks, and regime/session-aware transforms.
+- Implement and validate citation-backed trading-rule signals when a method card authorizes executable signal logic.
+  These use `trader.signals.Signal`, produce `signal_implementation_validation_report.json`, and remain distinct from
+  later signal-diagnostic and family-level inference reports.
 - Define method metadata: name, version, family, parameters, lookback, warmup behavior, input schema, output schema,
   NaN/inf policy, dtype policy, alignment, and no-lookahead guarantee.
 - Write deterministic fixture tests against small known input/output examples and seeded generated cases.
@@ -190,9 +193,10 @@ Responsibilities:
   without external retrieval.
 - Own Python reference implementation manifests, deterministic fixture validation reports, optional template-restricted
   C++ kernel artifacts, and Python/C++ parity reports for deterministic methods.
-- Reuse `trader.indicators.Indicator` and `IndicatorObservation` as the runtime indicator contract; Quantitative
+- Reuse Trader runtime contracts instead of creating parallel implementation schemas. Indicator artifacts use
+  `trader.indicators.Indicator` and `IndicatorObservation`; signal artifacts use `trader.signals.Signal`. Quantitative
   Methods metadata and method cards explain the methodology, while `method_implementation_manifest.json` ties that
-  evidence to a concrete implementation entrypoint and source hash.
+  evidence to a concrete implementation entrypoint, runtime contract, and source hash.
 - Make method outputs independently inspectable and reproducible.
 
 Inputs:
@@ -215,6 +219,7 @@ Outputs:
 - `statistical_test_contract.json`.
 - `method_implementation_manifest.json`.
 - `indicator_validation_report.json`.
+- `signal_implementation_validation_report.json`.
 - `signal_diagnostic_report.json`.
 - `multiple_testing_report.json`.
 - `cxx_kernel_manifest.json`.
