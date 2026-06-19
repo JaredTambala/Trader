@@ -11,12 +11,18 @@ from trader.portfolio import Portfolio
 
 
 class Strategy(ABC):
-    """Produces broker-ready orders from data, signals, and portfolio state."""
+    """Contract for turning event-store/portfolio state into order intents.
+
+    Strategies receive run and cycle identifiers so generated orders can be
+    traced through risk, broker submission, and event persistence. The base
+    class also provides per-symbol and async streaming adapters for realtime
+    market-data paths.
+    """
 
     @property
     @abstractmethod
     def strategy_id(self) -> str:
-        """Unique identifier for the strategy version."""
+        """Return the stable strategy/version identifier stored in run metadata and artifacts."""
 
     @abstractmethod
     def generate_orders(
@@ -28,7 +34,12 @@ class Strategy(ABC):
         event_store: EventStore,
         portfolio: Portfolio,
     ) -> Sequence[Mapping[str, object]]:
-        """Generate broker-ready order intents for the current decision point."""
+        """Generate order intents for the current decision point.
+
+        Returned mappings should contain at least symbol, side, quantity, and
+        order type. The cycle adds traceability, prices, asset class, and
+        time-in-force before risk validation and broker submission.
+        """
 
     def generate_orders_for_symbol(
         self,
@@ -40,7 +51,12 @@ class Strategy(ABC):
         event_store: EventStore,
         portfolio: Portfolio,
     ) -> Sequence[Mapping[str, object]]:
-        """Generate order intents for a single symbol."""
+        """Generate decision-point orders and keep only the requested canonical symbol.
+
+        The default adapter calls batch generation, then compares symbols
+        case-insensitively after trimming whitespace. Strategies with native
+        per-symbol logic can override this to avoid computing the full universe.
+        """
         return [
             order
             for order in self.generate_orders(
@@ -62,7 +78,11 @@ class Strategy(ABC):
         event_store: EventStore,
         portfolio: Portfolio,
     ) -> AsyncIterator[Mapping[str, object]]:
-        """Yield order intents as soon as they are produced."""
+        """Yield batch-generated orders through the async strategy-stream interface.
+
+        Realtime cycle code can consume strategies uniformly as streams while the
+        default implementation still delegates to synchronous `generate_orders`.
+        """
         for order in self.generate_orders(
             run_id=run_id,
             cycle_id=cycle_id,
@@ -82,7 +102,12 @@ class Strategy(ABC):
         event_store: EventStore,
         portfolio: Portfolio,
     ) -> AsyncIterator[Mapping[str, object]]:
-        """Yield order intents for a single symbol as soon as they are produced."""
+        """Yield per-symbol orders through the async strategy-stream interface.
+
+        The default implementation delegates to `generate_orders_for_symbol`, so
+        native per-symbol overrides automatically flow through streaming cycle
+        execution as well.
+        """
         for order in self.generate_orders_for_symbol(
             symbol,
             run_id=run_id,

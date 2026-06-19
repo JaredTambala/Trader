@@ -32,7 +32,13 @@ def math_list_method_contracts(
     limit: int = 50,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
-    """List maintained Quantitative Methods method contracts."""
+    """Return bounded registry method contracts through a read-only tool envelope.
+
+    The command validates the caller's limit, applies family/status/planned filters
+    through the registry layer, and translates knowledge-store failures into
+    stable error envelopes. Results are serialized with each method's maintained
+    assumptions, parameters, and runtime contract metadata.
+    """
     if limit < 1 or limit > 200:
         return error_envelope(
             command=MATH_LIST_METHOD_CONTRACTS,
@@ -63,7 +69,14 @@ def math_validate_method_contract(
     require_evidence: bool = True,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
-    """Validate a method contract against the maintained registry."""
+    """Validate caller-supplied method metadata against maintained contracts.
+
+    The tool normalizes the incoming contract, verifies the method exists, checks
+    required parameters and parameter bounds, compares warmup/NaN/no-lookahead
+    metadata, and optionally requires approved method-card evidence. All warnings,
+    blockers, checked values, and inherited registry constraints are returned in a
+    `MethodValidationReport`.
+    """
     contract = MethodContract.from_mapping(method_contract)
     if not contract.method_id:
         return error_envelope(
@@ -187,7 +200,13 @@ def math_register_method_implementation(
     expected_source_hash: str | None = None,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
-    """Register a Python Indicator implementation manifest."""
+    """Delegate registration of a concrete Python method implementation manifest.
+
+    The wrapper preserves the MCP-facing command signature while the registration
+    service validates method evidence, entrypoint/source metadata, dependency
+    allowlists, source hashes, runtime contract, and importability before writing
+    the manifest artifact.
+    """
     return register_method_implementation(
         artifact_root=artifact_root,
         method_id=method_id,
@@ -212,7 +231,12 @@ def math_run_indicator_fixtures(
     fixtures: list[dict[str, Any]] | None = None,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
-    """Run deterministic indicator fixtures for a registered implementation."""
+    """Run indicator fixture validation through the method-implementation service.
+
+    The wrapper accepts either an implementation ID or manifest payload, passes
+    optional fixture overrides through unchanged, and returns the local-mutating
+    validation envelope produced by the fixture runner.
+    """
     return run_indicator_fixtures(
         artifact_root=artifact_root,
         implementation_id=implementation_id,
@@ -230,7 +254,12 @@ def math_run_signal_fixtures(
     fixtures: list[dict[str, Any]] | None = None,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
-    """Run deterministic signal fixtures for a registered implementation."""
+    """Run signal fixture validation through the method-implementation service.
+
+    The wrapper mirrors indicator validation for signal runtime contracts, keeping
+    MCP inputs stable while the fixture service resolves manifests, reloads the
+    implementation, runs prefix/no-lookahead checks, and writes a validation report.
+    """
     return run_signal_fixtures(
         artifact_root=artifact_root,
         implementation_id=implementation_id,

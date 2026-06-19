@@ -55,5 +55,9 @@ def parse_timeframe(value: str) -> TimeFrame:
 
 
 def normalize_timeframe(value: str) -> str:
-    """Normalize timeframe strings to the canonical Alpaca representation."""
+    """Return Alpaca's canonical string form for a supported timeframe.
+
+    The function delegates validation to `parse_timeframe`, so invalid values
+    raise `ValueError` before they can reach market-data queries or backtests.
+    """
     return str(parse_timeframe(value))

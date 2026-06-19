@@ -24,7 +24,11 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class SimpleStrategy(Strategy):
-    """Minimal strategy that turns signal outputs into buy/sell market orders."""
+    """Portfolio-unaware strategy that maps primary signal sign to market orders.
+
+    Positive primary values create buys, negative values create sells, and zero
+    values create no order. Signal generation owns indicator telemetry.
+    """
 
     signal_generator: SignalGenerator
     primary_signal: str
@@ -32,7 +36,7 @@ class SimpleStrategy(Strategy):
 
     @property
     def strategy_id(self) -> str:
-        """Return the strategy identifier."""
+        """Return the stable simple strategy identifier stored in run metadata and artifacts."""
         return "simple"
 
     def generate_orders(
@@ -44,7 +48,12 @@ class SimpleStrategy(Strategy):
         event_store: EventStore,
         portfolio: Portfolio,
     ) -> Sequence[Mapping[str, object]]:
-        """Generate candidate orders for the current data."""
+        """Generate market-order intents for all symbols produced by the signal generator.
+
+        Signal generation receives decision, run, and cycle identifiers for audit
+        telemetry; positive primary signals become buys, negative signals become
+        sells, and zero/missing primary signals emit no orders.
+        """
         logger.info(
             "Generating orders strategy=%s run_id=%s symbols=%s",
             self.strategy_id,
@@ -75,7 +84,12 @@ class SimpleStrategy(Strategy):
         event_store: EventStore,
         portfolio: Portfolio,
     ) -> Sequence[Mapping[str, object]]:
-        """Generate candidate orders for a single symbol."""
+        """Generate market-order intents for one symbol using incremental generation when available.
+
+        Generators that support per-symbol reads are called directly; otherwise
+        the strategy falls back to batch generation and filters candidate orders by
+        canonical symbol.
+        """
         if getattr(self.signal_generator, "supports_symbol_generation", False):
             signals = self.signal_generator.generate_for_symbol(
                 symbol,
@@ -114,7 +128,12 @@ class SimpleStrategy(Strategy):
         event_store: EventStore,
         portfolio: Portfolio,
     ) -> AsyncIterator[Mapping[str, object]]:
-        """Stream candidate orders asynchronously."""
+        """Stream candidate orders asynchronously for symbol-by-symbol cycle execution.
+
+        When the generator supports incremental reads, each symbol is evaluated and
+        yielded independently; otherwise the method adapts batch-generated orders
+        into the async strategy stream interface.
+        """
         symbols = self.signal_generator.symbols if hasattr(self.signal_generator, "symbols") else ()
         if getattr(self.signal_generator, "supports_symbol_generation", False) and symbols:
             for symbol in symbols:
@@ -153,7 +172,12 @@ class SimpleStrategy(Strategy):
         cycle_id: str,
         event_store: EventStore,
     ) -> list[Mapping[str, object]]:
-        """Handle orders from signals."""
+        """Convert primary signal values into market-order intents and audit events.
+
+        Positive primary values emit buy intents, negative values emit sell intents,
+        zero or missing values emit no order, and every inspected signal map writes
+        a `signal_events` record with run/cycle correlation.
+        """
         generated_at = datetime.now(timezone.utc)
         orders: list[Mapping[str, object]] = []
         for symbol, signals in by_symbol.items():

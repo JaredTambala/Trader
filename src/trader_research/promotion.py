@@ -21,7 +21,14 @@ def build_promotion_packet(
     output_root: str | Path = "artifacts/promotions",
     operator_context_paths: Sequence[str | Path] | None = None,
 ) -> dict[str, Any]:
-    """Build a dry-run paper promotion packet for one recommendation."""
+    """Create review artifacts for promoting one recommendation to paper config.
+
+    The helper finds the selected recommendation, derives a proposed once-mode
+    Alpaca paper configuration, applies candidate parameter overrides, checks
+    operator context for safety blockers, writes the proposed config and metadata
+    artifacts, and returns a packet path. It is deliberately dry-run only and sets
+    `starts_trading` false in validation output.
+    """
     candidate = _find_candidate(recommendation_payload, recommendation_id)
     output_dir = Path(output_root) / recommendation_id
     output_dir.mkdir(parents=True, exist_ok=True)

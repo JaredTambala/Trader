@@ -49,7 +49,15 @@ BackfillRunner = Callable[["DataEnsureLoadedRequest", EventStore], Mapping[str, 
 
 @dataclass(frozen=True)
 class DataProviderCapability:
-    """Registered data capability for one configured market-data provider."""
+    """Static capabilities used to validate Data Agent provider requests.
+
+    A capability describes the provider aliases accepted from config or tool
+    input, the provider-specific instrument types that map back to the core
+    event-store asset classes, and the bar types this adapter can serve. The
+    flags intentionally separate catalog/network/credential support from local
+    storage so read-only tools can explain unavailable provider discovery without
+    attempting network access.
+    """
 
     provider_key: str
     provider_aliases: tuple[str, ...]
@@ -62,13 +70,20 @@ class DataProviderCapability:
 
     @property
     def supported_instrument_types(self) -> tuple[str, ...]:
-        """Return provider-scoped instrument types with registered data support."""
+        """Return provider-scoped instrument types with registered local data support for validation."""
         return tuple(self.instrument_asset_classes.keys())
 
 
 @dataclass(frozen=True)
 class DataProviderContext:
-    """Resolved provider, instrument, and bar semantics for Data Agent tools."""
+    """Normalized provider context shared by inventory, quality, and discovery tools.
+
+    The context records both the caller's requested provider and the configured
+    provider, plus the resolved provider key used for capability lookup. It also
+    carries the provider-scoped instrument/bar terms and the legacy asset-class
+    value required by existing event-store queries, allowing envelopes to expose
+    modern provider semantics without changing the core storage schema.
+    """
 
     requested_provider: str | None
     configured_provider: str
@@ -87,7 +102,13 @@ class DataProviderContext:
     requires_credentials: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-safe provider context payload."""
+        """Serialize provider resolution details into a JSON-safe envelope payload.
+
+        The mapping keeps requested/configured/resolved provider fields together
+        with instrument, bar, legacy asset-class, catalog support, and credential
+        flags so tool callers can understand exactly which provider semantics were
+        applied to a query.
+        """
         return {
             "requested_provider": self.requested_provider,
             "configured_provider": self.configured_provider,
@@ -108,7 +129,13 @@ class DataProviderContext:
 
 
 class DataProviderResolutionError(ValueError):
-    """Structured provider resolution failure."""
+    """Resolution failure that preserves a stable code and envelope-ready details.
+
+    Data Agent entrypoints catch this exception separately from generic validation
+    errors so callers receive machine-readable provider mismatch, unsupported
+    instrument, or unsupported bar-type codes. The `data` payload is copied on
+    construction to keep the failure context stable after the exception is raised.
+    """
 
     def __init__(self, code: str, message: str, *, data: Mapping[str, Any]) -> None:
         super().__init__(message)
@@ -118,14 +145,26 @@ class DataProviderResolutionError(ValueError):
 
 @dataclass(frozen=True)
 class SymbolCatalogResult:
-    """Result returned by a provider catalog adapter."""
+    """Provider catalog response after symbols have been adapted for tool output.
+
+    `symbols` contains JSON-compatible provider rows, already filtered or shaped
+    by the adapter according to the discovery request. `truncated` tells the Data
+    Agent whether the provider had more matches than the requested limit so the
+    envelope can distinguish a complete exact validation from a bounded preview.
+    """
 
     symbols: tuple[Mapping[str, Any], ...]
     truncated: bool = False
 
 
 class SymbolCatalogProvider(Protocol):
-    """Read-only provider catalog adapter."""
+    """Interface for optional provider-backed symbol catalog discovery.
+
+    Implementations must not mutate local state and should return provider-scoped
+    rows in a JSON-compatible shape. The policy layer decides whether this network
+    or credential-backed lookup is allowed; the Data Agent falls back to local or
+    configured symbols when no adapter is registered.
+    """
 
     provider_key: str
 
@@ -134,12 +173,18 @@ class SymbolCatalogProvider(Protocol):
         request: "DataSymbolDiscoveryRequest",
         context: DataProviderContext,
     ) -> SymbolCatalogResult:
-        """Return provider-scoped symbols matching the request."""
+        """Return provider-scoped symbol rows matching the validated discovery request and context."""
 
 
 @dataclass(frozen=True)
 class DataSymbolDiscoveryPolicy:
-    """Runtime policy for read-only provider catalog discovery."""
+    """Runtime switchboard for provider symbol discovery integrations.
+
+    The policy keeps provider catalog access explicit because discovery can depend
+    on credentials or network availability. By default tools use only local or
+    configured universes; callers that opt in supply adapters keyed by provider so
+    source=`provider` and source=`merged` requests can be handled predictably.
+    """
 
     allow_provider_discovery: bool = False
     catalog_providers: Mapping[str, SymbolCatalogProvider] = field(default_factory=dict)
@@ -247,7 +292,15 @@ class DataEnsureLoadedRequest:
 
 @dataclass(frozen=True)
 class DataSymbolDiscoveryRequest:
-    """Request for provider-scoped symbol discovery or exact-symbol validation."""
+    """Validated input for local, configured, or provider-backed symbol discovery.
+
+    Empty `symbols` plus a query performs bounded search, while explicit symbols
+    ask the tool to validate exact provider-scoped identifiers. Provider,
+    instrument, and bar-type fields are normalized before querying storage or an
+    optional catalog adapter; flags such as `include_local_coverage` and
+    `configured_universe_available` control which evidence can appear in the
+    resulting discovery report.
+    """
 
     symbols: tuple[str, ...] = tuple()
     asset_class: str | None = None
@@ -529,7 +582,15 @@ def resolve_data_provider_context(
     instrument_type: str | None = None,
     bar_type: str | None = None,
 ) -> DataProviderContext:
-    """Resolve configured provider, provider-scoped instrument type, and bar type."""
+    """Normalize provider, instrument, and bar selectors into a query context.
+
+    The resolver treats a missing or `configured` provider as the configured data
+    provider, rejects requests for a different provider, maps provider instrument
+    types back to the event-store asset class, and verifies bar-type support. On
+    any mismatch it raises `DataProviderResolutionError` with a stable code and
+    detail payload suitable for tool envelopes instead of letting later queries
+    fail with ambiguous validation errors.
+    """
     configured_provider_key = _normalize_provider_selector(configured_provider) or _DEFAULT_CONFIGURED_PROVIDER
     requested_provider_key = _normalize_provider_selector(provider)
     requested_provider = requested_provider_key if requested_provider_key not in {None, "configured"} else None

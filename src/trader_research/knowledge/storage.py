@@ -19,7 +19,14 @@ from .domain import (
 
 
 class KnowledgeRepository:
-    """Small JSON repository rooted under the MCP artifact directory."""
+    """File-based repository for local knowledge artifacts and search indexes.
+
+    The repository owns the on-disk layout under `<artifact_root>/knowledge`,
+    converts typed domain objects to JSON files, and validates source paths against
+    allowed roots before registration. It is intentionally simple storage used by
+    the JSON compatibility store and local tests; higher-level services decide
+    which writes are allowed and how errors become tool envelopes.
+    """
 
     def __init__(self, artifact_root: str | Path, *, allowed_roots: Sequence[str | Path] | None = None) -> None:
         base = Path(artifact_root)
@@ -28,33 +35,41 @@ class KnowledgeRepository:
 
     @property
     def source_dir(self) -> Path:
+        """Return the artifact directory containing persisted knowledge source manifests under root."""
         return self.artifact_root / "sources"
 
     @property
     def chunk_dir(self) -> Path:
+        """Return the artifact directory containing per-source chunk manifest files under root."""
         return self.artifact_root / "chunks"
 
     @property
     def embedding_dir(self) -> Path:
+        """Return the artifact directory containing embedding manifest artifacts for indexed chunks."""
         return self.artifact_root / "embeddings"
 
     @property
     def ingestion_dir(self) -> Path:
+        """Return the artifact directory containing persisted ingestion report artifacts under root."""
         return self.artifact_root / "ingestions"
 
     @property
     def method_card_dir(self) -> Path:
+        """Return the artifact directory containing persisted draft and approved method cards."""
         return self.artifact_root / "method_cards"
 
     @property
     def method_contract_dir(self) -> Path:
+        """Return the artifact directory containing persisted method contract override artifacts under root."""
         return self.artifact_root / "method_contracts"
 
     @property
     def index_path(self) -> Path:
+        """Return the JSON search-index artifact path used by the compatibility store."""
         return self.artifact_root / "index.json"
 
     def ensure_dirs(self) -> None:
+        """Create every repository subdirectory needed for local knowledge artifact writes safely."""
         for directory in (
             self.source_dir,
             self.chunk_dir,
@@ -66,6 +81,7 @@ class KnowledgeRepository:
             directory.mkdir(parents=True, exist_ok=True)
 
     def validate_source_path(self, path: str | Path) -> Path:
+        """Resolve and validate a source path against file existence and allowed roots."""
         resolved = Path(path).expanduser().resolve()
         if not resolved.exists():
             raise ValueError(f"source path does not exist: {resolved}")
@@ -77,34 +93,43 @@ class KnowledgeRepository:
         return resolved
 
     def source_path(self, source_id: str) -> Path:
+        """Return the source-manifest artifact path for a stable source identifier under root."""
         return self.source_dir / f"{source_id}.json"
 
     def chunk_manifest_path(self, source_id: str) -> Path:
+        """Return the chunk-manifest artifact path associated with a stable source identifier."""
         return self.chunk_dir / f"{source_id}.json"
 
     def ingestion_path(self, ingestion_id: str) -> Path:
+        """Return the ingestion-report artifact path associated with a stable ingestion identifier."""
         return self.ingestion_dir / f"{ingestion_id}.json"
 
     def embedding_path(self, embedding_manifest_id: str) -> Path:
+        """Return the embedding-manifest artifact path associated with one embedding index run."""
         return self.embedding_dir / f"{embedding_manifest_id}.json"
 
     def method_card_path(self, method_card_id: str) -> Path:
+        """Return the method-card artifact path for a draft or approved card ID."""
         return self.method_card_dir / f"{method_card_id}.json"
 
     def method_contract_path(self, method_id: str) -> Path:
+        """Return the method-contract artifact path for a maintained method identifier under root."""
         return self.method_contract_dir / f"{method_id}.json"
 
     def save_source(self, manifest: KnowledgeSourceManifest) -> Path:
+        """Persist a source manifest and return the written artifact path for callers."""
         self.ensure_dirs()
         return write_json_artifact(manifest.to_dict(), self.source_path(manifest.source_id))
 
     def load_source(self, source_id: str) -> KnowledgeSourceManifest | None:
+        """Load a source manifest by ID, returning `None` when no artifact exists locally."""
         path = self.source_path(source_id)
         if not path.exists():
             return None
         return KnowledgeSourceManifest.from_dict(_read_json(path))
 
     def list_sources(self) -> tuple[KnowledgeSourceManifest, ...]:
+        """Load all source manifests from disk in deterministic filename order for listing."""
         if not self.source_dir.exists():
             return tuple()
         return tuple(
@@ -113,6 +138,7 @@ class KnowledgeRepository:
         )
 
     def save_chunks(self, source_id: str, chunks: Sequence[KnowledgeChunk]) -> Path:
+        """Persist the active chunk manifest for one registered source identifier under root."""
         self.ensure_dirs()
         payload = {
             "artifact_type": "knowledge_chunk_manifest",
@@ -123,6 +149,7 @@ class KnowledgeRepository:
         return write_json_artifact(payload, self.chunk_manifest_path(source_id))
 
     def load_chunks(self, source_id: str) -> tuple[KnowledgeChunk, ...]:
+        """Load chunk artifacts for one source, returning an empty tuple if absent locally."""
         path = self.chunk_manifest_path(source_id)
         if not path.exists():
             return tuple()
@@ -130,6 +157,7 @@ class KnowledgeRepository:
         return tuple(KnowledgeChunk.from_dict(item) for item in _sequence(payload.get("chunks")))
 
     def list_chunks(self) -> tuple[KnowledgeChunk, ...]:
+        """Load chunks from every source manifest in deterministic file order for indexing."""
         if not self.chunk_dir.exists():
             return tuple()
         chunks: list[KnowledgeChunk] = []
@@ -139,14 +167,17 @@ class KnowledgeRepository:
         return tuple(chunks)
 
     def save_embedding_manifest(self, manifest: KnowledgeEmbeddingManifest) -> Path:
+        """Persist embedding metadata for one indexing run and return its artifact path."""
         self.ensure_dirs()
         return write_json_artifact(manifest.to_dict(), self.embedding_path(manifest.embedding_manifest_id))
 
     def save_ingestion_report(self, report: KnowledgeIngestionReport) -> Path:
+        """Persist an ingestion report and return the written artifact path for callers."""
         self.ensure_dirs()
         return write_json_artifact(report.to_dict(), self.ingestion_path(report.ingestion_id))
 
     def list_ingestion_reports(self) -> tuple[KnowledgeIngestionReport, ...]:
+        """Load all ingestion reports from disk in deterministic filename order for status."""
         if not self.ingestion_dir.exists():
             return tuple()
         return tuple(
@@ -155,6 +186,7 @@ class KnowledgeRepository:
         )
 
     def save_index(self, entries: Sequence[Mapping[str, Any]]) -> Path:
+        """Persist the JSON compatibility search index with entry-count metadata for retrieval."""
         self.ensure_dirs()
         payload = {
             "artifact_type": "knowledge_search_index",
@@ -164,25 +196,30 @@ class KnowledgeRepository:
         return write_json_artifact(payload, self.index_path)
 
     def load_index_entries(self) -> tuple[Mapping[str, Any], ...]:
+        """Load JSON compatibility search-index entries, returning empty when absent locally for retrieval."""
         if not self.index_path.exists():
             return tuple()
         payload = _read_json(self.index_path)
         return tuple(_mapping(item) for item in _sequence(payload.get("entries")))
 
     def save_method_card(self, method_card: MethodCard) -> Path:
+        """Persist a method-card artifact and return its deterministic artifact path for callers."""
         self.ensure_dirs()
         return write_json_artifact(method_card.to_dict(), self.method_card_path(method_card.method_card_id))
 
     def list_persisted_method_cards(self) -> tuple[MethodCard, ...]:
+        """Load persisted method cards from disk in deterministic filename order for merging."""
         if not self.method_card_dir.exists():
             return tuple()
         return tuple(MethodCard.from_dict(_read_json(path)) for path in sorted(self.method_card_dir.glob("*.json")))
 
     def save_method_contract(self, method: MethodRegistryEntry) -> Path:
+        """Persist a method-contract artifact and return its deterministic artifact path for callers."""
         self.ensure_dirs()
         return write_json_artifact(method.to_dict(), self.method_contract_path(method.method_id))
 
     def list_persisted_method_contracts(self) -> tuple[MethodRegistryEntry, ...]:
+        """Load persisted method contracts from disk in deterministic filename order for merging."""
         if not self.method_contract_dir.exists():
             return tuple()
         return tuple(MethodRegistryEntry.from_dict(_read_json(path)) for path in sorted(self.method_contract_dir.glob("*.json")))

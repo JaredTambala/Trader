@@ -32,7 +32,11 @@ from trader.signals import Bar
 
 @dataclass(frozen=True)
 class BollingerBandValue:
-    """Single aligned Bollinger Band observation."""
+    """Aligned Bollinger Band values for one completed trailing window.
+
+    The value is emitted latest-first and carries the middle, upper, lower, and
+    normalized bandwidth components used by signals and audit payloads.
+    """
 
     middle: float
     upper: float
@@ -42,20 +46,32 @@ class BollingerBandValue:
 
 @dataclass(frozen=True)
 class BollingerBandsIndicator(Indicator):
-    """Compute Bollinger Band components from OHLCV bars."""
+    """Compute no-lookahead Bollinger Band components from latest-first bars.
+
+    Warmup observations are omitted; each output uses one completed trailing
+    close-price window.
+    """
 
     period: int = 20
     stddev_multiplier: float = 2.0
 
     @property
     def name(self) -> str:
+        """Return the registry method name used for Bollinger audit and manifest metadata."""
         return "bollinger_wma_band_rule"
 
     @property
     def window(self) -> int:
+        """Return the close-count required before a Bollinger band value can be emitted."""
         return int(self.period)
 
     def compute_series(self, bars: Sequence[Bar]) -> Sequence[BollingerBandValue]:
+        """Compute latest-first Bollinger band components from trailing close windows.
+
+        Each completed window produces middle, upper, lower, and bandwidth values
+        using the configured standard-deviation multiplier. Warmup observations are
+        omitted and insufficient input raises before any partial output is returned.
+        """
         closes = [float(bar.close) for bar in bars]
         if len(closes) < self.window:
             raise ValueError("Insufficient bars for Bollinger Band computation")

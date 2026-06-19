@@ -48,10 +48,10 @@ class ArtifactReference:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-serializable mapping.
+        """Serialize the artifact pointer into a JSON-safe envelope payload.
 
         Returns:
-            Dictionary form containing only JSON-compatible values.
+            Dictionary form containing normalized path, URI, and metadata values.
         """
         return {
             "artifact_type": self.artifact_type,
@@ -90,10 +90,10 @@ class ToolEnvelope:
     schema_version: str = SCHEMA_VERSION
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-serializable mapping.
+        """Serialize the tool result envelope into its stable JSON payload.
 
         Returns:
-            Dictionary form containing only JSON-compatible values.
+            Dictionary form containing normalized data, artifacts, warnings, and errors.
         """
         return {
             "ok": self.ok,

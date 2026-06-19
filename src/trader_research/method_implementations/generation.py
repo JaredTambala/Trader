@@ -29,7 +29,15 @@ def generate_python_method_from_payload(
     fixtures: Sequence[Mapping[str, Any]] | None = None,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
-    """Persist an LLM-authored Python draft, then register and fixture-validate it."""
+    """Quarantine, statically check, register, and fixture-validate generated code.
+
+    The workflow requires `source_code` and `class_name`, writes the source under a
+    content-addressed quarantine path, blocks unsafe imports or dynamic execution,
+    registers the implementation manifest, then runs indicator or signal fixtures
+    based on the registered runtime contract. Each stage returns a structured
+    local-mutating envelope so generated code never bypasses registration evidence
+    or deterministic validation.
+    """
     source_code = str(llm_payload.get("source_code") or "")
     class_name = str(llm_payload.get("class_name") or "").strip()
     if not source_code.strip():
@@ -123,7 +131,13 @@ def generation_messages(
     method_contract: Mapping[str, Any],
     method_card_ids: Sequence[str] | None = None,
 ) -> tuple[Mapping[str, str], ...]:
-    """Return provider-neutral generation prompt messages for the MCP LLM bridge."""
+    """Build provider-neutral prompt messages for quarantined Python generation.
+
+    The messages instruct an LLM bridge to return JSON only, subclass the requested
+    Trader runtime contract, avoid side-effecting APIs, and include source-level
+    documentation naming method cards, ordering, warmup, and no-lookahead behavior.
+    Method-card IDs are gathered from explicit input and evidence references.
+    """
     runtime_contract = str(method_contract.get("runtime_contract") or INDICATOR_RUNTIME_CONTRACT)
     runtime_name = "Signal" if runtime_contract == SIGNAL_RUNTIME_CONTRACT else "Indicator"
     resolved_method_card_ids = [str(method_card_id) for method_card_id in sequence(method_card_ids)]
@@ -156,7 +170,12 @@ def generation_messages(
 
 
 def generation_response_schema() -> Mapping[str, Any]:
-    """Return the expected JSON shape for generated Python methods."""
+    """Return the JSON schema expected from the generation bridge response.
+
+    The schema requires `class_name` and `source_code`, with optional implementation
+    notes. The generation workflow validates this transport shape before writing
+    quarantined source or running static safety checks.
+    """
     return {
         "type": "object",
         "required": ["class_name", "source_code"],

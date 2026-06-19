@@ -6,6 +6,13 @@ from typing import Any, Mapping
 
 
 def default_indicator_fixtures(method_id: str) -> tuple[Mapping[str, Any], ...]:
+    """Return built-in deterministic indicator fixtures for maintained methods.
+
+    Fixtures provide small ordered close-price sequences, expected warmup/output
+    values, and numeric tolerances used when no caller-supplied fixture payload is
+    provided. Unknown method IDs return an empty tuple so callers can emit a clear
+    fixtures-required error instead of silently passing untested implementations.
+    """
     fixtures = {
         "sma": (
             {
@@ -81,6 +88,13 @@ def default_indicator_fixtures(method_id: str) -> tuple[Mapping[str, Any], ...]:
 
 
 def default_signal_fixtures(method_id: str) -> tuple[Mapping[str, Any], ...]:
+    """Return built-in deterministic signal fixtures for maintained signal methods.
+
+    Signal fixtures include full-series expectations plus prefix expectations for
+    warmup and no-lookahead checks. Unknown method IDs return no fixtures, forcing
+    the higher-level runner to fail explicitly unless the caller provides custom
+    validation data.
+    """
     fixtures = {
         "bollinger_bwma_action_signal": (
             {

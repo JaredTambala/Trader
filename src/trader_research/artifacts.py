@@ -13,14 +13,28 @@ from typing import Any, Mapping, Sequence
 
 @dataclass(frozen=True)
 class LoadedArtifacts:
-    """Structured result of loading strategy/result artifacts."""
+    """Container for partially loaded strategy artifacts and recoverable warnings.
+
+    Artifact loading is intentionally best-effort for research tools: callers can
+    still rank recommendations or build promotion metadata when optional context
+    files are missing, malformed, or unsupported. The `artifacts` mapping stores
+    parsed JSON payloads and CSV summaries keyed by file stem, while `warnings`
+    carries human-readable diagnostics that should be surfaced in tool envelopes.
+    """
 
     artifacts: Mapping[str, Any]
     warnings: Sequence[str] = field(default_factory=tuple)
 
 
 def load_json_file(path: str | Path) -> Mapping[str, Any]:
-    """Load a JSON mapping from disk."""
+    """Read a JSON artifact and enforce the mapping contract expected by tools.
+
+    Research artifacts are passed around as structured objects, so arrays or scalar
+    JSON documents are rejected at the boundary instead of being handled later by
+    downstream ranking, promotion, or metadata builders. File and JSON decoding
+    errors are deliberately left to the caller so batch loaders can decide whether
+    to fail hard or continue with warnings.
+    """
     artifact_path = Path(path)
     parsed = json.loads(artifact_path.read_text(encoding="utf-8"))
     if not isinstance(parsed, Mapping):
@@ -29,7 +43,14 @@ def load_json_file(path: str | Path) -> Mapping[str, Any]:
 
 
 def load_operator_context(paths: Sequence[str | Path]) -> tuple[list[Mapping[str, Any]], list[str]]:
-    """Load Sprint 4 operator JSON files as read-only context."""
+    """Load optional operator-context JSON files without aborting the workflow.
+
+    Each path is parsed through `load_json_file` and appended to the returned
+    context list only when it satisfies the mapping contract. Missing, malformed,
+    or non-object files become warnings so discovery and recommendation tools can
+    continue with the remaining evidence while still reporting which context was
+    ignored.
+    """
     contexts: list[Mapping[str, Any]] = []
     warnings: list[str] = []
     for path in paths:
@@ -80,7 +101,14 @@ def build_strategy_artifact_metadata(
     output_files: Mapping[str, str],
     recommendation: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build portable strategy artifact metadata."""
+    """Assemble reproducible metadata for exported strategy artifact bundles.
+
+    The returned payload snapshots strategy identity, parameters, risk and data
+    assumptions, optional suite/run identifiers, output-file locations, and the
+    current source revision. Inputs are copied into plain dictionaries so the
+    metadata can be serialized independently of caller-owned mappings and later
+    used for promotion, review, or artifact provenance checks.
+    """
     return {
         "schema_version": "1",
         "strategy": dict(strategy),

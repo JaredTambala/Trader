@@ -21,7 +21,14 @@ def chunk_sections(
     *,
     max_chars: int = DEFAULT_MAX_CHARS,
 ) -> tuple[KnowledgeChunk, ...]:
-    """Create deterministic chunks for extracted source sections."""
+    """Split extracted sections into stable, locator-preserving knowledge chunks.
+
+    Text is chunked deterministically in source order, each chunk receives a hash
+    of its exact text, and the locator preserves page/section/offset metadata from
+    extraction. The chunk ID includes source ID, ordinal, text hash, and locator so
+    repeated ingestion of unchanged content produces the same citeable IDs while
+    changed source text is naturally re-indexed under new IDs.
+    """
     chunks: list[KnowledgeChunk] = []
     for section in sections:
         for part_index, part in enumerate(_split_text(section.text, max_chars=max_chars)):

@@ -30,19 +30,31 @@ from trader.signals import Bar
 
 @dataclass(frozen=True)
 class RsiIndicator(Indicator):
-    """Compute RSI values for a series of bars."""
+    """Compute Wilder-style RSI values from latest-first close bars.
+
+    The output is latest-first and omits the warmup window required to seed
+    average gains and losses.
+    """
 
     period: int
 
     @property
     def name(self) -> str:
+        """Return the registry method name used for RSI audit and manifest metadata."""
         return "rsi"
 
     @property
     def window(self) -> int:
+        """Return the close-count required to seed the first RSI output value."""
         return int(self.period) + 1
 
     def compute_series(self, bars: Sequence[Bar]) -> Sequence[float]:
+        """Compute latest-first Wilder RSI values from chronological close deltas.
+
+        The method seeds average gains and losses from the first period, applies
+        recursive smoothing for later deltas, treats zero average loss as RSI 100,
+        omits warmup observations, and returns completed values latest-first.
+        """
         closes = [float(bar.close) for bar in reversed(bars)]
         if len(closes) < self.window:
             raise ValueError("Insufficient bars for RSI computation")

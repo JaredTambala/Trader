@@ -8,7 +8,13 @@ from typing import Any, Mapping, Sequence
 
 @dataclass(frozen=True)
 class ParameterSpec:
-    """Single method parameter contract."""
+    """Registry contract for one configurable quantitative-method parameter.
+
+    The spec names the parameter, declares its expected kind, whether it is
+    required, optional numeric bounds, allowed categorical values, and the default
+    used when optional input is omitted. Validation tools use these fields to
+    produce checked-parameter reports rather than accepting arbitrary payload keys.
+    """
 
     name: str
     kind: str
@@ -19,6 +25,7 @@ class ParameterSpec:
     default: Any = None
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize parameter constraints into the registry artifact payload shape for tools."""
         return {
             "name": self.name,
             "kind": self.kind,
@@ -31,6 +38,7 @@ class ParameterSpec:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ParameterSpec":
+        """Parse a parameter spec from JSON while normalizing bounds and defaults."""
         return cls(
             name=str(payload.get("name") or ""),
             kind=str(payload.get("kind") or ""),
@@ -44,7 +52,14 @@ class ParameterSpec:
 
 @dataclass(frozen=True)
 class MethodRegistryEntry:
-    """Maintained Quantitative Methods registry entry."""
+    """Maintained contract for a quantitative method exposed through MCP tools.
+
+    A registry entry combines method identity, family/status, parameter specs,
+    input/output expectations, assumptions, failure modes, warmup and NaN policy,
+    no-lookahead guarantees, required evidence, and optional runtime contract
+    metadata. It is the authoritative contract used before registering or
+    generating concrete Python implementations.
+    """
 
     method_id: str
     family: str
@@ -64,6 +79,7 @@ class MethodRegistryEntry:
     runtime_contract: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize the maintained method registry entry into artifact form for persistence."""
         return {
             "artifact_type": "method_contract",
             "method_id": self.method_id,
@@ -86,6 +102,7 @@ class MethodRegistryEntry:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "MethodRegistryEntry":
+        """Parse a registry entry from seeded or persisted method-contract data payloads."""
         return cls(
             method_id=str(payload.get("method_id") or ""),
             family=str(payload.get("family") or ""),
@@ -108,7 +125,13 @@ class MethodRegistryEntry:
 
 @dataclass(frozen=True)
 class MethodContract:
-    """User-supplied method contract payload to validate."""
+    """Caller-supplied method payload normalized before registry validation.
+
+    The contract accepts loose JSON mappings from tool clients, normalizes method
+    identity aliases, preserves parameter/input-schema details, and keeps evidence
+    references as JSON-compatible mappings. It represents the request side of the
+    validation flow, not the maintained registry truth.
+    """
 
     method_id: str
     parameters: Mapping[str, Any] = field(default_factory=dict)
@@ -120,6 +143,12 @@ class MethodContract:
 
     @classmethod
     def from_mapping(cls, payload: Mapping[str, Any]) -> "MethodContract":
+        """Normalize a loose tool payload into a typed method contract request.
+
+        The parser accepts `name` as a method ID fallback, preserves parameters and
+        input schema only when they are mappings, and drops malformed evidence
+        references so validation can report missing evidence deterministically.
+        """
         raw_refs = payload.get("knowledge_evidence_refs") or ()
         if isinstance(raw_refs, Mapping):
             raw_refs = (raw_refs,)
@@ -136,6 +165,7 @@ class MethodContract:
         )
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize the submitted method contract for validation and citation checks by tools."""
         return {
             "method_id": self.method_id,
             "parameters": dict(self.parameters),
@@ -149,7 +179,13 @@ class MethodContract:
 
 @dataclass(frozen=True)
 class MethodValidationReport:
-    """Validation result for one method contract."""
+    """Structured outcome of checking a submitted method contract.
+
+    Reports include the checked parameter values, inherited registry assumptions
+    and failure modes, warmup/NaN/no-lookahead metadata, fixture status, warnings,
+    and blockers. Tool envelopes use `valid` to decide success while preserving the
+    full validation detail for review.
+    """
 
     method_id: str
     valid: bool
@@ -164,6 +200,7 @@ class MethodValidationReport:
     blockers: tuple[str, ...] = tuple()
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize validation outcome, checked parameters, warnings, and blockers for tool envelopes."""
         return {
             "artifact_type": "method_validation_report",
             "method_id": self.method_id,

@@ -39,7 +39,14 @@ def run_indicator_fixtures(
     fixtures: Sequence[Mapping[str, Any]] | None = None,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
-    """Run deterministic indicator fixtures for a registered manifest."""
+    """Validate an indicator implementation manifest against deterministic fixtures.
+
+    The runner resolves a manifest from an ID or payload, revalidates registration
+    before execution, enforces the indicator runtime contract, loads the class,
+    applies default or caller-provided fixtures, and writes a validation report.
+    Load, contract, or fixture mismatches are returned as local-mutating error
+    envelopes with artifact-ready diagnostics.
+    """
     try:
         manifest = _resolve_manifest(
             artifact_root=artifact_root,
@@ -103,7 +110,13 @@ def run_signal_fixtures(
     fixtures: Sequence[Mapping[str, Any]] | None = None,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
-    """Run deterministic signal fixtures for a registered manifest."""
+    """Validate a signal implementation manifest against deterministic fixtures.
+
+    The runner follows the same manifest resolution and registration recheck as
+    indicator validation, then enforces the signal runtime contract and executes
+    signal fixtures with prefix/no-lookahead expectations. The final envelope
+    records validation artifacts, warnings, and blockers for review.
+    """
     try:
         manifest = _resolve_manifest(
             artifact_root=artifact_root,

@@ -30,20 +30,31 @@ from trader.signals import Bar
 
 @dataclass(frozen=True)
 class RollingVolatilityIndicator(Indicator):
-    """Compute trailing rolling standard deviation for close values."""
+    """Compute trailing close-price standard deviation from latest-first bars.
+
+    The returned series omits warmup windows and uses the configured `ddof`.
+    """
 
     window_size: int
     ddof: int = 1
 
     @property
     def name(self) -> str:
+        """Return the registry method name used for volatility audit and manifest metadata."""
         return "rolling_volatility"
 
     @property
     def window(self) -> int:
+        """Return the configured close-count required for one volatility output value calculation."""
         return int(self.window_size)
 
     def compute_series(self, bars: Sequence[Bar]) -> Sequence[float]:
+        """Compute latest-first rolling standard deviation over close-price windows.
+
+        The implementation validates `ddof`, computes variance over each complete
+        chronological window, omits warmup observations, and returns the completed
+        volatility values in latest-first runtime order.
+        """
         closes = [float(bar.close) for bar in reversed(bars)]
         if len(closes) < self.window:
             raise ValueError("Insufficient bars for rolling volatility computation")

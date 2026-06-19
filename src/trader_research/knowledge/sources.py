@@ -30,7 +30,14 @@ def register_source(
     allowed_roots: Sequence[str | Path] | None = None,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
-    """Register a local source file and persist a source manifest."""
+    """Validate and register a local knowledge source for later ingestion.
+
+    The command resolves the path, enforces allowed roots and supported suffixes,
+    validates source-type metadata, computes a file hash, records duplicate-file
+    warnings, and persists a `KnowledgeSourceManifest`. It performs only local
+    artifact writes and returns structured errors for path, metadata, or store
+    failures.
+    """
     store = knowledge_store or JsonKnowledgeStore(artifact_root, allowed_roots=allowed_roots)
     try:
         resolved = _validate_source_path(path, artifact_root=artifact_root, allowed_roots=allowed_roots)
@@ -99,7 +106,13 @@ def list_sources(
     limit: int = 50,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
-    """List registered source manifests with optional filters."""
+    """Return registered knowledge sources matching metadata filters.
+
+    The read-only command validates the result limit, applies optional topic,
+    method-family, and status filters through the store, and returns JSON-safe
+    source manifests plus a count. Store failures are surfaced as knowledge-store
+    error envelopes rather than being confused with an empty result set.
+    """
     if limit < 1 or limit > 200:
         return error_envelope(
             command=KNOWLEDGE_LIST_SOURCES,

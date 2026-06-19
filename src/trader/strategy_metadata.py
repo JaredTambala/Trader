@@ -11,7 +11,11 @@ from .strategies.base import Strategy
 
 @dataclass(frozen=True)
 class StrategyInfo:
-    """Structured strategy metadata for research provenance."""
+    """Serializable metadata describing a strategy implementation and version.
+
+    Research and backtest persistence use this shape to record strategy identity
+    without importing the concrete strategy class later.
+    """
 
     strategy_id: str
     name: str
@@ -22,7 +26,12 @@ class StrategyInfo:
     source: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-serializable metadata mapping."""
+        """Serialize strategy identity and parameters for persistence and artifacts.
+
+        The returned mapping contains only plain values, so run metadata can record
+        the strategy implementation without importing or pickling the concrete
+        strategy class later.
+        """
         return {
             "strategy_id": self.strategy_id,
             "name": self.name,
@@ -35,7 +44,11 @@ class StrategyInfo:
 
 
 def infer_strategy_type_name(class_name: str) -> str:
-    """Derive a readable strategy type from a class name."""
+    """Derive a snake_case strategy type label from a class name.
+
+    A trailing `Strategy` suffix is removed before CamelCase is converted, and
+    blank inputs fall back to `noop`.
+    """
     normalized = class_name.strip() or "NoOpStrategy"
     if normalized.endswith("Strategy") and len(normalized) > len("Strategy"):
         normalized = normalized[: -len("Strategy")]
@@ -44,7 +57,11 @@ def infer_strategy_type_name(class_name: str) -> str:
 
 
 def resolve_strategy_id(strategy: Strategy | None, fallback: str) -> str:
-    """Resolve the authoritative runtime strategy identifier."""
+    """Return the strategy-provided ID when present, otherwise a fallback.
+
+    Blank or missing IDs are ignored so run metadata always has a stable
+    configured identifier.
+    """
     if strategy is None:
         return fallback
     value = getattr(strategy, "strategy_id", None)
@@ -54,7 +71,7 @@ def resolve_strategy_id(strategy: Strategy | None, fallback: str) -> str:
 
 
 def resolve_strategy_type(strategy: Strategy | None, fallback: str) -> str:
-    """Resolve the runtime strategy type from the concrete strategy class."""
+    """Resolve a runtime type label from the concrete strategy class name."""
     if strategy is None:
         return fallback
     return infer_strategy_type_name(strategy.__class__.__name__)
@@ -66,7 +83,12 @@ def resolve_strategy_info(
     parameters: Mapping[str, Any] | None = None,
     fallback_id: str = "unknown",
 ) -> StrategyInfo:
-    """Resolve structured strategy metadata from a strategy object."""
+    """Build complete strategy provenance from object metadata and overrides.
+
+    The function accepts a `StrategyInfo`, a mapping returned by
+    `strategy_info()`, or no explicit metadata. Caller-supplied parameters are
+    merged last so research workflows can attach run-specific inputs.
+    """
     if strategy is None:
         return StrategyInfo(
             strategy_id=fallback_id,

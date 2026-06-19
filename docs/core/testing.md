@@ -7,13 +7,10 @@
 - Use Postgres-backed integration tests for runtime-store behavior that DuckDB cannot prove.
 - Keep deferred UI/interface tests green, but do not let them reshape the core-engine test strategy.
 
-## Code Style
+## Python Code Quality
 
-- Use Google-style docstrings for new and updated production Python modules, public classes, and public functions.
-- For dataclasses and public classes, include an `Attributes:` section when fields are part of the public contract.
-- For functions and methods, include `Args:`, `Returns:`, and `Raises:` sections when they clarify inputs, outputs, or
-  failure modes. Omit empty sections for trivial cases.
-- Keep docstrings factual and contract-focused; do not use them to narrate implementation details.
+Use [../python_code_quality.md](../python_code_quality.md) for cross-codebase guidance on readable, testable,
+observable Python, including comments, docstrings, error handling, typing, and PR review expectations.
 
 ## Required Local Checks
 

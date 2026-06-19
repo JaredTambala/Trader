@@ -51,7 +51,14 @@ DEFAULT_ENTRYPOINTS = {
 
 @dataclass(frozen=True)
 class MethodImplementationManifest:
-    """Manifest that links method evidence to a concrete Python implementation."""
+    """Persisted registration record for a validated Python method implementation.
+
+    The manifest links a registry method, approved method-card evidence, source
+    path/hash, class entrypoint, constructor kwargs, runtime contract, dependency
+    allowlist, and static safety profile. Fixture runners and reviewers use it to
+    reload the exact implementation that was checked and to verify that generated
+    code remains quarantined and evidence-backed.
+    """
 
     implementation_id: str
     method_id: str
@@ -79,6 +86,12 @@ class MethodImplementationManifest:
     schema_version: str = SCHEMA_VERSION
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize implementation provenance, evidence, runtime, and safety metadata.
+
+        Tuple and mapping fields are copied into JSON-compatible containers so
+        registration, fixture validation, and review tooling all consume the same
+        normalized manifest payload.
+        """
         return {
             "artifact_type": "method_implementation_manifest",
             "schema_version": self.schema_version,
@@ -103,6 +116,12 @@ class MethodImplementationManifest:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "MethodImplementationManifest":
+        """Parse a manifest payload while defaulting legacy runtime and allowlist fields.
+
+        The parser normalizes mappings, sequences, timestamps, status, schema
+        version, and dependency allowlists before returning the typed manifest used
+        by registration and fixture runners.
+        """
         return cls(
             implementation_id=str(payload.get("implementation_id") or ""),
             method_id=str(payload.get("method_id") or ""),
@@ -127,10 +146,24 @@ class MethodImplementationManifest:
 
 
 def mapping(value: Any) -> Mapping[str, Any]:
+    """Return a mapping value or an empty mapping for malformed JSON fields.
+
+    Manifest parsing accepts artifacts produced by external tools, so optional
+    mapping fields are normalized defensively instead of letting `dict()` coerce
+    surprising values. Required semantic validation happens in registration and
+    fixture runners.
+    """
     return value if isinstance(value, Mapping) else {}
 
 
 def sequence(value: Any) -> Sequence[Any]:
+    """Normalize optional manifest list fields to a sequence for parsing.
+
+    `None` becomes empty, strings are treated as a single value rather than a
+    character sequence, and existing sequences pass through. This keeps manifest
+    deserialization predictable for method-card IDs, dependency allowlists, and
+    evidence reference payloads.
+    """
     if value is None:
         return ()
     if isinstance(value, (str, bytes)):
@@ -141,6 +174,12 @@ def sequence(value: Any) -> Sequence[Any]:
 
 
 def parse_datetime(value: Any) -> datetime:
+    """Parse stored manifest timestamps while tolerating missing legacy values.
+
+    Existing `datetime` values pass through, ISO-8601 strings including `Z` suffixes
+    are parsed, and missing values fall back to the current UTC time so older
+    artifacts without `created_at` can still be loaded and revalidated.
+    """
     if isinstance(value, datetime):
         return value
     if isinstance(value, str) and value:

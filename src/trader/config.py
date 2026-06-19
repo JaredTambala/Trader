@@ -172,7 +172,13 @@ def load_yaml_config(path: str | Path) -> dict[str, Any]:
 
 
 def build_config(data: Mapping[str, Any]) -> Config:
-    """Build a Config instance from parsed YAML data."""
+    """Normalize parsed YAML sections into the typed runtime config.
+
+    The function applies defaults, expands nested config sections, coerces
+    primitive values, normalizes timeframes and symbols, and derives defaults
+    that depend on the broker type. Invalid scalar shapes fail here so runtime
+    orchestration can rely on `Config` fields being typed.
+    """
     runtime = _get_section(data, "runtime")
     strategy = _get_section(data, "strategy")
     market_data = _get_section(data, "market_data")
@@ -263,7 +269,11 @@ def build_config(data: Mapping[str, Any]) -> Config:
 
 
 def resolve_log_level(data: Mapping[str, Any]) -> str:
-    """Resolve the configured log level from YAML data."""
+    """Resolve the effective log level from config or environment.
+
+    The explicit `logging.level` YAML value wins. When it is absent, `LOG_LEVEL`
+    is used, falling back to `INFO`.
+    """
     logging_cfg = _get_section(data, "logging")
     value = logging_cfg.get("level")
     if value:
@@ -272,7 +282,7 @@ def resolve_log_level(data: Mapping[str, Any]) -> str:
 
 
 def _get_section(data: Mapping[str, Any], key: str) -> Mapping[str, Any]:
-    """Return section."""
+    """Return a nested mapping section, treating missing/null as empty."""
     value = data.get(key, {})
     if value is None:
         return {}
@@ -282,7 +292,7 @@ def _get_section(data: Mapping[str, Any], key: str) -> Mapping[str, Any]:
 
 
 def _expand_env_values(value: Any) -> Any:
-    """Handle expand env values."""
+    """Recursively expand environment variables in YAML string values."""
     if isinstance(value, str):
         return os.path.expandvars(value)
     if isinstance(value, Mapping):
@@ -293,7 +303,7 @@ def _expand_env_values(value: Any) -> Any:
 
 
 def _as_float(value: Any, default: float) -> float:
-    """Parse float value with fallback."""
+    """Coerce a config scalar to float while honoring an empty-value default."""
     if value in (None, ""):
         return float(default)
     try:
@@ -303,14 +313,14 @@ def _as_float(value: Any, default: float) -> float:
 
 
 def _as_optional_int(value: Any) -> int | None:
-    """Parse optional int value."""
+    """Coerce a config scalar to int, preserving missing/empty as `None`."""
     if value in (None, ""):
         return None
     return _as_int(value, 0)
 
 
 def _as_int(value: Any, default: int) -> int:
-    """Coerce a value into an integer."""
+    """Coerce a config scalar to integer with a default for missing values."""
     if value is None or value == "":
         return default
     try:
@@ -320,7 +330,7 @@ def _as_int(value: Any, default: int) -> int:
 
 
 def _as_bool(value: Any, default: bool) -> bool:
-    """Coerce a value into a boolean."""
+    """Coerce common config boolean spellings into a real bool."""
     if value is None or value == "":
         return default
     if isinstance(value, bool):

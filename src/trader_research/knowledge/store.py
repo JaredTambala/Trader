@@ -15,45 +15,58 @@ from .storage import KnowledgeRepository
 
 
 class KnowledgeStoreError(RuntimeError):
-    """Base error for knowledge-store failures."""
+    """Base exception for storage failures surfaced by knowledge services and tool envelopes."""
 
 
 class KnowledgeStoreUnavailable(KnowledgeStoreError):
-    """Raised when no usable knowledge store is configured."""
+    """Raised when a tool tries to use knowledge storage without a configured backend."""
 
 
 class KnowledgeVectorExtensionUnavailable(KnowledgeStoreError):
-    """Raised when pgvector is required but unavailable."""
+    """Raised when vector search requires pgvector but the database lacks the extension."""
 
 
 class KnowledgeEmbeddingDimensionError(KnowledgeStoreError):
-    """Raised when stored and query embedding dimensions do not match."""
+    """Raised when stored and query embeddings cannot be compared because dimensions differ."""
 
 
 @dataclass(frozen=True)
 class StoredEmbedding:
-    """Embedding vector associated with one chunk."""
+    """In-memory pairing of a chunk ID with the vector being indexed for it.
+
+    `index_chunks` builds these lightweight records after embedding chunk text and
+    before handing data to a store implementation. Keeping vectors separate from
+    `KnowledgeChunk` avoids polluting citeable text artifacts with provider-specific
+    embedding payloads.
+    """
 
     chunk_id: str
     vector: tuple[float, ...]
 
 
 class KnowledgeStore(Protocol):
-    """Storage boundary used by knowledge services."""
+    """Persistence and retrieval interface required by knowledge services.
+
+    Implementations may be local JSON files, Postgres records, or unavailable
+    sentinels, but they expose the same source, chunk, embedding, method-card, and
+    method-contract operations. Service functions depend on this protocol so tests
+    can inject fakes and tool envelopes can translate backend-specific failures
+    into stable knowledge-store errors.
+    """
 
     backend: str
 
     def runtime_summary(self) -> Mapping[str, Any]:
-        """Return non-secret runtime details for MCP config."""
+        """Return non-secret backend details suitable for MCP config and health output."""
 
     def artifact_reference(self, artifact_type: str, artifact_id: str) -> ArtifactReference:
-        """Return an artifact reference for a persisted knowledge record."""
+        """Return a stable artifact reference for a persisted knowledge record artifact."""
 
     def save_source(self, manifest: KnowledgeSourceManifest) -> None:
-        """Persist or update a source manifest."""
+        """Persist or update a source manifest using its stable source identifier."""
 
     def load_source(self, source_id: str) -> KnowledgeSourceManifest | None:
-        """Load one source manifest."""
+        """Load one source manifest by ID, returning `None` when absent from storage."""
 
     def list_sources(
         self,
@@ -63,22 +76,22 @@ class KnowledgeStore(Protocol):
         status: str | None = None,
         limit: int | None = None,
     ) -> tuple[KnowledgeSourceManifest, ...]:
-        """List source manifests with optional filters."""
+        """List source manifests after applying optional metadata and status filters consistently."""
 
     def find_sources_by_file_hash(self, file_hash: str) -> tuple[KnowledgeSourceManifest, ...]:
-        """Return sources with a matching file hash."""
+        """Return source manifests whose file hash matches the supplied digest for duplicates."""
 
     def replace_chunks(self, source_id: str, chunks: Sequence[KnowledgeChunk]) -> None:
-        """Replace active chunks for a source."""
+        """Replace the active chunk set associated with a registered source identifier."""
 
     def load_chunks(self, source_id: str) -> tuple[KnowledgeChunk, ...]:
-        """Load active chunks for one source."""
+        """Load active chunks for one source in deterministic source order for retrieval."""
 
     def list_chunks(self, *, source_ids: Sequence[str] | None = None) -> tuple[KnowledgeChunk, ...]:
-        """List active chunks."""
+        """List active chunks, optionally restricted to a set of source IDs."""
 
     def load_chunks_by_ids(self, chunk_ids: Sequence[str]) -> tuple[KnowledgeChunk, ...]:
-        """Load active chunks by stable chunk ID."""
+        """Load active chunks by stable chunk ID while preserving requested order."""
 
     def index_embeddings(
         self,
@@ -86,10 +99,10 @@ class KnowledgeStore(Protocol):
         chunks: Sequence[KnowledgeChunk],
         embeddings: Sequence[StoredEmbedding],
     ) -> None:
-        """Persist one embedding index manifest and its chunk vectors."""
+        """Persist one embedding index manifest together with its chunk vectors for search."""
 
     def save_ingestion_report(self, report: KnowledgeIngestionReport) -> None:
-        """Persist an ingestion report."""
+        """Persist an ingestion report for later status and audit queries by tools."""
 
     def list_ingestion_reports(
         self,
@@ -97,7 +110,7 @@ class KnowledgeStore(Protocol):
         source_ids: Sequence[str] | None = None,
         run_id: str | None = None,
     ) -> tuple[KnowledgeIngestionReport, ...]:
-        """List ingestion reports."""
+        """List ingestion reports filtered by source IDs or run identifier for status."""
 
     def search_lexical(
         self,
@@ -109,7 +122,7 @@ class KnowledgeStore(Protocol):
         approved_only: bool = True,
         limit: int = 50,
     ) -> tuple[Mapping[str, Any], ...]:
-        """Return lexical chunk matches ordered by relevance."""
+        """Return lexical chunk matches ordered by relevance after applying filters for retrieval."""
 
     def search_vector(
         self,
@@ -124,23 +137,29 @@ class KnowledgeStore(Protocol):
         approved_only: bool = True,
         limit: int = 50,
     ) -> tuple[Mapping[str, Any], ...]:
-        """Return vector chunk matches ordered by relevance."""
+        """Return vector chunk matches ordered by relevance after applying filters for retrieval."""
 
     def save_method_card(self, method_card: MethodCard) -> None:
-        """Persist a method card."""
+        """Persist a method card using its stable method-card identifier for citations."""
 
     def list_persisted_method_cards(self) -> tuple[MethodCard, ...]:
-        """List persisted method cards."""
+        """List method cards persisted outside the seeded in-memory catalog for merging."""
 
     def save_method_contract(self, method: MethodRegistryEntry) -> None:
-        """Persist a method contract."""
+        """Persist a method contract using its maintained method identifier for registry lookup."""
 
     def list_persisted_method_contracts(self) -> tuple[MethodRegistryEntry, ...]:
-        """List persisted method contracts."""
+        """List method contracts persisted outside the bundled seed registry for merging."""
 
 
 class JsonKnowledgeStore:
-    """Compatibility store backed by the existing local JSON repository."""
+    """KnowledgeStore implementation backed by deterministic local JSON artifacts.
+
+    The store adapts `KnowledgeRepository` files into the protocol used by services,
+    maintains a compact lexical/vector search index, filters by source metadata,
+    and emits artifact references with `knowledge://json/...` URIs. It is suitable
+    for local development and tests where Postgres or pgvector are unavailable.
+    """
 
     backend = "json"
 
@@ -148,6 +167,7 @@ class JsonKnowledgeStore:
         self.repository = KnowledgeRepository(artifact_root, allowed_roots=allowed_roots)
 
     def runtime_summary(self) -> Mapping[str, Any]:
+        """Return JSON-backend runtime metadata without exposing local file contents or secrets."""
         return {
             "backend": self.backend,
             "configured": True,
@@ -156,6 +176,7 @@ class JsonKnowledgeStore:
         }
 
     def artifact_reference(self, artifact_type: str, artifact_id: str) -> ArtifactReference:
+        """Build a local path and `knowledge://json` URI for a persisted artifact."""
         path_by_type = {
             "knowledge_source_manifest": self.repository.source_path,
             "knowledge_ingestion_report": self.repository.ingestion_path,
@@ -173,9 +194,11 @@ class JsonKnowledgeStore:
         )
 
     def save_source(self, manifest: KnowledgeSourceManifest) -> None:
+        """Persist or update a source manifest through the local JSON repository backend."""
         self.repository.save_source(manifest)
 
     def load_source(self, source_id: str) -> KnowledgeSourceManifest | None:
+        """Load one source manifest from the local repository by source identifier."""
         return self.repository.load_source(source_id)
 
     def list_sources(
@@ -186,6 +209,7 @@ class JsonKnowledgeStore:
         status: str | None = None,
         limit: int | None = None,
     ) -> tuple[KnowledgeSourceManifest, ...]:
+        """List local sources after applying topic, family, status, and limit filters."""
         sources = []
         for source in self.repository.list_sources():
             if topic and topic not in source.topics:
@@ -198,9 +222,11 @@ class JsonKnowledgeStore:
         return tuple(sources[:limit] if limit is not None else sources)
 
     def find_sources_by_file_hash(self, file_hash: str) -> tuple[KnowledgeSourceManifest, ...]:
+        """Return local source manifests whose stored file hash equals the digest."""
         return tuple(source for source in self.repository.list_sources() if source.file_hash == file_hash)
 
     def replace_chunks(self, source_id: str, chunks: Sequence[KnowledgeChunk]) -> None:
+        """Replace a source's chunks and drop stale entries from the JSON search index."""
         self.repository.save_chunks(source_id, chunks)
         active_chunk_ids = {chunk.chunk_id for chunk in chunks}
         retained_entries = [
@@ -211,9 +237,11 @@ class JsonKnowledgeStore:
         self.repository.save_index(tuple(retained_entries))
 
     def load_chunks(self, source_id: str) -> tuple[KnowledgeChunk, ...]:
+        """Load active chunks for one source from its JSON chunk manifest file."""
         return self.repository.load_chunks(source_id)
 
     def list_chunks(self, *, source_ids: Sequence[str] | None = None) -> tuple[KnowledgeChunk, ...]:
+        """List active local chunks, optionally restricted to requested source identifiers for retrieval."""
         source_filter = {str(source_id) for source_id in source_ids or ()}
         chunks = self.repository.list_chunks()
         if not source_filter:
@@ -221,6 +249,7 @@ class JsonKnowledgeStore:
         return tuple(chunk for chunk in chunks if chunk.source_id in source_filter)
 
     def load_chunks_by_ids(self, chunk_ids: Sequence[str]) -> tuple[KnowledgeChunk, ...]:
+        """Load chunks by ID from local manifests while preserving first-request order."""
         requested = tuple(dict.fromkeys(str(chunk_id).strip() for chunk_id in chunk_ids if str(chunk_id).strip()))
         if not requested:
             return tuple()
@@ -233,6 +262,12 @@ class JsonKnowledgeStore:
         chunks: Sequence[KnowledgeChunk],
         embeddings: Sequence[StoredEmbedding],
     ) -> None:
+        """Update the JSON search index with chunk text and embedding vectors.
+
+        Existing rows for the same chunk IDs are overwritten, manifest metadata is
+        copied into each index entry, and the embedding manifest is persisted after
+        the index file is written.
+        """
         existing = {str(entry.get("chunk_id")): dict(entry) for entry in self.repository.load_index_entries()}
         by_chunk_id = {embedding.chunk_id: embedding.vector for embedding in embeddings}
         for chunk in chunks:
@@ -256,6 +291,7 @@ class JsonKnowledgeStore:
         self.repository.save_embedding_manifest(manifest)
 
     def save_ingestion_report(self, report: KnowledgeIngestionReport) -> None:
+        """Persist an ingestion report through the local JSON repository backend for status."""
         self.repository.save_ingestion_report(report)
 
     def list_ingestion_reports(
@@ -264,6 +300,7 @@ class JsonKnowledgeStore:
         source_ids: Sequence[str] | None = None,
         run_id: str | None = None,
     ) -> tuple[KnowledgeIngestionReport, ...]:
+        """List local ingestion reports filtered by source overlap or run identifier."""
         source_filter = {str(source_id) for source_id in source_ids or ()}
         reports = []
         for report in self.repository.list_ingestion_reports():
@@ -284,6 +321,7 @@ class JsonKnowledgeStore:
         approved_only: bool = True,
         limit: int = 50,
     ) -> tuple[Mapping[str, Any], ...]:
+        """Search JSON index text with deterministic token-count lexical scoring for retrieval."""
         query_tokens = tuple(TOKEN_PATTERN.findall(query.lower()))
         if not query_tokens:
             return tuple()
@@ -316,6 +354,7 @@ class JsonKnowledgeStore:
         approved_only: bool = True,
         limit: int = 50,
     ) -> tuple[Mapping[str, Any], ...]:
+        """Search JSON index embeddings with cosine similarity and metadata filters for retrieval."""
         query_vector = tuple(float(value) for value in query_embedding)
         results = []
         for entry in self._filtered_index_entries(
@@ -341,15 +380,19 @@ class JsonKnowledgeStore:
         return tuple(results[:limit])
 
     def save_method_card(self, method_card: MethodCard) -> None:
+        """Persist a method card through the local JSON repository backend for citations."""
         self.repository.save_method_card(method_card)
 
     def list_persisted_method_cards(self) -> tuple[MethodCard, ...]:
+        """List method cards stored as local JSON artifacts for catalog merging."""
         return self.repository.list_persisted_method_cards()
 
     def save_method_contract(self, method: MethodRegistryEntry) -> None:
+        """Persist a method contract through the local JSON repository backend for lookup."""
         self.repository.save_method_contract(method)
 
     def list_persisted_method_contracts(self) -> tuple[MethodRegistryEntry, ...]:
+        """List method contracts stored as local JSON artifacts for registry merging."""
         return self.repository.list_persisted_method_contracts()
 
     def _filtered_index_entries(
@@ -405,6 +448,7 @@ class UnavailableKnowledgeStore:
         self.reason = reason
 
     def runtime_summary(self) -> Mapping[str, Any]:
+        """Return unavailable-backend metadata explaining why knowledge storage is disabled for tools."""
         return {
             "backend": self.backend,
             "configured": False,

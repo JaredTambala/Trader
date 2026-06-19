@@ -48,7 +48,15 @@ def register_method_implementation(
     expected_source_hash: str | None = None,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
-    """Register a Python method implementation manifest after deterministic checks."""
+    """Validate evidence, source safety, runtime contract, and persist a manifest.
+
+    Registration resolves the maintained method contract, derives or validates the
+    implementation entrypoint, checks approved method-card evidence, hashes the
+    source file, scans imports and forbidden calls, verifies required provenance in
+    the module docstring, imports the class, and confirms it subclasses the expected
+    Indicator or Signal runtime. Only implementations that pass those deterministic
+    checks are written as manifests.
+    """
     blockers: list[str] = []
     warnings: list[str] = []
     method_id = method_id.strip()

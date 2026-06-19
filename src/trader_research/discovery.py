@@ -41,7 +41,15 @@ from trader_standard.strategies import (
 
 @dataclass(frozen=True)
 class DiscoveryRequest:
-    """Validated request for AI/tool research discovery."""
+    """User-facing discovery request after transport-level parsing.
+
+    The request fixes the symbol universe, bar semantics, strategy families, data
+    loading mode, and artifact locations that the supervisor workflow will use.
+    Validation happens before any local mutation so dry runs can return a data
+    plan and suite plan without opening the event store, while non-dry runs use
+    the same normalized values for backfill, quality checks, backtests, and
+    recommendation artifacts.
+    """
 
     symbols: tuple[str, ...]
     asset_class: str
@@ -66,7 +74,15 @@ def run_discovery(
     config_data: Mapping[str, Any],
     request: DiscoveryRequest,
 ) -> ToolEnvelope:
-    """Run the research discovery workflow."""
+    """Plan or execute a bounded research discovery workflow.
+
+    The workflow builds a deterministic suite from the request, optionally prepares
+    market data, runs data-quality checks, persists experiment/run metadata, writes
+    comparison artifacts, and produces recommendations from prior/operator context.
+    Dry-run and `data_mode="plan"` requests stop after planning and return a
+    read-only envelope; executed runs perform local writes and report generated
+    artifact paths and recoverable warnings in the envelope.
+    """
     _validate_request(request)
     output_root = Path(request.output_dir)
     discovery_root = output_root / experiment_slug(request.experiment_name)

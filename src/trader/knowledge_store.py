@@ -15,19 +15,37 @@ except ImportError:  # pragma: no cover - import guard
 
 
 class PostgresKnowledgeStoreError(RuntimeError):
-    """Base error for Postgres knowledge persistence."""
+    """Base exception for knowledge-store persistence and retrieval failures.
+
+    Callers can catch this type for store-level failures without swallowing
+    unrelated runtime errors.
+    """
 
 
 class PostgresKnowledgeVectorExtensionUnavailable(PostgresKnowledgeStoreError):
-    """Raised when pgvector is required but unavailable."""
+    """Raised when vector search is requested before pgvector is installed.
+
+    The store can persist lexical metadata without pgvector, but vector queries
+    require the extension to exist in the connected database.
+    """
 
 
 class PostgresKnowledgeEmbeddingDimensionError(PostgresKnowledgeStoreError):
-    """Raised when query and stored embedding dimensions differ."""
+    """Raised when query embeddings cannot be compared to stored vectors.
+
+    This protects ranking code from silently comparing vectors with incompatible
+    dimensions.
+    """
 
 
 class PostgresKnowledgeRecordStore:
-    """SQL-owning record store for knowledge metadata and retrieval."""
+    """Postgres repository for knowledge sources, chunks, and retrieval metadata.
+
+    The store owns schema creation, deduplicated source/chunk persistence, and
+    lexical/vector retrieval queries used by research workflows. It keeps SQL in
+    this adapter so higher-level callers operate on mappings rather than
+    connection-specific cursor details.
+    """
 
     def __init__(
         self,
@@ -58,6 +76,13 @@ class PostgresKnowledgeRecordStore:
             self.ensure_schema()
 
     def ensure_schema(self) -> None:
+        """Create knowledge tables, indexes, and pgvector support when permitted.
+
+        Schema setup installs pgvector if possible, creates source, chunk,
+        embedding, ingestion, method-card, and method-contract tables, and adds the
+        indexes used by lexical and filtered retrieval. Driver errors are wrapped
+        in `PostgresKnowledgeStoreError` so service layers see one store boundary.
+        """
         self._ensure_pgvector()
         statements = [
             """
@@ -176,6 +201,11 @@ class PostgresKnowledgeRecordStore:
             raise PostgresKnowledgeStoreError(f"failed to initialize knowledge schema: {exc}") from exc
 
     def runtime_summary(self) -> Mapping[str, Any]:
+        """Return non-secret runtime metadata for MCP health and configuration output.
+
+        The summary reports backend type, configured status, pgvector availability,
+        and schema name without exposing connection strings or credentials.
+        """
         return {
             "backend": "postgres",
             "configured": True,
@@ -184,10 +214,17 @@ class PostgresKnowledgeRecordStore:
         }
 
     def pgvector_available(self) -> bool:
+        """Return whether the connected database currently has pgvector installed for vector search."""
         row = self._connection.execute("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') AS ok").fetchone()
         return bool(row and row["ok"])
 
     def save_source(self, payload: Mapping[str, Any]) -> None:
+        """Insert or update one source manifest and its queryable metadata columns.
+
+        The JSON payload is persisted intact while selected fields are also stored
+        in typed columns for filtering by file hash, status, topics, and method
+        families. Existing source IDs are updated in place.
+        """
         self._connection.execute(
             """
             INSERT INTO knowledge_sources (
@@ -232,6 +269,7 @@ class PostgresKnowledgeRecordStore:
         )
 
     def load_source(self, source_id: str) -> Mapping[str, Any] | None:
+        """Load one stored source payload by ID, returning `None` when absent from storage."""
         row = self._connection.execute("SELECT payload FROM knowledge_sources WHERE source_id = %s", [source_id]).fetchone()
         return _mapping(row["payload"]) if row is not None else None
 
@@ -243,6 +281,12 @@ class PostgresKnowledgeRecordStore:
         status: str | None = None,
         limit: int | None = None,
     ) -> tuple[Mapping[str, Any], ...]:
+        """List source payloads filtered by topic, method family, status, and limit.
+
+        Filters are pushed into indexed Postgres columns and results are returned in
+        deterministic source-ID order. The returned mappings are the original JSON
+        source manifests.
+        """
         where = []
         params: list[Any] = []
         if topic:
@@ -265,6 +309,7 @@ class PostgresKnowledgeRecordStore:
         return tuple(_mapping(row["payload"]) for row in rows)
 
     def find_sources_by_file_hash(self, file_hash: str) -> tuple[Mapping[str, Any], ...]:
+        """Return source manifests with the same file hash for duplicate-source detection."""
         rows = self._connection.execute(
             "SELECT payload FROM knowledge_sources WHERE file_hash = %s ORDER BY source_id",
             [file_hash],
@@ -272,6 +317,12 @@ class PostgresKnowledgeRecordStore:
         return tuple(_mapping(row["payload"]) for row in rows)
 
     def replace_chunks(self, source_id: str, chunks: Sequence[Mapping[str, Any]]) -> None:
+        """Replace active chunks for a source inside one transaction.
+
+        Existing chunks for the source are marked inactive before the new chunk
+        payloads are inserted or updated and reactivated. This preserves historical
+        rows while ensuring retrieval only sees the latest active chunk set.
+        """
         with self._connection.transaction():
             self._connection.execute("UPDATE knowledge_chunks SET active = FALSE WHERE source_id = %s", [source_id])
             for chunk in chunks:
@@ -306,6 +357,7 @@ class PostgresKnowledgeRecordStore:
                 )
 
     def load_chunks(self, source_id: str) -> tuple[Mapping[str, Any], ...]:
+        """Load active chunk payloads for one source in deterministic ordinal order."""
         rows = self._connection.execute(
             """
             SELECT payload
@@ -318,6 +370,11 @@ class PostgresKnowledgeRecordStore:
         return tuple(_mapping(row["payload"]) for row in rows)
 
     def list_chunks(self, *, source_ids: Sequence[str] | None = None) -> tuple[Mapping[str, Any], ...]:
+        """List active chunk payloads, optionally restricted to specific sources.
+
+        Results are ordered by source, ordinal, and chunk ID so callers receive a
+        stable traversal of the active knowledge corpus.
+        """
         params: list[Any] = []
         where = ["active = TRUE"]
         if source_ids:
@@ -330,6 +387,11 @@ class PostgresKnowledgeRecordStore:
         return tuple(_mapping(row["payload"]) for row in rows)
 
     def load_chunks_by_ids(self, chunk_ids: Sequence[str]) -> tuple[Mapping[str, Any], ...]:
+        """Load active chunks by ID while preserving requested order and de-duplicating IDs.
+
+        Empty or blank IDs are ignored, missing IDs are omitted, and returned
+        payloads follow the caller's first-occurrence ordering.
+        """
         requested = list(dict.fromkeys(str(chunk_id).strip() for chunk_id in chunk_ids if str(chunk_id).strip()))
         if not requested:
             return tuple()
@@ -349,6 +411,13 @@ class PostgresKnowledgeRecordStore:
         manifest: Mapping[str, Any],
         embeddings: Sequence[Mapping[str, Any]],
     ) -> None:
+        """Persist one embedding manifest and the vectors for its chunks.
+
+        The manifest row is inserted idempotently, each vector is checked against
+        the manifest dimension, and vectors are upserted under the
+        manifest/chunk primary key. Dimension mismatches raise a typed store error
+        before invalid vectors reach pgvector.
+        """
         with self._connection.transaction():
             self._connection.execute(
                 """
@@ -402,6 +471,7 @@ class PostgresKnowledgeRecordStore:
                 )
 
     def save_ingestion_report(self, payload: Mapping[str, Any]) -> None:
+        """Insert or update an ingestion report and its queryable status summary columns."""
         self._connection.execute(
             """
             INSERT INTO knowledge_ingestion_runs (
@@ -440,6 +510,11 @@ class PostgresKnowledgeRecordStore:
         source_ids: Sequence[str] | None = None,
         run_id: str | None = None,
     ) -> tuple[Mapping[str, Any], ...]:
+        """List ingestion reports filtered by source overlap or exact run ID.
+
+        Reports are returned as their original JSON payloads in creation order so
+        status tools can reconstruct source-processing history.
+        """
         where = []
         params: list[Any] = []
         if run_id:
@@ -465,6 +540,12 @@ class PostgresKnowledgeRecordStore:
         approved_only: bool = True,
         limit: int = 50,
     ) -> tuple[Mapping[str, Any], ...]:
+        """Search active chunks using Postgres full-text ranking and source filters.
+
+        The query uses generated `tsvector` data, applies source/topic/family/status
+        filters, and returns normalized retrieval rows with source metadata,
+        locator, score, excerpt, and text hash.
+        """
         where, params = self._search_filters(
             source_ids=source_ids,
             topic=topic,
@@ -499,6 +580,12 @@ class PostgresKnowledgeRecordStore:
         approved_only: bool = True,
         limit: int = 50,
     ) -> tuple[Mapping[str, Any], ...]:
+        """Search active chunks by pgvector distance for a provider/model/version.
+
+        The query embedding is dimension-checked against stored vectors before SQL
+        execution, then pgvector cosine distance is converted to a similarity score
+        and combined with the same source filters used by lexical search.
+        """
         vector = tuple(float(value) for value in query_embedding)
         self._validate_vector_dimension(vector, provider=provider, model=model, version=version)
         where, params = self._search_filters(
@@ -539,6 +626,7 @@ class PostgresKnowledgeRecordStore:
         return tuple(_result_from_row(row) for row in rows)
 
     def save_method_card(self, payload: Mapping[str, Any]) -> None:
+        """Insert or update one persisted method-card payload keyed by method-card ID."""
         self._connection.execute(
             """
             INSERT INTO knowledge_method_cards (method_card_id, method_id, family, status, created_at, payload)
@@ -560,10 +648,12 @@ class PostgresKnowledgeRecordStore:
         )
 
     def list_persisted_method_cards(self) -> tuple[Mapping[str, Any], ...]:
+        """Return persisted method-card payloads ordered deterministically by method-card identifier for merging."""
         rows = self._connection.execute("SELECT payload FROM knowledge_method_cards ORDER BY method_card_id").fetchall()
         return tuple(_mapping(row["payload"]) for row in rows)
 
     def save_method_contract(self, payload: Mapping[str, Any]) -> None:
+        """Insert or update one persisted method-contract payload keyed by method ID."""
         self._connection.execute(
             """
             INSERT INTO knowledge_method_contracts (method_id, family, status, purpose, payload)
@@ -584,13 +674,16 @@ class PostgresKnowledgeRecordStore:
         )
 
     def list_persisted_method_contracts(self) -> tuple[Mapping[str, Any], ...]:
+        """Return persisted method-contract payloads ordered deterministically by maintained method ID for merging."""
         rows = self._connection.execute("SELECT payload FROM knowledge_method_contracts ORDER BY method_id").fetchall()
         return tuple(_mapping(row["payload"]) for row in rows)
 
     def close(self) -> None:
+        """Close the underlying psycopg connection owned by this record store instance."""
         self._connection.close()
 
     def connection(self) -> Any:
+        """Expose the underlying psycopg connection for integration-test inspection and adapters safely."""
         return self._connection
 
     def _ensure_pgvector(self) -> None:

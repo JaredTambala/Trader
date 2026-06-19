@@ -14,6 +14,14 @@ from trader_research.method_implementations.manifest import sequence
 
 
 def run_indicator_fixture(indicator: Indicator, fixture: Mapping[str, Any]) -> dict[str, Any]:
+    """Execute one indicator fixture and report output and no-lookahead mismatches.
+
+    The helper builds deterministic bars from ascending closes, runs the indicator,
+    restores results to input order with explicit warmup nulls, compares nested
+    expected values with tolerance, and reruns prefixes to detect lookahead leaks.
+    ValueErrors from the implementation become failed fixture reports instead of
+    escaping the validation workflow.
+    """
     fixture_id = str(fixture.get("fixture_id") or stable_research_id("fixture", fixture))
     closes = [float(value) for value in sequence(fixture.get("closes"))]
     expected = [expected_value(value) for value in sequence(fixture.get("expected"))]
@@ -53,6 +61,13 @@ def run_indicator_fixture(indicator: Indicator, fixture: Mapping[str, Any]) -> d
 
 
 def run_signal_fixture(signal: Signal, fixture: Mapping[str, Any]) -> dict[str, Any]:
+    """Execute one signal fixture with final-output and prefix validation.
+
+    The helper runs the signal over deterministic bars, compares the final output
+    to the expected value, and optionally evaluates each prefix against
+    `expected_prefix` to enforce warmup and no-lookahead behavior. Implementation
+    ValueErrors are captured as structured mismatches for the validation report.
+    """
     fixture_id = str(fixture.get("fixture_id") or stable_research_id("signal_fixture", fixture))
     closes = [float(value) for value in sequence(fixture.get("closes"))]
     expected = expected_value(fixture.get("expected"))
@@ -118,6 +133,13 @@ def run_signal_fixture(signal: Signal, fixture: Mapping[str, Any]) -> dict[str, 
 
 
 def bars_from_ascending_closes(closes: Sequence[float]) -> list[Bar]:
+    """Build reverse-chronological bars from ascending close prices.
+
+    Fixture payloads are easier to read in chronological order, while the Trader
+    runtime expects the newest bar first. This helper gives each synthetic bar a
+    stable timestamp and OHLC value equal to the close so tests isolate indicator
+    math rather than market-data construction.
+    """
     base = datetime(2026, 1, 1, tzinfo=timezone.utc)
     bars = [
         Bar(
@@ -136,6 +158,13 @@ def bars_from_ascending_closes(closes: Sequence[float]) -> list[Bar]:
 
 
 def values_match(expected: Any, actual: Any, *, tolerance: float) -> bool:
+    """Compare fixture values recursively with numeric tolerance.
+
+    The comparator normalizes dataclasses, mappings, sequences, integers, and
+    floats through `expected_value`, treats `None` as an exact warmup sentinel, and
+    then compares nested structures key-by-key or item-by-item. Non-numeric leaf
+    values fall back to equality.
+    """
     expected = expected_value(expected)
     actual = expected_value(actual)
     if expected is None or actual is None:
@@ -162,6 +191,13 @@ def values_match(expected: Any, actual: Any, *, tolerance: float) -> bool:
 
 
 def expected_value(value: Any) -> Any:
+    """Convert runtime outputs into JSON-stable values for fixture reports.
+
+    Dataclass instances become dictionaries, mappings and sequences are normalized
+    recursively, numeric values become floats, and `None` is preserved as the
+    warmup sentinel. This makes expected, actual, and mismatch payloads comparable
+    and serializable.
+    """
     if value is None:
         return None
     if is_dataclass(value) and not isinstance(value, type):

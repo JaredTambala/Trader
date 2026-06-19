@@ -23,12 +23,12 @@ class Signal(ABC):
     @property
     @abstractmethod
     def name(self) -> str:
-        """Human-readable signal name."""
+        """Return the stable human-readable signal name used in strategy and audit payloads."""
 
     @property
     @abstractmethod
     def window(self) -> int:
-        """Number of bars required to compute the signal."""
+        """Return the minimum latest-first bar count required before signal computation runs."""
 
     @abstractmethod
     def compute(self, bars: Sequence[Bar]) -> float:

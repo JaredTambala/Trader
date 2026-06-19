@@ -32,7 +32,13 @@ def search_methods(
     limit: int = 10,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
-    """Search approved method cards and return method metadata."""
+    """Search method-card contracts and return JSON-safe method metadata.
+
+    The command bounds the requested limit, delegates deterministic matching to the
+    method-card catalog, and respects draft visibility. It is read-only and
+    translates knowledge-store failures into a stable envelope code for tool
+    clients.
+    """
     if limit < 1 or limit > 50:
         return error_envelope(
             command=KNOWLEDGE_SEARCH_METHODS,
@@ -77,7 +83,14 @@ def retrieve_evidence(
     approved_only: bool = True,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
-    """Retrieve citeable chunks for a method or query."""
+    """Search indexed knowledge chunks and package them as citeable evidence.
+
+    The query is validated, embedded, searched through lexical/vector fusion, and
+    wrapped in an `EvidenceRetrievalReport` with filters and deterministic
+    retrieval ID. Embedding configuration, embedding backend, validation, and store
+    failures are converted into read-only error envelopes so callers can retry with
+    corrected runtime settings.
+    """
     if not query.strip():
         return error_envelope(
             command=KNOWLEDGE_RETRIEVE_EVIDENCE,
@@ -144,7 +157,14 @@ def get_evidence_chunks(
     max_chars_per_chunk: int = 4000,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
-    """Dereference citeable chunk IDs into bounded stored text payloads."""
+    """Resolve chunk IDs into ordered, bounded evidence payloads for agent context.
+
+    The command de-duplicates requested IDs while preserving order, validates the
+    maximum count and text length, optionally enforces a source filter, verifies
+    text hashes, and returns a dereference report. Missing chunks or source
+    mismatches are errors because silently dropping evidence would make later
+    citations misleading.
+    """
     requested_chunk_ids = tuple(dict.fromkeys(str(chunk_id).strip() for chunk_id in chunk_ids if str(chunk_id).strip()))
     if not requested_chunk_ids:
         return error_envelope(

@@ -22,7 +22,11 @@ logger = logging.getLogger(__name__)
 
 
 class SimpleBarsSignalGenerator(SignalGenerator):
-    """Compute bar-based signals from persisted OHLCV bars."""
+    """Compute bar-based signals from OHLCV rows persisted in the event store.
+
+    The generator fetches latest-first windows per symbol and records indicator
+    telemetry through shared bar-signal helpers when correlation IDs are present.
+    """
 
     def __init__(
         self,
@@ -33,7 +37,7 @@ class SimpleBarsSignalGenerator(SignalGenerator):
         timeframe: str,
         signals: Sequence[Signal],
     ) -> None:
-        """Initialize the instance."""
+        """Store event-store access, symbols, asset class, timeframe, and signals."""
         if not signals:
             raise ValueError("At least one Signal must be provided")
         self._event_store = event_store
@@ -44,17 +48,17 @@ class SimpleBarsSignalGenerator(SignalGenerator):
 
     @property
     def signals(self) -> Sequence[Signal]:
-        """Return configured signal definitions."""
+        """Return the ordered signal definitions evaluated for every configured symbol in output maps."""
         return self._signals
 
     @property
     def symbols(self) -> Sequence[str]:
-        """Return the configured symbol universe."""
+        """Return the configured symbol universe in caller-provided deterministic order for generation."""
         return self._symbols
 
     @property
     def supports_symbol_generation(self) -> bool:
-        """Report whether per-symbol signal generation is supported."""
+        """Report that this generator can evaluate one requested symbol independently for streaming."""
         return True
 
     def generate(
@@ -64,7 +68,12 @@ class SimpleBarsSignalGenerator(SignalGenerator):
         run_id: str | None = None,
         cycle_id: str | None = None,
     ) -> Mapping[str, Mapping[str, float]]:
-        """Generate signal events from available market data."""
+        """Generate per-symbol signal maps from event-store bars at an optional cutoff.
+
+        Each symbol fetches a latest-first window from the asset-class table,
+        insufficient windows are skipped with warnings, and computed signal maps
+        include run/cycle IDs for indicator telemetry.
+        """
         table = table_for_asset_class(self._asset_class)
         max_window = max_window_for_signals(self._signals)
         logger.info(
@@ -114,7 +123,11 @@ class SimpleBarsSignalGenerator(SignalGenerator):
         run_id: str | None = None,
         cycle_id: str | None = None,
     ) -> Mapping[str, float] | None:
-        """Generate signal events for a single symbol."""
+        """Generate signals for one symbol or return `None` when no full window exists.
+
+        The method uses the same event-store fetch, insufficient-bar warning, and
+        telemetry path as batch generation while avoiding unrelated symbols.
+        """
         table = table_for_asset_class(self._asset_class)
         max_window = max_window_for_signals(self._signals)
         bars = _fetch_recent_bars(

@@ -1,4 +1,9 @@
-"""Single execution cycle entry point."""
+"""Production decision-cycle orchestration.
+
+This module coordinates market-data ingestion, strategy order generation, risk
+validation, broker submission, portfolio updates, metrics, and append-only audit
+events for one trading or backtest decision timestamp.
+"""
 
 from __future__ import annotations
 
@@ -10,16 +15,15 @@ import uuid
 import json
 from typing import AsyncIterator, Mapping, Sequence
 
-from .broker import AlpacaPaperBroker, Broker, InternalPaperBroker, NoOpBroker
-from .config import Config
-from .data import EventStore, FilteredEventStore, build_event_store
-from .identifiers import (
+from ..broker import AlpacaPaperBroker, Broker, InternalPaperBroker, NoOpBroker
+from ..config import Config
+from ..event_store import EventStore, FilteredEventStore, build_event_store
+from ..identifiers import (
     deterministic_client_order_id,
     deterministic_cycle_id,
     deterministic_run_session_id,
 )
-from .alpaca_market_data import AlpacaMarketDataSource
-from .market_data import (
+from ..market_data import (
     MarketDataEvent,
     MarketDataIngestor,
     MarketDataSource,
@@ -27,15 +31,16 @@ from .market_data import (
     CryptoBarEvent,
     StockBarEvent,
 )
-from .portfolio import Portfolio, Position
-from .strategies import Strategy
-from .risk import (
+from ..market_data.alpaca import AlpacaMarketDataSource
+from ..portfolio import Portfolio, Position
+from ..strategies import Strategy
+from ..risk import (
     RiskContext,
     RiskManager,
     RiskPipeline,
 )
-from .strategy_metadata import resolve_strategy_id, resolve_strategy_type
-from .symbols import find_unmatched_positions, normalize_broker_positions
+from ..strategy_metadata import resolve_strategy_id, resolve_strategy_type
+from ..symbols import find_unmatched_positions, normalize_broker_positions
 
 
 logger = logging.getLogger(__name__)
@@ -43,6 +48,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class CycleResult:
+    """Terminal identity and status for one completed decision cycle.
+
+    Attributes:
+        run_id: Session/run identifier that groups one or more cycles.
+        cycle_id: Deterministic identifier for this decision timestamp.
+        status: Terminal cycle status such as `success`, `failed`, or `halted`.
+    """
+
     run_id: str
     cycle_id: str
     status: str
@@ -480,7 +493,12 @@ def _build_market_data_source(config: Config) -> MarketDataSource:
 
 
 def _build_broker(config: Config, event_store: EventStore) -> Broker:
-    """Build broker."""
+    """Construct the broker implementation requested by configuration.
+
+    The internal broker is used for deterministic local/backtest execution,
+    Alpaca is used for paper trading with event-store-backed idempotency, and
+    the no-op broker is the safe fallback for dry-run configurations.
+    """
     broker_type = (getattr(config, "broker_type", "noop") or "noop").lower()
     if broker_type in {"internal", "paper", "sim"}:
         return InternalPaperBroker(
@@ -502,7 +520,7 @@ def _build_broker(config: Config, event_store: EventStore) -> Broker:
 
 
 def _build_price_lookup(events: Sequence[MarketDataEvent]) -> Mapping[str, float]:
-    """Build a price lookup map from market data events."""
+    """Return the latest close price per symbol from fetched market events."""
     latest_prices: dict[str, tuple[datetime, float]] = {}
     for event in events:
         timestamp = _normalize_timestamp(event.ts)
@@ -522,7 +540,13 @@ def _attach_order_metadata(
     asset_class: str,
     time_in_force: str,
 ) -> Sequence[Mapping[str, object]]:
-    """Attach run metadata to order payloads."""
+    """Attach cycle identity, deterministic IDs, prices, and venue metadata.
+
+    Strategy orders are intentionally small intents. Before risk and broker
+    stages they are enriched with traceability fields, the latest known price,
+    asset class, and time-in-force so downstream code can persist and execute
+    them without consulting global config again.
+    """
     enriched: list[Mapping[str, object]] = []
     for order in orders:
         symbol = str(order.get("symbol", "")).strip().upper()
@@ -560,7 +584,13 @@ def _record_order_events(
     broker_order_id: str | None = None,
     event_ts: datetime | None = None,
 ) -> None:
-    """Persist order lifecycle events for candidate orders."""
+    """Append local order lifecycle events with stable timestamp ordering.
+
+    When an explicit timestamp is not supplied, created/validated/submitted
+    events receive microsecond offsets from the order creation time. That keeps
+    lifecycle queries deterministic even when all statuses are produced inside
+    the same decision cycle.
+    """
     status_offsets = {
         "created": 0,
         "validated": 1,
@@ -603,7 +633,13 @@ def _record_broker_responses(
     orders: Sequence[Mapping[str, object]],
     responses: Sequence[Mapping[str, object]],
 ) -> None:
-    """Persist broker responses and fill events."""
+    """Append terminal broker responses and fill events for submitted orders.
+
+    Broker responses are matched back to enriched order payloads by
+    `client_order_id`. Terminal order events are recorded first; fill events are
+    written only when the broker supplied both quantity and price so accounting
+    never fabricates execution evidence.
+    """
     if not responses:
         return
     order_lookup = {order.get("client_order_id"): order for order in orders}
@@ -661,7 +697,12 @@ def _resolve_terminal_event_ts(
     client_order_id: str | None,
     proposed_ts: object | None,
 ) -> datetime:
-    """Ensure terminal broker events sort after prior local lifecycle events."""
+    """Choose a terminal event timestamp that sorts after local lifecycle rows.
+
+    Brokers may return fill timestamps equal to or earlier than locally recorded
+    submitted events. This helper preserves provider time when safe and nudges
+    it forward by one microsecond only when needed to maintain append ordering.
+    """
     if isinstance(proposed_ts, datetime):
         candidate = _normalize_event_ts(proposed_ts)
     else:
@@ -676,7 +717,12 @@ def _latest_order_event_ts(
     event_store: EventStore,
     client_order_id: str | None,
 ) -> datetime | None:
-    """Return the latest order-event timestamp for a client order id."""
+    """Return the newest local lifecycle timestamp for one client order ID.
+
+    The lookup supports in-memory test stores, DuckDB-style connections, and
+    Postgres-style connections because timestamp ordering is used by both unit
+    tests and production broker reconciliation.
+    """
     if not client_order_id:
         return None
     events = getattr(event_store, "events", None)
@@ -718,7 +764,7 @@ def _latest_order_event_ts(
 
 
 def _normalize_event_ts(value: datetime) -> datetime:
-    """Normalize runtime event timestamps to UTC-aware datetimes."""
+    """Normalize event timestamps to timezone-aware UTC values."""
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
@@ -742,7 +788,13 @@ async def _process_market_stream_async(
     config: Config,
     risk_manager: RiskManager,
 ) -> tuple[Sequence[Mapping[str, object]], Mapping[str, float]]:
-    """Process market data events through the async pipeline."""
+    """Run streaming market events through signal, risk, and broker stages.
+
+    The pipeline keeps one producer, one strategy worker, one risk validator,
+    and one broker submitter connected by queues. Each stage records the audit
+    events it owns so order lifecycle state remains observable even when a later
+    stage rejects, errors, or receives no broker fill.
+    """
     event_queue: asyncio.Queue[MarketDataEvent | None] = asyncio.Queue()
     order_queue: asyncio.Queue[Mapping[str, object] | None] = asyncio.Queue()
     validated_queue: asyncio.Queue[Mapping[str, object] | None] = asyncio.Queue()
@@ -757,13 +809,13 @@ async def _process_market_stream_async(
     }
 
     async def producer() -> None:
-        """Handle producer."""
+        """Read upstream market events and terminate the queue with a sentinel."""
         async for event in event_stream:
             await event_queue.put(event)
         await event_queue.put(None)
 
     async def signal_worker() -> None:
-        """Handle signal worker."""
+        """Generate enriched order intents from fresh per-symbol market events."""
         while True:
             event = await event_queue.get()
             if event is None:
@@ -799,7 +851,7 @@ async def _process_market_stream_async(
                 await order_queue.put(enriched)
 
     async def validator() -> None:
-        """Handle validator."""
+        """Evaluate queued orders against the configured risk managers."""
         while True:
             order = await order_queue.get()
             if order is None:
@@ -846,7 +898,7 @@ async def _process_market_stream_async(
                 await validated_queue.put(approved_orders[0])
 
     async def submitter() -> None:
-        """Handle submitter."""
+        """Submit validated orders and persist broker/accounting side effects."""
         while True:
             order = await validated_queue.get()
             if order is None:
@@ -923,13 +975,18 @@ async def _process_market_stream_async(
 
 
 async def _event_stream_from_list(events: Sequence[MarketDataEvent]) -> AsyncIterator[MarketDataEvent]:
-    """Yield events from a list as an async stream."""
+    """Adapt a synchronous event sequence to the streaming pipeline protocol."""
     for event in events:
         yield event
 
 
 def _apply_event_filters(event_store: EventStore, config: Config) -> EventStore:
-    """Apply event-store filters based on configuration flags."""
+    """Wrap the event store so optional observability streams respect config.
+
+    Core lifecycle, market-data, config, and metrics events are always allowed.
+    Signal, indicator, order, fill, and portfolio events are included only when
+    the corresponding logging flags are enabled.
+    """
     allowed = {
         "runs",
         "run_events",
@@ -951,7 +1008,12 @@ def _apply_event_filters(event_store: EventStore, config: Config) -> EventStore:
 
 
 def _load_latest_order_events(event_store: EventStore) -> Sequence[Mapping[str, object]]:
-    """Load the latest order event per client_order_id."""
+    """Load latest local order state for risk-context open-order checks.
+
+    Rows are read newest first and de-duplicated by `client_order_id` so risk
+    managers see one current status per order rather than every historical
+    lifecycle transition.
+    """
     connection = getattr(event_store, "connection", lambda: None)()
     if connection is None:
         return []
@@ -995,7 +1057,7 @@ def _load_latest_order_events(event_store: EventStore) -> Sequence[Mapping[str, 
 
 
 def _load_halt_flag(event_store: EventStore) -> bool:
-    """Load the global halt flag from config_kv."""
+    """Read the operator halt flag used to block non-backtest trading."""
     connection = getattr(event_store, "connection", lambda: None)()
     if connection is None:
         return False
@@ -1054,7 +1116,7 @@ def _should_skip_trading(
 
 
 def _is_event_stale(event: MarketDataEvent, now: datetime, max_age_seconds: int) -> bool:
-    """Return True if the event timestamp exceeds the max age."""
+    """Return whether one market-data event is older than the allowed window."""
     if max_age_seconds < 0:
         raise ValueError("max_age_seconds must be non-negative")
     ts = _normalize_timestamp(event.ts)
@@ -1083,7 +1145,12 @@ def _load_recent_market_data(
     config: Config,
     as_of_ts: datetime | None = None,
 ) -> Sequence[MarketDataEvent]:
-    """Load the latest bar per symbol from the event store."""
+    """Load the most recent stored bar for each configured symbol.
+
+    Backtests pass `as_of_ts` to prevent looking into the future; live runs omit
+    it and receive the latest persisted bar. Missing symbols are skipped so the
+    caller can decide whether the remaining data is fresh enough to trade.
+    """
     if not config.market_data_symbols:
         logger.warning("No symbols configured for market data lookup")
         return []
@@ -1137,7 +1204,7 @@ def _row_to_market_event(
     timeframe: str,
     row: Sequence[object],
 ) -> MarketDataEvent:
-    """Convert a row into a market data event."""
+    """Convert a stored stock/crypto bar row into the matching event object."""
     common = dict(
         symbol=symbol,
         timeframe=timeframe,
@@ -1168,7 +1235,12 @@ def _record_portfolio_snapshot(
     cycle_id: str | None,
     price_lookup: Mapping[str, float] | None = None,
 ) -> None:
-    """Persist a portfolio snapshot based on executed order intents."""
+    """Apply processed orders to portfolio state and persist a snapshot.
+
+    This path is used when order intents are the best available local evidence.
+    Price lookup comes from current market data unless the caller supplies a
+    broker/fill-derived lookup.
+    """
     if not orders:
         logger.info("Portfolio snapshot skipped; no orders to apply")
         return
@@ -1193,7 +1265,7 @@ def _apply_fill_to_portfolio(
     order: Mapping[str, object],
     response: Mapping[str, object],
 ) -> None:
-    """Apply a single fill to the in-memory portfolio (for internal broker)."""
+    """Apply one internal-broker fill to in-memory portfolio accounting."""
     fill_qty = response.get("fill_qty", order.get("qty"))
     fill_price = response.get("fill_price", order.get("price"))
     symbol = str(order.get("symbol", "")).strip()
@@ -1230,7 +1302,12 @@ def _load_portfolio_from_broker(
     decision_ts: datetime,
     config: Config,
 ) -> Portfolio:
-    """Load portfolio state from a broker (Alpaca) each cycle."""
+    """Refresh portfolio state from broker account/positions before a cycle.
+
+    Live Alpaca mode treats broker state as authoritative when configured. The
+    positions are normalized, checked against the configured universe, persisted
+    as a snapshot, and returned as the portfolio used for strategy decisions.
+    """
     get_account = getattr(broker, "get_account", None)
     get_positions = getattr(broker, "get_positions", None)
     if not callable(get_account) or not callable(get_positions):
@@ -1275,7 +1352,7 @@ def _sync_portfolio_from_broker(
     asof_ts: datetime,
     config: Config,
 ) -> None:
-    """Refresh portfolio state from the broker after fills."""
+    """Refresh and persist broker-authoritative portfolio state after a fill."""
     get_account = getattr(broker, "get_account", None)
     get_positions = getattr(broker, "get_positions", None)
     if not callable(get_account) or not callable(get_positions):
@@ -1310,7 +1387,7 @@ def _sync_portfolio_from_broker(
 
 
 def _validate_broker_positions(positions, config: Config) -> None:
-    """Fail closed when broker positions do not match the configured live universe."""
+    """Fail closed when broker positions are outside the configured universe."""
     mismatches = find_unmatched_positions(
         positions,
         configured_symbols=config.market_data_symbols,
@@ -1346,7 +1423,12 @@ def _record_metrics_snapshot(
     asset_class: str,
     symbols: Sequence[str],
 ) -> None:
-    """Persist a schema-less metrics snapshot as JSON text."""
+    """Persist point-in-time equity, cash, and exposure metrics.
+
+    Metrics are stored as JSON so dashboards can evolve without schema changes.
+    Positions without current prices are excluded from exposure calculations
+    instead of carrying stale valuations silently.
+    """
     equity = portfolio.cash_balance
     net = 0.0
     gross = 0.0
@@ -1436,7 +1518,11 @@ def _configure_logging(level_name: str | None = None) -> None:
 
 
 def main() -> None:
-    """Reject direct module execution in favor of injected wrapper scripts."""
+    """Reject direct execution because cycles require injected dependencies.
+
+    A cycle needs a concrete strategy and risk manager supplied by the caller.
+    Wrapper scripts own those dependencies and call `run_cycle` explicitly.
+    """
     raise SystemExit(
         "trader.cycle is a library module. "
         "Construct a Strategy and RiskManager in your own wrapper script and call run_cycle(...)."

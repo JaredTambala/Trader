@@ -7,14 +7,19 @@ import json
 from typing import Any, Mapping, Sequence, cast
 
 from .config import Config
-from .data import EventStore
+from .event_store import EventStore
 
 _OPEN_ORDER_STATUSES = {"submitted", "accepted", "partially_filled", "error"}
 _TRUE_VALUES = {"1", "true", "yes", "y", "on"}
 
 
 def runtime_status(event_store: EventStore, config: Config, *, now: datetime | None = None) -> dict[str, Any]:
-    """Build a JSON-serializable operator status payload from the event store."""
+    """Build the complete operator status payload from event-store evidence.
+
+    The result combines latest run/session/cycle rows, market-data freshness,
+    portfolio state, open-order staleness, halt state, and a derived health
+    classification into one JSON-serializable structure for CLI/API consumers.
+    """
     now = _utc(now)
     latest_run = latest_run_status(event_store)
     latest_session = latest_trading_session_status(event_store)
@@ -51,7 +56,13 @@ def evaluate_health(
     open_orders: Mapping[str, Any],
     halt: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Return an operator health classification and exit code."""
+    """Classify runtime health from status subsections.
+
+    Missing runs/cycles, active halt state, missing market data, and stale open
+    orders degrade the result. Failed runs/cycles and stale market data are
+    classified as unhealthy because they indicate trading decisions may be wrong
+    or no longer operating.
+    """
     reasons: list[str] = []
     exit_code = 0
     if latest_run is None:
@@ -83,7 +94,11 @@ def evaluate_health(
 
 
 def latest_run_status(event_store: EventStore) -> dict[str, Any] | None:
-    """Return the latest run row."""
+    """Return the newest aggregate run-session row, if one exists.
+
+    The row is normalized into JSON-safe timestamp and symbol values for CLI and
+    API consumers.
+    """
     rows = _fetch_all(
         event_store,
         """
@@ -112,7 +127,11 @@ def latest_run_status(event_store: EventStore) -> dict[str, Any] | None:
 
 
 def latest_trading_session_status(event_store: EventStore) -> dict[str, Any] | None:
-    """Return the latest trading session row."""
+    """Return the newest live trading-session row, if one exists.
+
+    Trading sessions are separate from backtests so operator status can focus on
+    the currently running or most recent live service run.
+    """
     rows = _fetch_all(
         event_store,
         """
@@ -139,7 +158,11 @@ def latest_trading_session_status(event_store: EventStore) -> dict[str, Any] | N
 
 
 def latest_cycle_status(event_store: EventStore) -> dict[str, Any] | None:
-    """Return the latest cycle row."""
+    """Return the newest decision-cycle lifecycle row, if one exists.
+
+    This is the most recent per-decision lifecycle event and may differ from the
+    latest aggregate run status when a service contains many cycles.
+    """
     rows = _fetch_all(
         event_store,
         """
@@ -167,7 +190,12 @@ def latest_cycle_status(event_store: EventStore) -> dict[str, Any] | None:
 
 
 def latest_market_data_status(event_store: EventStore, config: Config, *, now: datetime | None = None) -> dict[str, Any]:
-    """Return latest bar timestamps and stale/missing counts for configured symbols."""
+    """Summarize latest bar recency for the configured trading universe.
+
+    The function chooses the stock or crypto event table from config, checks one
+    latest timestamp per configured symbol/timeframe, and reports both missing
+    symbols and symbols older than `market_data_max_age_seconds`.
+    """
     now = _utc(now)
     table = "crypto_bar_events" if config.market_data_asset_class.lower() in {"crypto", "cryptocurrency"} else "stock_bar_events"
     symbols = tuple(symbol.strip().upper() for symbol in config.market_data_symbols if symbol.strip())
@@ -217,7 +245,11 @@ def latest_market_data_status(event_store: EventStore, config: Config, *, now: d
 
 
 def latest_portfolio_status(event_store: EventStore) -> dict[str, Any]:
-    """Return latest positions and cash from position snapshots."""
+    """Return latest cash and one latest position snapshot per symbol.
+
+    Position rows are de-duplicated by symbol using the latest snapshot
+    timestamp, while cash comes from the newest snapshot row overall.
+    """
     rows = _fetch_all(
         event_store,
         """
@@ -269,7 +301,12 @@ def latest_open_orders(
     now: datetime | None = None,
     stale_after_seconds: int = 60,
 ) -> dict[str, Any]:
-    """Return latest local open orders and stale counts."""
+    """Return current local open orders with age and stale-order counts.
+
+    The query reads all order lifecycle rows newest first, keeps only the latest
+    row per `client_order_id`, and then filters to statuses that still represent
+    local open risk.
+    """
     now = _utc(now)
     rows = _fetch_all(
         event_store,
@@ -326,7 +363,11 @@ def latest_open_orders(
 
 
 def get_halt_state(event_store: EventStore) -> dict[str, Any]:
-    """Read global halt state from config_kv."""
+    """Read the operator-controlled global halt flag from `config_kv`.
+
+    The returned mapping includes normalized boolean state, reason text, and the
+    last update timestamp string when present.
+    """
     values = _read_config_values(event_store, ("halt", "halt_reason", "halt_updated_at"))
     raw_halt = str(values.get("halt", "")).strip().lower()
     return {

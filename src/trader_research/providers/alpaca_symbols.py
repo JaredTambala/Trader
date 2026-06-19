@@ -34,7 +34,13 @@ class AlpacaSymbolCatalogProvider:
         request: DataSymbolDiscoveryRequest,
         context: DataProviderContext,
     ) -> SymbolCatalogResult:
-        """Return Alpaca asset symbols matching the request."""
+        """Fetch, filter, and bound Alpaca asset symbols for discovery reports.
+
+        Credentials are validated before the client is built, assets are filtered
+        by requested symbols, query text, active/tradable flags, and provider
+        instrument type, and the result records whether the request limit truncated
+        the provider catalog rows.
+        """
         if not self.api_key or not self.secret_key:
             raise DataProviderResolutionError(
                 "provider_credentials_missing",

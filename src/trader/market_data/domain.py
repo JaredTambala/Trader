@@ -8,14 +8,19 @@ from datetime import datetime
 import logging
 from typing import AsyncIterator, Iterable, Sequence
 
-from .data import EventStore
+from ..event_store import EventStore
 
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass(frozen=True)
 class StockBarEvent:
-    """Bar event for stock market data."""
+    """Normalized stock OHLCV bar ready for event-store persistence.
+
+    Attributes mirror the `stock_bar_events` schema. `ts` is the provider bar
+    timestamp, while `ingested_at` records when this process accepted the bar.
+    """
 
     symbol: str
     timeframe: str
@@ -32,7 +37,7 @@ class StockBarEvent:
 
     @property
     def table_name(self) -> str:
-        """Return the destination table name."""
+        """Return the event-store table used for normalized stock bar persistence writes."""
         return "stock_bar_events"
 
     def to_payload(self) -> dict[str, object]:
@@ -62,7 +67,11 @@ class StockBarEvent:
 
 @dataclass(frozen=True)
 class CryptoBarEvent:
-    """Bar event for crypto market data."""
+    """Normalized crypto OHLCV bar ready for event-store persistence.
+
+    Attributes mirror the `crypto_bar_events` schema. Crypto symbols keep the
+    project's market-data spelling, which may differ from trading endpoints.
+    """
 
     symbol: str
     timeframe: str
@@ -79,7 +88,7 @@ class CryptoBarEvent:
 
     @property
     def table_name(self) -> str:
-        """Return the destination table name."""
+        """Return the event-store table used for normalized crypto bar persistence writes."""
         return "crypto_bar_events"
 
     def to_payload(self) -> dict[str, object]:
@@ -111,7 +120,11 @@ MarketDataEvent = StockBarEvent | CryptoBarEvent
 
 
 class MarketDataSource(ABC):
-    """Fetches market data events from an upstream source."""
+    """Contract for polling or streaming normalized market-data events.
+
+    Implementations should return `StockBarEvent` or `CryptoBarEvent` objects
+    that can be persisted without additional provider-specific translation.
+    """
 
     @abstractmethod
     def fetch(self) -> Sequence[MarketDataEvent]:
@@ -125,16 +138,24 @@ class MarketDataSource(ABC):
         """
 
     async def stream(self) -> AsyncIterator[MarketDataEvent]:
-        """Yield market data events as they are available."""
+        """Yield events asynchronously by adapting the synchronous fetch contract.
+
+        Streaming providers can override this for live feeds; polling-only sources
+        inherit a one-shot async iterator that yields the current `fetch()` result
+        without changing persistence behavior in the ingestor.
+        """
         for event in self.fetch():
             yield event
 
 
 class NoOpMarketDataSource(MarketDataSource):
-    """Market data source that returns no events."""
+    """Market-data source for dry runs or disabled ingestion paths.
+
+    It satisfies the source contract while deliberately producing no events.
+    """
 
     def fetch(self) -> Sequence[MarketDataEvent]:
-        """Return an empty event list.
+        """Return no events while satisfying the market-data source contract for disabled ingestion.
 
         Returns:
             Empty sequence.
@@ -146,7 +167,11 @@ class NoOpMarketDataSource(MarketDataSource):
 
 
 class StaticMarketDataSource(MarketDataSource):
-    """Market data source for tests and local runs."""
+    """Deterministic source that replays a fixed in-memory event sequence.
+
+    Tests and examples use it to avoid network calls while exercising ingestion
+    and cycle behavior with realistic event objects.
+    """
 
     def __init__(self, events: Iterable[MarketDataEvent]) -> None:
         """Create a static source with predefined events.
@@ -172,7 +197,12 @@ class StaticMarketDataSource(MarketDataSource):
 
 
 class MarketDataIngestor:
-    """Persists market data events from an upstream source."""
+    """Fetches market-data events and writes them to the event store.
+
+    The ingestor owns the persistence side effect for both polling and streaming
+    paths: every yielded event is written to its declared table before being
+    returned to the caller.
+    """
 
     def __init__(self, event_store: EventStore, source: MarketDataSource) -> None:
         """Create an ingestor that persists events to the event store.
@@ -211,7 +241,12 @@ class MarketDataIngestor:
         return events
 
     async def ingest_stream(self) -> AsyncIterator[MarketDataEvent]:
-        """Stream market data events, persisting each as it arrives."""
+        """Persist streamed events before forwarding each event to downstream callers.
+
+        The ingestor writes every event to the table named by the event, logs a
+        stable symbol/timestamp/source record, yields the event only after the
+        write succeeds, and logs a final count when the stream ends.
+        """
         count = 0
         async for event in self._source.stream():
             self._event_store.record_event(event.table_name, event.to_payload())

@@ -13,23 +13,27 @@ from trader_standard.indicators import SmaIndicator
 
 @dataclass(frozen=True)
 class SmaCrossoverSignal(Signal):
-    """Signal that fires when short/long SMA cross."""
+    """Emit actions when short and long SMA series cross.
+
+    Crosses above return `1.0`, crosses below return `-1.0`, and unchanged
+    ordering returns `0.0`.
+    """
 
     short: SmaIndicator
     long: SmaIndicator
 
     @property
     def name(self) -> str:
-        """Return the indicator or signal name."""
+        """Return the stable signal name used in strategy and audit payloads."""
         return "sma_crossover"
 
     @property
     def window(self) -> int:
-        """Return the configured window size."""
+        """Return the larger SMA window plus one bar needed to detect a crossover."""
         return max(self.short.window, self.long.window) + 1
 
     def compute(self, bars: Sequence[Bar]) -> float:
-        """Compute the signal value for the latest data."""
+        """Return the latest SMA crossover action from current and previous values as -1/0/1."""
         short_series = self.short.compute_series(bars)
         long_series = self.long.compute_series(bars)
         if len(short_series) < 2 or len(long_series) < 2:
@@ -47,7 +51,7 @@ class SmaCrossoverSignal(Signal):
         return 0.0
 
     def indicator_values(self, bars: Sequence[Bar]) -> Sequence[IndicatorObservation]:
-        """Return indicator values used to derive the signal."""
+        """Return current short and long SMA observations used for audit payloads."""
         short_series = self.short.compute_series(bars)
         long_series = self.long.compute_series(bars)
         if not short_series or not long_series:

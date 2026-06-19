@@ -7,7 +7,7 @@ import logging
 import re
 from typing import Mapping
 
-from .data import EventStore
+from .event_store import EventStore
 
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ def notify_market_data(
 
 
 def _resolve_channel(channel: str | None) -> str:
-    """Handle resolve channel."""
+    """Return a valid Postgres NOTIFY channel, falling back on invalid input."""
     if not channel:
         channel = "market_data"
     if not _CHANNEL_RE.match(channel):

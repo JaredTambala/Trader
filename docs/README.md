@@ -2,6 +2,9 @@
 
 Documentation is split by bounded context. Keep new documents in the context that owns the behavior being described.
 
+Use [python_code_quality.md](python_code_quality.md) for cross-codebase Python contributor guidance: readability,
+testability, observability, comments, docstrings, error handling, and review expectations.
+
 ## Core Platform
 
 Use [core/README.md](core/README.md) for the `trader` and `trader_standard` runtime documentation: market data, event

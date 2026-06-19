@@ -15,7 +15,13 @@ from .suites import suggest_follow_up_suite
 
 @dataclass(frozen=True)
 class RecommendationSettings:
-    """Configurable recommendation thresholds."""
+    """Thresholds that decide whether comparison rows become accepted candidates.
+
+    These settings gate data-quality requirements, warning counts, drawdown,
+    turnover, and minimum trade count during recommendation scoring. Keeping them
+    in a dataclass makes tests and operator workflows explicit about which risk
+    tolerance was applied to a recommendation payload.
+    """
 
     allow_missing_data_quality: bool = False
     allow_data_quality_gaps: bool = False
@@ -27,7 +33,13 @@ class RecommendationSettings:
 
 @dataclass(frozen=True)
 class RecommendationResult:
-    """Structured recommendation output."""
+    """Recommendation payload plus recoverable warnings from optional context loading.
+
+    The payload contains accepted/rejected candidates, data-quality context,
+    operator blockers, prior artifacts, and suggested follow-up experiments. The
+    top-level warning sequence carries non-fatal issues from comparison inputs,
+    operator context files, or prior artifact loading.
+    """
 
     recommendation_id: str
     payload: Mapping[str, Any]
@@ -43,7 +55,14 @@ def build_recommendations(
     prior_artifacts: LoadedArtifacts | None = None,
     settings: RecommendationSettings | None = None,
 ) -> RecommendationResult:
-    """Build ranked research recommendations from comparison rows."""
+    """Score experiment comparison rows into accepted and rejected recommendations.
+
+    Each successful row is checked against configured risk/data-quality thresholds,
+    operator blocking context, and available prior artifacts, then assigned a
+    bounded score from performance, drawdown, turnover, fees, warnings, and data
+    quality. Accepted and rejected candidates are sorted deterministically, and the
+    final recommendation ID is derived from the ranked candidate payload.
+    """
     settings = settings or RecommendationSettings()
     rows = comparison.get("rows", [])
     if not isinstance(rows, list):
@@ -113,7 +132,13 @@ def build_recommendations_from_files(
     output_path: str | Path | None = None,
     settings: RecommendationSettings | None = None,
 ) -> RecommendationResult:
-    """Load optional contexts/artifacts and build recommendations."""
+    """Load file-backed context inputs before building recommendation output.
+
+    Optional data-quality, operator-context, and prior-artifact files are parsed
+    through the same best-effort helpers used by discovery. The resulting
+    recommendation payload can optionally be written to disk, while load warnings
+    are preserved on the returned result instead of aborting ranking.
+    """
     data_quality = _load_optional_mapping(data_quality_path)
     operator_contexts, context_warnings = load_operator_context(tuple(operator_context_paths or ()))
     artifacts = load_strategy_artifacts(tuple(prior_artifact_paths or ()))

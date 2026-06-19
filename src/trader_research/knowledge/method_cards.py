@@ -104,7 +104,13 @@ def list_method_cards(
     include_drafts: bool = False,
     knowledge_store: KnowledgeStore | None = None,
 ) -> tuple[MethodCard, ...]:
-    """Return seeded and persisted method cards."""
+    """Return the merged method-card catalog in deterministic ID order.
+
+    Seeded approved cards are always included, persisted cards are loaded from the
+    supplied store or local repository, and duplicate IDs are collapsed by the last
+    loaded card. Drafts are filtered out by default so callers that require stable
+    evidence contracts do not accidentally use unpublished cards.
+    """
     cards = list(SEEDED_METHOD_CARDS)
     if knowledge_store is not None:
         cards.extend(knowledge_store.list_persisted_method_cards())
@@ -124,6 +130,12 @@ def get_method_card(
     include_drafts: bool = False,
     knowledge_store: KnowledgeStore | None = None,
 ) -> MethodCard | None:
+    """Look up a single method card from the merged seeded/persisted catalog.
+
+    The lookup shares `list_method_cards` filtering semantics, including the
+    default exclusion of drafts. Returning `None` rather than raising lets citation
+    validation accumulate all missing-card blockers in one report.
+    """
     for card in list_method_cards(artifact_root, include_drafts=include_drafts, knowledge_store=knowledge_store):
         if card.method_card_id == method_card_id:
             return card
@@ -137,6 +149,13 @@ def method_cards_for_method(
     include_drafts: bool = False,
     knowledge_store: KnowledgeStore | None = None,
 ) -> tuple[MethodCard, ...]:
+    """Return all cards for one method ID using the standard catalog merge rules.
+
+    This keeps seeded contracts and locally curated cards visible through the same
+    interface, while `include_drafts` determines whether review-in-progress cards
+    are included. The result preserves the deterministic ordering from
+    `list_method_cards`.
+    """
     return tuple(
         card
         for card in list_method_cards(
@@ -157,7 +176,13 @@ def search_method_cards(
     limit: int = 10,
     knowledge_store: KnowledgeStore | None = None,
 ) -> tuple[MethodCard, ...]:
-    """Search method cards by simple deterministic text matching."""
+    """Search method cards with deterministic substring matching over contract text.
+
+    The search corpus includes method ID, title, family, assumptions, and failure
+    modes, then optionally narrows results by family and draft visibility. It is
+    intentionally simple and deterministic so tests and agent tools receive stable
+    method suggestions without requiring a separate search index.
+    """
     needle = query.strip().lower()
     cards = []
     for card in list_method_cards(artifact_root, include_drafts=include_drafts, knowledge_store=knowledge_store):
@@ -183,6 +208,13 @@ def approved_method_card_ids_for_method(
     *,
     knowledge_store: KnowledgeStore | None = None,
 ) -> tuple[str, ...]:
+    """Return approved method-card IDs that can satisfy a method implementation.
+
+    Draft cards are excluded by the underlying catalog call, so the returned IDs
+    are suitable for implementation manifests that require approved evidence. The
+    caller can inject a store to include persisted approvals alongside seeded
+    contracts.
+    """
     return tuple(
         card.method_card_id
         for card in method_cards_for_method(artifact_root, method_id, knowledge_store=knowledge_store)
@@ -196,6 +228,13 @@ def has_approved_method_card(
     knowledge_store: KnowledgeStore | None = None,
     method_id: str | None = None,
 ) -> bool:
+    """Check whether any supplied card ID names an approved evidence contract.
+
+    When `method_id` is provided, the approved card must also belong to that method
+    so implementation registration cannot cite an unrelated approved contract. The
+    function uses the default approved-only catalog view and therefore treats
+    missing, draft, and planned cards as false.
+    """
     cards = {
         card.method_card_id: card
         for card in list_method_cards(artifact_root, knowledge_store=knowledge_store)
@@ -224,7 +263,14 @@ def create_method_card_draft(
     version: int = 1,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
-    """Create a non-approved method-card draft from validated source evidence."""
+    """Validate method-card fields and persist a draft tied to source evidence.
+
+    The command cleans required text fields, converts evidence mappings into typed
+    references, validates those references against the knowledge store without
+    requiring approved method cards, and writes a deterministic draft ID derived
+    from method metadata plus evidence. The resulting card remains non-approved
+    until a separate publish step records reviewer approval.
+    """
     store = knowledge_store or JsonKnowledgeStore(artifact_root)
     try:
         refs = _evidence_refs(evidence_refs)
@@ -301,7 +347,14 @@ def publish_method_card(
     approve: bool,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
-    """Publish a draft method card as an approved immutable card."""
+    """Approve a draft method card after explicit reviewer confirmation.
+
+    Publishing requires `approve=True`, reviewer identity, an approval note, and a
+    target approved-card ID. The draft's evidence is revalidated, identical
+    republish attempts are treated as idempotent successes, and conflicting
+    existing approved IDs return structured errors rather than overwriting review
+    history.
+    """
     store = knowledge_store or JsonKnowledgeStore(artifact_root)
     if not approve:
         return _publish_error("explicit approve=True is required")

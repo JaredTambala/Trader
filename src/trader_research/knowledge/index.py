@@ -17,7 +17,14 @@ def index_chunks(
     *,
     provider: EmbeddingProvider,
 ) -> KnowledgeEmbeddingManifest:
-    """Embed and upsert chunks into the configured knowledge store."""
+    """Embed chunks, validate vector dimensions, and persist index metadata.
+
+    Each chunk is embedded with the supplied provider, wrapped as a stored vector,
+    and written together with a manifest that records provider/model/version and
+    the indexed chunk IDs. Mixed vector dimensions are rejected before persistence
+    because vector search cannot safely compare embeddings from inconsistent
+    output shapes.
+    """
     embeddings: list[StoredEmbedding] = []
     dimensions: set[int] = set()
     for chunk in chunks:
@@ -58,7 +65,13 @@ def search_chunks(
     provider: EmbeddingProvider,
     approved_only: bool = True,
 ) -> tuple[Mapping[str, Any], ...]:
-    """Search indexed chunks with lexical/vector rank fusion."""
+    """Retrieve chunks by combining lexical search with provider-backed vector search.
+
+    The query is embedded once, both search modes request an expanded candidate
+    set, and the results are merged with reciprocal-rank fusion. Validation keeps
+    `top_k` bounded so tool calls remain predictable even when a store has many
+    indexed chunks.
+    """
     if top_k < 1 or top_k > 25:
         raise ValueError("top_k must be between 1 and 25")
     query_embedding = provider.embed(query)
@@ -92,7 +105,14 @@ def reciprocal_rank_fusion(
     top_k: int,
     rank_constant: int = 60,
 ) -> tuple[Mapping[str, Any], ...]:
-    """Merge lexical and vector results with deterministic reciprocal-rank fusion."""
+    """Merge lexical and vector result lists into a stable ranked result set.
+
+    Results are keyed by `chunk_id`, each modality contributes reciprocal-rank
+    score when present, and ties are broken by chunk ID after sorting by fused
+    score. The returned rows retain the original payload fields and gain a
+    `retrieval_scores` block so callers can explain how lexical and vector ranks
+    affected the final order.
+    """
     by_chunk_id: dict[str, dict[str, Any]] = {}
     lexical_rank_by_chunk: dict[str, int] = {}
     vector_rank_by_chunk: dict[str, int] = {}

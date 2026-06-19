@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import trader
-import trader.cycle as cycle_module
+import trader.cycle.core as cycle_module
 from trader.config import Config
 from trader.cycle import run_cycle
 from trader.data import NoOpEventStore

@@ -31,25 +31,37 @@ from trader_standard.indicators import BollingerBandsIndicator
 
 @dataclass(frozen=True)
 class BollingerBwmaActionSignal(Signal):
-    """Emit the source-backed Bollinger/BWMA band action signal."""
+    """Emit maintained Bollinger/BWMA band actions from the latest close.
+
+    The scalar is `1.0` below the lower band, `-1.0` above the upper band, and
+    `0.0` inside the band.
+    """
 
     period: int = 20
     stddev_multiplier: float = 2.0
 
     @property
     def name(self) -> str:
+        """Return a parameterized Bollinger/BWMA action name for audit and manifest metadata."""
         mult = str(self.stddev_multiplier).replace(".", "_")
         return f"bollinger_bwma_action_{self.period}_{mult}"
 
     @property
     def window(self) -> int:
+        """Return the trailing close-count required before a band action is valid."""
         return int(self.period)
 
     @property
     def indicator(self) -> BollingerBandsIndicator:
+        """Return the maintained Bollinger indicator configured for this signal calculation and audit."""
         return BollingerBandsIndicator(period=self.period, stddev_multiplier=self.stddev_multiplier)
 
     def compute(self, bars: Sequence[Bar]) -> float:
+        """Return the latest band action from the current close and computed bands.
+
+        A close below the lower band returns `1.0`, a close above the upper band
+        returns `-1.0`, and a close inside the band returns `0.0`.
+        """
         series = self.indicator.compute_series(bars)
         current = series[0]
         current_close = float(bars[0].close)
@@ -60,6 +72,7 @@ class BollingerBwmaActionSignal(Signal):
         return 0.0
 
     def indicator_values(self, bars: Sequence[Bar]) -> Sequence[tuple[str, float, datetime]]:
+        """Return current maintained band components as timestamped audit tuples for events."""
         series = self.indicator.compute_series(bars)
         if not series:
             raise ValueError("Insufficient bars for Bollinger/BWMA action signal indicator values")

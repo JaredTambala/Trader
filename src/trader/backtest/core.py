@@ -1,4 +1,9 @@
-"""Backtest runner for historical cycle execution."""
+"""Backtest execution, accounting, export, and persistence helpers.
+
+The module replays historical bars through the same `run_cycle` path used by
+live trading, but supplies deterministic market data, an internal paper broker,
+and frozen execution assumptions so research runs can be reproduced and audited.
+"""
 
 from __future__ import annotations
 
@@ -14,18 +19,18 @@ import math
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
-from .broker import Broker, InternalPaperBroker
-from .config import Config
-from .cycle import run_cycle
-from .data import EventStore, build_event_store
-from .identifiers import deterministic_run_session_id
-from .market_data import CryptoBarEvent, MarketDataEvent, MarketDataSource, StockBarEvent
-from .portfolio import Portfolio, PortfolioSnapshot, Position
-from .signals import Bar
-from .strategies import Strategy
-from .risk import RiskManager
-from .strategy_metadata import resolve_strategy_id
-from .timeframes import normalize_timeframe
+from ..broker import Broker, InternalPaperBroker
+from ..config import Config
+from ..cycle import run_cycle
+from ..event_store import EventStore, build_event_store
+from ..identifiers import deterministic_run_session_id
+from ..market_data import CryptoBarEvent, MarketDataEvent, MarketDataSource, StockBarEvent
+from ..portfolio import Portfolio, PortfolioSnapshot, Position
+from ..signals import Bar
+from ..strategies import Strategy
+from ..risk import RiskManager
+from ..strategy_metadata import resolve_strategy_id
+from ..timeframes import normalize_timeframe
 
 
 logger = logging.getLogger(__name__)
@@ -33,7 +38,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class FeeAssumptions:
-    """Deterministic fee model for backtests."""
+    """Fee model applied by the internal broker during backtests.
+
+    Attributes:
+        fixed_per_order: Flat fee applied to each filled order.
+        bps: Notional fee in basis points.
+        minimum_fee: Minimum fee used when the configured fee model is non-zero.
+    """
 
     fixed_per_order: float = 0.0
     bps: float = 0.0
@@ -42,14 +53,27 @@ class FeeAssumptions:
 
 @dataclass(frozen=True)
 class SlippageAssumptions:
-    """Deterministic slippage model for backtests."""
+    """Price-impact model applied to simulated fills.
+
+    Attributes:
+        bps: Basis points added to buy fills and subtracted from sell fills.
+            This keeps the model deterministic while making execution worse
+            than the raw bar price.
+    """
 
     bps: float = 0.0
 
 
 @dataclass(frozen=True)
 class DataAssumptions:
-    """Data-availability and pricing assumptions for backtests."""
+    """Rules for handling missing or misaligned historical bars.
+
+    Attributes:
+        allow_latest_prior_bar: Whether a decision timestamp may use the latest
+            earlier bar when the exact timestamp is missing.
+        allow_price_carry_forward: Whether portfolio valuation may reuse the
+            most recent known price when the current timestamp has no bar.
+    """
 
     allow_latest_prior_bar: bool = True
     allow_price_carry_forward: bool = True
@@ -57,7 +81,15 @@ class DataAssumptions:
 
 @dataclass(frozen=True)
 class BacktestAssumptions:
-    """Execution and data assumptions attached to a backtest run."""
+    """Complete execution model recorded with every backtest result.
+
+    Attributes:
+        fill_model: Human-readable label for the simulated fill model.
+        latency_ms: Intended broker latency assumption for provenance.
+        fees: Fee model passed to the internal paper broker.
+        slippage: Slippage model passed to the internal paper broker.
+        data: Missing-data and price-carry-forward rules.
+    """
 
     fill_model: str = "full_fill"
     latency_ms: float = 0.0
@@ -68,7 +100,12 @@ class BacktestAssumptions:
 
 @dataclass(frozen=True)
 class TradeRecord:
-    """Serialized trade/fill record for backtest inspection and export."""
+    """Executed fill with accounting fields derived from event-store history.
+
+    Each record ties a fill back to the local client order and cycle, preserves
+    raw and adjusted prices, and carries fee/slippage/realized-PnL values used
+    by performance summaries and CSV exports.
+    """
 
     client_order_id: str
     cycle_id: str | None
@@ -86,7 +123,14 @@ class TradeRecord:
 
 @dataclass(frozen=True)
 class BacktestSpec:
-    """Backtest configuration parameters."""
+    """Historical replay window and cadence.
+
+    Attributes:
+        start: Inclusive UTC start timestamp for replayed decisions.
+        end: Inclusive UTC end timestamp for replayed decisions.
+        timeframe: Bar timeframe passed through to historical data loading.
+        max_runs: Optional cap used by tests and exploratory runs to stop early.
+    """
 
     start: datetime
     end: datetime
@@ -96,7 +140,12 @@ class BacktestSpec:
 
 @dataclass(frozen=True)
 class PositionSummary:
-    """Aggregated position data for backtest summaries."""
+    """Final per-symbol position valuation included in a backtest result.
+
+    The summary combines position quantity/average price from portfolio state
+    with the latest known historical price so operators can inspect open risk
+    and unrealized PnL at the end of the replay.
+    """
 
     symbol: str
     qty: float
@@ -109,7 +158,13 @@ class PositionSummary:
 
 @dataclass(frozen=True)
 class BacktestResult:
-    """Aggregated backtest outcome summary."""
+    """Serializable outcome of a completed historical replay.
+
+    The result combines run counts, final positions, execution assumptions,
+    trade accounting, strategy/benchmark equity curves, relative metrics, and
+    optional research provenance. It is intentionally plain data so it can be
+    converted to JSON or CSV without reaching back into the event store.
+    """
 
     total_runs: int
     success_runs: int
@@ -150,7 +205,12 @@ class BacktestResult:
 
 @dataclass(frozen=True)
 class EquityPoint:
-    """Single point on an equity curve."""
+    """Timestamped equity value for strategy or benchmark performance curves.
+
+    Attributes:
+        ts: Replay timestamp represented by the equity point.
+        equity: Portfolio or benchmark value at that timestamp.
+    """
 
     ts: datetime
     equity: float
@@ -158,7 +218,11 @@ class EquityPoint:
 
 @dataclass(frozen=True)
 class PerformanceSummary:
-    """Performance metrics derived from an equity curve."""
+    """Risk, return, exposure, and trade statistics for one equity curve.
+
+    The fields are nullable because short or degenerate backtests may not have
+    enough observations to calculate annualized or distribution-based metrics.
+    """
 
     start_equity: float | None
     end_equity: float | None
@@ -199,7 +263,13 @@ class _TradeStats:
 
 
 def build_backtest_assumptions(data: Mapping[str, object] | None = None) -> BacktestAssumptions:
-    """Build backtest assumptions from a passive mapping."""
+    """Normalize user/config mapping data into typed backtest assumptions.
+
+    Missing sections fall back to deterministic zero-fee, zero-slippage, and
+    permissive data-availability defaults. Values are coerced at the boundary so
+    the runner and broker can operate on typed dataclasses instead of partially
+    trusted dictionaries.
+    """
     data = data or {}
     fee_cfg = _mapping_value(data.get("fees"))
     slippage_cfg = _mapping_value(data.get("slippage"))
@@ -250,7 +320,13 @@ def _empty_performance_summary() -> PerformanceSummary:
 
 
 class BacktestMarketDataSource(MarketDataSource):
-    """Market data source backed by in-memory bars for backtests."""
+    """Market data source that serves historical bars at a controlled timestamp.
+
+    The runner calls `set_as_of()` before each cycle. Fetching then returns one
+    bar per configured symbol for that decision timestamp, optionally falling
+    back to the latest earlier bar and recording a warning when exact alignment
+    is unavailable.
+    """
 
     def __init__(
         self,
@@ -263,7 +339,18 @@ class BacktestMarketDataSource(MarketDataSource):
         allow_latest_prior_bar: bool = True,
         warnings: list[str] | None = None,
     ) -> None:
-        """Initialize the instance."""
+        """Prepare symbol-indexed bars for deterministic timestamp lookups.
+
+        Args:
+            bars_by_symbol: Historical bars keyed by canonical symbol.
+            asset_class: Asset class used to choose stock versus crypto events.
+            timeframe: Timeframe attached to generated market-data events.
+            source: Source label persisted with generated events.
+            symbols: Optional ordered universe; missing symbols are represented
+                by empty bar lists.
+            allow_latest_prior_bar: Whether fetch may fall back to older bars.
+            warnings: Mutable warning list shared with the runner result.
+        """
         if symbols is not None:
             bars_by_symbol = {symbol: bars_by_symbol.get(symbol, []) for symbol in symbols}
         self._bars_by_symbol = {symbol: list(bars) for symbol, bars in bars_by_symbol.items()}
@@ -279,11 +366,22 @@ class BacktestMarketDataSource(MarketDataSource):
         self._warnings = warnings if warnings is not None else []
 
     def set_as_of(self, as_of_ts: datetime) -> None:
-        """Set the current timestamp for fetch calls."""
+        """Set the normalized decision timestamp used by subsequent `fetch()` calls.
+
+        Backtest cycles call this before ingestion so the market-data source emits
+        bars for the current simulated decision time, or applies the configured
+        latest-prior fallback when exact bars are unavailable.
+        """
         self._as_of_ts = _normalize_timestamp(as_of_ts)
 
     def fetch(self) -> Sequence[MarketDataEvent]:
-        """Fetch market data events for the configured window."""
+        """Return historical market-data events for the current decision time.
+
+        Returns:
+            Stock or crypto bar events built from the exact timestamp when
+            available. If configured, the latest earlier bar is used with a
+            warning; otherwise symbols with missing exact bars are skipped.
+        """
         if self._as_of_ts is None:
             return []
         events: list[MarketDataEvent] = []
@@ -343,7 +441,14 @@ class BacktestMarketDataSource(MarketDataSource):
 
 
 class BacktestRunner:
-    """Run the trading cycle over a historical window."""
+    """Replay historical bars through the production cycle orchestration.
+
+    The runner loads bars, seeds initial portfolio state, creates an internal
+    broker from assumptions, invokes `run_cycle` for each replay timestamp, and
+    aggregates persisted events into performance, trade, and portfolio summaries.
+    Strategy and risk dependencies are injected so backtests exercise the same
+    contracts as live trading without constructing hidden defaults.
+    """
 
     def __init__(
         self,
@@ -362,7 +467,27 @@ class BacktestRunner:
         run_id: str | None = None,
         started_at: datetime | None = None,
     ) -> None:
-        """Initialize the instance."""
+        """Configure a reproducible backtest run.
+
+        Args:
+            config: Runtime config used as the base for event store, symbols,
+                asset class, and timeframe settings.
+            spec: Replay window and timeframe.
+            strategy: Injected strategy instance to execute.
+            risk_manager: Injected risk manager or pipeline for candidate orders.
+            symbols: Optional symbol override; defaults to config symbols.
+            asset_class: Optional asset-class override.
+            event_store: Optional store, typically a test or research store.
+            initial_positions: Positions to seed before the first cycle.
+            initial_cash: Cash balance to seed before the first cycle.
+            config_snapshot: Optional config payload recorded with run metadata.
+            assumptions: Execution/data assumptions for broker and pricing.
+            run_id: Optional deterministic run ID supplied by a caller.
+            started_at: Optional start timestamp for reproducible metadata.
+
+        Raises:
+            ValueError: If strategy or risk manager dependencies are missing.
+        """
         self._spec = spec
         raw_symbols = list(symbols) if symbols else list(config.market_data_symbols)
         self._symbols = [symbol.strip().upper() for symbol in raw_symbols if str(symbol).strip()]
@@ -397,7 +522,23 @@ class BacktestRunner:
         log_cycle_details: bool = False,
         progress_callback: Callable[[int, int, datetime | None], None] | None = None,
     ) -> BacktestResult:
-        """Run the backtest and return an aggregated summary."""
+        """Execute the replay and aggregate persisted accounting evidence.
+
+        The method loads historical bars, derives replay timestamps, records a
+        run session, seeds initial portfolio state, and executes one production
+        cycle per timestamp. It then reads order/fill/portfolio events back from
+        the event store to compute trade statistics, equity curves, benchmark
+        comparisons, warnings, and final position summaries.
+
+        Args:
+            log_cycle_details: Whether to emit per-cycle detail logs.
+            progress_callback: Optional callback receiving completed count, total
+                count, and current replay timestamp.
+
+        Returns:
+            Serializable `BacktestResult` containing performance, accounting,
+            provenance, warnings, and final portfolio state.
+        """
         warnings: list[str] = []
         if not self._symbols:
             logger.warning("No symbols configured for backtest")
@@ -783,6 +924,19 @@ class BacktestRunner:
 
 @dataclass(frozen=True)
 class PortfolioSummary:
+    """Final portfolio rollup derived from positions and latest prices.
+
+    Attributes:
+        position_count: Number of open position records at the summary point.
+        long_positions: Count of positive-quantity positions.
+        short_positions: Count of negative-quantity positions.
+        net_qty: Signed sum of quantities.
+        gross_qty: Absolute sum of quantities.
+        net_notional: Signed market value when prices are available.
+        gross_notional: Absolute market value when prices are available.
+        positions: Per-symbol position summaries sorted by symbol.
+    """
+
     position_count: int
     long_positions: int
     short_positions: int
@@ -801,7 +955,13 @@ def _build_portfolio_summary(
     portfolio: Portfolio | None = None,
     bars_by_symbol: Mapping[str, Sequence[Bar]] | None = None,
 ) -> PortfolioSummary:
-    """Build portfolio summary."""
+    """Build final position and notional metrics for a backtest result.
+
+    Prices come from the provided in-memory bars when available, otherwise the
+    function queries the event store for the latest bar per open position. A
+    missing price leaves notional and unrealized-PnL fields unset for that
+    symbol rather than inventing a valuation.
+    """
     portfolio = portfolio or Portfolio.from_event_store(event_store)
     positions = list(portfolio.positions.values())
     if bars_by_symbol is not None:
@@ -873,7 +1033,6 @@ def _build_portfolio_summary(
         gross_notional=gross_notional if gross_notional_set else None,
         positions=tuple(summaries),
     )
-    """demo"""
 
 
 def _fetch_latest_prices(
@@ -882,7 +1041,7 @@ def _fetch_latest_prices(
     symbols: Sequence[str],
     timeframe: str,
 ) -> dict[str, tuple[datetime, float]]:
-    """Fetch latest prices."""
+    """Fetch the latest persisted close price per symbol for final valuation."""
     table = "crypto_bar_events" if asset_class in {"crypto", "cryptocurrency"} else "stock_bar_events"
     connection = getattr(event_store, "connection", lambda: None)()
     if connection is None:
@@ -911,7 +1070,7 @@ def _fetch_latest_prices(
 
 
 def _latest_prices_from_bars(bars_by_symbol: Mapping[str, Sequence[Bar]]) -> dict[str, tuple[datetime, float]]:
-    """Handle latest prices from bars."""
+    """Return the last in-memory bar timestamp/close for each populated symbol."""
     latest: dict[str, tuple[datetime, float]] = {}
     for symbol, bars in bars_by_symbol.items():
         if not bars:
@@ -932,7 +1091,12 @@ class _PriceState:
         self._last_prices: dict[str, float] = {}
 
     def advance(self, ts: datetime) -> Mapping[str, float]:
-        """Advance to the next timestamp in the schedule."""
+        """Advance internal price cursors to a replay timestamp.
+
+        With carry-forward enabled, last known prices remain available until a
+        newer bar is seen. Without carry-forward, only exact-timestamp prices
+        are returned so valuation gaps stay visible.
+        """
         target = _normalize_timestamp(ts)
         if not self.allow_price_carry_forward:
             current_prices: dict[str, float] = {}
@@ -977,7 +1141,12 @@ def _build_buy_hold_baseline(
     bars_by_symbol: Mapping[str, Sequence[Bar]],
     start: datetime,
 ) -> _Holdings:
-    """Build buy hold baseline."""
+    """Create a simple equal-weight buy-and-hold benchmark at replay start.
+
+    Existing initial positions are preserved. Any positive initial cash is split
+    equally across symbols with available first prices and converted to
+    quantities; unavailable symbols receive no benchmark allocation.
+    """
     holdings: dict[str, float] = {position.symbol: position.qty for position in initial_positions}
     cash_balance = float(initial_cash)
     if cash_balance <= 0:
@@ -1000,7 +1169,11 @@ def _compute_equity(
     portfolio: Portfolio,
     prices: Mapping[str, float],
 ) -> tuple[float, float, float, float | None]:
-    """Compute equity."""
+    """Compute equity, net exposure, gross exposure, and invested fraction.
+
+    Positions without a current price are excluded from notional exposure rather
+    than valued with stale or invented prices.
+    """
     net_notional = 0.0
     gross_notional = 0.0
     for symbol, position in portfolio.positions.items():
@@ -1018,7 +1191,7 @@ def _compute_equity(
 
 
 def _compute_holdings_equity(holdings: _Holdings, prices: Mapping[str, float]) -> float:
-    """Compute holdings equity."""
+    """Value benchmark holdings from cash plus priced symbol quantities."""
     equity = holdings.cash_balance
     for symbol, qty in holdings.positions.items():
         price = prices.get(symbol)
@@ -1214,7 +1387,12 @@ def _build_performance_summary(
     exposure_samples: Sequence[tuple[float, float, float | None]] | None,
     trade_stats: "_TradeStats | None" = None,
 ) -> PerformanceSummary:
-    """Build performance summary."""
+    """Compute risk/return/exposure metrics for an equity curve.
+
+    Curves with fewer than two points return an empty summary. Trade statistics
+    are merged when available so the result combines time-series performance and
+    fill-derived accounting in one object.
+    """
     if len(equity_curve) < 2:
         return PerformanceSummary(
             start_equity=None,
@@ -1296,7 +1474,7 @@ def _build_relative_metrics(
     benchmark_curve: Sequence[EquityPoint],
     timeframe: str,
 ) -> _RelativeMetrics:
-    """Build relative metrics."""
+    """Compute tracking, information-ratio, alpha, and beta versus benchmark."""
     returns = _returns_from_curve(strategy_curve)
     benchmark_returns = _returns_from_curve(benchmark_curve)
     length = min(len(returns), len(benchmark_returns))
@@ -1381,7 +1559,7 @@ def _annualization_factor(timeframe: str) -> float:
 
 
 def _parse_timeframe_parts(timeframe: str) -> tuple[int, str]:
-    """Parse timeframe parts."""
+    """Return numeric amount and lowercase unit from a normalized timeframe."""
     tf = normalize_timeframe(timeframe)
     for unit in ("Min", "Hour", "Day", "Week", "Month"):
         if tf.endswith(unit):
@@ -1460,7 +1638,7 @@ def _compute_cagr(
 
 
 def _compute_sharpe(returns: Sequence[float], periods_per_year: float) -> float | None:
-    """Compute the Sharpe ratio."""
+    """Compute annualized Sharpe ratio when returns have non-zero variance."""
     if not returns:
         return None
     std = _variance(returns) ** 0.5
@@ -1470,7 +1648,7 @@ def _compute_sharpe(returns: Sequence[float], periods_per_year: float) -> float 
 
 
 def _compute_sortino(returns: Sequence[float], periods_per_year: float) -> float | None:
-    """Compute the Sortino ratio."""
+    """Compute annualized Sortino ratio from downside return variance."""
     downside = [value for value in returns if value < 0]
     if not downside:
         return None
@@ -1506,7 +1684,12 @@ def _load_bars(
     *,
     lookback_bars: int = 0,
 ) -> dict[str, list[Bar]]:
-    """Load bars."""
+    """Load historical bars for each symbol with optional pre-window lookback.
+
+    Bars inside `[start, end]` drive replay timestamps. `lookback_bars` prepends
+    earlier bars for indicators that need warmup history without allowing those
+    pre-window bars to create decision cycles.
+    """
     table = "crypto_bar_events" if asset_class in {"crypto", "cryptocurrency"} else "stock_bar_events"
     connection = getattr(event_store, "connection", lambda: None)()
     if connection is None:
@@ -1561,7 +1744,7 @@ def _build_symbol_schedule(
     start: datetime,
     end: datetime,
 ) -> dict[datetime, list[str]]:
-    """Build symbol schedule."""
+    """Build replay timestamps from loaded bars inside the requested window."""
     start_ts = _normalize_timestamp(start)
     end_ts = _normalize_timestamp(end)
     schedule: dict[datetime, list[str]] = {}
@@ -1587,7 +1770,7 @@ def _signal_lookback_window(strategy: Strategy) -> int:
 
 
 def _build_initial_portfolio(positions: Sequence[Position], *, cash_balance: float) -> Portfolio:
-    """Build initial portfolio."""
+    """Create a portfolio seeded with supplied positions and cash balance."""
     portfolio = Portfolio.empty(cash_balance=cash_balance)
     for position in positions:
         portfolio.positions[position.symbol] = position
@@ -1603,7 +1786,7 @@ def _build_market_event(
     source: str,
     ingested_at: datetime,
 ) -> MarketDataEvent:
-    """Build market event."""
+    """Convert a normalized bar into the stock or crypto event-store shape."""
     common = dict(
         symbol=symbol,
         timeframe=timeframe,
@@ -1624,7 +1807,7 @@ def _build_market_event(
 
 
 def _row_to_bar(row: Sequence[object]) -> Bar:
-    """Handle row to bar."""
+    """Convert a SQL bar row into the internal latest-first Bar primitive."""
     return Bar(
         ts=_normalize_timestamp(row[0]),  # type: ignore[arg-type]
         open=float(row[1]),
@@ -1646,7 +1829,7 @@ def _build_data_sources(
     allow_latest_prior_bar: bool,
     warnings: list[str],
 ) -> dict[str, BacktestMarketDataSource]:
-    """Build data sources."""
+    """Build per-symbol market-data sources sharing the same historical bars."""
     sources: dict[str, BacktestMarketDataSource] = {}
     for symbol in symbols:
         sources[symbol] = BacktestMarketDataSource(
@@ -1683,7 +1866,7 @@ def _fetch_first_prices(
     timeframe: str,
     start: datetime,
 ) -> dict[str, float]:
-    """Fetch first prices."""
+    """Fetch the first persisted close at or after the backtest start."""
     table = "crypto_bar_events" if asset_class in {"crypto", "cryptocurrency"} else "stock_bar_events"
     connection = getattr(event_store, "connection", lambda: None)()
     if connection is None:
@@ -1717,7 +1900,7 @@ def _first_prices_from_bars(
     bars_by_symbol: Mapping[str, Sequence[Bar]],
     start: datetime,
 ) -> dict[str, float]:
-    """Handle first prices from bars."""
+    """Return first in-memory close at or after the backtest start per symbol."""
     first: dict[str, float] = {}
     start_ts = _normalize_timestamp(start)
     for symbol, bars in bars_by_symbol.items():
@@ -1729,14 +1912,14 @@ def _first_prices_from_bars(
 
 
 def _format_optional_float(value: float | None) -> str:
-    """Format optional float."""
+    """Format an optional float for logs, using `<unset>` for missing values."""
     if value is None:
         return "<unset>"
     return f"{value:.4f}"
 
 
 def _format_optional_pct(value: float | None) -> str:
-    """Format optional pct."""
+    """Format an optional ratio as a percentage for logs."""
     if value is None:
         return "<unset>"
     return f"{value:.2%}"
@@ -1750,7 +1933,7 @@ def _fetch_timestamps(
     start: datetime,
     end: datetime,
 ) -> list[datetime]:
-    """Fetch timestamps."""
+    """Fetch unique replay timestamps across symbols within the backtest window."""
     table = "crypto_bar_events" if asset_class in {"crypto", "cryptocurrency"} else "stock_bar_events"
     connection = getattr(event_store, "connection", lambda: None)()
     if connection is None:
@@ -1799,14 +1982,14 @@ def _param_placeholder(connection: object) -> str:
 
 
 def _parse_datetime(value: str) -> datetime:
-    """Parse datetime."""
+    """Parse ISO datetime config values, accepting a trailing `Z` UTC suffix."""
     if value.endswith("Z"):
         value = value[:-1] + "+00:00"
     return datetime.fromisoformat(value)
 
 
 def _parse_symbols_value(value: object | None) -> Sequence[str] | None:
-    """Parse symbols value."""
+    """Parse optional backtest symbols from a comma string or sequence."""
     if value is None:
         return None
     if isinstance(value, str):
@@ -1819,7 +2002,7 @@ def _parse_symbols_value(value: object | None) -> Sequence[str] | None:
 
 
 def _configure_logging(level_name: str | None = None) -> None:
-    """Configure module logging defaults."""
+    """Configure console logging for standalone backtest helper commands."""
     level_name = (level_name or "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
     logging.basicConfig(
@@ -1838,7 +2021,12 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Reject direct module execution in favor of injected wrapper scripts."""
+    """Reject direct module execution in favor of injected wrapper scripts.
+
+    The backtest module requires caller-supplied strategy and risk-manager
+    instances, so direct CLI execution would hide dependencies that should be
+    explicit in a wrapper.
+    """
     raise SystemExit(
         "trader.backtest is a library module. "
         "Construct a Strategy and RiskManager in your own wrapper script and call BacktestRunner(...)."
@@ -1872,7 +2060,7 @@ def _cycle_log_suppression(enabled: bool = True) -> Iterator[None]:
 
 
 def _as_bool(value: object | None, default: bool) -> bool:
-    """Coerce a value into a boolean."""
+    """Coerce common YAML/env boolean spellings into a bool."""
     if value is None:
         return default
     if isinstance(value, bool):
@@ -1888,7 +2076,11 @@ def _as_bool(value: object | None, default: bool) -> bool:
 
 
 def _parse_initial_positions(value: object | None) -> Sequence[Position] | None:
-    """Parse initial positions."""
+    """Parse optional initial backtest positions from config mappings.
+
+    Each entry must include a symbol and quantity. Average price is optional and
+    may later be filled from first available market data.
+    """
     if value is None:
         return None
     if not isinstance(value, (list, tuple)):
@@ -1920,7 +2112,7 @@ def _parse_initial_positions(value: object | None) -> Sequence[Position] | None:
 
 
 def _parse_initial_cash(value: object | None) -> float:
-    """Parse initial cash."""
+    """Parse optional initial cash, treating missing/empty as zero."""
     if value is None or value == "":
         return 0.0
     try:
@@ -1930,7 +2122,7 @@ def _parse_initial_cash(value: object | None) -> float:
 
 
 def _filter_positions(positions: Sequence[Position], symbols: set[str]) -> list[Position]:
-    """Filter positions."""
+    """Drop initial positions outside the selected backtest symbol universe."""
     if not positions or not symbols:
         return list(positions)
     filtered: list[Position] = []
@@ -1951,7 +2143,7 @@ def _fill_initial_avg_prices(
     *,
     bars_by_symbol: Mapping[str, Sequence[Bar]] | None = None,
 ) -> list[Position]:
-    """Handle fill initial avg prices."""
+    """Fill missing initial average prices from first available market data."""
     if not positions:
         return []
     missing = [position.symbol for position in positions if position.avg_price is None]
@@ -1983,7 +2175,7 @@ def _seed_positions(
     cash_balance: float,
     run_id: str | None,
 ) -> None:
-    """Seed positions."""
+    """Persist initial backtest portfolio state before the first replay cycle."""
     snapshot = PortfolioSnapshot(
         asof_ts=asof_ts,
         positions=tuple(positions),
@@ -2008,20 +2200,32 @@ def _sanitize_value(value: Any) -> Any:
 
 
 def serialize_backtest_result(result: BacktestResult) -> dict[str, Any]:
-    """Prepare backtest result for storage/transmission."""
+    """Convert a backtest result into JSON-compatible primitive values.
+
+    Dataclasses become dictionaries and datetimes become ISO-8601 strings so
+    the payload can be persisted to metrics snapshots or returned by the API.
+    """
     raw = asdict(result)
     return _sanitize_value(raw)
 
 
 def export_backtest_result_json(result: BacktestResult, path: str | Path) -> Path:
-    """Write the serialized backtest result to JSON."""
+    """Write the complete serialized backtest result to a JSON file.
+
+    Returns:
+        The normalized output path after writing.
+    """
     output_path = Path(path)
     output_path.write_text(json.dumps(serialize_backtest_result(result), indent=2), encoding="utf-8")
     return output_path
 
 
 def export_backtest_equity_curve_csv(result: BacktestResult, path: str | Path) -> Path:
-    """Write the strategy and benchmark equity curves to CSV."""
+    """Write aligned strategy and benchmark equity curves to CSV.
+
+    The CSV uses stable column names and leaves benchmark equity blank when the
+    benchmark curve is shorter than the strategy curve.
+    """
     output_path = Path(path)
     with output_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(
@@ -2042,7 +2246,11 @@ def export_backtest_equity_curve_csv(result: BacktestResult, path: str | Path) -
 
 
 def export_backtest_trades_csv(result: BacktestResult, path: str | Path) -> Path:
-    """Write backtest trade records to CSV."""
+    """Write executed trade records to CSV using stable accounting columns.
+
+    The export preserves raw price, adjusted fill price, fees, slippage, and
+    realized PnL so downstream analysis can reproduce trade-level accounting.
+    """
     output_path = Path(path)
     with output_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(
@@ -2084,7 +2292,12 @@ def export_backtest_trades_csv(result: BacktestResult, path: str | Path) -> Path
 
 
 def persist_backtest_result(run_id: str, result: BacktestResult, config: Config) -> None:
-    """Persist the aggregated backtest result to the metrics table."""
+    """Persist a serialized backtest result as a metrics snapshot.
+
+    A fresh event store is built from config for the write and always closed
+    afterward. The snapshot is keyed by `run_id`/`session_id` with no cycle ID
+    because it represents the aggregate run outcome rather than one decision.
+    """
     event_store = build_event_store(config)
     try:
         event_store.record_event(

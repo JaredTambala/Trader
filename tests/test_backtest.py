@@ -85,7 +85,7 @@ def test_backtest_runner_replays_timestamps(monkeypatch, tmp_path: Path) -> None
         )
 
     recorder = CycleRecorder()
-    monkeypatch.setattr("trader.backtest.run_cycle", recorder)
+    monkeypatch.setattr("trader.backtest.core.run_cycle", recorder)
 
     spec = BacktestSpec(start=base, end=base + timedelta(minutes=2), timeframe="1Min")
     runner = BacktestRunner(

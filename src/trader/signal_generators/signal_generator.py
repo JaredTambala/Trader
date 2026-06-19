@@ -10,16 +10,21 @@ from trader.signals import Signal
 
 
 class SignalGenerator(ABC):
-    """Produces computed signal values for symbols given market/portfolio data."""
+    """Contract for producing named numeric signals for a symbol universe.
+
+    Generators may support full-universe batch generation, per-symbol
+    incremental generation, or both. Returned mappings are keyed by symbol and
+    then by signal name so strategies can consume multiple signal families.
+    """
 
     @property
     @abstractmethod
     def signals(self) -> Sequence[Signal]:
-        """Signals computed by this generator."""
+        """Return signal definitions evaluated by this generator in deterministic output order."""
 
     @property
     def supports_symbol_generation(self) -> bool:
-        """Whether this generator can compute per-symbol signals incrementally."""
+        """Report whether `generate_for_symbol` can compute one requested symbol independently for streaming."""
         return False
 
     @abstractmethod
@@ -49,5 +54,10 @@ class SignalGenerator(ABC):
         run_id: str | None = None,
         cycle_id: str | None = None,
     ) -> Mapping[str, float] | None:
-        """Compute signal values for a single symbol."""
+        """Compute signal values for one symbol when incremental generation is supported.
+
+        The base implementation raises because most generators only implement
+        batch generation. Incremental generators override this and return
+        `None` when the requested symbol has no available bar window.
+        """
         raise NotImplementedError("Per-symbol generation not supported")

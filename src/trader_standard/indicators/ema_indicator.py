@@ -28,19 +28,30 @@ from trader.signals import Bar
 
 @dataclass(frozen=True)
 class EmaIndicator(Indicator):
-    """Compute EMA values for a series of bars."""
+    """Compute no-lookahead exponential moving averages for latest-first bars.
+
+    Warmup observations are omitted from the returned latest-first series.
+    """
 
     period: int
 
     @property
     def name(self) -> str:
+        """Return the registry method name used for EMA audit and manifest metadata."""
         return "ema"
 
     @property
     def window(self) -> int:
+        """Return the configured close-count required to seed the first EMA output value."""
         return int(self.period)
 
     def compute_series(self, bars: Sequence[Bar]) -> Sequence[float]:
+        """Compute latest-first EMA values with chronological smoothing and no lookahead.
+
+        Input bars are reversed to seed the earliest complete window, then each
+        later close updates the EMA with multiplier `2 / (period + 1)`. Warmup
+        values are omitted and the completed series is returned latest-first.
+        """
         closes = [float(bar.close) for bar in reversed(bars)]
         if len(closes) < self.window:
             raise ValueError("Insufficient bars for EMA computation")

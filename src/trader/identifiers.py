@@ -62,7 +62,12 @@ def deterministic_cycle_id(strategy_id: str, decision_ts: datetime) -> str:
 
 
 def deterministic_run_id(strategy_id: str, decision_ts: datetime) -> str:
-    """Backward-compatible alias for deterministic cycle identifiers."""
+    """Return the legacy run ID value, now equivalent to the cycle ID.
+
+    Older callers used this helper for per-decision identifiers. Keeping the
+    alias avoids changing public imports while newer code distinguishes
+    run-session IDs from deterministic cycle IDs.
+    """
     return deterministic_cycle_id(strategy_id, decision_ts)
 
 

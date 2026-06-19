@@ -17,26 +17,38 @@ TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_]+")
 
 
 class EmbeddingConfigurationError(RuntimeError):
-    """Raised when no usable embedding runtime configuration is available."""
+    """Raised when environment-backed embedding settings cannot build a usable provider instance."""
 
 
 class EmbeddingRequestError(RuntimeError):
-    """Raised when an embedding backend request fails or returns unusable data."""
+    """Raised when an embedding backend request fails or returns unusable response data."""
 
 
 class EmbeddingProvider(Protocol):
-    """Minimal embedding provider protocol used by knowledge indexing."""
+    """Small interface required by indexing and retrieval code for embeddings.
+
+    Providers expose stable metadata used in embedding manifests and implement a
+    single-text `embed` call that returns a numeric vector. Keeping the protocol
+    narrow lets tests inject deterministic providers while production code can
+    resolve OpenAI-compatible backends from runtime configuration.
+    """
 
     provider: str
     model: str
     version: str
 
     def embed(self, text: str) -> tuple[float, ...]:
-        """Return one embedding vector for text."""
+        """Return one numeric embedding vector for the supplied text payload and backend."""
 
 
 class DeterministicEmbeddingProvider:
-    """Hash-vector embedding provider for deterministic tests only."""
+    """Local hash-vector provider used when tests need stable embeddings.
+
+    The provider tokenizes text, hashes tokens into signed buckets, and normalizes
+    the vector so lexical overlap produces repeatable similarity scores without
+    network access or credentials. It is intentionally low fidelity and should be
+    treated as a deterministic fake rather than a production semantic embedding.
+    """
 
     provider = "local"
     model = "deterministic-hash-vector"
@@ -44,6 +56,11 @@ class DeterministicEmbeddingProvider:
     dimension = 32
 
     def embed(self, text: str) -> tuple[float, ...]:
+        """Embed text with deterministic token hashing and L2 normalization.
+
+        Tokens are lowercased, hashed into signed vector buckets, and normalized so
+        repeated inputs produce identical vectors without network access.
+        """
         vector = [0.0] * self.dimension
         for token in TOKEN_PATTERN.findall(text.lower()):
             digest = hashlib.sha256(token.encode("utf-8")).digest()
@@ -58,7 +75,12 @@ class DeterministicEmbeddingProvider:
 
 @dataclass(frozen=True)
 class EmbeddingConfiguration:
-    """Runtime embedding backend configuration."""
+    """Secret-bearing runtime settings for one OpenAI-compatible embedding backend.
+
+    The config keeps provider/model/base URL together with an optional bearer token
+    and request timeout. It is passed directly to the HTTP provider and should not
+    be serialized into manifests or logs because `api_key` may contain credentials.
+    """
 
     provider: str
     model: str
@@ -69,20 +91,34 @@ class EmbeddingConfiguration:
 
 @dataclass(frozen=True)
 class OpenAICompatibleEmbeddingProvider:
-    """Embedding provider for OpenAI-compatible `/embeddings` APIs."""
+    """HTTP embedding provider for OpenAI-compatible `/embeddings` endpoints.
+
+    Calls serialize the configured model and input text, attach a bearer token only
+    when one is configured, validate that the response is an object, and extract
+    the first numeric embedding vector. Backend transport, JSON, and shape
+    failures are translated into `EmbeddingRequestError` for callers to surface.
+    """
 
     config: EmbeddingConfiguration
     version: str = "runtime"
 
     @property
     def provider(self) -> str:
+        """Return the configured provider name recorded in embedding manifests and search queries."""
         return self.config.provider
 
     @property
     def model(self) -> str:
+        """Return the configured model name recorded in embedding manifests and search queries."""
         return self.config.model
 
     def embed(self, text: str) -> tuple[float, ...]:
+        """Call the configured OpenAI-compatible endpoint and parse the first vector.
+
+        The request includes bearer authorization only when an API key is present,
+        and response transport, JSON, or shape failures are translated into
+        `EmbeddingRequestError`.
+        """
         payload = {"model": self.config.model, "input": text}
         headers = {"Content-Type": "application/json"}
         if self.config.api_key:
@@ -98,31 +134,48 @@ class OpenAICompatibleEmbeddingProvider:
 
 @dataclass(frozen=True)
 class RuntimeConfiguredEmbeddingProvider:
-    """Embedding provider that resolves backend configuration at call time."""
+    """Lazy provider that reads embedding backend settings for each embed call.
+
+    This wrapper lets long-lived services expose provider/model metadata from an
+    injected environment mapping while deferring validation until an embedding is
+    actually requested. It is useful for MCP tools that should start without
+    credentials but fail clearly when indexing or retrieval needs runtime vectors.
+    """
 
     env: Mapping[str, str] | None = None
 
     @property
     def provider(self) -> str:
+        """Resolve the provider name from the injected environment or process environment mapping."""
         source = self.env if self.env is not None else os.environ
         return _normalized_provider(source.get("TRADER_RESEARCH_EMBEDDINGS_PROVIDER", "")) or "runtime"
 
     @property
     def model(self) -> str:
+        """Resolve the model name from the injected environment or process environment mapping."""
         source = self.env if self.env is not None else os.environ
         return source.get("TRADER_RESEARCH_EMBEDDINGS_MODEL", "").strip() or "runtime"
 
     @property
     def version(self) -> str:
+        """Return the runtime version marker used before concrete provider resolution occurs."""
         return "runtime"
 
     def embed(self, text: str) -> tuple[float, ...]:
+        """Build the currently configured provider and delegate the embed request immediately."""
         provider = build_embedding_provider_from_env(self.env if self.env is not None else os.environ)
         return provider.embed(text)
 
 
 def build_embedding_provider_from_env(env: Mapping[str, str] | None = None) -> EmbeddingProvider:
-    """Build an embedding provider from `TRADER_RESEARCH_EMBEDDINGS_*` values."""
+    """Build and validate the runtime embedding provider from environment values.
+
+    The builder requires provider and model values, normalizes provider aliases,
+    parses the request timeout, and enforces provider-specific requirements such
+    as API keys for OpenAI or base URLs for compatible backends. Configuration
+    problems are reported as `EmbeddingConfigurationError` before any network call
+    is attempted.
+    """
     source = env if env is not None else os.environ
     provider = _normalized_provider(source.get("TRADER_RESEARCH_EMBEDDINGS_PROVIDER", ""))
     if not provider:
@@ -164,7 +217,13 @@ def build_embedding_provider_from_env(env: Mapping[str, str] | None = None) -> E
 
 
 def embedding_runtime_summary(env: Mapping[str, str]) -> dict[str, Any]:
-    """Return non-secret embedding runtime config metadata."""
+    """Return log- and envelope-safe metadata about embedding runtime settings.
+
+    The summary reports whether provider/model/base URL are configured, which
+    backend would be used, whether an API key is present, and the parsed timeout.
+    It deliberately reports only the presence of the key, never the key value, so
+    health checks can be observable without leaking credentials.
+    """
     provider = _normalized_provider(env.get("TRADER_RESEARCH_EMBEDDINGS_PROVIDER", ""))
     model = env.get("TRADER_RESEARCH_EMBEDDINGS_MODEL", "").strip()
     base_url = env.get("TRADER_RESEARCH_EMBEDDINGS_BASE_URL", "").strip()
@@ -179,6 +238,14 @@ def embedding_runtime_summary(env: Mapping[str, str]) -> dict[str, Any]:
 
 
 def cosine_similarity(left: tuple[float, ...], right: tuple[float, ...]) -> float:
+    """Compute dot-product similarity for normalized vectors of equal length.
+
+    Embedding providers are expected to return already normalized vectors when
+    cosine semantics are required, so this helper only guards empty or
+    mismatched-dimension inputs and otherwise returns the strict-pairwise dot
+    product. Dimension mismatches return zero instead of raising because retrieval
+    can continue with lexical evidence when vector evidence is unusable.
+    """
     if not left or not right or len(left) != len(right):
         return 0.0
     return float(sum(a * b for a, b in zip(left, right, strict=True)))

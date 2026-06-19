@@ -9,24 +9,29 @@ from trader.risk import RiskContext, RiskManager
 
 
 class NoOpRiskManager(RiskManager):
-    """Risk manager that allows all orders."""
+    """Risk manager for tests and demos that approves every candidate order."""
 
     def validate(
         self,
         orders: Iterable[Mapping[str, object]],
         context: RiskContext,
     ) -> Sequence[Mapping[str, object]]:
+        """Return every candidate order unchanged for test and demo risk pipelines."""
         return list(orders)
 
 
 class HaltRiskManager(RiskManager):
-    """Reject all orders when the runtime is halted."""
+    """Reject all orders while the operator/global halt flag is active.
+
+    Approved orders pass through unchanged once the halt flag clears.
+    """
 
     def validate(
         self,
         orders: Iterable[Mapping[str, object]],
         context: RiskContext,
     ) -> Sequence[Mapping[str, object]]:
+        """Return all orders when not halted, otherwise approve no candidate orders."""
         approved, _ = self.evaluate(orders, context)
         return approved
 
@@ -35,6 +40,7 @@ class HaltRiskManager(RiskManager):
         orders: Iterable[Mapping[str, object]],
         context: RiskContext,
     ) -> tuple[Sequence[Mapping[str, object]], Sequence[Mapping[str, object]]]:
+        """Split orders based on the global halt flag and emit `halted` rejection reasons."""
         order_list = list(orders)
         if not context.halted:
             return order_list, []
@@ -42,7 +48,7 @@ class HaltRiskManager(RiskManager):
 
 
 class MaxOrdersPerRunRiskManager(RiskManager):
-    """Reject orders once the configured per-run limit is exceeded."""
+    """Limit the number of orders that can pass through in one evaluation."""
 
     def __init__(self, *, limit: int) -> None:
         self._limit = max(0, int(limit))
@@ -52,6 +58,7 @@ class MaxOrdersPerRunRiskManager(RiskManager):
         orders: Iterable[Mapping[str, object]],
         context: RiskContext,
     ) -> Sequence[Mapping[str, object]]:
+        """Return only the prefix of candidate orders allowed by the per-run limit."""
         approved, _ = self.evaluate(orders, context)
         return approved
 
@@ -60,6 +67,7 @@ class MaxOrdersPerRunRiskManager(RiskManager):
         orders: Iterable[Mapping[str, object]],
         context: RiskContext,
     ) -> tuple[Sequence[Mapping[str, object]], Sequence[Mapping[str, object]]]:
+        """Approve at most the configured number of candidate orders and reject the rest."""
         order_list = list(orders)
         if self._limit == 0:
             return [], [{**order, "rejection_reason": "max_orders_per_run"} for order in order_list]
@@ -79,6 +87,7 @@ class MaxGrossExposureRiskManager(RiskManager):
         orders: Iterable[Mapping[str, object]],
         context: RiskContext,
     ) -> Sequence[Mapping[str, object]]:
+        """Return orders that keep projected portfolio gross exposure within the USD limit."""
         approved, _ = self.evaluate(orders, context)
         return approved
 
@@ -87,6 +96,12 @@ class MaxGrossExposureRiskManager(RiskManager):
         orders: Iterable[Mapping[str, object]],
         context: RiskContext,
     ) -> tuple[Sequence[Mapping[str, object]], Sequence[Mapping[str, object]]]:
+        """Evaluate orders sequentially against projected gross exposure.
+
+        The manager maintains a working position map as orders are approved, rejects
+        orders with missing prices, and emits `max_gross_usd` when a candidate would
+        breach the configured gross exposure limit.
+        """
         working_qty: dict[str, float] = {
             symbol: float(pos.qty) for symbol, pos in context.positions.items()
         }
@@ -127,6 +142,7 @@ class MaxPositionUsdPerSymbolRiskManager(RiskManager):
         orders: Iterable[Mapping[str, object]],
         context: RiskContext,
     ) -> Sequence[Mapping[str, object]]:
+        """Return orders that keep each symbol's projected USD exposure within limit."""
         approved, _ = self.evaluate(orders, context)
         return approved
 
@@ -135,6 +151,12 @@ class MaxPositionUsdPerSymbolRiskManager(RiskManager):
         orders: Iterable[Mapping[str, object]],
         context: RiskContext,
     ) -> tuple[Sequence[Mapping[str, object]], Sequence[Mapping[str, object]]]:
+        """Evaluate each order against its symbol-level projected USD exposure.
+
+        Orders with missing prices are rejected, blank-symbol orders pass through,
+        and candidates that would exceed the configured absolute symbol exposure
+        receive `max_pos_usd_per_symbol`.
+        """
         approved: list[Mapping[str, object]] = []
         rejected: list[Mapping[str, object]] = []
 
@@ -176,6 +198,7 @@ class OpenBuyOrderLimitRiskManager(RiskManager):
         orders: Iterable[Mapping[str, object]],
         context: RiskContext,
     ) -> Sequence[Mapping[str, object]]:
+        """Return orders that do not violate the open-buy limit for tracked symbols."""
         approved, _ = self.evaluate(orders, context)
         return approved
 
@@ -184,6 +207,12 @@ class OpenBuyOrderLimitRiskManager(RiskManager):
         orders: Iterable[Mapping[str, object]],
         context: RiskContext,
     ) -> tuple[Sequence[Mapping[str, object]], Sequence[Mapping[str, object]]]:
+        """Reject duplicate pending buy orders while reserving approved symbols.
+
+        Non-buy or blank-symbol orders pass through. Buy orders are rejected when a
+        prior approved order in this manager already reserved the symbol or when
+        context shows too many open buy orders for that symbol.
+        """
         order_list = list(orders)
         approved: list[Mapping[str, object]] = []
         rejected: list[Mapping[str, object]] = []

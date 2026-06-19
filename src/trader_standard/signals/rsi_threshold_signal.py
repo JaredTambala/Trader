@@ -13,7 +13,11 @@ from trader_standard.indicators import RsiIndicator
 
 @dataclass(frozen=True)
 class RsiThresholdSignal(Signal):
-    """Signal that marks oversold and overbought RSI states."""
+    """Emit long/exit actions from RSI threshold crossings.
+
+    Values at or below `oversold` return `1.0`; values at or above `overbought`
+    return `-1.0`; middle-band values return `0.0`.
+    """
 
     indicator: RsiIndicator
     oversold: float = 30.0
@@ -22,6 +26,7 @@ class RsiThresholdSignal(Signal):
 
     @property
     def name(self) -> str:
+        """Return the override or parameterized RSI threshold name for strategy audit payloads."""
         if self.name_override:
             return self.name_override
         return (
@@ -31,9 +36,16 @@ class RsiThresholdSignal(Signal):
 
     @property
     def window(self) -> int:
+        """Return the underlying RSI warmup window required for threshold signal evaluation."""
         return self.indicator.window
 
     def compute(self, bars: Sequence[Bar]) -> float:
+        """Return the latest RSI threshold action for oversold, overbought, or neutral.
+
+        The first completed RSI value is compared with configured thresholds:
+        oversold returns `1.0`, overbought returns `-1.0`, and middle values return
+        `0.0`.
+        """
         series = self.indicator.compute_series(bars)
         value = series[0]
         if value <= self.oversold:
@@ -43,6 +55,7 @@ class RsiThresholdSignal(Signal):
         return 0.0
 
     def indicator_values(self, bars: Sequence[Bar]) -> Sequence[tuple[str, float, datetime]]:
+        """Return the current RSI value as a timestamped legacy audit tuple for events."""
         series = self.indicator.compute_series(bars)
         if not series:
             raise ValueError("Insufficient bars for RSI indicator values")

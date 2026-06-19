@@ -28,7 +28,15 @@ def ingest_documents(
     force: bool = False,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
-    """Extract, chunk, embed, and index registered source documents."""
+    """Ingest registered sources into citeable chunks and searchable embeddings.
+
+    The command validates batch size, loads each source manifest, reuses existing
+    chunks unless `force` is true, extracts text, creates deterministic chunks, and
+    indexes all resulting embeddings through the configured store. Extraction,
+    chunking, storage, and embedding failures are converted into tool envelopes
+    with a saved ingestion report whenever possible so callers can inspect partial
+    progress and blockers.
+    """
     if not source_ids:
         return error_envelope(
             command=KNOWLEDGE_INGEST_DOCUMENTS,
@@ -168,7 +176,13 @@ def get_ingestion_status(
     run_id: str | None = None,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
-    """Return source and ingestion status from local manifests."""
+    """Summarize registered-source and ingestion-report state without mutation.
+
+    The status response lists matching sources with chunk counts and indexed flags,
+    then appends persisted ingestion reports filtered by source IDs or run ID. Store
+    failures become read-only error envelopes so monitoring tools can distinguish
+    repository problems from an empty knowledge base.
+    """
     store = knowledge_store or JsonKnowledgeStore(artifact_root)
     source_filter = {str(source_id) for source_id in source_ids or ()}
     sources = []

@@ -9,7 +9,7 @@ from typing import Mapping, Sequence
 import uuid
 
 from .broker import Broker
-from .data import EventStore
+from .event_store import EventStore
 from .symbols import canonicalize_symbol, configured_symbol_set, normalize_asset_class
 
 
@@ -20,7 +20,13 @@ _OPEN_STATUSES = {"submitted", "accepted", "partially_filled", "error"}
 
 @dataclass
 class RecoveryReport:
-    """Summary of a startup recovery or maintenance run."""
+    """Observable summary of startup reconciliation or local cleanup actions.
+
+    Counts describe what was found locally and at the broker, while `actions`
+    carries appended event payloads for audit. Broker-open lists are split by
+    configured trading universe so operators can distinguish resumable in-scope
+    orders from unsafe out-of-scope exposure.
+    """
 
     mode: str
     local_open_before: int = 0
@@ -43,7 +49,13 @@ def inspect_recovery_state(
     configured_symbols: Sequence[str],
     configured_asset_class: str,
 ) -> RecoveryReport:
-    """Inspect broker/local open order state without mutating event-store state."""
+    """Compare local and broker open-order state without writing events.
+
+    This report-only path is used by operators and tests to see what recovery
+    would act on. It loads latest local order events, reads broker orders when
+    supported, filters open statuses, and partitions broker orders by configured
+    symbol/asset-class scope.
+    """
     local_latest = _load_latest_order_events(event_store)
     local_open = [event for event in local_latest if str(event.get("status", "")).lower() in _OPEN_STATUSES]
     broker_orders = _list_broker_orders(broker)
@@ -73,7 +85,14 @@ def run_startup_recovery(
     mode: str,
     run_id: str | None = None,
 ) -> RecoveryReport:
-    """Run read-only broker reconciliation to repair local order history."""
+    """Reconcile startup order state and append only missing lifecycle events.
+
+    Local open orders missing from the broker are closed as canceled, local
+    orders with changed broker status receive a new lifecycle event, and
+    in-scope broker-open orders missing locally are adopted. Out-of-scope broker
+    opens always fail closed; `fail_closed` mode also rejects in-scope broker
+    opens instead of adopting them.
+    """
     normalized_mode = str(mode or "resume").strip().lower()
     if normalized_mode not in {"resume", "fail_closed"}:
         raise ValueError(f"Unsupported startup recovery mode: {mode}")
@@ -176,7 +195,12 @@ def run_local_clean_start(
     configured_asset_class: str,
     run_id: str | None = None,
 ) -> RecoveryReport:
-    """Close local open orders in scope without touching broker state."""
+    """Append local cancellations for scoped open orders without broker calls.
+
+    This maintenance path deliberately does not contact or cancel broker-side
+    orders. It is for resetting local event-store state after an operator has
+    already handled venue state separately.
+    """
     local_latest = _load_latest_order_events(event_store)
     local_open = [event for event in local_latest if str(event.get("status", "")).lower() in _OPEN_STATUSES]
     in_scope, out_of_scope = _partition_local_orders(

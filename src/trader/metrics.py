@@ -12,7 +12,7 @@ import json
 
 from .portfolio import Position, load_latest_positions, load_latest_cash
 from .broker import Broker
-from .data import EventStore
+from .event_store import EventStore
 from .symbols import normalize_broker_positions
 
 
@@ -21,7 +21,17 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class MetricsSample:
-    """Simple equity snapshot."""
+    """Point-in-time portfolio metrics derived from cash, positions, and prices.
+
+    Attributes:
+        ts: UTC timestamp when the sample was computed.
+        equity: Cash plus priced position notionals.
+        cash: Current cash balance.
+        net_exposure: Signed priced exposure.
+        gross_exposure: Absolute priced exposure.
+        return_since_start: Return relative to the worker baseline equity.
+        drawdown: Return relative to the worker peak equity.
+    """
 
     ts: datetime
     equity: float
@@ -33,7 +43,12 @@ class MetricsSample:
 
 
 class MetricsWorker(threading.Thread):
-    """Background sampler for realtime equity metrics."""
+    """Background thread that samples portfolio metrics during live service runs.
+
+    The worker can read broker account/positions when supplied, otherwise it
+    reconstructs state from the event store. Samples are logged every interval
+    and optionally persisted as JSON metrics snapshots.
+    """
 
     def __init__(
         self,
@@ -61,11 +76,16 @@ class MetricsWorker(threading.Thread):
         self._broker = broker
 
     def stop(self) -> None:
-        """Request the worker to stop."""
+        """Request the sampling loop to exit after the current sleep interval."""
         self._stop = True
 
     def run(self) -> None:
-        """Main loop."""
+        """Run the sampling loop until `stop()` requests shutdown.
+
+        Each iteration samples portfolio metrics, optionally persists a snapshot,
+        logs the core exposure and drawdown values, and continues after recoverable
+        sampling errors so observability does not terminate the trading process.
+        """
         logger.info(
             "Metrics worker start interval=%ss window=%s",
             self._interval,
@@ -93,7 +113,12 @@ class MetricsWorker(threading.Thread):
         logger.info("Metrics worker stopped")
 
     def _sample(self) -> MetricsSample | None:
-        """Compute a metrics snapshot."""
+        """Compute one metrics snapshot from current positions, cash, and prices.
+
+        The first valid sample establishes baseline and peak equity. Later
+        samples use those retained values to compute return since start and
+        drawdown.
+        """
         positions, cash = self._load_positions_and_cash()
         if not positions and cash == 0.0:
             return None

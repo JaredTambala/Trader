@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import logging
 from typing import Iterable, Mapping, Sequence
 
-from .data import EventStore
+from .event_store import EventStore
 
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class Position:
-    """Single-symbol position snapshot."""
+    """Position quantity and cost basis for one symbol.
+
+    Attributes:
+        symbol: Canonical symbol spelling used by runtime config and brokers.
+        qty: Signed position quantity; negative values represent shorts.
+        avg_price: Average entry price for the open position when known.
+    """
 
     symbol: str
     qty: float
@@ -24,7 +30,11 @@ class Position:
 
 @dataclass(frozen=True)
 class PortfolioSnapshot:
-    """Portfolio state at a point in time."""
+    """Portfolio state persisted as one row per position at a timestamp.
+
+    An empty portfolio is represented by a single row with `symbol=None` so cash
+    can still be reconstructed from the event store.
+    """
 
     asof_ts: datetime
     positions: Sequence[Position]
@@ -34,7 +44,12 @@ class PortfolioSnapshot:
     session_id: str | None = None
 
     def persist(self, event_store: EventStore) -> None:
-        """Persist the snapshot to the event store."""
+        """Append this snapshot to the event store.
+
+        Each position becomes one `position_snapshots` event with the same cash
+        balance and correlation IDs. When no positions exist, a sentinel row is
+        written so cash-only state is not lost.
+        """
         session_id = self.session_id or self.run_id
         if not self.positions:
             event_store.record_event(
@@ -69,19 +84,33 @@ class PortfolioSnapshot:
 
 @dataclass
 class Portfolio:
-    """In-memory portfolio state derived from persisted snapshots."""
+    """Mutable in-memory portfolio used during one cycle or backtest replay.
+
+    The object tracks the current position map and cash balance. Callers mutate
+    it with executed order/fill evidence, then persist immutable snapshots for
+    audit and later reconstruction.
+    """
 
     positions: dict[str, Position] = field(default_factory=dict)
     cash_balance: float = 0.0
 
     @classmethod
     def empty(cls, *, cash_balance: float = 0.0) -> Portfolio:
-        """Create an empty portfolio."""
+        """Create a portfolio with no positions and the requested cash balance."""
         return cls(positions={}, cash_balance=cash_balance)
 
     @classmethod
     def from_event_store(cls, event_store: EventStore, *, asof_ts: datetime | None = None) -> Portfolio:
-        """Load the latest positions per symbol from the event store."""
+        """Reconstruct current or historical portfolio state from snapshots.
+
+        Args:
+            event_store: Store exposing position snapshot rows.
+            asof_ts: Optional upper timestamp bound for backtest-safe reads.
+
+        Returns:
+            Portfolio containing the latest position per symbol and latest cash
+            balance at or before `asof_ts`.
+        """
         positions = {
             position.symbol: position for position in load_latest_positions(event_store, asof_ts=asof_ts)
         }
@@ -185,7 +214,17 @@ class Portfolio:
 
 
 def load_latest_positions(event_store: EventStore, *, asof_ts: datetime | None = None) -> list[Position]:
-    """Load the latest position per symbol from the event store."""
+    """Load one latest non-empty position snapshot per symbol.
+
+    Args:
+        event_store: Store with a SQL connection.
+        asof_ts: Optional upper timestamp bound; used by backtests to avoid
+            reading future snapshots.
+
+    Returns:
+        Position objects reconstructed from the latest row for each symbol. An
+        empty list is returned when the store has no readable connection.
+    """
     connection = getattr(event_store, "connection", lambda: None)()
     if connection is None:
         logger.warning("Portfolio load skipped; event store has no connection")
@@ -243,7 +282,15 @@ def load_latest_positions(event_store: EventStore, *, asof_ts: datetime | None =
 
 
 def load_latest_cash(event_store: EventStore, *, asof_ts: datetime | None = None) -> float | None:
-    """Load the latest cash balance from the event store."""
+    """Load the latest recorded cash balance from position snapshots.
+
+    Args:
+        event_store: Store with a SQL connection.
+        asof_ts: Optional upper timestamp bound for historical reconstruction.
+
+    Returns:
+        Latest cash balance, or `None` when no snapshot is available.
+    """
     connection = getattr(event_store, "connection", lambda: None)()
     if connection is None:
         logger.warning("Cash load skipped; event store has no connection")
@@ -279,7 +326,11 @@ def load_latest_cash(event_store: EventStore, *, asof_ts: datetime | None = None
 
 
 def snapshot_now(positions: Iterable[Position]) -> PortfolioSnapshot:
-    """Create a snapshot using the current UTC time."""
+    """Create a cash-neutral snapshot for legacy callers with explicit positions.
+
+    Newer runtime paths prefer `Portfolio.snapshot()` because it preserves cash
+    and run/cycle correlation IDs.
+    """
     return PortfolioSnapshot(
         asof_ts=datetime.now(timezone.utc),
         positions=tuple(positions),
@@ -293,7 +344,12 @@ def _compute_avg_price(
     new_qty: float,
     price: float | None,
 ) -> float | None:
-    """Compute the new average price after applying a trade delta."""
+    """Compute average entry price after a position quantity change.
+
+    Adding to an existing position recalculates weighted average cost. Reducing
+    without crossing zero preserves the prior cost basis, closing returns
+    `None`, and crossing sides starts the new position at the execution price.
+    """
     if new_qty == 0:
         return None
     if price is None:

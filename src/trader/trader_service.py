@@ -13,7 +13,7 @@ import re
 
 from .config import Config
 from .cycle import run_cycle
-from .data import EventStore, build_event_store
+from .event_store import EventStore, build_event_store
 from .identifiers import deterministic_run_session_id
 from .market_data import NoOpMarketDataSource
 from .portfolio import Portfolio, Position
@@ -32,7 +32,12 @@ _CHANNEL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class TraderService:
-    """Execute trading cycles in loop or realtime mode."""
+    """Long-running coordinator for live trading cycle execution.
+
+    The service owns one event store, one broker instance, startup recovery,
+    optional portfolio seeding/sync, optional metrics sampling, and the selected
+    runtime mode (`once`, fixed-cadence loop, or Postgres NOTIFY-driven realtime).
+    """
 
     def __init__(
         self,
@@ -47,7 +52,23 @@ class TraderService:
         max_iterations: int | None = None,
         config_snapshot: Mapping[str, object] | None = None,
     ) -> None:
-        """Initialize the instance."""
+        """Create a trader service with injected strategy and risk dependencies.
+
+        Args:
+            config: Typed runtime configuration.
+            strategy: Strategy instance used for every cycle.
+            risk_manager: Risk manager or pipeline used for every cycle.
+            event_store: Optional shared event store; otherwise built from config.
+            cadence_seconds: Loop-mode sleep between cycles.
+            min_trigger_interval_ms: Debounce interval for generic realtime
+                notifications.
+            notify_channel: Postgres channel used in realtime mode.
+            max_iterations: Optional loop bound for tests and controlled runs.
+            config_snapshot: Optional raw config persisted with run metadata.
+
+        Raises:
+            ValueError: If strategy or risk manager is missing.
+        """
         self._config = config
         self._event_store = event_store or build_event_store(config)
         self._owns_event_store = event_store is None
@@ -68,7 +89,13 @@ class TraderService:
         self._last_order_reconciliation_at = 0.0
 
     def run(self) -> None:
-        """Run the trading service based on the configured mode."""
+        """Start the trading service and record the enclosing run session.
+
+        Startup records run metadata, reconciles open orders according to policy,
+        synchronizes or seeds portfolio state, starts metrics sampling, and then
+        dispatches to once/loop/realtime execution. The run session is always
+        finished in the event store before owned resources are closed.
+        """
         _install_signal_handlers(self)
         strategy = self._strategy
         risk_manager = self._risk_manager
@@ -170,12 +197,17 @@ class TraderService:
             self._stop_metrics_worker()
 
     def stop(self) -> None:
-        """Request the service to stop."""
+        """Request graceful shutdown and stop the metrics worker if it is active.
+
+        The running loop observes the stop flag between cycles, while the metrics
+        worker is stopped immediately so background sampling does not outlive the
+        service shutdown request.
+        """
         self._stop = True
         self._stop_metrics_worker()
 
     def _run_once(self, *, run_id: str, strategy: Strategy, risk_manager: RiskManager) -> None:
-        """Handle run once."""
+        """Execute exactly one trading cycle for the current service run."""
         logger.info("Trader service executing single cycle")
         _safe_run_cycle(
             self._event_store,
@@ -188,7 +220,7 @@ class TraderService:
         )
 
     def _run_loop(self, *, run_id: str, strategy: Strategy, risk_manager: RiskManager) -> None:
-        """Handle run loop."""
+        """Execute cycles at fixed cadence until stopped or iteration limit hit."""
         iterations = 0
         while not self._stop:
             _safe_run_cycle(
@@ -208,7 +240,13 @@ class TraderService:
             time.sleep(self._cadence_seconds)
 
     def _run_realtime(self, *, run_id: str, strategy: Strategy, risk_manager: RiskManager) -> None:
-        """Handle run realtime."""
+        """Execute cycles in response to market-data notifications.
+
+        Valid market-data payloads narrow the cycle to the notified symbol and
+        timestamp. Invalid/generic notifications set a pending flag and are
+        debounced through `min_trigger_interval_ms` before running a full cycle.
+        If LISTEN/NOTIFY is unavailable the service falls back to loop mode.
+        """
         connection = getattr(self._event_store, "connection", lambda: None)()
         if connection is None or not hasattr(connection, "notifies"):
             logger.warning("Realtime mode requires Postgres LISTEN/NOTIFY; falling back to loop")
@@ -354,7 +392,7 @@ def _safe_run_cycle(
     risk_manager: RiskManager | None = None,
     broker: Broker | None = None,
 ) -> None:
-    """Run a cycle and log failures without crashing the service."""
+    """Run a full-symbol cycle and contain failures inside the service loop."""
     try:
         portfolio = Portfolio.from_event_store(event_store)
         if _resolve_portfolio_source(config, None) == "alpaca":
@@ -386,7 +424,7 @@ def _safe_run_cycle_for_notify(
     risk_manager: RiskManager | None = None,
     broker: Broker | None = None,
 ) -> None:
-    """Handle safe run cycle for notify."""
+    """Run a notification-scoped cycle and contain failures inside realtime mode."""
     try:
         portfolio = Portfolio.from_event_store(event_store)
         if _resolve_portfolio_source(config, None) == "alpaca":
@@ -421,7 +459,11 @@ def _safe_run_cycle_for_notify(
 
 
 def _parse_market_data_notify(payload: str) -> Mapping[str, object] | None:
-    """Parse market data notify."""
+    """Parse and validate a market-data notification payload.
+
+    Returns `None` for malformed JSON or missing fields so realtime mode can
+    debounce a generic full-cycle trigger instead of crashing the listener.
+    """
     try:
         data = json.loads(payload)
     except json.JSONDecodeError:
@@ -522,7 +564,13 @@ def _maybe_sync_portfolio_from_alpaca(
     run_id: str,
     broker: Broker | None = None,
 ) -> None:
-    """Sync portfolio state from Alpaca when configured."""
+    """Replace local portfolio snapshots with broker state when configured.
+
+    Alpaca-backed portfolio state is treated as authoritative at startup. The
+    function logs matched/mismatched broker positions, clears old snapshots,
+    writes the fresh snapshot, and fails closed if any broker position is outside
+    the configured trading universe.
+    """
     source = _resolve_portfolio_source(config, config_snapshot)
     if source != "alpaca":
         return
@@ -620,7 +668,7 @@ def _build_runtime_broker(config: Config, event_store: EventStore) -> Broker:
 
 
 def _resolve_portfolio_source(config: Config, config_snapshot: Mapping[str, object] | None) -> str:
-    """Determine which source to use for realtime portfolio state."""
+    """Resolve whether live portfolio state should come from DB or broker."""
     typed_source = getattr(config, "trader_service_portfolio_source", "")
     if typed_source:
         return str(typed_source).strip().lower()
@@ -655,7 +703,7 @@ def _clear_position_snapshots(event_store: EventStore) -> None:
 
 
 def _parse_initial_positions(value: object | None) -> list[Position]:
-    """Parse trader_service.initial_positions into Position objects."""
+    """Parse configured initial positions into typed portfolio positions."""
     if value is None:
         return []
     if not isinstance(value, Iterable) or isinstance(value, (str, bytes)):
@@ -675,14 +723,14 @@ def _parse_initial_positions(value: object | None) -> list[Position]:
 
 
 def _parse_initial_cash(value: object | None) -> float:
-    """Parse trader_service.initial_cash into a float balance."""
+    """Parse configured initial cash, treating missing/empty as zero."""
     if value is None or value == "":
         return 0.0
     return float(value)
 
 
 def _resolve_channel(channel: str) -> str:
-    """Handle resolve channel."""
+    """Validate a Postgres NOTIFY channel name with a safe fallback."""
     if not _CHANNEL_RE.match(channel):
         logger.warning("Invalid notify channel; falling back to market_data")
         return "market_data"
@@ -693,7 +741,7 @@ def _install_signal_handlers(service: TraderService) -> None:
     """Attach signal handlers to stop the service cleanly."""
 
     def _handle_signal(signum: int, _frame: object) -> None:
-        """Handle shutdown signals and stop the service."""
+        """Translate process signals into a graceful service stop request."""
         logger.info("Shutdown signal received (%s); stopping service", signum)
         service.stop()
 

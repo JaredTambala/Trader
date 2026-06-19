@@ -1,15 +1,13 @@
-"""Broker interface for order execution."""
+"""Alpaca broker adapter and legacy broker export surface."""
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from importlib import import_module
 import logging
-import random
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence, cast, runtime_checkable
+from datetime import datetime, timezone
+from typing import Any, Callable, Iterable, Mapping, Sequence, cast
 
 try:  # pragma: no cover - optional alpaca dependency
     _TradingClient: Any = import_module("alpaca.trading.client").TradingClient
@@ -24,9 +22,18 @@ except Exception:  # pragma: no cover - alpaca not installed in test env
     _MarketOrderRequest = None
     _LimitOrderRequest = None
 
-from .data import EventStore
-from .identifiers import deterministic_client_order_id
-from .symbols import canonicalize_symbol, normalize_asset_class
+from ..event_store import EventStore
+from ..identifiers import deterministic_client_order_id
+from ..symbols import canonicalize_symbol, normalize_asset_class
+from .contracts import (
+    AccountBroker,
+    Broker,
+    OrderCancelBroker,
+    OrderLookupBroker,
+    OrderReconcileBroker,
+)
+from .helpers import coerce_float as _coerce_float
+from .internal import InternalPaperBroker, NoOpBroker
 
 _ALPACA_STATUS_MAP = {
     "new": "submitted",
@@ -53,236 +60,26 @@ _ClientFactory = Any
 _EnumFactory = Any
 _RequestFactory = Any
 
-
-def _coerce_float(value: object | None, *, default: float = 0.0) -> float:
-    """Best-effort float coercion for loosely typed order payloads."""
-    if value is None:
-        return default
-    try:
-        return float(cast(Any, value))
-    except (TypeError, ValueError):
-        return default
-
-
-class Broker(ABC):
-    """Submits orders to a trading venue or paper broker.
-
-    Broker responses should use canonical fields when available:
-    client_order_id, status, broker_order_id, symbol, asset_class, side, qty,
-    order_type, created_at, fill_qty, fill_price, fill_ts, and rejection_reason.
-    """
-
-    @abstractmethod
-    def submit_orders(self, orders: Iterable[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
-        """Submit orders and return broker responses.
-
-        Args:
-            orders: Iterable of order payloads ready for execution.
-
-        Returns:
-            Sequence of broker response payloads.
-
-        Raises:
-            Exception: Implementations raise if submission fails or is rejected.
-        """
-
-
-@runtime_checkable
-class AccountBroker(Protocol):
-    """Optional broker capability for remote account and position refreshes."""
-
-    def get_account(self) -> Mapping[str, object]:
-        """Return account fields such as cash, buying_power, and equity."""
-
-    def get_positions(self) -> Sequence[Mapping[str, object]]:
-        """Return normalized or broker-native open positions."""
-
-
-@runtime_checkable
-class OrderLookupBroker(Protocol):
-    """Optional broker capability for remote order reads."""
-
-    def list_orders(self, since_ts: datetime | None = None) -> Sequence[Mapping[str, object]]:
-        """Return broker orders, optionally bounded by timestamp."""
-
-    def get_order_by_id(self, broker_order_id: str) -> Mapping[str, object]:
-        """Return one broker order by broker ID."""
-
-
-@runtime_checkable
-class OrderCancelBroker(Protocol):
-    """Optional broker capability for order cancellation."""
-
-    def cancel_order(self, broker_order_id: str) -> None:
-        """Cancel one broker-side order."""
-
-
-@runtime_checkable
-class OrderReconcileBroker(Protocol):
-    """Optional broker capability for append-only local reconciliation."""
-
-    def reconcile_orders(self, since_ts: datetime | None = None) -> Sequence[Mapping[str, object]]:
-        """Append local order/fill events that reflect broker state."""
-
-
-class NoOpBroker(Broker):
-    """Broker that accepts orders without executing them."""
-
-    def submit_orders(self, orders: Iterable[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
-        """Accept orders without executing them.
-
-        Args:
-            orders: Iterable of order payloads.
-
-        Returns:
-            An empty list, since no orders are actually submitted.
-
-        Raises:
-            None.
-        """
-        return []
-
-
-class InternalPaperBroker(Broker):
-    """Paper broker that can simulate fills, latency, and rejection."""
-
-    def __init__(
-        self,
-        *,
-        reject_probability: float = 0.0,
-        fill_delay_ms_mean: float = 0.0,
-        fill_delay_ms_stddev: float = 0.0,
-        fill_qty_fraction_mean: float = 1.0,
-        fill_qty_fraction_stddev: float = 0.0,
-        slippage_bps: float = 0.0,
-        fee_fixed_per_order: float = 0.0,
-        fee_bps: float = 0.0,
-        fee_minimum: float = 0.0,
-        sleep_on_fill_delay: bool = True,
-        rng_seed: int | None = None,
-    ) -> None:
-        """Initialize the instance."""
-        self._logger = logging.getLogger(__name__)
-        self._reject_probability = max(0.0, min(float(reject_probability), 1.0))
-        self._fill_delay_ms_mean = max(0.0, float(fill_delay_ms_mean))
-        self._fill_delay_ms_stddev = max(0.0, float(fill_delay_ms_stddev))
-        self._fill_qty_fraction_mean = max(0.0, float(fill_qty_fraction_mean))
-        self._fill_qty_fraction_stddev = max(0.0, float(fill_qty_fraction_stddev))
-        self._slippage_bps = max(0.0, float(slippage_bps))
-        self._fee_fixed_per_order = max(0.0, float(fee_fixed_per_order))
-        self._fee_bps = max(0.0, float(fee_bps))
-        self._fee_minimum = max(0.0, float(fee_minimum))
-        self._sleep_on_fill_delay = bool(sleep_on_fill_delay)
-        self._rng = random.Random(rng_seed)
-
-    def submit_orders(self, orders: Iterable[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
-        """Submit orders to the broker backend."""
-        responses: list[Mapping[str, object]] = []
-        timestamp = datetime.now(timezone.utc)
-        for order in orders:
-            symbol = str(order.get("symbol", "")).strip().upper()
-            side = str(order.get("side", "")).lower().strip()
-            qty = _coerce_float(order.get("qty", 0.0))
-            run_id = order.get("run_id")
-            cycle_id = order.get("cycle_id")
-            price = order.get("price")
-            if not symbol or side not in {"buy", "sell"} or qty <= 0:
-                self._logger.warning("Skipping invalid order payload=%s", order)
-                continue
-            if cycle_id is None:
-                raise ValueError("cycle_id is required for internal broker orders")
-            if self._reject_probability > 0 and self._rng.random() < self._reject_probability:
-                responses.append(
-                    {
-                        "order_event_id": f"order_evt_{uuid.uuid4().hex}",
-                        "client_order_id": order.get("client_order_id"),
-                        "run_id": run_id,
-                        "cycle_id": cycle_id,
-                        "symbol": symbol,
-                        "status": "rejected",
-                        "broker_order_id": None,
-                        "order_type": str(order.get("order_type", "market")),
-                        "qty": qty,
-                        "fill_ts": timestamp,
-                        "fill_qty": None,
-                        "fill_price": None,
-                        "rejection_reason": "internal_reject_probability",
-                    }
-                )
-                continue
-            delay_ms = 0.0
-            if self._fill_delay_ms_mean or self._fill_delay_ms_stddev:
-                delay_ms = max(
-                    0.0,
-                    self._rng.gauss(self._fill_delay_ms_mean, self._fill_delay_ms_stddev),
-                )
-            if delay_ms and self._sleep_on_fill_delay:
-                time.sleep(delay_ms / 1000.0)
-            client_order_id = order.get("client_order_id") or deterministic_client_order_id(
-                str(cycle_id),
-                symbol,
-                side,
-                qty,
-            )
-            fill_fraction = 1.0
-            if self._fill_qty_fraction_mean or self._fill_qty_fraction_stddev:
-                fill_fraction = max(
-                    0.0,
-                    self._rng.gauss(self._fill_qty_fraction_mean, self._fill_qty_fraction_stddev),
-                )
-            fill_qty = qty * fill_fraction
-            status = "filled" if price is not None else "error"
-            if price is not None and 0 < fill_qty < qty:
-                status = "partially_filled"
-            raw_fill_price = _coerce_float(price, default=0.0) if price is not None else None
-            base_fill_ts = order.get("created_at")
-            if not isinstance(base_fill_ts, datetime):
-                base_fill_ts = timestamp
-            fill_ts = base_fill_ts + timedelta(milliseconds=delay_ms, microseconds=3)
-            fill_price = raw_fill_price
-            slippage_amount = 0.0
-            fee_amount = 0.0
-            if raw_fill_price is None:
-                self._logger.warning("Missing price for order; fill skipped symbol=%s", symbol)
-            else:
-                if side == "buy":
-                    fill_price = raw_fill_price * (1.0 + (self._slippage_bps / 10_000.0))
-                else:
-                    fill_price = raw_fill_price * (1.0 - (self._slippage_bps / 10_000.0))
-                slippage_amount = abs(fill_price - raw_fill_price) * fill_qty
-                fee_amount = self._compute_fee_amount(fill_qty, fill_price)
-            responses.append(
-                {
-                    "order_event_id": f"order_evt_{uuid.uuid4().hex}",
-                    "client_order_id": client_order_id,
-                    "run_id": run_id,
-                    "cycle_id": cycle_id,
-                    "symbol": symbol,
-                    "status": status,
-                    "broker_order_id": None,
-                    "order_type": str(order.get("order_type", "market")),
-                    "qty": qty,
-                    "fill_ts": fill_ts,
-                    "fill_qty": fill_qty if fill_price is not None else None,
-                    "raw_fill_price": raw_fill_price,
-                    "fill_price": fill_price,
-                    "slippage_amount": slippage_amount,
-                    "fee_amount": fee_amount,
-                }
-            )
-        return responses
-
-    def _compute_fee_amount(self, fill_qty: float, fill_price: float) -> float:
-        """Compute deterministic fees for a single fill."""
-        bps_fee = abs(fill_qty * fill_price) * (self._fee_bps / 10_000.0)
-        fee = self._fee_fixed_per_order + bps_fee
-        if fee <= 0.0 and self._fee_minimum <= 0.0:
-            return 0.0
-        return max(self._fee_minimum, fee)
+__all__ = [
+    "AccountBroker",
+    "AlpacaPaperBroker",
+    "Broker",
+    "InternalPaperBroker",
+    "NoOpBroker",
+    "OrderCancelBroker",
+    "OrderLookupBroker",
+    "OrderReconcileBroker",
+]
 
 
 class AlpacaPaperBroker(Broker):
-    """Alpaca paper broker adapter using alpaca-py."""
+    """Broker adapter for Alpaca paper trading.
+
+    The adapter converts the project's canonical order payloads into alpaca-py
+    requests, retries transient client failures, normalizes provider responses
+    back into local order-event fields, and uses the event store to avoid
+    duplicate submissions for already-open client order IDs.
+    """
 
     def __init__(
         self,
@@ -295,7 +92,21 @@ class AlpacaPaperBroker(Broker):
         max_retries: int = 3,
         retry_backoff_seconds: float = 0.5,
     ) -> None:
-        """Initialize the broker."""
+        """Create an Alpaca trading client or wrap an injected test client.
+
+        Args:
+            api_key: Alpaca API key used when constructing a real client.
+            secret_key: Alpaca secret key used when constructing a real client.
+            base_url: Optional paper-trading endpoint override.
+            event_store: Optional local event store used for idempotency checks
+                and reconciliation writes.
+            client: Injected alpaca-py compatible client for tests.
+            max_retries: Number of attempts for provider calls.
+            retry_backoff_seconds: Base exponential backoff between attempts.
+
+        Raises:
+            ImportError: If alpaca-py is unavailable and no client is injected.
+        """
         self._client: Any
         if client is None:
             trading_client: _ClientFactory = _TradingClient
@@ -326,7 +137,14 @@ class AlpacaPaperBroker(Broker):
         self._retry_backoff_seconds = retry_backoff_seconds
 
     def get_positions(self) -> Sequence[Mapping[str, object]]:
-        """Fetch open positions from Alpaca."""
+        """Fetch and normalize open positions from Alpaca.
+
+        Returns:
+            Position mappings with canonical symbol spelling, normalized asset
+            class, signed quantity, average entry price, and side. Numeric
+            values may still be provider-derived strings until downstream
+            portfolio code coerces them.
+        """
         positions = cast(Sequence[object], self._with_retries(self._client.get_all_positions))
         results: list[Mapping[str, object]] = []
         for position in positions or []:
@@ -353,7 +171,22 @@ class AlpacaPaperBroker(Broker):
         return results
 
     def submit_orders(self, orders: Iterable[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
-        """Submit orders to Alpaca with idempotency checks."""
+        """Submit canonical order payloads while preserving idempotency.
+
+        For each order the adapter ensures a deterministic `client_order_id`,
+        checks the local event store for an existing open submission, attempts
+        broker-side reconciliation when an order already exists, and submits a
+        new Alpaca request only when no active broker order remains. Provider
+        exceptions are converted into `error` responses so the cycle can persist
+        an auditable terminal event instead of losing the attempted order.
+
+        Args:
+            orders: Risk-approved order payloads from the runtime cycle.
+
+        Returns:
+            Canonical broker response mappings, one per successfully submitted,
+            reconciled, or failed order attempt.
+        """
         responses: list[Mapping[str, object]] = []
         for order in orders:
             enriched = self._ensure_client_order_id(order)
@@ -398,7 +231,17 @@ class AlpacaPaperBroker(Broker):
         return responses
 
     def get_order_by_id(self, broker_order_id: str) -> Mapping[str, object]:
-        """Fetch a single order by broker ID."""
+        """Fetch and normalize one broker order by its Alpaca identifier.
+
+        Args:
+            broker_order_id: Provider-side order ID returned by Alpaca.
+
+        Returns:
+            Canonical order response fields used by reconciliation and recovery.
+
+        Raises:
+            AttributeError: If the injected client lacks an order lookup method.
+        """
         getter = getattr(self._client, "get_order_by_id", None) or getattr(self._client, "get_order", None)
         if getter is None:
             raise AttributeError("Trading client does not support get_order_by_id")
@@ -406,7 +249,18 @@ class AlpacaPaperBroker(Broker):
         return self._normalize_order_response(response, {})
 
     def list_orders(self, since_ts: datetime | None = None) -> Sequence[Mapping[str, object]]:
-        """List orders submitted since a timestamp."""
+        """List broker orders and normalize them for local reconciliation.
+
+        Args:
+            since_ts: Optional timestamp passed to Alpaca as the lower bound for
+                returned orders when the client supports it.
+
+        Returns:
+            Canonical response mappings ordered as supplied by the provider.
+
+        Raises:
+            AttributeError: If the injected client cannot list orders.
+        """
         getter = getattr(self._client, "get_orders", None) or getattr(self._client, "list_orders", None)
         if getter is None:
             raise AttributeError("Trading client does not support list_orders/get_orders")
@@ -420,7 +274,16 @@ class AlpacaPaperBroker(Broker):
         return results
 
     def get_account(self) -> Mapping[str, object]:
-        """Fetch basic account info."""
+        """Fetch account-level balances from the Alpaca client.
+
+        Returns:
+            Mapping with `cash`, `buying_power`, and `equity` fields. Values are
+            passed through from alpaca-py because provider precision is normally
+            string based.
+
+        Raises:
+            AttributeError: If the injected client lacks account support.
+        """
         getter = getattr(self._client, "get_account", None)
         if getter is None:
             raise AttributeError("Trading client does not support get_account")
@@ -432,14 +295,37 @@ class AlpacaPaperBroker(Broker):
         }
 
     def cancel_order(self, broker_order_id: str) -> None:
-        """Cancel a single broker order by id."""
+        """Request cancellation of a single Alpaca order.
+
+        Args:
+            broker_order_id: Provider-side order ID to cancel.
+
+        Raises:
+            AttributeError: If the injected client lacks cancellation support.
+            Exception: Provider errors after retries are surfaced to the caller.
+        """
         canceler = getattr(self._client, "cancel_order_by_id", None)
         if canceler is None:
             raise AttributeError("Trading client does not support cancel_order_by_id")
         self._with_retries(canceler, broker_order_id)
 
     def reconcile_orders(self, since_ts: datetime | None = None) -> Sequence[Mapping[str, object]]:
-        """Reconcile open orders and persist status transitions."""
+        """Repair local open-order state from Alpaca and append new events.
+
+        The method loads the latest local event per client order, asks Alpaca
+        for current broker-side state, and writes only append-only order/fill
+        events for status transitions. Local open orders missing from Alpaca are
+        closed as `canceled` with a `reconciled_missing` reason so operators can
+        see the reconciliation decision.
+
+        Args:
+            since_ts: Optional lower bound for broker orders inspected.
+
+        Returns:
+            The normalized status updates appended to the local event store. An
+            empty list means there was no event store, no open local orders, or
+            no broker-visible transition to persist.
+        """
         if not self._event_store:
             return []
         latest_events = self._load_latest_order_events()
@@ -536,7 +422,13 @@ class AlpacaPaperBroker(Broker):
         *args: object,
         **kwargs: object,
     ) -> object:
-        """Retry helper for Alpaca API calls."""
+        """Run an Alpaca client call with bounded exponential backoff.
+
+        The helper retries only by re-invoking the supplied callable; it does not
+        inspect exception types because alpaca-py has changed its exception
+        hierarchy across versions. The last provider exception is re-raised so
+        callers can record an explicit failure response.
+        """
         last_exc: Exception | None = None
         for attempt in range(1, self._max_retries + 1):
             try:
@@ -551,7 +443,12 @@ class AlpacaPaperBroker(Broker):
         raise RuntimeError("Alpaca call failed without exception")
 
     def _ensure_client_order_id(self, order: Mapping[str, object]) -> Mapping[str, object]:
-        """Ensure deterministic client order id."""
+        """Return an order carrying the deterministic local client order ID.
+
+        Existing IDs are preserved so externally supplied IDs remain stable. If
+        absent, the ID is derived from cycle, symbol, side, and quantity to make
+        retries idempotent across process restarts.
+        """
         if order.get("client_order_id"):
             return order
         cycle_id = str(order.get("cycle_id", ""))
@@ -562,7 +459,13 @@ class AlpacaPaperBroker(Broker):
         return {**order, "client_order_id": client_order_id}
 
     def _build_order_request(self, order: Mapping[str, object]) -> object:
-        """Build an Alpaca order request payload."""
+        """Translate a canonical order mapping into an alpaca-py request.
+
+        Crypto symbols are converted from market-data spelling (`BTC/USD`) to
+        trading spelling (`BTCUSD`), unsupported crypto day orders are promoted
+        to `gtc`, and a plain mapping fallback is returned when tests inject a
+        lightweight client without alpaca-py request classes.
+        """
         symbol = str(order.get("symbol", "")).strip().upper()
         side = str(order.get("side", "")).lower().strip()
         qty = _coerce_float(order.get("qty", 0.0))
@@ -624,7 +527,13 @@ class AlpacaPaperBroker(Broker):
         response: object,
         order: Mapping[str, object],
     ) -> Mapping[str, object]:
-        """Normalize Alpaca order response into internal fields."""
+        """Convert an Alpaca response object or mapping into local order fields.
+
+        The normalizer accepts both alpaca-py objects and dict-like test fakes,
+        maps provider statuses into the project's canonical lifecycle states,
+        canonicalizes symbol/asset-class spelling, and preserves fill quantity,
+        price, timestamps, and rejection reason for persistence.
+        """
         status_raw = self._coerce_value(response, "status")
         status = self._map_status(str(status_raw) if status_raw is not None else "")
         broker_order_id = self._coerce_value(response, "id") or self._coerce_value(response, "order_id")
@@ -676,11 +585,11 @@ class AlpacaPaperBroker(Broker):
         }
 
     def _map_status(self, status: str) -> str:
-        """Map Alpaca status strings to canonical values."""
+        """Map provider status strings to the local order lifecycle vocabulary."""
         return _ALPACA_STATUS_MAP.get(status.lower(), "error") if status else "error"
 
     def _coerce_value(self, source: object, key: str) -> object | None:
-        """Read a value from response objects or mappings."""
+        """Read a provider field from either a mapping or object attribute."""
         if source is None:
             return None
         if isinstance(source, Mapping):
@@ -690,7 +599,7 @@ class AlpacaPaperBroker(Broker):
         return None
 
     def _coerce_enumish(self, value: object | None) -> str | None:
-        """Convert Alpaca enum-like objects into lowercase strings."""
+        """Convert Alpaca enum instances or raw strings into lowercase text."""
         if value is None:
             return None
         raw = getattr(value, "value", value)
@@ -698,7 +607,7 @@ class AlpacaPaperBroker(Broker):
         return text.lower() if text else None
 
     def _parse_timestamp(self, value: object | None) -> datetime | None:
-        """Normalize response timestamps into timezone-aware datetimes."""
+        """Parse provider timestamps while tolerating absent or malformed values."""
         if value is None:
             return None
         if isinstance(value, datetime):
@@ -711,7 +620,12 @@ class AlpacaPaperBroker(Broker):
         return None
 
     def _find_existing_order(self, client_order_id: str) -> Mapping[str, object] | None:
-        """Return the most recent order event for client_order_id."""
+        """Return the latest local order event used for submit idempotency.
+
+        Both DuckDB and Postgres-backed stores are supported by selecting the
+        correct positional placeholder. Query failures are logged and treated as
+        a miss so submission can continue with an explicit provider response.
+        """
         if not self._event_store:
             return None
         connection = getattr(self._event_store, "connection", lambda: None)()
@@ -747,7 +661,7 @@ class AlpacaPaperBroker(Broker):
         client_order_id: str,
         broker_order_id: str | None,
     ) -> Mapping[str, object] | None:
-        """Fetch the latest broker status for an existing order."""
+        """Fetch broker state for a locally known order before resubmitting."""
         try:
             if broker_order_id:
                 return self.get_order_by_id(str(broker_order_id))
@@ -760,7 +674,13 @@ class AlpacaPaperBroker(Broker):
         return None
 
     def _load_latest_order_events(self) -> Sequence[Mapping[str, object]]:
-        """Load the latest order event per client_order_id."""
+        """Load one latest local lifecycle event per client order.
+
+        The reconciliation path needs local open orders, not every historical
+        event. Rows are sorted newest first and de-duplicated in Python so the
+        same query works against the project's supported test and production
+        connection types.
+        """
         connection = getattr(self._event_store, "connection", lambda: None)()
         if connection is None:
             return []

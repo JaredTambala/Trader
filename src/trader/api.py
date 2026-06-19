@@ -1,4 +1,9 @@
-"""REST API for UI-driven backtests."""
+"""REST API for starting and inspecting UI-driven backtests.
+
+The API keeps lightweight in-memory run progress for active requests while also
+persisting completed backtest results to the configured event store so results
+can survive process restarts.
+"""
 
 from __future__ import annotations
 
@@ -15,14 +20,25 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 from .backtest import BacktestRunner, BacktestSpec, persist_backtest_result, serialize_backtest_result
-from .data import build_event_store
+from .event_store import build_event_store
 from .config import build_config, load_yaml_config
 from .identifiers import deterministic_run_session_id
 from .timeframes import normalize_timeframe
 
 
 class BacktestRequest(BaseModel):
-    """Payload for starting a backtest run."""
+    """Validated request body for creating a backtest run.
+
+    Attributes:
+        symbols: Non-empty symbol universe requested by the UI.
+        timeframe: User-supplied timeframe normalized before replay.
+        start: Inclusive replay window start timestamp.
+        end: Inclusive replay window end timestamp.
+        asset_class: Market-data table/source family to use.
+        initial_cash: Cash balance seeded before the first cycle.
+        strategy_params: Optional UI payload preserved for provenance.
+        max_runs: Optional cap for short exploratory runs.
+    """
 
     symbols: list[str]
     timeframe: str
@@ -35,7 +51,12 @@ class BacktestRequest(BaseModel):
 
 
 class BacktestResponse(BaseModel):
-    """Response payload for newly created backtest runs."""
+    """Response body returned after a backtest worker has been queued.
+
+    Attributes:
+        run_id: Deterministic run-session identifier used for progress and
+            result polling.
+    """
 
     run_id: str
 
@@ -57,7 +78,7 @@ BACKTEST_RUNS: dict[str, dict[str, Any]] = {}
 
 
 def _sanitize_serializable(value: Any) -> Any:
-    """Convert raw values to JSON serializable forms."""
+    """Recursively convert datetimes and containers into JSON-safe values."""
     if isinstance(value, datetime):
         return value.isoformat()
     if isinstance(value, dict):
@@ -67,7 +88,14 @@ def _sanitize_serializable(value: Any) -> Any:
     return value
 
 def _run_backtest_worker(run_id: str, request: BacktestRequest) -> None:
-    """Background worker that runs the requested backtest."""
+    """Execute one requested backtest and update shared run state.
+
+    The worker normalizes the request, builds a runner from the startup config,
+    updates progress after each replay timestamp, persists the final result to
+    the metrics table, and stores a sanitized copy in memory for fast UI reads.
+    Exceptions are captured into the run state so the API can report failure
+    without terminating the server process.
+    """
     state = BACKTEST_RUNS.setdefault(run_id, {})
     state["status"] = "running"
     try:
@@ -116,7 +144,12 @@ def _run_backtest_worker(run_id: str, request: BacktestRequest) -> None:
 
 @app.on_event("startup")
 def _load_config() -> None:
-    """Load configuration from the designated YAML file."""
+    """Load backend config once during FastAPI startup.
+
+    The config path must be provided through `BACKEND_CONFIG_PATH`. The parsed
+    YAML data is retained for provenance, while the typed config object is used
+    by workers and persisted-result lookups.
+    """
     global BACKEND_CONFIG_PATH, BACKEND_CONFIG_DATA, BACKEND_CONFIG
     if not BACKEND_CONFIG_PATH:
         raise RuntimeError("BACKEND_CONFIG_PATH must be set before startup")
@@ -128,7 +161,12 @@ def _load_config() -> None:
 
 @app.post("/backtest", response_model=BacktestResponse)
 def start_backtest(request: BacktestRequest) -> BacktestResponse:
-    """Start a UI-triggered backtest run."""
+    """Validate a request, register run progress, and start a worker thread.
+
+    Returns immediately with a deterministic run-session ID while the replay
+    continues in a daemon thread. The in-memory state is initialized before the
+    worker starts so progress polling never races with run creation.
+    """
     if not request.symbols:
         raise HTTPException(status_code=400, detail="symbols list cannot be empty")
     if request.start >= request.end:
@@ -149,7 +187,11 @@ def start_backtest(request: BacktestRequest) -> BacktestResponse:
 
 @app.get("/backtest/progress")
 def get_backtest_progress(run_id: str) -> Mapping[str, Any]:
-    """Return progress metadata for an ongoing backtest."""
+    """Return current in-memory progress for a queued or running backtest.
+
+    Raises:
+        HTTPException: If the requested run ID is unknown to this process.
+    """
     state = BACKTEST_RUNS.get(run_id)
     if state is None:
         raise HTTPException(status_code=404, detail="run_id not found")
@@ -162,7 +204,7 @@ def get_backtest_progress(run_id: str) -> Mapping[str, Any]:
 
 
 def _query_metrics_snapshot(run_id: str) -> Mapping[str, object] | None:
-    """Fetch the persisted metrics snapshot for a finished backtest."""
+    """Read the latest persisted aggregate result for a completed backtest."""
     config = BACKEND_CONFIG
     if config is None:
         return None
@@ -199,7 +241,12 @@ def _query_metrics_snapshot(run_id: str) -> Mapping[str, object] | None:
 
 @app.get("/backtest/result")
 def get_backtest_result(run_id: str) -> Mapping[str, Any]:
-    """Return a cached or persisted backtest result."""
+    """Return a completed backtest result from memory or durable storage.
+
+    The in-memory result is preferred for active server processes. If it is not
+    available, the endpoint falls back to the metrics snapshot written at worker
+    completion and returns `404` only when neither source has the run.
+    """
     state = BACKTEST_RUNS.get(run_id)
     if state and state.get("result") is not None:
         return {
@@ -221,7 +268,11 @@ def get_backtest_result(run_id: str) -> Mapping[str, Any]:
 
 
 def main() -> None:
-    """Command-line entry point to serve the API."""
+    """Parse server options, set the config path, and launch uvicorn.
+
+    The config path is placed in the environment so FastAPI startup uses the
+    same loading path as tests and deployed processes.
+    """
     parser = ArgumentParser(description="Run the Trader backtest API.")
     parser.add_argument("config", help="Path to the YAML configuration.")
     parser.add_argument("--host", default="0.0.0.0", help="Host for the HTTP server.")

@@ -113,7 +113,13 @@ OWNER_BY_ARTIFACT_TYPE = {
 
 
 class ResearchVerdictValue(str, Enum):
-    """Allowed supervisor verdict values."""
+    """Stable verdict vocabulary emitted by the supervisor research workflow.
+
+    These string values are serialized into handoff artifacts and should remain
+    stable across agents. They describe whether the supervisor can proceed, needs
+    more evidence, rejected the idea, found it promising, or considers the result
+    ready for human review.
+    """
 
     BLOCKED = "blocked"
     NEEDS_EVIDENCE = "needs_evidence"
@@ -137,14 +143,14 @@ class ResearchIssue:
     details: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Validate required issue fields."""
+        """Validate issue code and message fields before handoff serialization."""
         if not self.code.strip():
             raise ValueError("issue code is required")
         if not self.message.strip():
             raise ValueError("issue message is required")
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-compatible dictionary."""
+        """Serialize the issue into the stable warning/blocker payload shape used by handoffs."""
         return {
             "code": self.code,
             "message": self.message,
@@ -189,7 +195,7 @@ class DataRequirement:
     source: str | None = None
 
     def __post_init__(self) -> None:
-        """Validate bounded data requirements."""
+        """Validate symbol universe, asset class, timeframe, and window bounds."""
         if not self.symbols:
             raise ValueError("data requirement symbols are required")
         if len(self.symbols) > 20:
@@ -202,7 +208,7 @@ class DataRequirement:
             raise ValueError("data requirement start and end are required")
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-compatible dictionary."""
+        """Serialize bounded data requirements, including optional source only when present in artifacts."""
         payload: dict[str, Any] = {
             "symbols": list(self.symbols),
             "asset_class": self.asset_class,
@@ -269,7 +275,7 @@ class BoundedResearchRequest:
         _validate_artifact_types(self.optional_artifacts)
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-compatible dictionary."""
+        """Serialize the bounded request and its required/optional artifact contracts for agents."""
         return {
             "request_id": self.request_id,
             "objective": self.objective,
@@ -342,7 +348,7 @@ class SpecialistHandoff:
             raise ValueError("artifact_path or payload is required")
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-compatible dictionary."""
+        """Serialize the handoff while normalizing payloads, provenance, warnings, and blockers for agents."""
         payload = {
             "handoff_id": self.handoff_id,
             "agent_owner": self.agent_owner,
@@ -405,7 +411,7 @@ class SpecialistArtifactSlot:
     blockers: tuple[ResearchIssue, ...] = field(default_factory=tuple)
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-compatible dictionary."""
+        """Serialize slot state, accepted handoff details, and blocker payloads for supervisors."""
         return {
             "slot_key": self.slot_key,
             "artifact_type": self.artifact_type,
@@ -419,7 +425,13 @@ class SpecialistArtifactSlot:
 
 @dataclass(frozen=True)
 class ExperimentPlan:
-    """Skeleton experiment plan owned by the supervisor."""
+    """Supervisor-owned plan that names data requirements and candidate strategy IDs.
+
+    The plan is intentionally lightweight: it references normalized data
+    requirements and candidate identifiers rather than embedding run outputs. This
+    keeps upstream planning artifacts serializable and lets later evaluation steps
+    attach concrete backtest references as separate handoffs.
+    """
 
     plan_id: str
     request_id: str
@@ -428,7 +440,7 @@ class ExperimentPlan:
     status: str = "draft"
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-compatible dictionary."""
+        """Serialize the experiment plan into data requirements and candidate references for handoff."""
         return {
             "plan_id": self.plan_id,
             "request_id": self.request_id,
@@ -440,7 +452,13 @@ class ExperimentPlan:
 
 @dataclass(frozen=True)
 class StrategyCandidate:
-    """Skeleton strategy candidate reference."""
+    """Serializable reference to a strategy idea selected for experimentation.
+
+    A candidate records the strategy family, JSON-compatible parameter payload,
+    and optional hypothesis linkage used to trace why it entered a suite. It is a
+    planning artifact only; executable strategy construction and validation happen
+    later through standard strategy builders and backtest runs.
+    """
 
     candidate_id: str
     family: str
@@ -448,7 +466,7 @@ class StrategyCandidate:
     source_hypothesis_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-compatible dictionary."""
+        """Serialize candidate identity, family, parameters, and optional hypothesis linkage for planning."""
         return {
             "candidate_id": self.candidate_id,
             "family": self.family,
@@ -459,7 +477,13 @@ class StrategyCandidate:
 
 @dataclass(frozen=True)
 class BacktestRunRef:
-    """Reference to a future backtest artifact bundle."""
+    """Pointer from research planning/evaluation artifacts to a persisted backtest run.
+
+    The reference keeps experiment-level IDs, the concrete runtime `run_id`, and
+    the optional artifact directory together so downstream agents can locate
+    metrics, trades, and provenance without embedding the full backtest payload in
+    every handoff.
+    """
 
     experiment_id: str
     experiment_run_id: str
@@ -467,7 +491,7 @@ class BacktestRunRef:
     artifact_dir: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-compatible dictionary."""
+        """Serialize experiment and run identifiers used to locate persisted backtest artifacts later."""
         return {
             "experiment_id": self.experiment_id,
             "experiment_run_id": self.experiment_run_id,
@@ -478,7 +502,13 @@ class BacktestRunRef:
 
 @dataclass(frozen=True)
 class ArtifactReportRef:
-    """Generic specialist report reference for planned artifact contracts."""
+    """Typed pointer to a specialist-produced report or artifact file.
+
+    Construction verifies that the artifact type is known, that ownership matches
+    the registered agent for that artifact, and that a stable artifact ID exists.
+    The reference is used when a supervisor needs to cite or require an artifact
+    without loading the full report payload into the current message.
+    """
 
     artifact_id: str
     artifact_type: str
@@ -487,7 +517,7 @@ class ArtifactReportRef:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Validate the report reference."""
+        """Validate artifact type, expected owner, and non-empty artifact identity."""
         if self.artifact_type not in SUPPORTED_ARTIFACT_TYPES:
             raise ValueError(f"unsupported artifact type: {self.artifact_type}")
         if OWNER_BY_ARTIFACT_TYPE[self.artifact_type] != self.agent_owner:
@@ -496,7 +526,7 @@ class ArtifactReportRef:
             raise ValueError("artifact_id is required")
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-compatible dictionary."""
+        """Serialize artifact identity, ownership, optional path, and normalized metadata for review."""
         return {
             "artifact_id": self.artifact_id,
             "artifact_type": self.artifact_type,
@@ -508,7 +538,13 @@ class ArtifactReportRef:
 
 @dataclass(frozen=True)
 class ResearchVerdict:
-    """Supervisor research verdict reference."""
+    """Final supervisor judgment tied to a bounded research request.
+
+    The verdict combines a stable verdict ID, the originating request ID, a
+    constrained `ResearchVerdictValue`, and structured reasons. It is designed for
+    audit trails: downstream tools can inspect the machine-readable value while
+    reviewers can read the attached issue messages.
+    """
 
     verdict_id: str
     request_id: str
@@ -516,7 +552,7 @@ class ResearchVerdict:
     reasons: tuple[ResearchIssue, ...] = field(default_factory=tuple)
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-compatible dictionary."""
+        """Serialize the verdict value and structured reasons for downstream audit trails."""
         return {
             "verdict_id": self.verdict_id,
             "request_id": self.request_id,

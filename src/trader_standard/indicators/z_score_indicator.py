@@ -30,19 +30,30 @@ from trader.signals import Bar
 
 @dataclass(frozen=True)
 class ZScoreIndicator(Indicator):
-    """Compute trailing rolling z-score for close values."""
+    """Compute trailing rolling close-price z-scores from latest-first bars.
+
+    Windows with zero standard deviation return `None` instead of infinity.
+    """
 
     window_size: int
 
     @property
     def name(self) -> str:
+        """Return the registry method name used for z-score audit and manifest metadata."""
         return "z_score"
 
     @property
     def window(self) -> int:
+        """Return the configured close-count required for one z-score output value calculation."""
         return int(self.window_size)
 
     def compute_series(self, bars: Sequence[Bar]) -> Sequence[float | None]:
+        """Compute latest-first rolling z-scores from chronological close windows.
+
+        For each completed window the latest close is standardized against the
+        sample mean and standard deviation; zero-variance windows return `None`,
+        warmup observations are omitted, and completed values return latest-first.
+        """
         closes = [float(bar.close) for bar in reversed(bars)]
         if len(closes) < self.window:
             raise ValueError("Insufficient bars for z-score computation")

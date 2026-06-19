@@ -16,7 +16,13 @@ SUPPORTED_STRATEGY_FAMILIES = ("trend_following", "mean_reversion", "bollinger_b
 
 @dataclass(frozen=True)
 class SuiteMember:
-    """One deterministic research-suite member."""
+    """One planned strategy/config combination in a deterministic research suite.
+
+    The member carries the shared suite ID, its own stable member ID, the normalized
+    strategy family, parameter overrides, and the fully materialized config used by
+    discovery. This lets backtest orchestration reference the plan without
+    rebuilding suite expansion state.
+    """
 
     suite_id: str
     suite_member_id: str
@@ -35,7 +41,14 @@ def build_suite_members(
     max_runs: int = 25,
     source_recommendation_ids: Sequence[str] | None = None,
 ) -> list[SuiteMember]:
-    """Expand strategy families into deterministic suite members."""
+    """Build bounded suite members from strategy families and parameter grids.
+
+    Family names are normalized and validated, suite identity is derived from the
+    requested universe and source recommendations, configured family-specific
+    parameter grids are expanded deterministically, and each member receives a deep
+    copied config with symbols, asset class, timeframe, strategy ID, and overrides
+    applied. Expansion fails before execution when it would exceed `max_runs`.
+    """
     if max_runs <= 0:
         raise ValueError("max_runs must be positive")
     if len(symbols) > 20:
@@ -79,7 +92,13 @@ def build_suite_members(
 
 
 def suggest_follow_up_suite(recommendations: Mapping[str, Any]) -> dict[str, Any]:
-    """Build a simple follow-up-suite suggestion from recommendation output."""
+    """Suggest the next suite shape from accepted and hard-rejected recommendations.
+
+    Accepted candidates seed follow-up families and source recommendation IDs,
+    while rejected candidates with data-quality, turnover, or failed-run reasons
+    are excluded. The result is intentionally simple planning metadata for the
+    supervisor rather than an executable suite.
+    """
     accepted = recommendations.get("accepted_candidates", [])
     rejected = recommendations.get("rejected_candidates", [])
     strategy_families: list[str] = []

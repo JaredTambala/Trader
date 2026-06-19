@@ -28,22 +28,29 @@ from trader.signals import Bar
 
 @dataclass(frozen=True)
 class SmaIndicator(Indicator):
-    """Compute SMA values for a series of bars."""
+    """Compute simple moving averages over trailing latest-first bar windows.
+
+    Returned values align with the latest bar in each completed window.
+    """
 
     period: int
 
     @property
     def name(self) -> str:
-        """Return the indicator or signal name."""
+        """Return the registry method name used for SMA audit and manifest metadata."""
         return "sma"
 
     @property
     def window(self) -> int:
-        """Return the configured window size."""
+        """Return the configured trailing close-count required for one SMA output value."""
         return int(self.period)
 
     def compute_series(self, bars: Sequence[Bar]) -> Sequence[float]:
-        """Compute the indicator series from input data."""
+        """Compute latest-first SMA values from completed trailing close windows.
+
+        The method raises on insufficient bars, omits warmup observations, and
+        returns values aligned to the latest bar in each completed period window.
+        """
         closes = [bar.close for bar in bars]
         if len(closes) < self.window:
             raise ValueError("Insufficient bars for SMA computation")

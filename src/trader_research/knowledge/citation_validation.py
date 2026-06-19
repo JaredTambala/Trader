@@ -23,7 +23,15 @@ def validate_citations(
     require_approved_method_card: bool = True,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
-    """Validate source, chunk, locator, and method-card references."""
+    """Check that an artifact's knowledge citations resolve to approved evidence.
+
+    The validator accepts either `knowledge_evidence_refs` or legacy
+    `evidence_refs`, resolves method cards, sources, and chunks through the
+    supplied knowledge store, and compares locator fields against the stored chunk
+    locator when provided. Missing or mismatched evidence becomes a structured
+    blocker in an error envelope; empty references and other non-fatal issues are
+    returned as warnings without mutating storage.
+    """
     store = knowledge_store or JsonKnowledgeStore(artifact_root)
     refs = _evidence_refs(artifact)
     blockers: list[str] = []

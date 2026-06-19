@@ -9,7 +9,13 @@ from typing import Sequence
 
 @dataclass(frozen=True)
 class ExtractedSection:
-    """Extracted text plus a source locator."""
+    """Text span extracted from a source with enough locator data for citation.
+
+    Extractors fill page, heading, section, and byte/character offsets when the
+    source format exposes them. Chunking preserves these fields so retrieval
+    results and citation-validation reports can point back to the source span that
+    produced a piece of evidence.
+    """
 
     text: str
     page: int | None = None
@@ -21,14 +27,26 @@ class ExtractedSection:
 
 @dataclass(frozen=True)
 class ExtractedDocument:
-    """Text extraction result."""
+    """Result of extracting text from one local source file.
+
+    `sections` contains non-empty extracted spans in source order; `warnings`
+    records recoverable extraction limitations such as empty PDF pages or disabled
+    OCR. Ingestion can continue when some sections are present while still
+    surfacing these warnings in the final report.
+    """
 
     sections: tuple[ExtractedSection, ...]
     warnings: tuple[str, ...] = tuple()
 
 
 def extract_text(path: str | Path) -> ExtractedDocument:
-    """Extract text from a supported source file."""
+    """Dispatch deterministic extraction for markdown, plain text, or PDF sources.
+
+    Markdown is split by headings, text files are treated as a single section, and
+    PDFs use embedded text from `pypdf` with page-level locators. Unsupported
+    suffixes fail at this boundary so ingestion does not produce chunks with
+    unknown provenance semantics.
+    """
     source_path = Path(path)
     suffix = source_path.suffix.lower()
     if suffix == ".md":
@@ -138,4 +156,11 @@ def _extract_pdf(path: Path) -> ExtractedDocument:
 
 
 def extracted_text(sections: Sequence[ExtractedSection]) -> str:
+    """Join extracted sections into readable text while preserving section order.
+
+    This helper is used by callers that need a compact human-readable document
+    body rather than chunk-level metadata. It deliberately inserts blank lines
+    between sections to avoid merging headings, paragraphs, or page extracts into
+    ambiguous text.
+    """
     return "\n\n".join(section.text for section in sections)

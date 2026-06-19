@@ -18,7 +18,11 @@ logger = logging.getLogger(__name__)
 
 
 class InMemoryBarsSignalGenerator(SignalGenerator):
-    """Compute bar-based signals using preloaded in-memory bars."""
+    """Compute bar-based signals from preloaded bars for backtests and tests.
+
+    Bars are sorted chronologically during initialization, then sliced into
+    latest-first windows at each requested decision timestamp.
+    """
 
     def __init__(
         self,
@@ -29,7 +33,7 @@ class InMemoryBarsSignalGenerator(SignalGenerator):
         timeframe: str | None = None,
         event_store: EventStore | None = None,
     ) -> None:
-        """Initialize the instance."""
+        """Normalize bars, symbols, and signal definitions for deterministic reads."""
         if not signals:
             raise ValueError("At least one Signal must be provided")
         self._signals = tuple(signals)
@@ -45,17 +49,17 @@ class InMemoryBarsSignalGenerator(SignalGenerator):
 
     @property
     def signals(self) -> Sequence[Signal]:
-        """Return configured signal definitions."""
+        """Return the ordered signal definitions evaluated for every configured symbol in output maps."""
         return self._signals
 
     @property
     def symbols(self) -> Sequence[str]:
-        """Return the configured symbol universe."""
+        """Return the configured symbol universe in caller-provided deterministic order for generation."""
         return self._symbols
 
     @property
     def supports_symbol_generation(self) -> bool:
-        """Report whether per-symbol signal generation is supported."""
+        """Report that this generator can evaluate one requested symbol independently for streaming."""
         return True
 
     def generate(
@@ -65,7 +69,12 @@ class InMemoryBarsSignalGenerator(SignalGenerator):
         run_id: str | None = None,
         cycle_id: str | None = None,
     ) -> Mapping[str, Mapping[str, float]]:
-        """Generate signal events from available market data."""
+        """Generate per-symbol signal maps from preloaded bars at an optional cutoff.
+
+        Bars are sliced chronologically up to `as_of_ts`, reversed into latest-first
+        windows, skipped with warnings when insufficient, and passed to the shared
+        signal-map helper with run/cycle IDs for telemetry.
+        """
         max_window = max_window_for_signals(self._signals)
         cutoff = _normalize_timestamp(as_of_ts) if as_of_ts else None
         logger.info(
@@ -118,7 +127,12 @@ class InMemoryBarsSignalGenerator(SignalGenerator):
         run_id: str | None = None,
         cycle_id: str | None = None,
     ) -> Mapping[str, float] | None:
-        """Generate signal events for a single symbol."""
+        """Generate signals for one symbol or return `None` when no full window exists.
+
+        The method applies the same cutoff, latest-first conversion, insufficient
+        bar warning, and telemetry path as batch generation while avoiding work for
+        unrelated symbols.
+        """
         max_window = max(signal.window for signal in self._signals)
         cutoff = _normalize_timestamp(as_of_ts) if as_of_ts else None
         bars = self._bars_by_symbol.get(symbol, [])
