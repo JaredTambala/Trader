@@ -184,7 +184,7 @@ normalized into the canonical runtime model before validation.
 ## Status
 
 The deterministic run lifecycle and staleness checks are implemented in `trader.cycle`.
-The runtime service is implemented in `trader.trader_service` (once, loop, and realtime modes).
+The runtime service is implemented in `trader.runtime.service` (once, loop, and realtime modes).
 The supported integration model is direct strategy/risk injection from user-owned wrapper scripts.
 The full broker lifecycle and reconciliation are implemented in Task 0.8 via `AlpacaPaperBroker`.
 

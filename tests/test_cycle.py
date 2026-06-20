@@ -5,11 +5,11 @@ from datetime import datetime, timezone
 
 from trader.cycle import run_cycle
 from trader.config import Config
-from trader.data import NoOpEventStore
+from trader.event_store import NoOpEventStore
 from trader.identifiers import deterministic_cycle_id
 from trader.market_data import StaticMarketDataSource, StockBarEvent
 from trader.portfolio import Portfolio
-from trader.runtime_status import set_halt_state
+from trader.runtime.status import set_halt_state
 from tests.support.duckdb_store import DuckDBEventStore
 from trader.strategies import Strategy
 from trader_standard.risk import NoOpRiskManager, OpenBuyOrderLimitRiskManager

@@ -757,6 +757,6 @@ def _install_signal_handlers(service: TraderService) -> None:
 
 if __name__ == "__main__":
     raise SystemExit(
-        "trader.trader_service is a library module. "
+        "trader.runtime.service is a library module. "
         "Use run_trader_service.py (external entrypoint) to start the service."
     )

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from trader.config import Config
-from trader.runtime_status import runtime_status, set_halt_state
+from trader.runtime.status import runtime_status, set_halt_state
 from tests.support.duckdb_store import DuckDBEventStore
 
 

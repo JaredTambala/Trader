@@ -12,7 +12,7 @@ from typing import Any, Mapping, Sequence
 from dotenv import load_dotenv
 
 from trader.config import build_config, load_yaml_config, resolve_log_level
-from trader.market_data_backfill import (
+from trader.market_data.backfill import (
     BackfillSpec,
     MarketDataBackfillRunner,
     _parse_datetime,

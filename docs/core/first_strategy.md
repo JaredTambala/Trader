@@ -90,12 +90,12 @@ from typing import Mapping, Sequence
 
 from trader.backtest import BacktestRunner
 from trader.config import build_config, load_yaml_config
-from trader.data import EventStore
+from trader.event_store import EventStore
 from trader.indicators import Indicator
 from trader.portfolio import Portfolio
 from trader.risk import RiskPipeline
 from trader.signals import Bar, Signal
-from trader.strategy import Strategy
+from trader.strategies import Strategy
 from trader_standard.bar_signals import fetch_recent_bars, table_for_asset_class
 
 

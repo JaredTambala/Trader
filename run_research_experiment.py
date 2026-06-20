@@ -21,8 +21,8 @@ from strategy_library_support import build_library_risk_manager, build_library_s
 
 from trader.backtest import BacktestRunner, BacktestSpec, build_backtest_assumptions  # noqa: E402
 from trader.config import build_config, load_yaml_config, resolve_log_level  # noqa: E402
-from trader.data import build_event_store  # noqa: E402
-from trader.data_quality import run_data_quality, write_data_quality_report  # noqa: E402
+from trader.event_store import build_event_store  # noqa: E402
+from trader.market_data.quality import run_data_quality, write_data_quality_report  # noqa: E402
 from trader.identifiers import deterministic_run_session_id  # noqa: E402
 from trader.portfolio import Position  # noqa: E402
 from trader_research.research import (  # noqa: E402

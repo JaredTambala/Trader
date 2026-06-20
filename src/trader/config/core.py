@@ -1,4 +1,4 @@
-"""Configuration loader for the trading system."""
+"""Configuration loading and normalization for the trading system."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any, Mapping, Sequence
 
 import yaml
 
-from .timeframes import normalize_timeframe
+from ..timeframes import normalize_timeframe
 
 
 def _parse_symbols(raw: str) -> tuple[str, ...]:

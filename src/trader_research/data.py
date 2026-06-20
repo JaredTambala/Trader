@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from trader.config import build_config, load_yaml_config
-from trader.data import EventStore
-from trader.data_quality import summarize_bar_quality
-from trader.market_data_backfill import BackfillSpec, MarketDataBackfillRunner
-from trader.market_data_queries import (
+from trader.event_store import EventStore
+from trader.market_data.quality import summarize_bar_quality
+from trader.market_data.backfill import BackfillSpec, MarketDataBackfillRunner
+from trader.market_data.queries import (
     BarSymbolDiscoveryQuery,
     BarQuery,
     DiscoveredBarSymbol,
@@ -25,7 +25,7 @@ from trader.market_data_queries import (
     fetch_bar_ranges,
     normalize_bar_query,
 )
-from trader.sample_data import load_sample_market_data_csv
+from trader.market_data.sample import load_sample_market_data_csv
 from trader.symbols import canonicalize_symbol, normalize_asset_class
 from trader.timeframes import parse_timeframe
 

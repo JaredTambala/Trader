@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Mapping, Sequence, TypeVar
 
-from trader.knowledge_store import (
+from trader.knowledge.store import (
     PostgresKnowledgeEmbeddingDimensionError,
     PostgresKnowledgeRecordStore,
     PostgresKnowledgeStoreError,

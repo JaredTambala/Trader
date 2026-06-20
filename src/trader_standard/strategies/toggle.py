@@ -6,7 +6,7 @@ from datetime import datetime
 import logging
 from typing import Mapping, Sequence
 
-from trader.data import EventStore
+from trader.event_store import EventStore
 from trader.portfolio import Portfolio
 from trader.strategies import Strategy
 from trader.strategy_metadata import StrategyInfo

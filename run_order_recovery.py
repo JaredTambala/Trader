@@ -9,9 +9,9 @@ from pprint import pformat
 from dotenv import load_dotenv
 
 from trader.config import build_config, load_yaml_config, resolve_log_level
-from trader.data import build_event_store
-from trader.order_recovery import inspect_recovery_state, run_local_clean_start, run_startup_recovery
-from trader.trader_service import _build_runtime_broker
+from trader.event_store import build_event_store
+from trader.runtime.orders import inspect_recovery_state, run_local_clean_start, run_startup_recovery
+from trader.runtime.service import _build_runtime_broker
 
 
 logger = logging.getLogger(__name__)

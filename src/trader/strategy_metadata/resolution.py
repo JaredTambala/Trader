@@ -1,4 +1,4 @@
-"""Helpers for resolving runtime strategy metadata."""
+"""Runtime strategy metadata resolution helpers."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
-from .strategies.base import Strategy
+from ..strategies.base import Strategy
 
 
 @dataclass(frozen=True)

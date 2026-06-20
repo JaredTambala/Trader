@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 from tests.support.duckdb_store import DuckDBEventStore
-from trader.data import NoOpEventStore
-from trader.sample_data import load_sample_market_data_csv
+from trader.event_store import NoOpEventStore
+from trader.market_data.sample import load_sample_market_data_csv
 from trader_research.data import DataInventoryRequest, get_data_inventory
 
 

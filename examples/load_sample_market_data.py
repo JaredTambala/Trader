@@ -8,8 +8,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from trader.config import build_config, load_yaml_config
-from trader.data import build_event_store
-from trader.sample_data import load_sample_market_data_csv
+from trader.event_store import build_event_store
+from trader.market_data.sample import load_sample_market_data_csv
 
 
 def main() -> None:

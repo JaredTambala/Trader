@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 from tests.support.duckdb_store import DuckDBEventStore
-from trader.data import NoOpEventStore
-from trader.market_data_queries import (
+from trader.event_store import NoOpEventStore
+from trader.market_data.queries import (
     BarQuery,
     BarSymbolDiscoveryQuery,
     EventStoreConnectionUnavailable,
@@ -20,7 +20,7 @@ from trader.market_data_queries import (
     fetch_bars,
     normalize_bar_query,
 )
-from trader.sample_data import load_sample_market_data_csv
+from trader.market_data.sample import load_sample_market_data_csv
 
 
 SAMPLE_CSV = Path("examples/data/demo_stock_1min.csv")

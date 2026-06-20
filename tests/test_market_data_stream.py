@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from trader.market_data_stream import StreamContext, _build_bar_event
+from trader.market_data.stream import StreamContext, _build_bar_event
 from trader.market_data import CryptoBarEvent, StockBarEvent
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from trader.data import NoOpEventStore
+from trader.event_store import NoOpEventStore
 from trader_research.data import DataSymbolDiscoveryPolicy, DataSymbolDiscoveryRequest, data_discover_symbols
 from trader_research.providers.alpaca_symbols import AlpacaSymbolCatalogProvider, _trading_client_base_url
 

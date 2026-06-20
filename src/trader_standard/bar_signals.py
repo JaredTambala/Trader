@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from typing import Sequence
 
-from trader.data import EventStore
+from trader.event_store import EventStore
 from trader.indicators import IndicatorObservation
 from trader.signals import Bar, Signal
 

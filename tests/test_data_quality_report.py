@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from trader.data_quality import run_data_quality, write_data_quality_report
+from trader.market_data.quality import run_data_quality, write_data_quality_report
 
 
 def test_data_quality_returns_stable_report_id(tmp_path: Path) -> None:

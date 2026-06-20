@@ -9,7 +9,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from trader.config import build_config, load_yaml_config, resolve_log_level
-from trader.data import build_event_store
+from trader.event_store import build_event_store
 from trader_research.contracts import SideEffect, envelope_json, error_envelope, success_envelope, write_json_artifact
 from trader_research.recommendations import RecommendationSettings, build_recommendations_from_files
 from trader_research.research import experiment_slug, list_experiment_comparison

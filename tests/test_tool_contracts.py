@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-from trader.tools.contracts import SideEffect, ToolEnvelope, envelope_json, success_envelope
+from trader_research.contracts import SideEffect, ToolEnvelope, envelope_json, success_envelope
 from trader_research.contracts import ToolEnvelope as ResearchToolEnvelope
 
 

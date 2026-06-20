@@ -6,7 +6,7 @@ from collections.abc import Iterator
 import pytest
 import psycopg
 
-from trader.data import PostgresEventStore
+from trader.event_store import PostgresEventStore
 from trader_research.knowledge.postgres_store import PostgresKnowledgeStore
 from trader_research.knowledge.store import KnowledgeVectorExtensionUnavailable
 

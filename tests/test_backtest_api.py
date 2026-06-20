@@ -11,7 +11,7 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-import trader.api as api
+import trader.web.api as api
 
 
 class _ImmediateThread:

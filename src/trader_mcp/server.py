@@ -11,7 +11,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import CallToolResult
 
 from trader.config import build_config, load_yaml_config
-from trader.data import EventStore, NoOpEventStore, build_event_store
+from trader.event_store import EventStore, NoOpEventStore, build_event_store
 from trader_mcp.adapters import envelope_to_mcp_result
 from trader_mcp.constants import (
     CAPABILITY_REGISTRATION_FLAGS,

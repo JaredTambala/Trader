@@ -22,14 +22,12 @@ return source metadata, symbol-level row counts, a dataset-manifest payload, and
 unavailable data. It should not run data quality, load sample rows, backfill, validate strategies, run backtests, or
 write artifacts in the first evidence loop.
 
-Existing code should remain in place until its replacement slice is proven:
+The research service code now lives under the `trader_research` package boundary:
 
-- `trader.tools.contracts` is the source to replace with `trader_research.contracts` in chunks 2 and 17.
-- `trader.research` contains experiment and backtest artifact helpers that should move to `trader_research` in chunk
-  18.
-- `trader.tools.discovery`, `suites`, `recommendations`, `promotion`, and `artifacts` are later migration candidates;
-  move them only as each capability becomes part of the new research service layer.
-- `trader.backtest`, `trader.data`, `trader.data_quality`, sample data loading, and market-data backfill stay core
+- `trader_research.contracts` owns tool envelopes and artifact contracts.
+- `trader_research.research` owns experiment and backtest artifact helpers.
+- `trader_research.discovery`, `suites`, `recommendations`, `promotion`, and `artifacts` own research workflows.
+- `trader.backtest`, `trader.event_store`, `trader.market_data.quality`, sample data loading, and market-data backfill stay core
   platform services. Future `trader_research` services should wrap them instead of moving them.
 
 ## Minimal Envelope And MCP Adapter
@@ -84,7 +82,7 @@ no-op event store unless tests inject a DuckDB store.
 ## Data Inventory Service
 
 Chunk 5 adds the direct `trader_research.data.get_data_inventory` service only. It calls typed, validating core
-market-data query helpers in `trader.market_data_queries`, which own the fixed table selection and parameterized SQL
+market-data query helpers in `trader.market_data.queries`, which own the fixed table selection and parameterized SQL
 against the platform `EventStore.connection()` read path. The research and MCP layers must not embed raw SQL, table
 names, or direct `.execute(...)` calls. The service returns a Data Agent `ToolEnvelope` with an embedded
 `dataset_manifest` payload. The manifest includes a stable dataset ID, asset class, symbols, timeframe, requested
@@ -205,9 +203,9 @@ The tests assert these envelope fields:
 Chunks 17 through 22 move the legacy research helpers and tool modules into the `trader_research` package boundary,
 add typed research-domain schemas, and introduce the first deterministic Quant Research Supervisor graph skeleton.
 
-The old `trader.research` and `trader.tools.*` import paths are compatibility shims only. Canonical implementations now
-live under `trader_research`, and package-boundary tests verify that core `trader` modules do not depend on
-`trader_research`, `trader_mcp`, or `trader_agents` outside those shims.
+The former research compatibility import paths have been removed. Canonical implementations live under
+`trader_research`, and package-boundary tests verify that core `trader` modules do not depend on `trader_research`,
+`trader_mcp`, or `trader_agents`.
 
 Reproduce the Slice 4 supervisor evidence with:
 

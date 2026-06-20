@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import pytest
 
 from trader.broker import AlpacaPaperBroker
-from trader.order_recovery import inspect_recovery_state, run_local_clean_start, run_startup_recovery
+from trader.runtime.orders import inspect_recovery_state, run_local_clean_start, run_startup_recovery
 from tests.support.duckdb_store import DuckDBEventStore
 from tests.test_alpaca_broker import FakeOrder, FakeTradingClient
 

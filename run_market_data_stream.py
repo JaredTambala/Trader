@@ -9,7 +9,7 @@ from typing import Mapping
 from dotenv import load_dotenv
 
 from trader.config import build_config, load_yaml_config, resolve_log_level
-from trader.market_data_stream import MarketDataStreamRunner
+from trader.market_data.stream import MarketDataStreamRunner
 from trader.timeframes import normalize_timeframe
 
 

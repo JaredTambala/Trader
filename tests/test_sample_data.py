@@ -9,7 +9,7 @@ from pathlib import Path
 from tests.support.duckdb_store import DuckDBEventStore
 from trader.backtest import BacktestRunner, BacktestSpec, build_backtest_assumptions, serialize_backtest_result
 from trader.config import build_config, load_yaml_config
-from trader.sample_data import load_sample_market_data_csv
+from trader.market_data.sample import load_sample_market_data_csv
 from trader_standard.risk import NoOpRiskManager
 from trader_standard.strategies import build_trend_following_strategy
 

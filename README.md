@@ -267,7 +267,7 @@ from trader.config import build_config, load_yaml_config
 from trader.risk import RiskPipeline
 from trader_standard.risk import MaxOrdersPerRunRiskManager
 from trader_standard.strategies import ToggleUnitStrategy
-from trader.trader_service import TraderService
+from trader.runtime.service import TraderService
 
 config_data = load_yaml_config("configs/example.yaml")
 config = build_config(config_data)

@@ -52,7 +52,7 @@ ignore = ["E501"]
 [tool.mypy]
 python_version = "3.12"
 files = [
-    "src/trader/config.py",
+    "src/trader/config/core.py",
     "src/trader/risk/context.py",
     "src/trader/risk/manager.py",
     "src/trader/risk/pipeline.py",
@@ -61,7 +61,7 @@ files = [
     "src/trader/broker/core.py",
     "src/trader/broker/helpers.py",
     "src/trader/broker/internal.py",
-    "src/trader/strategy_metadata.py",
+    "src/trader/strategy_metadata/resolution.py",
     "src/trader_research/research.py",
     "src/trader_research/domain.py",
     "src/trader/runtime/status.py",

@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 import logging
 from typing import AsyncIterator, Mapping, Sequence
 
-from trader.data import EventStore
+from trader.event_store import EventStore
 from trader.portfolio import Portfolio
 from trader.signal_generators import SignalGenerator
 from trader.strategies import Strategy

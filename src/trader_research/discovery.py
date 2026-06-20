@@ -10,10 +10,10 @@ from typing import Any, Mapping, Sequence
 
 from trader.backtest import BacktestRunner, BacktestSpec, build_backtest_assumptions
 from trader.config import Config, build_config
-from trader.data import EventStore, build_event_store
-from trader.data_quality import run_data_quality, write_data_quality_report
+from trader.event_store import EventStore, build_event_store
+from trader.market_data.quality import run_data_quality, write_data_quality_report
 from trader.identifiers import deterministic_run_session_id
-from trader.market_data_backfill import BackfillSpec, MarketDataBackfillRunner, _parse_timeframe, _resolve_since
+from trader.market_data.backfill import BackfillSpec, MarketDataBackfillRunner, _parse_timeframe, _resolve_since
 from trader.portfolio import Position
 from trader_research.research import (
     attach_research_metadata,
@@ -25,7 +25,7 @@ from trader_research.research import (
     export_research_bundle,
     result_summary,
 )
-from trader.sample_data import load_sample_market_data_csv
+from trader.market_data.sample import load_sample_market_data_csv
 from trader.strategy_metadata import resolve_strategy_info
 from trader_research.artifacts import load_operator_context, load_strategy_artifacts
 from trader_research.contracts import SideEffect, ToolEnvelope, success_envelope, write_json_artifact

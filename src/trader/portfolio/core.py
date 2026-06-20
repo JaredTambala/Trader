@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import logging
 from typing import Iterable, Mapping, Sequence
 
-from .event_store import EventStore
+from ..event_store import EventStore
 
 
 logger = logging.getLogger(__name__)

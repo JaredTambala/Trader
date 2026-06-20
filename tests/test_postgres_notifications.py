@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from trader.notifications import notify_market_data
-from trader.trader_service import _parse_market_data_notify
+from trader.runtime.notifications import notify_market_data
+from trader.runtime.service import _parse_market_data_notify
 
 
 pytestmark = pytest.mark.postgres

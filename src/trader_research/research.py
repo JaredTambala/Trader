@@ -23,7 +23,7 @@ from trader.backtest import (
     export_backtest_trades_csv,
 )
 from trader.config import Config
-from trader.data import EventStore
+from trader.event_store import EventStore
 from trader.strategy_metadata import StrategyInfo
 
 

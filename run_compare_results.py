@@ -10,7 +10,7 @@ from typing import Any, Mapping, Sequence
 from dotenv import load_dotenv
 
 from trader.config import build_config, load_yaml_config, resolve_log_level
-from trader.data import build_event_store
+from trader.event_store import build_event_store
 from trader_research.research import list_experiment_comparison
 
 

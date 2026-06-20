@@ -6,7 +6,7 @@ import trader
 import trader.cycle.core as cycle_module
 from trader.config import Config
 from trader.cycle import run_cycle
-from trader.data import NoOpEventStore
+from trader.event_store import NoOpEventStore
 from trader.market_data import StaticMarketDataSource, StockBarEvent
 from trader.portfolio import Portfolio
 from trader.risk import RiskContext, RiskManager

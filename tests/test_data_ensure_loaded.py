@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from tests.support.duckdb_store import DuckDBEventStore
-from trader.data import EventStore, NoOpEventStore
-from trader.sample_data import load_sample_market_data_csv
+from trader.event_store import EventStore, NoOpEventStore
+from trader.market_data.sample import load_sample_market_data_csv
 from trader_research.data import (
     DataEnsureLoadedPolicy,
     DataEnsureLoadedRequest,

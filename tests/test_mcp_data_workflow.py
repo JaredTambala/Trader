@@ -13,8 +13,8 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from tests.support.duckdb_store import DuckDBEventStore
-from trader.data import EventStore
-from trader.sample_data import load_sample_market_data_csv
+from trader.event_store import EventStore
+from trader.market_data.sample import load_sample_market_data_csv
 from trader_mcp.constants import (
     DATA_ENSURE_LOADED_TOOL,
     DATA_GET_INVENTORY_TOOL,

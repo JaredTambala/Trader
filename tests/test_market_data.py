@@ -7,10 +7,10 @@ from pathlib import Path
 
 import duckdb
 
-from trader.alpaca_market_data import AlpacaMarketDataSource, AlpacaRequestSpec
+from trader.market_data.alpaca import AlpacaMarketDataSource, AlpacaRequestSpec
 from trader.config import Config
 from trader.cycle import run_cycle
-from trader.data import EventStore
+from trader.event_store import EventStore
 from tests.support.duckdb_store import DuckDBEventStore
 from trader.market_data import CryptoBarEvent, StaticMarketDataSource, StockBarEvent
 from trader.portfolio import Portfolio

@@ -305,8 +305,8 @@ market_data:
 
 def test_trader_agents_still_do_not_import_platform_or_mcp_server_boundaries() -> None:
     forbidden = (
-        "trader.data",
-        "trader.market_data_queries",
+        "trader.event_store",
+        "trader.market_data.queries",
         "trader_research.data",
         "trader_mcp.server",
     )

@@ -9,7 +9,7 @@ from typing import Iterator, Mapping, Sequence
 
 import duckdb
 
-from trader.data import EventStore
+from trader.event_store import EventStore
 
 
 @dataclass(frozen=True)

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import logging
 from typing import Iterable, Mapping, Sequence
 
-from trader.data import EventStore
+from trader.event_store import EventStore
 from trader.signals import Bar, Signal
 from trader.signal_generators import SignalGenerator
 

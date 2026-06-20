@@ -5,8 +5,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from trader.config import Config
-from trader.data import PostgresEventStore
-from trader.runtime_status import runtime_status, set_halt_state
+from trader.event_store import PostgresEventStore
+from trader.runtime.status import runtime_status, set_halt_state
 
 
 pytestmark = pytest.mark.postgres
