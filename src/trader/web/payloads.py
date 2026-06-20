@@ -1,4 +1,8 @@
-"""Web API placeholders for health and status endpoints."""
+"""Minimal web payload builders shared by health and status endpoints.
+
+These helpers are intentionally small and side-effect free so web adapters can
+reuse them without importing the heavier FastAPI backtest service.
+"""
 
 from __future__ import annotations
 

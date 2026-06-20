@@ -15,7 +15,7 @@ from alpaca.data.requests import CryptoBarsRequest, StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
 from ..config import Config
 from ..event_store import EventStore, PostgresEventStore, build_event_store
-from ..notifications import notify_market_data
+from ..runtime.notifications import notify_market_data
 from ..timeframes import parse_timeframe
 from .domain import CryptoBarEvent, StockBarEvent
 

@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 from ..config import Config, build_config, load_yaml_config, resolve_log_level
 from ..event_store import EventStore, build_event_store
-from ..notifications import notify_market_data
+from ..runtime.notifications import notify_market_data
 from ..timeframes import normalize_timeframe
 
 

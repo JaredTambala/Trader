@@ -1,4 +1,10 @@
-"""Core trading engine package."""
+"""Stable public surface for the core trading engine.
+
+The package root re-exports the contracts most external strategies, examples,
+and operator scripts use directly. Implementation modules are grouped by
+responsibility under subpackages such as ``broker``, ``event_store``,
+``market_data``, ``runtime``, and ``tools``.
+"""
 
 from .broker import AlpacaPaperBroker, Broker, InternalPaperBroker, NoOpBroker
 from .config import Config, build_config, load_yaml_config, resolve_log_level
@@ -44,7 +50,7 @@ from .signal_generators import SignalGenerator
 from .signals import Bar, Signal
 from .strategies import Strategy
 from .strategy_metadata import StrategyInfo, resolve_strategy_info
-from .trader_service import TraderService
+from .runtime.service import TraderService
 
 __all__ = [
     "Broker",

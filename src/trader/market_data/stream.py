@@ -13,7 +13,7 @@ from alpaca.data.live.crypto import CryptoDataStream
 from alpaca.data.live.stock import StockDataStream
 from ..config import Config
 from ..event_store import EventStore, build_event_store
-from ..notifications import notify_market_data
+from ..runtime.notifications import notify_market_data
 from .domain import CryptoBarEvent, StockBarEvent
 
 
