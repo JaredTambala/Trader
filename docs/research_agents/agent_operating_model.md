@@ -94,8 +94,8 @@ Responsibilities:
 Inputs:
 
 - Dataset manifests and data-quality reports.
-- Method contracts, method cards, retrieval/citation evidence, indicator observations, signal diagnostics,
-  multiple-testing reports, and statistical-test reports.
+- Method contracts, method cards, retrieval/citation evidence, indicator observations, signal observations, signal
+  diagnostics, multiple-testing reports, and statistical-test reports.
 - Feature manifests, model cards, prediction artifacts, and drift reports.
 - Hypothesis cards.
 - Experiment plans, backtest results, attribution summaries, evaluation reports, and robustness reports.

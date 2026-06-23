@@ -894,13 +894,13 @@ math_validate_method_contract
   -> records source IDs, locators, assumptions, fixture status, and failure modes
 ```
 
-Stretch evidence:
+Implemented 23L evidence:
 
 ```text
 math_run_signal_diagnostics
 math_run_multiple_testing_report
-  -> approved method card used to validate a statistical-test/multiple-testing contract
-  -> report records candidate family size, tested parameter grid, raw p-values, adjusted p-values, warnings, and blockers
+  -> approved method cards validate rank_ic and benjamini_hochberg contracts
+  -> report records candidate family size, tested parameter grid, raw p-values, adjusted p-values, accepted/rejected candidates, warnings, and blockers
 ```
 
 ## Revised Slice 6: Knowledge-Aware Quantitative Methods Agent Identity and Handoff
@@ -946,14 +946,14 @@ The smallest useful version is:
 15. Add signal diagnostics:
     - IC
     - rank IC
+    - action-conditioned returns
     - quantile buckets
     - horizon decay
 16. Add multiple-testing report:
     - candidate family manifest
     - raw p-values
-    - Bonferroni
-    - Holm
     - Benjamini-Hochberg
+    - Bonferroni and Holm as follow-on corrections
 17. Add Quantitative Methods LangGraph identity.
 18. Add supervisor handoff consumption with knowledge provenance.
 19. Add C++ path only after Python references, contracts, citations, and reports are stable.
@@ -1217,7 +1217,7 @@ math_validate_indicator_contract -> math_validate_method_contract filtered to in
 | `math_register_method_implementation` | Quantitative Methods Agent | `local_mutating` | Register a Python reference implementation manifest with entrypoint, source hash, dependency allowlist, safety profile, method contract refs, and approved method-card refs. |
 | `math_generate_python_method` | Quantitative Methods Agent | `local_mutating` | Create a quarantined Python reference artifact from an approved method card/contract and require fixture validation before use. |
 | `math_run_indicator_fixtures` | Quantitative Methods Agent | `local_mutating` | Run deterministic fixture tests against a registered Python reference implementation and produce `indicator_validation_report.json`. |
-| `math_run_signal_diagnostics` | Quantitative Methods Agent | `local_mutating` | Given indicator observations and forward-return labels, produce `signal_diagnostic_report.json`. |
+| `math_run_signal_diagnostics` | Quantitative Methods Agent | `local_mutating` | Given declared signal observations and forward-return labels, produce `signal_diagnostic_report.json`. |
 | `math_run_multiple_testing_report` | Quantitative Methods Agent | `local_mutating` | Given a declared candidate family and metric matrix, produce `multiple_testing_report.json`. |
 | `math_generate_cpp_kernel` | Quantitative Methods Agent | `local_mutating` | Generate C++ only from approved templates after a validated Python reference exists. |
 | `math_compile_kernel` | Quantitative Methods Agent | `local_mutating` | Compile the generated/maintained kernel locally and return build evidence. |
@@ -1500,9 +1500,13 @@ Acceptance criteria:
 
 ### 23D. Signal Diagnostics
 
+Status: implemented for the revised 23L signal-composition slice in `9924922`.
+
 Description:
 
-Implement first-pass signal diagnostics for indicator observations against forward-return labels.
+Implement first-pass signal-composition diagnostics for declared signal candidates against caller-supplied
+forward-return labels. Indicators may appear as explanatory metadata, but the primary tested unit is a signal candidate
+that emits trade intent (`-1/0/+1`) or a continuous signal score.
 
 Files affected:
 
@@ -1515,13 +1519,20 @@ tests/test_signal_diagnostics.py
 Acceptance criteria:
 
 - Computes IC and rank IC where valid.
-- Computes hit rate with sample counts.
-- Computes quantile bucket summaries and monotonicity flags.
+- Requires approved method-card evidence for `rank_ic`.
+- Computes action hit rate with sample counts.
+- Computes action-conditioned returns for discrete trade-intent signals.
+- Computes quantile bucket summaries and monotonicity scores for continuous signal scores.
 - Computes horizon decay when multiple forward horizons are supplied.
 - Breaks results down by symbol and optionally session/regime if columns exist.
+- Records implementation references when a candidate declares a validated `trader.signals.Signal` manifest.
+- Warns when a candidate is observational because no executable implementation is declared.
 - Produces `signal_diagnostic_report.json` with warnings for weak sample size, missing labels, or unresolved data-quality issues.
 
 ### 23E. Multiple Testing and Data-Snooping Controls
+
+Status: implemented for Benjamini-Hochberg candidate-family correction in `9924922`; broader data-snooping controls
+remain follow-on work.
 
 Description:
 
@@ -1539,9 +1550,12 @@ Acceptance criteria:
 
 - Requires a declared candidate family manifest.
 - Records full candidate count and parameter grid.
-- Computes raw and adjusted p-values for supported correction methods.
-- Supports at least Bonferroni, Holm, and Benjamini-Hochberg in the first implementation.
-- Adds White Reality Check, Hansen SPA, Deflated Sharpe Ratio, and PBO as planned or partial methods with explicit status if not yet implemented.
+- Requires approved method-card evidence for `benjamini_hochberg`.
+- Computes raw and adjusted p-values with Benjamini-Hochberg correction.
+- Reports rejection flags, accepted candidate IDs, and rejected candidate IDs.
+- Fails closed on missing family manifests, duplicate candidates, unknown metric rows, duplicate p-value rows, invalid
+  p-values, and missing candidate p-values.
+- Bonferroni, Holm, White Reality Check, Hansen SPA, Deflated Sharpe Ratio, and PBO are follow-on methods.
 - Produces `multiple_testing_report.json` with accepted/rejected candidates, warnings, and blockers.
 
 ### 23F. C++ Kernel Path
@@ -1657,13 +1671,14 @@ math_run_indicator_fixtures
   -> records assumptions, warmup behavior, fixture status, and failure modes
 ```
 
-Stretch evidence:
+Implemented 23L evidence:
 
 ```text
 math_run_signal_diagnostics
 math_run_multiple_testing_report
-  -> returns signal diagnostics and multiple-testing reports
-  -> records candidate family size, tested parameter grid, raw p-values, adjusted p-values, warnings, and blockers
+  -> returns signal-composition diagnostics and Benjamini-Hochberg multiple-testing reports
+  -> requires approved method-card evidence for rank_ic and benjamini_hochberg
+  -> records candidate family size, tested parameter grid, raw p-values, adjusted p-values, accepted/rejected candidates, warnings, and blockers
 ```
 
 ### Slice 6: Quantitative Methods Agent Identity and Handoff
@@ -1775,14 +1790,14 @@ The smallest useful version is:
 6. Add signal diagnostics:
    - IC
    - rank IC
+   - action-conditioned returns
    - quantile buckets
    - horizon decay
 7. Add multiple-testing report:
    - candidate family manifest
    - raw p-values
-   - Bonferroni
-   - Holm
    - Benjamini-Hochberg
+   - Bonferroni and Holm as follow-on corrections
 8. Add Quantitative Methods LangGraph identity.
 9. Add supervisor handoff consumption.
 10. Add C++ path only after Python references, contracts, citations, and reports are stable.

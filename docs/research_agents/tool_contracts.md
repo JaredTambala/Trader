@@ -245,6 +245,48 @@ Knowledge-base rules:
   scalar fixture results, prefix results, warnings, and blockers. Fixture mismatches return `ok=false` and leave the
   manifest blocked.
 
+`math_run_signal_diagnostics` contract:
+
+- Request: `signal_observations`, `forward_return_labels`, `candidate_family_manifest`, `method_contracts`, optional
+  `quantile_count`, and optional `data_quality_report`.
+- `signal_observations` rows must include `candidate_id`, `signal_name`, `symbol`, `ts`, and finite numeric `value`.
+  Optional `session`, `regime`, and `metadata` are explanatory context; raw indicator values are not the primary tested
+  unit.
+- `forward_return_labels` rows must include `symbol`, `ts`, positive integer `horizon`, and finite numeric
+  `forward_return`. The service joins labels to observations by `symbol` and `ts`, then computes per-horizon results.
+- `candidate_family_manifest` must include `candidate_family_id`, unique candidate IDs, and the tested grid. Candidate
+  IDs referenced by observations or p-value rows must be declared before inference.
+- Evidence: every horizon requires a `rank_ic` method contract with approved method-card evidence. If a candidate
+  declares an implementation manifest or implementation ID, that manifest must be validated and must use
+  `runtime_contract="trader.signals.Signal"`. Candidates without executable implementation evidence may run as
+  observational diagnostics with warnings.
+- Success data contains `signal_diagnostic_report` and an artifact reference. The report includes candidate count,
+  tested grid, input counts, implementation refs, IC/rank IC, rank-IC p-values where sample size permits, hit rate,
+  action-conditioned returns, coverage, turnover proxy, quantile buckets for continuous signals, monotonicity score,
+  and symbol/session/regime breakdowns. Discrete `-1/0/+1` action signals skip quantile monotonicity and report an
+  explanatory warning.
+- Validation failures such as duplicate observation keys, missing labels for all observations, non-finite values,
+  unknown candidates, missing rank-IC evidence, or invalid implementation manifests return `ok=false` with blockers
+  embedded in the persisted report.
+
+`math_run_multiple_testing_report` contract:
+
+- Request: `candidate_family_manifest`, `metric_matrix`, `method_contract`, and optional `alpha`.
+- `candidate_family_manifest` must include `candidate_family_id`, unique candidate IDs, candidate count implied by the
+  declared IDs, and tested grid metadata.
+- `metric_matrix` must contain exactly one p-value row per declared candidate. Rows must include `candidate_id` and
+  finite `p_value` or `raw_p_value` in `[0, 1]`; optional `metric_name`, `metric_value`, and `horizon` are preserved in
+  report rows.
+- `method_contract.method_id` must be `benjamini_hochberg`, with approved method-card evidence. The first implemented
+  multiple-testing method is Benjamini-Hochberg; Bonferroni, Holm, White Reality Check, Hansen SPA, Deflated Sharpe
+  Ratio, and PBO remain follow-on methods.
+- Success data contains `multiple_testing_report` and an artifact reference. The report includes raw p-values,
+  adjusted p-values, rejection flags, accepted/rejected candidate IDs, correction method, alpha, candidate count,
+  tested grid, warnings, and blockers.
+- Validation failures such as missing candidate family metadata, duplicate candidate IDs, unknown metric candidates,
+  duplicate metric rows, invalid p-values, missing candidate p-values, or missing method-card evidence return
+  `ok=false` with blockers embedded in the persisted report.
+
 `math_generate_python_method` contract:
 
 - Request: `method_id`, non-empty `method_card_ids`, `method_contract`, and optional `fixtures`.

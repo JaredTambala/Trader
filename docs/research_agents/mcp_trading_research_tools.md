@@ -284,7 +284,7 @@ request construction without external network calls, plus policy-graph happy pat
 missing-symbol blockers, provider-context mismatch, loading-policy refusal, loop limits, and missing-config fail-fast
 behavior.
 
-## Planned Knowledge-Backed Quantitative Methods Surface
+## Knowledge-Backed Quantitative Methods Surface
 
 The Quantitative Methods Agent replaces the earlier Math Coder Agent identity. Its scope is deterministic,
 auditable quantitative methods rather than indicator coding alone. It owns method contracts, validation reports,
@@ -348,6 +348,8 @@ Initial MCP tools:
 | --- | --- | --- |
 | `math_list_method_contracts` | `read_only` | List maintained indicators, transforms, statistical tests, diagnostics, and multiple-testing methods. |
 | `math_validate_method_contract` | `read_only` | Validate parameters, input schema, warmup behavior, assumptions, fixture expectations, and failure modes. |
+| `math_run_signal_diagnostics` | `local_mutating` | Evaluate declared signal candidates against caller-supplied forward-return labels and write `signal_diagnostic_report.json`. |
+| `math_run_multiple_testing_report` | `local_mutating` | Apply Benjamini-Hochberg correction across a declared signal candidate family and write `multiple_testing_report.json`. |
 
 Compatibility aliases may be kept during migration:
 
@@ -370,6 +372,22 @@ Current and follow-on implementation tools:
 | `math_compile_kernel` | `local_mutating` | local build evidence for an approved deterministic kernel |
 | `math_run_python_cpp_parity` | `local_mutating` | `python_cpp_parity_report.json` |
 | `math_package_method_artifact` | `local_mutating` | `method_package_manifest.json` |
+
+Signal diagnostics are signal-composition diagnostics, not raw indicator diagnostics. Inputs are normalized
+`signal_observations` with `candidate_id`, `signal_name`, `symbol`, `ts`, numeric trade-intent `value`, and optional
+`session`/`regime`; `forward_return_labels` keyed by `symbol`, `ts`, and `horizon`; and a
+`candidate_family_manifest` declaring the tested candidate IDs and parameter grid. The tool joins observations to
+labels, computes IC/rank IC, action hit rate, action-conditioned returns, coverage, turnover proxy, horizon results,
+continuous-signal quantile buckets, and symbol/session/regime breakdowns. Discrete `-1/0/+1` action signals report
+action-conditioned metrics and skip quantile monotonicity. The `rank_ic` method contract must cite approved method-card
+evidence, and executable signal implementation manifests must already be validated; otherwise observational candidates
+may run with warnings.
+
+Multiple-testing reports require a declared candidate family and one p-value row per candidate. The first implemented
+correction method is Benjamini-Hochberg, backed by approved `benjamini_hochberg` method-card evidence. Reports include
+raw p-values, adjusted p-values, accepted/rejected candidate IDs, correction method, candidate count, tested grid,
+warnings, and blockers. Bonferroni, Holm, White Reality Check, Hansen SPA, Deflated Sharpe Ratio, and PBO remain
+follow-on methods rather than first-release behavior.
 
 Python reference implementations are the first executable target. Maintained and generated implementation source files
 must carry a module-level provenance docstring with `Source reference` and `Implements` sections naming the registry
@@ -421,6 +439,6 @@ math_generate_python_method
   -> records source IDs, locators, assumptions, implementation source hashes, fixture status, and failure modes
 ```
 
-Stretch evidence should add signal diagnostics and multiple-testing reports that use approved method cards, record the
-declared candidate family, tested parameter grid, raw p-values, adjusted p-values, accepted/rejected candidates,
-warnings, and blockers.
+23L evidence now includes signal diagnostics and Benjamini-Hochberg multiple-testing reports that use approved method
+cards, record the declared candidate family, tested parameter grid, raw p-values, adjusted p-values,
+accepted/rejected candidates, warnings, and blockers.
