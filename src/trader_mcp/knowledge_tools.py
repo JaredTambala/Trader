@@ -24,6 +24,8 @@ from trader_mcp.constants import (
     MATH_GENERATE_PYTHON_METHOD_TOOL,
     MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL,
     MATH_RUN_INDICATOR_FIXTURES_TOOL,
+    MATH_RUN_MULTIPLE_TESTING_REPORT_TOOL,
+    MATH_RUN_SIGNAL_DIAGNOSTICS_TOOL,
     MATH_RUN_SIGNAL_FIXTURES_TOOL,
     MATH_TOOL_DESCRIPTIONS,
     MATH_VALIDATE_METHOD_CONTRACT_TOOL,
@@ -54,6 +56,8 @@ from trader_research.math_tools import (
     math_list_method_contracts as list_method_contracts_service,
     math_register_method_implementation as register_method_implementation_service,
     math_run_indicator_fixtures as run_indicator_fixtures_service,
+    math_run_multiple_testing_report as run_multiple_testing_report_service,
+    math_run_signal_diagnostics as run_signal_diagnostics_service,
     math_run_signal_fixtures as run_signal_fixtures_service,
     math_validate_method_contract as validate_method_contract_service,
 )
@@ -411,6 +415,50 @@ def register_quant_methods_tools(
             method_contract=method_contract,
             llm_payload=llm_payload,
             fixtures=fixtures,
+            knowledge_store=_knowledge_store(),
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=MATH_RUN_SIGNAL_DIAGNOSTICS_TOOL,
+        description=MATH_TOOL_DESCRIPTIONS[MATH_RUN_SIGNAL_DIAGNOSTICS_TOOL],
+    )
+    def math_run_signal_diagnostics(
+        signal_observations: list[dict[str, Any]],
+        forward_return_labels: list[dict[str, Any]],
+        candidate_family_manifest: dict[str, Any],
+        method_contracts: list[dict[str, Any]],
+        quantile_count: int = 5,
+        data_quality_report: dict[str, Any] | None = None,
+    ) -> CallToolResult:
+        envelope = run_signal_diagnostics_service(
+            artifact_root=environment.artifact_root,
+            signal_observations=signal_observations,
+            forward_return_labels=forward_return_labels,
+            candidate_family_manifest=candidate_family_manifest,
+            method_contracts=method_contracts,
+            quantile_count=quantile_count,
+            data_quality_report=data_quality_report,
+            knowledge_store=_knowledge_store(),
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=MATH_RUN_MULTIPLE_TESTING_REPORT_TOOL,
+        description=MATH_TOOL_DESCRIPTIONS[MATH_RUN_MULTIPLE_TESTING_REPORT_TOOL],
+    )
+    def math_run_multiple_testing_report(
+        candidate_family_manifest: dict[str, Any],
+        metric_matrix: list[dict[str, Any]],
+        method_contract: dict[str, Any],
+        alpha: float | None = None,
+    ) -> CallToolResult:
+        envelope = run_multiple_testing_report_service(
+            artifact_root=environment.artifact_root,
+            candidate_family_manifest=candidate_family_manifest,
+            metric_matrix=metric_matrix,
+            method_contract=method_contract,
+            alpha=alpha,
             knowledge_store=_knowledge_store(),
         )
         return CallToolResult(**envelope_to_mcp_result(envelope))

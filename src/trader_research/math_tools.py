@@ -15,6 +15,8 @@ from trader_research.method_implementations import (
     run_indicator_fixtures,
     run_signal_fixtures,
 )
+from trader_research.multiple_testing import run_multiple_testing_report
+from trader_research.signal_diagnostics import run_signal_diagnostics
 
 from .math_domain import MethodContract, MethodRegistryEntry, MethodValidationReport, ParameterSpec
 from .math_registry import get_method, list_methods
@@ -22,6 +24,8 @@ from .math_registry import get_method, list_methods
 
 MATH_LIST_METHOD_CONTRACTS = "math_list_method_contracts"
 MATH_VALIDATE_METHOD_CONTRACT = "math_validate_method_contract"
+MATH_RUN_SIGNAL_DIAGNOSTICS = "math_run_signal_diagnostics"
+MATH_RUN_MULTIPLE_TESTING_REPORT = "math_run_multiple_testing_report"
 
 
 def math_list_method_contracts(
@@ -287,6 +291,50 @@ def math_generate_python_method(
         method_contract=method_contract,
         llm_payload=llm_payload,
         fixtures=fixtures,
+        knowledge_store=knowledge_store,
+    )
+
+
+def math_run_signal_diagnostics(
+    *,
+    artifact_root: str | Path,
+    signal_observations: list[dict[str, Any]],
+    forward_return_labels: list[dict[str, Any]],
+    candidate_family_manifest: Mapping[str, Any],
+    method_contracts: list[dict[str, Any]],
+    quantile_count: int = 5,
+    data_quality_report: Mapping[str, Any] | None = None,
+    knowledge_store: KnowledgeStore | None = None,
+) -> ToolEnvelope:
+    """Run signal-composition diagnostics over declared trade-intent candidates."""
+    return run_signal_diagnostics(
+        artifact_root=artifact_root,
+        signal_observations=signal_observations,
+        forward_return_labels=forward_return_labels,
+        candidate_family_manifest=candidate_family_manifest,
+        method_contracts=method_contracts,
+        quantile_count=quantile_count,
+        data_quality_report=data_quality_report,
+        knowledge_store=knowledge_store,
+    )
+
+
+def math_run_multiple_testing_report(
+    *,
+    artifact_root: str | Path,
+    candidate_family_manifest: Mapping[str, Any],
+    metric_matrix: list[dict[str, Any]],
+    method_contract: Mapping[str, Any],
+    alpha: float | None = None,
+    knowledge_store: KnowledgeStore | None = None,
+) -> ToolEnvelope:
+    """Run multiple-testing controls across a declared signal candidate family."""
+    return run_multiple_testing_report(
+        artifact_root=artifact_root,
+        candidate_family_manifest=candidate_family_manifest,
+        metric_matrix=metric_matrix,
+        method_contract=method_contract,
+        alpha=alpha,
         knowledge_store=knowledge_store,
     )
 

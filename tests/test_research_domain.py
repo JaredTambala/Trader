@@ -16,7 +16,9 @@ from trader_research.domain import (
     INDICATOR_METADATA,
     METHOD_CARD,
     MODEL_CARD,
+    MULTIPLE_TESTING_REPORT,
     ROBUSTNESS_REPORT,
+    SIGNAL_DIAGNOSTIC_REPORT,
     STATISTICAL_TEST_REPORT,
     BoundedResearchRequest,
     DataRequirement,
@@ -98,6 +100,8 @@ def test_planned_artifact_reference_types_are_json_safe() -> None:
         artifact_report_ref(METHOD_CARD, "method_card_demo"),
         artifact_report_ref(EVIDENCE_RETRIEVAL_REPORT, "evidence_demo"),
         artifact_report_ref(CITATION_VALIDATION_REPORT, "citation_demo"),
+        artifact_report_ref(SIGNAL_DIAGNOSTIC_REPORT, "signal_diag_demo"),
+        artifact_report_ref(MULTIPLE_TESTING_REPORT, "multi_demo"),
         artifact_report_ref(INDICATOR_METADATA, "indicator_demo"),
         artifact_report_ref(STATISTICAL_TEST_REPORT, "stat_demo"),
         artifact_report_ref(FEATURE_MANIFEST, "feature_demo"),
@@ -113,7 +117,9 @@ def test_planned_artifact_reference_types_are_json_safe() -> None:
     assert payload[2]["agent_owner"] == "Quantitative Methods Agent"
     assert payload[3]["agent_owner"] == "Quantitative Methods Agent"
     assert payload[4]["agent_owner"] == "Quantitative Methods Agent"
-    assert payload[6]["agent_owner"] == "ML Agent"
-    assert payload[8]["agent_owner"] == "Evaluation Agent"
-    assert payload[9]["agent_owner"] == "Adversarial Agent"
+    assert payload[5]["agent_owner"] == "Quantitative Methods Agent"
+    assert payload[6]["agent_owner"] == "Quantitative Methods Agent"
+    assert payload[8]["agent_owner"] == "ML Agent"
+    assert payload[10]["agent_owner"] == "Evaluation Agent"
+    assert payload[11]["agent_owner"] == "Adversarial Agent"
     json.dumps(payload)

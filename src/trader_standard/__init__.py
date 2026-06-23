@@ -4,6 +4,7 @@ from .indicators import (
     BollingerBandsIndicator,
     BollingerBandValue,
     EmaIndicator,
+    HistoricalVolatilityIndicator,
     MacdIndicator,
     MacdValue,
     RollingVolatilityIndicator,
@@ -53,6 +54,7 @@ from .strategies import (
 __all__ = [
     "SmaIndicator",
     "EmaIndicator",
+    "HistoricalVolatilityIndicator",
     "RsiIndicator",
     "MacdIndicator",
     "MacdValue",

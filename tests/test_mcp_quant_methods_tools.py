@@ -17,6 +17,8 @@ from trader_mcp.constants import (
     MATH_GENERATE_PYTHON_METHOD_TOOL,
     MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL,
     MATH_RUN_INDICATOR_FIXTURES_TOOL,
+    MATH_RUN_MULTIPLE_TESTING_REPORT_TOOL,
+    MATH_RUN_SIGNAL_DIAGNOSTICS_TOOL,
     MATH_RUN_SIGNAL_FIXTURES_TOOL,
     MATH_VALIDATE_METHOD_CONTRACT_TOOL,
     MCP_CONFIG_TOOL,
@@ -176,6 +178,8 @@ def test_mcp_quant_methods_core_evidence_flow(tmp_path: Path) -> None:
         assert config_tools[MATH_RUN_INDICATOR_FIXTURES_TOOL]["side_effect"] == "local_mutating"
         assert config_tools[MATH_RUN_SIGNAL_FIXTURES_TOOL]["side_effect"] == "local_mutating"
         assert config_tools[MATH_GENERATE_PYTHON_METHOD_TOOL]["side_effect"] == "local_mutating"
+        assert config_tools[MATH_RUN_SIGNAL_DIAGNOSTICS_TOOL]["side_effect"] == "local_mutating"
+        assert config_tools[MATH_RUN_MULTIPLE_TESTING_REPORT_TOOL]["side_effect"] == "local_mutating"
         assert registered.isError is False
         assert ingested.isError is False
         assert dereferenced.isError is False
@@ -195,6 +199,90 @@ def test_mcp_quant_methods_core_evidence_flow(tmp_path: Path) -> None:
         assert methods.structuredContent["data"]["method_count"] >= 5
         assert valid_contract.isError is False
         assert valid_contract.structuredContent["agent_owner"] == "Quantitative Methods Agent"
+
+    anyio.run(_run)
+
+
+def test_mcp_quant_methods_signal_diagnostics_and_multiple_testing(tmp_path: Path) -> None:
+    artifact_root = tmp_path / "artifacts"
+    environment = replace(load_local_environment("env.template"), artifact_root=artifact_root)
+    knowledge_store = JsonKnowledgeStore(artifact_root)
+    server = create_server(
+        environment,
+        knowledge_embedding_provider=DeterministicEmbeddingProvider(),
+        knowledge_store_provider=lambda: knowledge_store,
+    )
+
+    candidate_family = {
+        "candidate_family_id": "family_mcp_diagnostics",
+        "candidates": [
+            {"candidate_id": "c1", "signal_name": "MCP Action Signal"},
+            {"candidate_id": "c2", "signal_name": "MCP Score Signal"},
+        ],
+        "tested_grid": {"kind": ["action", "score"]},
+    }
+    rank_ic_contract = {
+        "method_id": "rank_ic",
+        "parameters": {"horizon": 1},
+        "knowledge_evidence_refs": [{"method_card_id": "method_card_rank_ic_seed_v1"}],
+    }
+    bh_contract = {
+        "method_id": "benjamini_hochberg",
+        "parameters": {"alpha": 0.05},
+        "knowledge_evidence_refs": [{"method_card_id": "method_card_benjamini_hochberg_seed_v1"}],
+    }
+    observations = [
+        {"candidate_id": "c1", "signal_name": "MCP Action Signal", "symbol": "AAA", "ts": "2026-01-01T09:30:00+00:00", "value": 1.0},
+        {"candidate_id": "c1", "signal_name": "MCP Action Signal", "symbol": "AAA", "ts": "2026-01-01T09:31:00+00:00", "value": -1.0},
+        {"candidate_id": "c1", "signal_name": "MCP Action Signal", "symbol": "AAA", "ts": "2026-01-01T09:32:00+00:00", "value": 1.0},
+        {"candidate_id": "c1", "signal_name": "MCP Action Signal", "symbol": "AAA", "ts": "2026-01-01T09:33:00+00:00", "value": -1.0},
+        {"candidate_id": "c2", "signal_name": "MCP Score Signal", "symbol": "BBB", "ts": "2026-01-01T09:30:00+00:00", "value": 0.1},
+        {"candidate_id": "c2", "signal_name": "MCP Score Signal", "symbol": "BBB", "ts": "2026-01-01T09:31:00+00:00", "value": 0.2},
+        {"candidate_id": "c2", "signal_name": "MCP Score Signal", "symbol": "BBB", "ts": "2026-01-01T09:32:00+00:00", "value": 0.3},
+        {"candidate_id": "c2", "signal_name": "MCP Score Signal", "symbol": "BBB", "ts": "2026-01-01T09:33:00+00:00", "value": 0.4},
+    ]
+    labels = [
+        {"symbol": "AAA", "ts": "2026-01-01T09:30:00+00:00", "horizon": 1, "forward_return": 0.01},
+        {"symbol": "AAA", "ts": "2026-01-01T09:31:00+00:00", "horizon": 1, "forward_return": -0.01},
+        {"symbol": "AAA", "ts": "2026-01-01T09:32:00+00:00", "horizon": 1, "forward_return": 0.02},
+        {"symbol": "AAA", "ts": "2026-01-01T09:33:00+00:00", "horizon": 1, "forward_return": 0.03},
+        {"symbol": "BBB", "ts": "2026-01-01T09:30:00+00:00", "horizon": 1, "forward_return": 0.01},
+        {"symbol": "BBB", "ts": "2026-01-01T09:31:00+00:00", "horizon": 1, "forward_return": 0.02},
+        {"symbol": "BBB", "ts": "2026-01-01T09:32:00+00:00", "horizon": 1, "forward_return": 0.03},
+        {"symbol": "BBB", "ts": "2026-01-01T09:33:00+00:00", "horizon": 1, "forward_return": 0.04},
+    ]
+
+    async def _run() -> None:
+        tools = await server.list_tools()
+        diagnostics = await server.call_tool(
+            MATH_RUN_SIGNAL_DIAGNOSTICS_TOOL,
+            {
+                "signal_observations": observations,
+                "forward_return_labels": labels,
+                "candidate_family_manifest": candidate_family,
+                "method_contracts": [rank_ic_contract],
+                "quantile_count": 4,
+            },
+        )
+        multiple_testing = await server.call_tool(
+            MATH_RUN_MULTIPLE_TESTING_REPORT_TOOL,
+            {
+                "candidate_family_manifest": candidate_family,
+                "metric_matrix": [
+                    {"candidate_id": "c1", "p_value": 0.01},
+                    {"candidate_id": "c2", "p_value": 0.20},
+                ],
+                "method_contract": bh_contract,
+            },
+        )
+
+        assert {tool.name for tool in tools} == set(REGISTERED_TOOL_NAMES)
+        assert diagnostics.isError is False
+        assert multiple_testing.isError is False
+        assert diagnostics.structuredContent["agent_owner"] == "Quantitative Methods Agent"
+        assert multiple_testing.structuredContent["agent_owner"] == "Quantitative Methods Agent"
+        assert "signal_diagnostic_report" in diagnostics.structuredContent["artifacts"]
+        assert "multiple_testing_report" in multiple_testing.structuredContent["artifacts"]
 
     anyio.run(_run)
 

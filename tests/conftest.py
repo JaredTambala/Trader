@@ -61,7 +61,8 @@ def _truncate_knowledge_tables(store: PostgresKnowledgeStore) -> None:
             knowledge_ingestion_runs,
             knowledge_chunks,
             knowledge_sources,
-            knowledge_method_cards
+            knowledge_method_cards,
+            knowledge_method_contracts
         CASCADE
         """
     )
