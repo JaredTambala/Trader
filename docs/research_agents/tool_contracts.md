@@ -124,17 +124,19 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | `math_run_multiple_testing_report` | Quantitative Methods Agent | `multiple_testing_report.json` |
 | `math_generate_cpp_kernel` | Quantitative Methods Agent | draft `cxx_kernel_manifest.json` from an approved template |
 | `math_compile_kernel` | Quantitative Methods Agent | local compiled-kernel build evidence |
-| `math_run_python_cpp_parity` | Quantitative Methods Agent | `python_cpp_parity_report.json` |
-| `math_package_method_artifact` | Quantitative Methods Agent | `method_package_manifest.json` |
+| `math_package_method_artifact` | Quantitative Methods Agent | source-backed `method_package_manifest.json` for validated Python indicator/signal implementations |
+| `math_run_cpp_conformance` | Quantitative Methods Agent | deferred compiled-kernel conformance/equivalence report |
 | `ml_create_feature_manifest` | ML Agent | `feature_dataset_manifest.json` |
 | `ml_summarize_model_artifact` | ML Agent | model card, prediction, or drift artifact summary |
 | `hypothesis_create_card` | Hypothesis Agent | `hypothesis_card.json` |
 | `research_create_plan` | Quant Research Supervisor Agent | experiment plan |
 | `research_list_strategy_templates` | Quant Research Supervisor Agent | strategy template catalog |
-| `research_validate_strategy_candidate` | Quant Research Supervisor Agent | validation report |
+| `research_create_strategy_candidate` | Quant Research Supervisor Agent | `strategy_candidate_manifest.json` |
+| `research_validate_strategy_candidate` | Quant Research Supervisor Agent | strategy candidate validation report |
 | `research_run_backtest` | Quant Research Supervisor Agent | backtest artifact bundle |
 | `research_get_backtest_results` | Quant Research Supervisor Agent | result summary |
-| `evaluation_generate_report` | Evaluation Agent | `evaluation_report.json` |
+| `evaluation_generate_performance_report` | Evaluation Agent | first practical `evaluation_report.json` from backtest/data-quality artifacts |
+| `evaluation_generate_report` | Evaluation Agent | later skeptical critique report |
 | `adversarial_run_robustness` | Adversarial Agent | `robustness_report.json` |
 | `research_analyze_return_attribution` | Quant Research Supervisor Agent | attribution report |
 | `research_generate_recommendation` | Quant Research Supervisor Agent | recommendation report |
@@ -302,6 +304,33 @@ Knowledge-base rules:
   `math_run_signal_fixtures` for Signal methods. Success data reports the generated source path, registration result,
   fixture-validation result, and `status="validated"`; failures remain quarantined with `status="blocked"`.
 
+`math_generate_cpp_kernel` contract:
+
+- Request: either `implementation_id` for a persisted Python method implementation manifest or
+  `implementation_manifest` inline; optional `template_id`.
+- The Python manifest must have `status="validated"`, `runtime_contract="trader.indicators.Indicator"`, approved
+  method-card refs, and an unchanged source hash. Signal manifests, unvalidated manifests, missing evidence, and
+  unsupported methods fail closed.
+- The first supported template is `sma_scalar_series_v1` for `method_id="sma"`. The tool renders only maintained
+  templates under `trader_standard`; it does not accept arbitrary C++ source from callers or LLMs.
+- Generated source is scanned for disallowed includes and unsafe call patterns, then written under the caller's
+  artifact root with a `cxx_kernel_manifest`.
+- Success data contains `cxx_kernel_manifest` with Python implementation provenance, method-card refs, method contract,
+  template ID/hash, generated source path/hash, ABI metadata, warmup/NaN/alignment/dtype/no-lookahead policy, and safety
+  policy. Unsupported or unsafe inputs return `ok=false` with blockers.
+
+`math_compile_kernel` contract:
+
+- Request: either `kernel_id` for a persisted C++ kernel manifest or `kernel_manifest` inline; optional `compiler` and
+  `timeout_seconds`.
+- Compilation verifies the generated source hash and safety scan before invoking a compiler. The compile command uses
+  fixed safe flags, runs in an isolated artifact build directory, and captures stdout/stderr to a build log.
+- Success data contains an updated `cxx_kernel_manifest` with compiler path/version, flags, command, build directory,
+  binary path/hash/size, build log path, `status="compiled"`, and a compile-only benchmark summary.
+- Missing compilers, tampered sources, disallowed source content, timeouts, or compiler failures return `ok=false` with
+  an updated `status="compile_failed"` manifest and blockers. Contract-first C++ conformance/equivalence is deferred
+  behind the method-package -> strategy -> backtest -> performance-report toolchain.
+
 ## LangGraph Use
 
 Each LangGraph agent has its own identity, state schema, role policy, tool allowlist, and required output artifact.
@@ -314,10 +343,10 @@ Minimal allowlists:
 | --- | --- |
 | Data Agent | `data_get_inventory`, `data_summarize_quality`, `data_ensure_loaded`, read-only health/config |
 | Quant Research Supervisor Agent | Specialist artifact reads, supervisor handoff tools, `research_*` tools |
-| Quantitative Methods Agent | `knowledge_*` retrieval/ingestion/citation tools, `math_list_method_contracts`, `math_validate_method_contract`, later fixture, diagnostic, multiple-testing, kernel, parity, and method-packaging tools |
+| Quantitative Methods Agent | `knowledge_*` retrieval/ingestion/citation tools, `math_list_method_contracts`, `math_validate_method_contract`, fixture, diagnostic, multiple-testing, method-packaging, and optional kernel tools |
 | ML Agent | `ml_create_feature_manifest`, `ml_summarize_model_artifact` |
 | Hypothesis Agent | Ingredient artifact reads, `hypothesis_create_card` |
-| Evaluation Agent | Data/backtest artifact reads, `evaluation_generate_report` |
+| Evaluation Agent | Data/backtest artifact reads, `evaluation_generate_performance_report`, later `evaluation_generate_report` |
 | Adversarial Agent | Baseline artifact reads, `adversarial_run_robustness` |
 
 LangGraph state may store artifact references, status, public messages, and structured decisions. It must not persist

@@ -20,8 +20,10 @@ from trader_mcp.constants import (
     KNOWLEDGE_SEARCH_METHODS_TOOL,
     KNOWLEDGE_TOOL_DESCRIPTIONS,
     KNOWLEDGE_VALIDATE_CITATIONS_TOOL,
-    MATH_LIST_METHOD_CONTRACTS_TOOL,
+    MATH_COMPILE_KERNEL_TOOL,
+    MATH_GENERATE_CPP_KERNEL_TOOL,
     MATH_GENERATE_PYTHON_METHOD_TOOL,
+    MATH_LIST_METHOD_CONTRACTS_TOOL,
     MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL,
     MATH_RUN_INDICATOR_FIXTURES_TOOL,
     MATH_RUN_MULTIPLE_TESTING_REPORT_TOOL,
@@ -52,6 +54,8 @@ from trader_research.knowledge.retrieval import (
 from trader_research.knowledge.sources import list_sources as list_sources_service
 from trader_research.knowledge.sources import register_source as register_source_service
 from trader_research.math_tools import (
+    math_compile_kernel as compile_kernel_service,
+    math_generate_cpp_kernel as generate_cpp_kernel_service,
     math_generate_python_method as generate_python_method_service,
     math_list_method_contracts as list_method_contracts_service,
     math_register_method_implementation as register_method_implementation_service,
@@ -460,5 +464,41 @@ def register_quant_methods_tools(
             method_contract=method_contract,
             alpha=alpha,
             knowledge_store=_knowledge_store(),
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=MATH_GENERATE_CPP_KERNEL_TOOL,
+        description=MATH_TOOL_DESCRIPTIONS[MATH_GENERATE_CPP_KERNEL_TOOL],
+    )
+    def math_generate_cpp_kernel(
+        implementation_id: str | None = None,
+        implementation_manifest: dict[str, Any] | None = None,
+        template_id: str | None = None,
+    ) -> CallToolResult:
+        envelope = generate_cpp_kernel_service(
+            artifact_root=environment.artifact_root,
+            implementation_id=implementation_id,
+            implementation_manifest=implementation_manifest,
+            template_id=template_id,
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=MATH_COMPILE_KERNEL_TOOL,
+        description=MATH_TOOL_DESCRIPTIONS[MATH_COMPILE_KERNEL_TOOL],
+    )
+    def math_compile_kernel(
+        kernel_id: str | None = None,
+        kernel_manifest: dict[str, Any] | None = None,
+        compiler: str | None = None,
+        timeout_seconds: float = 30.0,
+    ) -> CallToolResult:
+        envelope = compile_kernel_service(
+            artifact_root=environment.artifact_root,
+            kernel_id=kernel_id,
+            kernel_manifest=kernel_manifest,
+            compiler=compiler,
+            timeout_seconds=timeout_seconds,
         )
         return CallToolResult(**envelope_to_mcp_result(envelope))

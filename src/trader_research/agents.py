@@ -53,6 +53,8 @@ QUANTITATIVE_METHODS_TOOLS = (
     "math_generate_python_method",
     "math_run_signal_diagnostics",
     "math_run_multiple_testing_report",
+    "math_generate_cpp_kernel",
+    "math_compile_kernel",
 )
 
 QUANTITATIVE_METHODS_COMPATIBILITY_TOOLS = (

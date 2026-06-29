@@ -321,8 +321,8 @@ rejected candidates, warnings, and blockers. The system should not report only a
 family and correction method.
 
 Optional compiled kernels may be added later, but only through approved templates, isolated local builds, and
-Python/C++ parity reports. Generated kernels must not access broker APIs, raw SQL, network resources, or live-trading
-controls.
+contract-first conformance/equivalence reports. Generated kernels must not access broker APIs, raw SQL, network
+resources, or live-trading controls.
 
 Knowledge-base guardrails:
 
@@ -408,7 +408,7 @@ Strategy Author
 
 Quantitative Methods Agent
 - Owns deterministic method contracts, fixtures, statistical tests, signal diagnostics, multiple-testing reports, and
-  optional parity-checked numerical kernels.
+  method packages. Optional compiled-kernel conformance and runtime acceleration are later performance work.
 - Must not fetch data, create hypotheses, train ML models, run broad research campaigns, or make promotion decisions.
 
 Skeptic / Robustness Analyst

@@ -43,7 +43,7 @@ to the agent that owns that artifact.
 | --- | --- | --- | --- |
 | Quant Research Supervisor Agent | Research orchestration, experiment planning, synthesis, recommendation state | Experiment plans, research suites, comparison reports, recommendation reports | Raw data fetching, low-level indicator/model implementation, critique artifacts, robustness reports |
 | Data Agent | Market data acquisition and quality | Dataset manifests and data-quality reports | Strategy ideas, indicators, models, verdicts |
-| Quantitative Methods Agent | Source-backed deterministic quantitative methods: indicators, transforms, statistical tests, signal diagnostics, multiple-testing controls, method cards, citation validation, Python reference implementations, and optional compiled kernels | Knowledge manifests, method cards, method contracts, implementation manifests, validation reports, signal diagnostic reports, multiple-testing reports, kernel manifests, parity reports | Data fetching, strategy ideas, model training, broad research orchestration, promotion decisions |
+| Quantitative Methods Agent | Source-backed deterministic quantitative methods: indicators, transforms, statistical tests, signal diagnostics, multiple-testing controls, method cards, citation validation, Python reference implementations, method packages, and optional compiled kernels | Knowledge manifests, method cards, method contracts, implementation manifests, validation reports, signal diagnostic reports, multiple-testing reports, method package manifests, optional kernel manifests | Data fetching, strategy ideas, model training, broad research orchestration, promotion decisions |
 | ML Agent | Feature datasets, models, predictions, drift monitoring | Feature manifests, model cards, prediction artifacts, drift reports | Final trading recommendations |
 | Hypothesis Agent | Strategy ideas | Hypothesis cards | Backtest verdicts, promotion decisions |
 | Evaluation Agent | Research critique | Evaluation reports | New strategy ideas, final recommendations |
@@ -191,8 +191,8 @@ Responsibilities:
 - Require approved method-card references and passing citation validation for sophisticated statistical-test and
   multiple-testing contracts. Simple maintained arithmetic transforms may be allowed from the maintained registry
   without external retrieval.
-- Own Python reference implementation manifests, deterministic fixture validation reports, optional template-restricted
-  C++ kernel artifacts, and Python/C++ parity reports for deterministic methods.
+- Own Python reference implementation manifests, deterministic fixture validation reports, method package manifests, and
+  optional template-restricted C++ kernel artifacts for deterministic methods.
 - Reuse Trader runtime contracts instead of creating parallel implementation schemas. Indicator artifacts use
   `trader.indicators.Indicator` and `IndicatorObservation`; signal artifacts use `trader.signals.Signal`. Quantitative
   Methods metadata and method cards explain the methodology, while `method_implementation_manifest.json` ties that
@@ -223,7 +223,6 @@ Outputs:
 - `signal_diagnostic_report.json`.
 - `multiple_testing_report.json`.
 - `cxx_kernel_manifest.json`.
-- `python_cpp_parity_report.json`.
 - `method_package_manifest.json`.
 - `knowledge_source_manifest.json`.
 - `knowledge_ingestion_report.json`.
@@ -243,7 +242,8 @@ Boundaries:
 - Does not run broad research campaigns.
 - Does not make final promotion decisions.
 - Does not emit arbitrary runtime code. Generated Python artifacts stay quarantined until validated, and compiled kernels
-  stay inside approved templates and parity checks.
+  stay inside approved templates; contract-first compiled-kernel conformance is deferred until runtime acceleration is
+  worth pursuing.
 - Does not create a parallel executable indicator-contract system for generated methods; generated and maintained
   implementations must conform to the Trader `Indicator` runtime contract and pass fixture validation before downstream
   use.
@@ -427,19 +427,19 @@ The intended operating loop is:
 | Knowledge-backed method contracts, diagnostics, and multiple-testing verification | `knowledge_*` evidence tools and `math_*` method-contract tools, with later diagnostic/report tools planned | Quantitative Methods Agent |
 | Feature/model/drift artifacts | planned ML tools | ML Agent |
 | Hypothesis card creation | `hypothesis_create_card` | Hypothesis Agent |
-| Strategy catalog and validation | `research_list_strategy_templates`, `research_validate_strategy_candidate` | Quant Research Supervisor Agent |
+| Strategy catalog and validation | `research_list_strategy_templates`, `research_create_strategy_candidate`, `research_validate_strategy_candidate` | Quant Research Supervisor Agent |
 | Baseline backtests and result lookup | `research_run_backtest`, `research_get_backtest_results` | Quant Research Supervisor Agent |
 | Attribution and comparison | `research_analyze_return_attribution` | Quant Research Supervisor Agent |
-| Evidence critique | `evaluation_generate_report` | Evaluation Agent |
+| Performance report and evidence critique | `evaluation_generate_performance_report`, later `evaluation_generate_report` | Evaluation Agent |
 | Robustness testing | `adversarial_run_robustness` | Adversarial Agent |
 | Recommendation synthesis | `research_generate_recommendation`, later `research_run_experiment` | Quant Research Supervisor Agent |
 
 ## Future Work
 
 - Add a dataset manifest registry for the Data Agent.
-- Add signal diagnostics, multiple-testing reports, optional parity-checked numerical kernels, and Quantitative Methods
-  graph handoff. The knowledge source/chunk/embedding/method-card/citation path is Postgres-backed and exposed through
-  MCP.
+- Add method packages, strategy candidates, backtests, performance reports, and then Quantitative Methods graph handoff.
+  The knowledge source/chunk/embedding/method-card/citation path is Postgres-backed and exposed through MCP. Optional
+  compiled-kernel conformance and acceleration are later performance work.
 - Add feature dataset, model card, prediction, and drift schemas for the ML Agent.
 - Add `hypothesis_card.json`, `evaluation_report.json`, and `robustness_report.json` schemas.
 - Extend research suite generation so it consumes hypothesis cards and robustness plans.

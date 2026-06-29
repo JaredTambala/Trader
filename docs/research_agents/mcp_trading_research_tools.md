@@ -289,7 +289,8 @@ behavior.
 The Quantitative Methods Agent replaces the earlier Math Coder Agent identity. Its scope is deterministic,
 auditable quantitative methods rather than indicator coding alone. It owns method contracts, validation reports,
 statistical inference procedures, signal diagnostics, multiple-testing controls, approved method cards, citation
-validation, and optional parity-checked numerical kernels.
+validation, method packages, and optional compiled-kernel artifacts. Compiled-kernel conformance and runtime
+acceleration are deferred behind the source-backed method -> strategy -> backtest -> performance-report toolchain.
 
 The Quant Methods Knowledge Base is a `trader_research` service, not a separate autonomous agent in the first release.
 The runtime store is Postgres-backed: source/chunk/embedding/ingestion records live in `knowledge_*` tables, lexical
@@ -370,8 +371,8 @@ Current and follow-on implementation tools:
 | `math_run_multiple_testing_report` | `local_mutating` | `multiple_testing_report.json` |
 | `math_generate_cpp_kernel` | `local_mutating` | draft `cxx_kernel_manifest.json` from approved templates only, after a validated Python reference exists |
 | `math_compile_kernel` | `local_mutating` | local build evidence for an approved deterministic kernel |
-| `math_run_python_cpp_parity` | `local_mutating` | `python_cpp_parity_report.json` |
-| `math_package_method_artifact` | `local_mutating` | `method_package_manifest.json` |
+| `math_package_method_artifact` | `local_mutating` | source-backed `method_package_manifest.json` for validated Python indicator/signal implementations |
+| `math_run_cpp_conformance` | `local_mutating` | deferred compiled-kernel conformance/equivalence report |
 
 Signal diagnostics are signal-composition diagnostics, not raw indicator diagnostics. Inputs are normalized
 `signal_observations` with `candidate_id`, `signal_name`, `symbol`, `ts`, numeric trade-intent `value`, and optional
@@ -403,9 +404,11 @@ indicator or signal contract system. `method_implementation_manifest.json` is th
 card, the maintained method contract, a concrete Trader runtime entrypoint, the source hash, and fixture validation
 evidence. Indicator manifests run through `math_run_indicator_fixtures`; Signal manifests run through
 `math_run_signal_fixtures`. The C++ path is template-restricted and comes after a validated Python reference exists.
-Generated or maintained kernels must declare warmup, NaN, alignment, dtype, and lookahead policies; compile in an
-isolated local build directory; avoid broker, SQL, network, and live-trading access; and pass Python/C++ parity before
-downstream operational use.
+23M implements `math_generate_cpp_kernel` and `math_compile_kernel` for the first SMA template. Generated kernels
+declare warmup, NaN, alignment, dtype, and lookahead policies; compile in an isolated local build directory; and avoid
+broker, SQL, network, filesystem mutation, and live-trading access. 23N should package validated Python indicator/signal
+implementations for strategy construction without requiring compiled-kernel output equivalence. Contract-first compiled-kernel
+conformance/equivalence and downstream runtime acceleration are later backlog work.
 
 23K-A proves the non-indicator path with `method_id="bollinger_bwma_action_signal"`, `family="signal"`, and
 `runtime_contract="trader.signals.Signal"`. The maintained implementation

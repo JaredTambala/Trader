@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from trader_research.contracts import SideEffect, ToolEnvelope, error_envelope, success_envelope
+from trader_research.cpp_kernel_artifacts import compile_cpp_kernel, generate_cpp_kernel
 from trader_research.knowledge.citation_validation import validate_citations
 from trader_research.knowledge.method_cards import get_method_card, has_approved_method_card
 from trader_research.knowledge.store import KnowledgeStore, KnowledgeStoreError
@@ -26,6 +27,8 @@ MATH_LIST_METHOD_CONTRACTS = "math_list_method_contracts"
 MATH_VALIDATE_METHOD_CONTRACT = "math_validate_method_contract"
 MATH_RUN_SIGNAL_DIAGNOSTICS = "math_run_signal_diagnostics"
 MATH_RUN_MULTIPLE_TESTING_REPORT = "math_run_multiple_testing_report"
+MATH_GENERATE_CPP_KERNEL = "math_generate_cpp_kernel"
+MATH_COMPILE_KERNEL = "math_compile_kernel"
 
 
 def math_list_method_contracts(
@@ -336,6 +339,40 @@ def math_run_multiple_testing_report(
         method_contract=method_contract,
         alpha=alpha,
         knowledge_store=knowledge_store,
+    )
+
+
+def math_generate_cpp_kernel(
+    *,
+    artifact_root: str | Path,
+    implementation_id: str | None = None,
+    implementation_manifest: Mapping[str, Any] | None = None,
+    template_id: str | None = None,
+) -> ToolEnvelope:
+    """Generate a template-restricted C++ kernel from a validated Python reference."""
+    return generate_cpp_kernel(
+        artifact_root=artifact_root,
+        implementation_id=implementation_id,
+        implementation_manifest=implementation_manifest,
+        template_id=template_id,
+    )
+
+
+def math_compile_kernel(
+    *,
+    artifact_root: str | Path,
+    kernel_id: str | None = None,
+    kernel_manifest: Mapping[str, Any] | None = None,
+    compiler: str | None = None,
+    timeout_seconds: float = 30.0,
+) -> ToolEnvelope:
+    """Compile a generated C++ kernel in an isolated artifact build directory."""
+    return compile_cpp_kernel(
+        artifact_root=artifact_root,
+        kernel_id=kernel_id,
+        kernel_manifest=kernel_manifest,
+        compiler=compiler,
+        timeout_seconds=timeout_seconds,
     )
 
 

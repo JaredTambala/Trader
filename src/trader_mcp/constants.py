@@ -83,6 +83,12 @@ MATH_RUN_SIGNAL_DIAGNOSTICS_TOOL: Final = "math_run_signal_diagnostics"
 MATH_RUN_MULTIPLE_TESTING_REPORT_TOOL: Final = "math_run_multiple_testing_report"
 """Tool name for running multiple-testing controls over signal candidates."""
 
+MATH_GENERATE_CPP_KERNEL_TOOL: Final = "math_generate_cpp_kernel"
+"""Tool name for generating template-restricted C++ kernels."""
+
+MATH_COMPILE_KERNEL_TOOL: Final = "math_compile_kernel"
+"""Tool name for compiling generated C++ kernels."""
+
 SUPPORT_TOOL_NAMES: Final = (MCP_HEALTH_TOOL, MCP_CONFIG_TOOL)
 """Read-only support tool names exposed by the MCP server."""
 
@@ -117,6 +123,8 @@ MATH_TOOL_NAMES: Final = (
     MATH_GENERATE_PYTHON_METHOD_TOOL,
     MATH_RUN_SIGNAL_DIAGNOSTICS_TOOL,
     MATH_RUN_MULTIPLE_TESTING_REPORT_TOOL,
+    MATH_GENERATE_CPP_KERNEL_TOOL,
+    MATH_COMPILE_KERNEL_TOOL,
 )
 """Quant Methods math tool names exposed by the MCP server."""
 
@@ -160,6 +168,8 @@ MATH_TOOL_DESCRIPTIONS: Final = {
     MATH_GENERATE_PYTHON_METHOD_TOOL: "Generate a quarantined Python method draft and validate it with fixtures.",
     MATH_RUN_SIGNAL_DIAGNOSTICS_TOOL: "Run diagnostics for declared signal-composition candidates against forward returns.",
     MATH_RUN_MULTIPLE_TESTING_REPORT_TOOL: "Run Benjamini-Hochberg controls over a declared signal candidate family.",
+    MATH_GENERATE_CPP_KERNEL_TOOL: "Generate a template-restricted C++ kernel from a validated Python reference.",
+    MATH_COMPILE_KERNEL_TOOL: "Compile a generated C++ kernel in an isolated local build directory.",
 }
 """Descriptions for Quant Methods method tools exposed by the MCP server."""
 

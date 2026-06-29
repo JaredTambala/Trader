@@ -34,6 +34,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 trader_research = ["method_contracts_seed.json"]
+"trader_standard.indicators" = ["cpp/*.cpp.template", "bindings/*.json"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

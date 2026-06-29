@@ -266,7 +266,6 @@ Owned artifacts:
 - `signal_diagnostic_report.json`
 - `multiple_testing_report.json`
 - optional `cxx_kernel_manifest.json`
-- optional `python_cpp_parity_report.json`
 - `method_package_manifest.json`
 
 Evidence:
@@ -413,12 +412,13 @@ Owned artifacts:
 
 ## Slice 13: Evaluation MCP Tool and Agent Identity
 
-Goal: create skeptical research critique as a separate tool and graph.
+Goal: create performance reporting first, then skeptical research critique as a separate tool and graph.
 
 Expected flow:
 
 ```text
 backtest artifacts + data-quality report + hypothesis_card.json
+  -> evaluation_generate_performance_report
   -> evaluation_generate_report
   -> Evaluation Agent graph reviews evaluation output
   -> supervisor records blockers and caveats

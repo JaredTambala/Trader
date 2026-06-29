@@ -7,11 +7,11 @@ and which agent features are planned next. It is a user-facing companion to the 
 ## Current Scope
 
 The current MCP server is a deterministic local research-tool server. It exposes support tools plus a Data Agent
-workflow for bounded market-data inspection and explicit data loading. The LangGraph layer also includes a deterministic
-Quant Research Supervisor skeleton that consumes Data Agent artifact handoffs and records missing specialist evidence
-as blockers; it does not expose new MCP tools yet. The planned Quantitative Methods Agent is the successor to the
-earlier Math Coder Agent naming and will be backed by a curated Quant Methods Knowledge Base for approved sources,
-method cards, retrieval evidence, and citation validation.
+workflow for bounded market-data inspection and explicit data loading. It also exposes the current Quantitative Methods
+tool surface for curated knowledge sources, method cards, citation validation, Python implementation validation, signal
+diagnostics, multiple-testing reports, and template-restricted C++ kernel artifacts. The LangGraph layer includes a
+deterministic Quant Research Supervisor skeleton that consumes Data Agent artifact handoffs and records missing
+specialist evidence as blockers.
 
 Available tools:
 
@@ -36,6 +36,10 @@ Available tools:
 | `math_run_indicator_fixtures` | Quantitative Methods Agent | `local_mutating` | Run deterministic fixtures and no-lookahead checks for a registered implementation. |
 | `math_run_signal_fixtures` | Quantitative Methods Agent | `local_mutating` | Run deterministic scalar signal fixtures for a registered `trader.signals.Signal` implementation. |
 | `math_generate_python_method` | Quantitative Methods Agent | `local_mutating` | Generate quarantined Python, then require registration and fixture validation. |
+| `math_run_signal_diagnostics` | Quantitative Methods Agent | `local_mutating` | Run signal-composition diagnostics against forward-return labels. |
+| `math_run_multiple_testing_report` | Quantitative Methods Agent | `local_mutating` | Run Benjamini-Hochberg controls over a declared signal candidate family. |
+| `math_generate_cpp_kernel` | Quantitative Methods Agent | `local_mutating` | Generate a template-restricted C++ kernel from a validated Python reference. |
+| `math_compile_kernel` | Quantitative Methods Agent | `local_mutating` | Compile a generated C++ kernel in an isolated local build directory. |
 
 Current safety boundaries:
 
@@ -406,12 +410,12 @@ Planned work after the current Data Agent slice:
 | Shared contracts | Move remaining legacy tool contracts into the research package boundary. |
 | Research helpers | Move research helper modules out of the core runtime package where appropriate. |
 | Quant Research Supervisor | Extend the skeleton to request specialist work and later synthesize evidenced recommendations. |
-| Quantitative Methods Agent | Ingest curated method sources, approve source-backed method cards, validate citations, list and validate method contracts, run indicator fixtures, produce signal diagnostics, record multiple-testing controls, and optionally package parity-checked numerical kernels. |
-| ML Agent | Register and summarize feature, model, prediction, and drift artifacts. |
-| Hypothesis Agent | Create explicit hypothesis-card artifacts from known ingredients. |
-| Strategy research | List templates and validate strategy candidates before backtesting. |
+| Quantitative Methods Agent | Ingest curated method sources, approve source-backed method cards, validate citations, list and validate method contracts, run fixtures/diagnostics, record multiple-testing controls, and package validated Python indicator/signal implementations for handoff. |
+| Strategy research | List templates, create source-backed strategy candidates from method packages, and validate candidates before backtesting. |
 | Backtest tools | Add bounded research backtest/result lookup tools when allowed by policy. |
-| Evaluation Agent | Produce skeptical review reports from data and research evidence. |
+| Evaluation Agent | Produce the first practical performance reports from backtest/data-quality artifacts, then later skeptical review reports. |
+| Hypothesis Agent | Create explicit hypothesis-card artifacts from known ingredients after the core method -> strategy -> backtest -> performance loop is usable. |
+| ML Agent | Register and summarize feature, model, prediction, and drift artifacts after the non-ML toolchain is useful. |
 | Adversarial Agent | Run robustness and stress-test workflows for candidate strategies. |
 | Recommendations | Render conservative recommendation reports for human review. |
 

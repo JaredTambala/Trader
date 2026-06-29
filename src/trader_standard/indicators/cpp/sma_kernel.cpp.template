@@ -1,0 +1,48 @@
+// Template: sma_scalar_series_v1
+// Method: {{METHOD_ID}}
+// Python implementation: {{PYTHON_IMPLEMENTATION_ID}}
+// Python source hash: {{PYTHON_SOURCE_HASH}}
+//
+// Source reference:
+// - Generated only from a validated Trader Python Indicator implementation.
+// - The approved method-card references and method contract are recorded in
+//   cxx_kernel_manifest.json.
+//
+// Implements:
+// - ABI function trader_sma_kernel_v1.
+// - Input closes are latest-first, matching Trader runtime convention.
+// - Output values are latest-first and omit warmup observations.
+// - No lookahead: every output uses only values in its trailing window.
+
+#include <cstddef>
+
+extern "C" int trader_sma_kernel_v1(
+    const double* latest_first_closes,
+    std::size_t count,
+    int period,
+    double* latest_first_output,
+    std::size_t output_count
+) {
+    if (latest_first_closes == nullptr || latest_first_output == nullptr) {
+        return -1;
+    }
+    if (period <= 0) {
+        return -2;
+    }
+    const auto window = static_cast<std::size_t>(period);
+    if (count < window) {
+        return -3;
+    }
+    const std::size_t produced = count - window + 1;
+    if (output_count < produced) {
+        return -4;
+    }
+    for (std::size_t idx = 0; idx < produced; ++idx) {
+        double total = 0.0;
+        for (std::size_t offset = 0; offset < window; ++offset) {
+            total += latest_first_closes[idx + offset];
+        }
+        latest_first_output[idx] = total / static_cast<double>(window);
+    }
+    return static_cast<int>(produced);
+}
