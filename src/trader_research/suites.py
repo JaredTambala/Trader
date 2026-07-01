@@ -9,9 +9,11 @@ import json
 from typing import Any, Mapping, Sequence
 
 from trader_research.research import apply_parameter_overrides
+from trader_research.strategies import SUPPORTED_STRATEGY_FAMILIES as _SUPPORTED_STRATEGY_FAMILIES
+from trader_research.strategies import normalize_strategy_family
 
 
-SUPPORTED_STRATEGY_FAMILIES = ("trend_following", "mean_reversion", "bollinger_band")
+SUPPORTED_STRATEGY_FAMILIES = _SUPPORTED_STRATEGY_FAMILIES
 
 
 @dataclass(frozen=True)
@@ -189,10 +191,7 @@ def _member_config(
 
 
 def _normalize_strategy_family(value: str) -> str:
-    family = value.strip().lower().replace("-", "_")
-    if family not in SUPPORTED_STRATEGY_FAMILIES:
-        raise ValueError(f"Unsupported strategy family: {value}")
-    return family
+    return normalize_strategy_family(value)
 
 
 def _stable_id(prefix: str, payload: Mapping[str, Any]) -> str:

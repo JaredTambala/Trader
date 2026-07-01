@@ -24,6 +24,7 @@ from trader_mcp.constants import (
     MATH_GENERATE_CPP_KERNEL_TOOL,
     MATH_GENERATE_PYTHON_METHOD_TOOL,
     MATH_LIST_METHOD_CONTRACTS_TOOL,
+    MATH_PACKAGE_METHOD_ARTIFACT_TOOL,
     MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL,
     MATH_RUN_INDICATOR_FIXTURES_TOOL,
     MATH_RUN_MULTIPLE_TESTING_REPORT_TOOL,
@@ -58,6 +59,7 @@ from trader_research.math_tools import (
     math_generate_cpp_kernel as generate_cpp_kernel_service,
     math_generate_python_method as generate_python_method_service,
     math_list_method_contracts as list_method_contracts_service,
+    math_package_method_artifact as package_method_artifact_service,
     math_register_method_implementation as register_method_implementation_service,
     math_run_indicator_fixtures as run_indicator_fixtures_service,
     math_run_multiple_testing_report as run_multiple_testing_report_service,
@@ -500,5 +502,28 @@ def register_quant_methods_tools(
             kernel_manifest=kernel_manifest,
             compiler=compiler,
             timeout_seconds=timeout_seconds,
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=MATH_PACKAGE_METHOD_ARTIFACT_TOOL,
+        description=MATH_TOOL_DESCRIPTIONS[MATH_PACKAGE_METHOD_ARTIFACT_TOOL],
+    )
+    def math_package_method_artifact(
+        implementation_id: str | None = None,
+        implementation_manifest: dict[str, Any] | None = None,
+        validation_report_id: str | None = None,
+        validation_report: dict[str, Any] | None = None,
+        cxx_kernel_id: str | None = None,
+        cxx_kernel_manifest: dict[str, Any] | None = None,
+    ) -> CallToolResult:
+        envelope = package_method_artifact_service(
+            artifact_root=environment.artifact_root,
+            implementation_id=implementation_id,
+            implementation_manifest=implementation_manifest,
+            validation_report_id=validation_report_id,
+            validation_report=validation_report,
+            cxx_kernel_id=cxx_kernel_id,
+            cxx_kernel_manifest=cxx_kernel_manifest,
         )
         return CallToolResult(**envelope_to_mcp_result(envelope))

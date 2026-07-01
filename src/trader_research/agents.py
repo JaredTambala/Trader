@@ -55,6 +55,7 @@ QUANTITATIVE_METHODS_TOOLS = (
     "math_run_multiple_testing_report",
     "math_generate_cpp_kernel",
     "math_compile_kernel",
+    "math_package_method_artifact",
 )
 
 QUANTITATIVE_METHODS_COMPATIBILITY_TOOLS = (

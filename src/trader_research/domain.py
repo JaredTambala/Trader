@@ -31,6 +31,7 @@ KNOWLEDGE_EMBEDDING_MANIFEST = "knowledge_embedding_manifest"
 METHOD_CARD_DRAFT = "method_card_draft"
 METHOD_CARD = "method_card"
 METHOD_IMPLEMENTATION_MANIFEST = "method_implementation_manifest"
+METHOD_PACKAGE_MANIFEST = "method_package_manifest"
 INDICATOR_VALIDATION_REPORT = "indicator_validation_report"
 SIGNAL_IMPLEMENTATION_VALIDATION_REPORT = "signal_implementation_validation_report"
 SIGNAL_DIAGNOSTIC_REPORT = "signal_diagnostic_report"
@@ -64,6 +65,7 @@ SUPPORTED_ARTIFACT_TYPES = frozenset(
         METHOD_CARD_DRAFT,
         METHOD_CARD,
         METHOD_IMPLEMENTATION_MANIFEST,
+        METHOD_PACKAGE_MANIFEST,
         INDICATOR_VALIDATION_REPORT,
         SIGNAL_IMPLEMENTATION_VALIDATION_REPORT,
         SIGNAL_DIAGNOSTIC_REPORT,
@@ -98,6 +100,7 @@ OWNER_BY_ARTIFACT_TYPE = {
     METHOD_CARD_DRAFT: QUANTITATIVE_METHODS_OWNER,
     METHOD_CARD: QUANTITATIVE_METHODS_OWNER,
     METHOD_IMPLEMENTATION_MANIFEST: QUANTITATIVE_METHODS_OWNER,
+    METHOD_PACKAGE_MANIFEST: QUANTITATIVE_METHODS_OWNER,
     INDICATOR_VALIDATION_REPORT: QUANTITATIVE_METHODS_OWNER,
     SIGNAL_IMPLEMENTATION_VALIDATION_REPORT: QUANTITATIVE_METHODS_OWNER,
     SIGNAL_DIAGNOSTIC_REPORT: QUANTITATIVE_METHODS_OWNER,
@@ -482,6 +485,284 @@ class StrategyCandidate:
             "parameters": _jsonable(self.parameters),
             "source_hypothesis_id": self.source_hypothesis_id,
         }
+
+
+@dataclass(frozen=True)
+class StrategyCandidateArtifactLink:
+    """Declarative artifact reference embedded in a strategy candidate manifest.
+
+    The reference is intentionally lighter than `ArtifactReportRef` because task
+    25 must be able to describe future `method_package_manifest.json` inputs
+    before task 23N adds validated package artifacts to the typed report registry.
+
+    Attributes:
+        artifact_id: Stable artifact identifier.
+        artifact_type: Artifact kind, such as `method_package_manifest`.
+        role: Template role fulfilled by this artifact.
+        path: Optional local artifact path.
+        uri: Optional URI-addressable artifact location.
+        agent_owner: Optional owning agent recorded by the producer.
+        status: Optional producer status, such as `validated`.
+        metadata: Optional JSON-compatible provenance.
+    """
+
+    artifact_id: str
+    artifact_type: str
+    role: str
+    path: str | None = None
+    uri: str | None = None
+    agent_owner: str | None = None
+    status: str | None = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate required artifact identity fields."""
+        if not self.artifact_id.strip():
+            raise ValueError("strategy candidate artifact_id is required")
+        if not self.artifact_type.strip():
+            raise ValueError("strategy candidate artifact_type is required")
+        if not self.role.strip():
+            raise ValueError("strategy candidate artifact role is required")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the artifact link into a JSON-safe manifest reference."""
+        payload: dict[str, Any] = {
+            "artifact_id": self.artifact_id,
+            "artifact_type": self.artifact_type,
+            "role": self.role,
+            "metadata": _jsonable(self.metadata),
+        }
+        if self.path is not None:
+            payload["path"] = self.path
+        if self.uri is not None:
+            payload["uri"] = self.uri
+        if self.agent_owner is not None:
+            payload["agent_owner"] = self.agent_owner
+        if self.status is not None:
+            payload["status"] = self.status
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "StrategyCandidateArtifactLink":
+        """Build an artifact link from JSON-compatible manifest data.
+
+        Args:
+            payload: Mapping with artifact identity and optional provenance fields.
+
+        Returns:
+            Parsed strategy-candidate artifact link.
+        """
+        return cls(
+            artifact_id=str(payload.get("artifact_id") or ""),
+            artifact_type=str(payload.get("artifact_type") or ""),
+            role=str(payload.get("role") or ""),
+            path=str(payload["path"]) if payload.get("path") is not None else None,
+            uri=str(payload["uri"]) if payload.get("uri") is not None else None,
+            agent_owner=str(payload["agent_owner"]) if payload.get("agent_owner") is not None else None,
+            status=str(payload["status"]) if payload.get("status") is not None else None,
+            metadata=_mapping(payload.get("metadata")),
+        )
+
+
+@dataclass(frozen=True)
+class StrategyCandidateSizing:
+    """Sizing assumption declared by a strategy candidate manifest.
+
+    Attributes:
+        model: Sizing model identifier; task 25 catalog templates use fixed quantity.
+        target_qty_when_long: Quantity requested when the long/flat template opens long exposure.
+        max_position_qty: Optional maximum position quantity assumption.
+        metadata: Optional JSON-compatible sizing notes.
+    """
+
+    model: str = "fixed_quantity"
+    target_qty_when_long: float = 1.0
+    max_position_qty: float | None = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate the sizing model and non-negative quantity assumptions."""
+        if not self.model.strip():
+            raise ValueError("strategy candidate sizing model is required")
+        if self.target_qty_when_long < 0.0:
+            raise ValueError("strategy candidate target_qty_when_long must be non-negative")
+        if self.max_position_qty is not None and self.max_position_qty < 0.0:
+            raise ValueError("strategy candidate max_position_qty must be non-negative")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize sizing assumptions for the strategy candidate manifest."""
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "target_qty_when_long": float(self.target_qty_when_long),
+            "metadata": _jsonable(self.metadata),
+        }
+        if self.max_position_qty is not None:
+            payload["max_position_qty"] = float(self.max_position_qty)
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "StrategyCandidateSizing":
+        """Build sizing assumptions from JSON-compatible manifest data.
+
+        Args:
+            payload: Mapping with sizing model and quantity fields.
+
+        Returns:
+            Parsed sizing assumptions.
+        """
+        target_qty = payload.get("target_qty_when_long")
+        max_position_qty = payload.get("max_position_qty")
+        return cls(
+            model=str(payload.get("model") or "fixed_quantity"),
+            target_qty_when_long=float(target_qty) if target_qty is not None else 1.0,
+            max_position_qty=float(max_position_qty) if max_position_qty is not None else None,
+            metadata=_mapping(payload.get("metadata")),
+        )
+
+
+@dataclass(frozen=True)
+class StrategyCandidateRiskAssumption:
+    """Named risk or execution assumption recorded on a strategy candidate.
+
+    Attributes:
+        name: Stable assumption name.
+        value: JSON-compatible assumption value.
+        description: Optional human-readable context.
+    """
+
+    name: str
+    value: Any
+    description: str | None = None
+
+    def __post_init__(self) -> None:
+        """Validate that the assumption has a stable name."""
+        if not self.name.strip():
+            raise ValueError("strategy candidate risk assumption name is required")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize a risk assumption into the candidate manifest."""
+        payload = {"name": self.name, "value": _jsonable(self.value)}
+        if self.description is not None:
+            payload["description"] = self.description
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "StrategyCandidateRiskAssumption":
+        """Build a risk assumption from JSON-compatible manifest data.
+
+        Args:
+            payload: Mapping with assumption name, value, and optional description.
+
+        Returns:
+            Parsed risk assumption.
+        """
+        return cls(
+            name=str(payload.get("name") or ""),
+            value=_jsonable(payload.get("value")),
+            description=str(payload["description"]) if payload.get("description") is not None else None,
+        )
+
+
+@dataclass(frozen=True)
+class StrategyCandidateManifest:
+    """Rich strategy-candidate artifact prepared for validation and backtesting.
+
+    This manifest is declarative. It records template selection, method and
+    signal artifact links, parameterization, semantics, sizing, risk assumptions,
+    and data bounds, but it does not instantiate strategy code.
+
+    Attributes:
+        candidate_id: Stable strategy candidate identifier.
+        template_family: Maintained strategy template family.
+        method_package_refs: Declarative method package references.
+        signal_refs: Declarative signal implementation or validation references.
+        parameters: JSON-compatible template parameter values.
+        entry_semantics: Declarative entry policy payload.
+        exit_semantics: Declarative exit policy payload.
+        sizing: Sizing assumptions for the maintained strategy template.
+        risk_assumptions: Named risk and execution assumptions.
+        data_requirements: Bounded data requirements attached to the candidate.
+        warnings: Structured non-fatal manifest issues.
+        blockers: Structured blocking manifest issues.
+    """
+
+    candidate_id: str
+    template_family: str
+    method_package_refs: tuple[StrategyCandidateArtifactLink, ...] = field(default_factory=tuple)
+    signal_refs: tuple[StrategyCandidateArtifactLink, ...] = field(default_factory=tuple)
+    parameters: Mapping[str, Any] = field(default_factory=dict)
+    entry_semantics: Mapping[str, Any] = field(default_factory=dict)
+    exit_semantics: Mapping[str, Any] = field(default_factory=dict)
+    sizing: StrategyCandidateSizing = field(default_factory=StrategyCandidateSizing)
+    risk_assumptions: tuple[StrategyCandidateRiskAssumption, ...] = field(default_factory=tuple)
+    data_requirements: tuple[DataRequirement, ...] = field(default_factory=tuple)
+    warnings: tuple[ResearchIssue, ...] = field(default_factory=tuple)
+    blockers: tuple[ResearchIssue, ...] = field(default_factory=tuple)
+    artifact_type: str = STRATEGY_CANDIDATE
+
+    def __post_init__(self) -> None:
+        """Validate candidate identity, artifact type, and template family."""
+        if not self.candidate_id.strip():
+            raise ValueError("strategy candidate manifest candidate_id is required")
+        if not self.template_family.strip():
+            raise ValueError("strategy candidate manifest template_family is required")
+        if self.artifact_type != STRATEGY_CANDIDATE:
+            raise ValueError(f"strategy candidate manifest artifact_type must be {STRATEGY_CANDIDATE}")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the strategy candidate manifest into the stable artifact payload."""
+        return {
+            "candidate_id": self.candidate_id,
+            "artifact_type": self.artifact_type,
+            "template_family": self.template_family,
+            "method_package_refs": [item.to_dict() for item in self.method_package_refs],
+            "signal_refs": [item.to_dict() for item in self.signal_refs],
+            "parameters": _jsonable(self.parameters),
+            "entry_semantics": _jsonable(self.entry_semantics),
+            "exit_semantics": _jsonable(self.exit_semantics),
+            "sizing": self.sizing.to_dict(),
+            "risk_assumptions": [item.to_dict() for item in self.risk_assumptions],
+            "data_requirements": [item.to_dict() for item in self.data_requirements],
+            "warnings": [warning.to_dict() for warning in self.warnings],
+            "blockers": [blocker.to_dict() for blocker in self.blockers],
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "StrategyCandidateManifest":
+        """Build a strategy candidate manifest from JSON-compatible data.
+
+        Args:
+            payload: Mapping with candidate identity, template family, artifact
+                references, semantics, sizing, risk assumptions, and issues.
+
+        Returns:
+            Parsed strategy candidate manifest.
+        """
+        return cls(
+            candidate_id=str(payload.get("candidate_id") or ""),
+            artifact_type=str(payload.get("artifact_type") or STRATEGY_CANDIDATE),
+            template_family=str(payload.get("template_family") or ""),
+            method_package_refs=tuple(
+                StrategyCandidateArtifactLink.from_dict(item)
+                for item in _mapping_sequence(payload.get("method_package_refs"))
+            ),
+            signal_refs=tuple(
+                StrategyCandidateArtifactLink.from_dict(item) for item in _mapping_sequence(payload.get("signal_refs"))
+            ),
+            parameters=_mapping(payload.get("parameters")),
+            entry_semantics=_mapping(payload.get("entry_semantics")),
+            exit_semantics=_mapping(payload.get("exit_semantics")),
+            sizing=StrategyCandidateSizing.from_dict(_mapping(payload.get("sizing"))),
+            risk_assumptions=tuple(
+                StrategyCandidateRiskAssumption.from_dict(item)
+                for item in _mapping_sequence(payload.get("risk_assumptions"))
+            ),
+            data_requirements=tuple(
+                DataRequirement.from_dict(item) for item in _mapping_sequence(payload.get("data_requirements"))
+            ),
+            warnings=tuple(ResearchIssue.from_dict(item) for item in _mapping_sequence(payload.get("warnings"))),
+            blockers=tuple(ResearchIssue.from_dict(item) for item in _mapping_sequence(payload.get("blockers"))),
+        )
 
 
 @dataclass(frozen=True)

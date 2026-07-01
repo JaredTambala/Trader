@@ -16,6 +16,7 @@ from trader_research.method_implementations import (
     run_indicator_fixtures,
     run_signal_fixtures,
 )
+from trader_research.method_packages import package_method_artifact
 from trader_research.multiple_testing import run_multiple_testing_report
 from trader_research.signal_diagnostics import run_signal_diagnostics
 
@@ -29,6 +30,7 @@ MATH_RUN_SIGNAL_DIAGNOSTICS = "math_run_signal_diagnostics"
 MATH_RUN_MULTIPLE_TESTING_REPORT = "math_run_multiple_testing_report"
 MATH_GENERATE_CPP_KERNEL = "math_generate_cpp_kernel"
 MATH_COMPILE_KERNEL = "math_compile_kernel"
+MATH_PACKAGE_METHOD_ARTIFACT = "math_package_method_artifact"
 
 
 def math_list_method_contracts(
@@ -373,6 +375,28 @@ def math_compile_kernel(
         kernel_manifest=kernel_manifest,
         compiler=compiler,
         timeout_seconds=timeout_seconds,
+    )
+
+
+def math_package_method_artifact(
+    *,
+    artifact_root: str | Path,
+    implementation_id: str | None = None,
+    implementation_manifest: Mapping[str, Any] | None = None,
+    validation_report_id: str | None = None,
+    validation_report: Mapping[str, Any] | None = None,
+    cxx_kernel_id: str | None = None,
+    cxx_kernel_manifest: Mapping[str, Any] | None = None,
+) -> ToolEnvelope:
+    """Package a validated Python method implementation for strategy handoff."""
+    return package_method_artifact(
+        artifact_root=artifact_root,
+        implementation_id=implementation_id,
+        implementation_manifest=implementation_manifest,
+        validation_report_id=validation_report_id,
+        validation_report=validation_report,
+        cxx_kernel_id=cxx_kernel_id,
+        cxx_kernel_manifest=cxx_kernel_manifest,
     )
 
 

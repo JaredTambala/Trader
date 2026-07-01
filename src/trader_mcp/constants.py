@@ -89,6 +89,9 @@ MATH_GENERATE_CPP_KERNEL_TOOL: Final = "math_generate_cpp_kernel"
 MATH_COMPILE_KERNEL_TOOL: Final = "math_compile_kernel"
 """Tool name for compiling generated C++ kernels."""
 
+MATH_PACKAGE_METHOD_ARTIFACT_TOOL: Final = "math_package_method_artifact"
+"""Tool name for packaging validated Python method implementations for strategy handoff."""
+
 SUPPORT_TOOL_NAMES: Final = (MCP_HEALTH_TOOL, MCP_CONFIG_TOOL)
 """Read-only support tool names exposed by the MCP server."""
 
@@ -125,6 +128,7 @@ MATH_TOOL_NAMES: Final = (
     MATH_RUN_MULTIPLE_TESTING_REPORT_TOOL,
     MATH_GENERATE_CPP_KERNEL_TOOL,
     MATH_COMPILE_KERNEL_TOOL,
+    MATH_PACKAGE_METHOD_ARTIFACT_TOOL,
 )
 """Quant Methods math tool names exposed by the MCP server."""
 
@@ -170,6 +174,7 @@ MATH_TOOL_DESCRIPTIONS: Final = {
     MATH_RUN_MULTIPLE_TESTING_REPORT_TOOL: "Run Benjamini-Hochberg controls over a declared signal candidate family.",
     MATH_GENERATE_CPP_KERNEL_TOOL: "Generate a template-restricted C++ kernel from a validated Python reference.",
     MATH_COMPILE_KERNEL_TOOL: "Compile a generated C++ kernel in an isolated local build directory.",
+    MATH_PACKAGE_METHOD_ARTIFACT_TOOL: "Package a validated Python method implementation for strategy handoff.",
 }
 """Descriptions for Quant Methods method tools exposed by the MCP server."""
 

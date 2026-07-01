@@ -16,11 +16,13 @@ from trader_research.domain import (
     HYPOTHESIS_CARD,
     INDICATOR_METADATA,
     METHOD_CARD,
+    METHOD_PACKAGE_MANIFEST,
     MODEL_CARD,
     MULTIPLE_TESTING_REPORT,
     ROBUSTNESS_REPORT,
     SIGNAL_DIAGNOSTIC_REPORT,
     STATISTICAL_TEST_REPORT,
+    STRATEGY_CANDIDATE,
     BoundedResearchRequest,
     DataRequirement,
     ResearchIssue,
@@ -99,6 +101,7 @@ def test_planned_artifact_reference_types_are_json_safe() -> None:
     refs = [
         artifact_report_ref(HYPOTHESIS_CARD, "hypothesis_demo"),
         artifact_report_ref(METHOD_CARD, "method_card_demo"),
+        artifact_report_ref(METHOD_PACKAGE_MANIFEST, "method_package_demo"),
         artifact_report_ref(EVIDENCE_RETRIEVAL_REPORT, "evidence_demo"),
         artifact_report_ref(CITATION_VALIDATION_REPORT, "citation_demo"),
         artifact_report_ref(SIGNAL_DIAGNOSTIC_REPORT, "signal_diag_demo"),
@@ -108,6 +111,7 @@ def test_planned_artifact_reference_types_are_json_safe() -> None:
         artifact_report_ref(STATISTICAL_TEST_REPORT, "stat_demo"),
         artifact_report_ref(FEATURE_MANIFEST, "feature_demo"),
         artifact_report_ref(MODEL_CARD, "model_demo"),
+        artifact_report_ref(STRATEGY_CANDIDATE, "strategy_candidate_demo"),
         artifact_report_ref(EVALUATION_REPORT, "eval_demo"),
         artifact_report_ref(ROBUSTNESS_REPORT, "robust_demo"),
     ]
@@ -122,7 +126,9 @@ def test_planned_artifact_reference_types_are_json_safe() -> None:
     assert payload[5]["agent_owner"] == "Quantitative Methods Agent"
     assert payload[6]["agent_owner"] == "Quantitative Methods Agent"
     assert payload[7]["agent_owner"] == "Quantitative Methods Agent"
-    assert payload[9]["agent_owner"] == "ML Agent"
-    assert payload[11]["agent_owner"] == "Evaluation Agent"
-    assert payload[12]["agent_owner"] == "Adversarial Agent"
+    assert payload[8]["agent_owner"] == "Quantitative Methods Agent"
+    assert payload[10]["agent_owner"] == "ML Agent"
+    assert payload[12]["agent_owner"] == "Quant Research Supervisor Agent"
+    assert payload[13]["agent_owner"] == "Evaluation Agent"
+    assert payload[14]["agent_owner"] == "Adversarial Agent"
     json.dumps(payload)

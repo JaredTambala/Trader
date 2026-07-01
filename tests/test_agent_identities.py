@@ -91,6 +91,7 @@ def test_quantitative_methods_tool_owner_and_identity_use_method_contract_tools(
     assert "math_run_multiple_testing_report" in identity.tool_allowlist
     assert "math_generate_cpp_kernel" in identity.tool_allowlist
     assert "math_compile_kernel" in identity.tool_allowlist
+    assert "math_package_method_artifact" in identity.tool_allowlist
     assert agent_owner_for_tool("knowledge_retrieve_evidence") == "Quantitative Methods Agent"
     assert agent_owner_for_tool("knowledge_get_evidence_chunks") == "Quantitative Methods Agent"
     assert agent_owner_for_tool("math_list_method_contracts") == "Quantitative Methods Agent"
@@ -98,4 +99,5 @@ def test_quantitative_methods_tool_owner_and_identity_use_method_contract_tools(
     assert agent_owner_for_tool("math_run_multiple_testing_report") == "Quantitative Methods Agent"
     assert agent_owner_for_tool("math_generate_cpp_kernel") == "Quantitative Methods Agent"
     assert agent_owner_for_tool("math_compile_kernel") == "Quantitative Methods Agent"
+    assert agent_owner_for_tool("math_package_method_artifact") == "Quantitative Methods Agent"
     assert agent_owner_for_tool("math_list_indicator_contracts") == "Quantitative Methods Agent"

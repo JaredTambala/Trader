@@ -142,6 +142,71 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | `research_generate_recommendation` | Quant Research Supervisor Agent | recommendation report |
 | `research_run_experiment` | Quant Research Supervisor Agent | composed experiment output |
 
+## Method Package Artifacts
+
+`math_package_method_artifact` packages a validated Python implementation for downstream strategy tools. It is
+local-mutating and writes `method_package_manifest.json`; it does not create strategy candidates.
+
+Request fields:
+
+- `implementation_id` or `implementation_manifest`: a `method_implementation_manifest` whose `status` is `validated`.
+- `validation_report_id` or `validation_report`: a passed `indicator_validation_report` or
+  `signal_implementation_validation_report` matching the implementation.
+- Optional `cxx_kernel_id` or `cxx_kernel_manifest`: compiled C++ metadata for the same Python implementation.
+
+Success data contains `method_package_manifest` with:
+
+- package ID, method ID, runtime contract, implementation ID, entrypoint, class name, source path/hash/provenance, and
+  constructor kwargs.
+- method contract snapshot, approved method-card refs, validation report ref, validation summary, safety profile, and
+  dependency allowlist.
+- optional accepted `cxx_kernel_refs`, warnings, blockers, `status="validated"`, and schema version.
+
+Python validation is the gate. Packaging fails closed when the implementation is not validated, source hashes do not
+match, approved method-card refs are missing, runtime contracts are unsupported, or the validation report is missing,
+failed, blocked, mismatched, or the wrong report type. C++ refs are optimization metadata only: missing, generated,
+uncompiled, mismatched, or otherwise invalid C++ refs produce warnings and are excluded without blocking a valid Python
+package.
+
+## Strategy Candidate Catalog
+
+Task 25 implements the deterministic `trader_research.strategies.list_strategy_templates` service for the
+`research_list_strategy_templates` command. MCP registration remains task 27.
+
+The read-only success payload is:
+
+```json
+{
+  "templates": [],
+  "template_count": 3,
+  "supported_strategy_families": ["trend_following", "mean_reversion", "bollinger_band"]
+}
+```
+
+Each template entry includes:
+
+- `template_family`, `display_name`, `description`, `runtime_builder_path`, and `runtime_strategy_id`.
+- `parameters` with names, JSON value types, required flags, defaults where available, and validation constraints.
+- `required_artifact_types` and `required_artifact_roles`, currently declarative `method_package_manifest` refs for
+  validated signal packages.
+- `entry_semantics`, `exit_semantics`, `sizing`, `risk_assumptions`, `data_requirements`, and `constraints`.
+
+The public catalog exposes only maintained long/flat strategy families already backed by `trader_standard` builders:
+`trend_following`, `mean_reversion`, and `bollinger_band`. It does not dynamically import arbitrary strategy code,
+expose test helpers such as no-op strategies, or allow broker mutation.
+
+`strategy_candidate_manifest.json` uses artifact type `strategy_candidate` and records:
+
+- `candidate_id`, `template_family`, `method_package_refs`, `signal_refs`, and template `parameters`.
+- Declarative `entry_semantics` and `exit_semantics`.
+- `sizing` assumptions for fixed-quantity long/flat templates.
+- Named `risk_assumptions`.
+- Bounded `data_requirements`.
+- Structured `warnings` and `blockers`.
+
+Task 23N provides validated `method_package_manifest.json` artifacts for these refs. Strategy candidate creation and
+template-level validation remain later supervisor-owned tasks.
+
 Compatibility aliases may be kept while the older Math Coder naming is retired:
 
 | Alias | Canonical tool |

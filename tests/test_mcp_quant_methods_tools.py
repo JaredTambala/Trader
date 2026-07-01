@@ -17,6 +17,7 @@ from trader_mcp.constants import (
     MATH_GENERATE_CPP_KERNEL_TOOL,
     MATH_LIST_METHOD_CONTRACTS_TOOL,
     MATH_GENERATE_PYTHON_METHOD_TOOL,
+    MATH_PACKAGE_METHOD_ARTIFACT_TOOL,
     MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL,
     MATH_RUN_INDICATOR_FIXTURES_TOOL,
     MATH_RUN_MULTIPLE_TESTING_REPORT_TOOL,
@@ -149,6 +150,13 @@ def test_mcp_quant_methods_core_evidence_flow(tmp_path: Path) -> None:
             MATH_RUN_INDICATOR_FIXTURES_TOOL,
             {"implementation_manifest": implementation_manifest},
         )
+        method_package = await server.call_tool(
+            MATH_PACKAGE_METHOD_ARTIFACT_TOOL,
+            {
+                "implementation_manifest": fixture_validation.structuredContent["data"]["method_implementation_manifest"],
+                "validation_report": fixture_validation.structuredContent["data"]["indicator_validation_report"],
+            },
+        )
         generated_cpp = await server.call_tool(
             MATH_GENERATE_CPP_KERNEL_TOOL,
             {"implementation_manifest": fixture_validation.structuredContent["data"]["method_implementation_manifest"]},
@@ -188,6 +196,7 @@ def test_mcp_quant_methods_core_evidence_flow(tmp_path: Path) -> None:
         assert config_tools[MATH_RUN_MULTIPLE_TESTING_REPORT_TOOL]["side_effect"] == "local_mutating"
         assert config_tools[MATH_GENERATE_CPP_KERNEL_TOOL]["side_effect"] == "local_mutating"
         assert config_tools[MATH_COMPILE_KERNEL_TOOL]["side_effect"] == "local_mutating"
+        assert config_tools[MATH_PACKAGE_METHOD_ARTIFACT_TOOL]["side_effect"] == "local_mutating"
         assert registered.isError is False
         assert ingested.isError is False
         assert dereferenced.isError is False
@@ -197,6 +206,8 @@ def test_mcp_quant_methods_core_evidence_flow(tmp_path: Path) -> None:
         assert published.structuredContent["data"]["method_card"]["status"] == "approved"
         assert registered_implementation.isError is False
         assert fixture_validation.isError is False
+        assert method_package.isError is False
+        assert method_package.structuredContent["data"]["method_package_manifest"]["method_id"] == "sma"
         assert generated_cpp.isError is False
         assert generated_cpp.structuredContent["data"]["cxx_kernel_manifest"]["method_id"] == "sma"
         assert generated.isError is False
