@@ -6,6 +6,13 @@ from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 
 from trader.broker import AlpacaPaperBroker
+from trader.broker.core import (
+    build_alpaca_reconciliation_fill_event,
+    build_alpaca_reconciliation_order_event,
+    ensure_alpaca_client_order_id,
+    normalize_alpaca_order_request_fields,
+)
+from trader.identifiers import deterministic_client_order_id
 from tests.support.duckdb_store import DuckDBEventStore
 
 
@@ -84,6 +91,167 @@ class FakeTradingClient:
 
     def cancel_order_by_id(self, order_id: str) -> None:
         self.canceled.append(order_id)
+
+
+def test_build_alpaca_reconciliation_order_event_is_deterministic_without_mutation() -> None:
+    created_at = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    local_event = {
+        "client_order_id": "cid_1",
+        "run_id": "run_1",
+        "session_id": "run_1",
+        "cycle_id": "cycle_1",
+        "symbol": "AAPL",
+        "side": "buy",
+        "qty": 1.0,
+        "order_type": "market",
+        "broker_order_id": "alpaca_1",
+    }
+    original = dict(local_event)
+
+    payload = build_alpaca_reconciliation_order_event(
+        local_event,
+        status="canceled",
+        order_event_id="order_evt_fixed",
+        created_at=created_at,
+        broker_order_id="alpaca_1",
+        rejection_reason="reconciled_missing",
+    )
+
+    assert local_event == original
+    assert payload.to_record() == {
+        "order_event_id": "order_evt_fixed",
+        "client_order_id": "cid_1",
+        "run_id": "run_1",
+        "session_id": "run_1",
+        "cycle_id": "cycle_1",
+        "symbol": "AAPL",
+        "side": "buy",
+        "qty": 1.0,
+        "order_type": "market",
+        "status": "canceled",
+        "broker_order_id": "alpaca_1",
+        "rejection_reason": "reconciled_missing",
+        "created_at": created_at,
+    }
+
+
+def test_build_alpaca_reconciliation_fill_event_requires_fill_evidence() -> None:
+    fill_ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    local_event = {
+        "client_order_id": "cid_1",
+        "run_id": "run_1",
+        "cycle_id": "cycle_1",
+    }
+    broker_order = {"fill_qty": "2.5", "fill_price": "101.25"}
+    original_event = dict(local_event)
+    original_broker_order = dict(broker_order)
+
+    payload = build_alpaca_reconciliation_fill_event(local_event, broker_order, fill_ts=fill_ts)
+
+    assert local_event == original_event
+    assert broker_order == original_broker_order
+    assert payload is not None
+    assert payload.to_record() == {
+        "client_order_id": "cid_1",
+        "run_id": "run_1",
+        "session_id": "run_1",
+        "cycle_id": "cycle_1",
+        "fill_ts": fill_ts,
+        "fill_qty": 2.5,
+        "raw_fill_price": 101.25,
+        "fill_price": 101.25,
+        "slippage_amount": None,
+        "fee_amount": None,
+    }
+    assert build_alpaca_reconciliation_fill_event(local_event, {"fill_qty": 1.0}, fill_ts=fill_ts) is None
+    assert build_alpaca_reconciliation_fill_event(local_event, {"fill_price": 100.0}, fill_ts=fill_ts) is None
+
+
+def test_normalize_alpaca_order_request_fields_converts_crypto_order_for_trading_api() -> None:
+    order = {
+        "symbol": "btc/usd",
+        "side": " BUY ",
+        "qty": "0.25",
+        "time_in_force": "day",
+        "asset_class": "crypto",
+        "order_type": "limit",
+        "client_order_id": "cid_crypto",
+        "price": "65000.5",
+    }
+    original = dict(order)
+
+    fields = normalize_alpaca_order_request_fields(order)
+
+    assert order == original
+    assert fields.symbol == "BTCUSD"
+    assert fields.side == "buy"
+    assert fields.qty == 0.25
+    assert fields.time_in_force == "gtc"
+    assert fields.order_type == "limit"
+    assert fields.client_order_id == "cid_crypto"
+    assert fields.limit_price == "65000.5"
+    assert fields.to_fallback_mapping() == {
+        "symbol": "BTCUSD",
+        "qty": 0.25,
+        "side": "buy",
+        "time_in_force": "gtc",
+        "type": "limit",
+        "client_order_id": "cid_crypto",
+        "limit_price": "65000.5",
+    }
+
+
+def test_normalize_alpaca_order_request_fields_preserves_stock_day_order() -> None:
+    fields = normalize_alpaca_order_request_fields(
+        {
+            "symbol": " aapl ",
+            "side": "sell",
+            "qty": 2,
+            "time_in_force": "day",
+            "asset_class": "stocks",
+            "client_order_id": "cid_stock",
+        }
+    )
+
+    assert fields.symbol == "AAPL"
+    assert fields.qty == 2.0
+    assert fields.side == "sell"
+    assert fields.time_in_force == "day"
+    assert fields.order_type == "market"
+    assert fields.limit_price is None
+
+
+def test_ensure_alpaca_client_order_id_preserves_explicit_id_without_mutation() -> None:
+    order = {
+        "client_order_id": "cid_explicit",
+        "cycle_id": "cycle_1",
+        "symbol": "AAPL",
+        "side": "buy",
+        "qty": 1.0,
+    }
+    original = dict(order)
+
+    enriched = ensure_alpaca_client_order_id(order)
+
+    assert enriched is order
+    assert order == original
+
+
+def test_ensure_alpaca_client_order_id_derives_stable_id_without_mutation() -> None:
+    order = {
+        "cycle_id": "cycle_1",
+        "symbol": " aapl ",
+        "side": " BUY ",
+        "qty": "1.0",
+    }
+    original = dict(order)
+
+    enriched = ensure_alpaca_client_order_id(order)
+
+    assert order == original
+    assert enriched is not order
+    assert enriched["client_order_id"] == deterministic_client_order_id("cycle_1", "AAPL", "buy", 1.0)
+    assert enriched["symbol"] == " aapl "
 
 
 def test_alpaca_broker_idempotent_submission(tmp_path) -> None:

@@ -47,6 +47,125 @@ class MetricsSample:
     drawdown: float | None = None
 
 
+@dataclass(frozen=True)
+class MetricsSampleComputation:
+    """Pure result of one metrics sample calculation."""
+
+    sample: MetricsSample
+    baseline_equity: float
+    peak_equity: float
+
+
+@dataclass(frozen=True)
+class RuntimeMetricsSnapshotRecord:
+    """Event-store record for a runtime metrics snapshot."""
+
+    ts: datetime
+    run_id: str | None
+    session_id: str | None
+    cycle_id: str | None
+    sample: MetricsSample
+    asset_class: str
+    symbols: tuple[str, ...]
+
+    def to_record(self) -> dict[str, object]:
+        """Return an event-store-compatible metrics snapshot mapping."""
+        return {
+            "ts": self.ts,
+            "run_id": self.run_id,
+            "session_id": self.session_id,
+            "cycle_id": self.cycle_id,
+            "payload": json.dumps(
+                {
+                    "equity": self.sample.equity,
+                    "cash": self.sample.cash,
+                    "net_exposure": self.sample.net_exposure,
+                    "gross_exposure": self.sample.gross_exposure,
+                    "return_since_start": self.sample.return_since_start,
+                    "drawdown": self.sample.drawdown,
+                    "asset_class": self.asset_class,
+                    "symbols": list(self.symbols),
+                }
+            ),
+        }
+
+
+def compute_metrics_sample(
+    *,
+    positions: Sequence[Position],
+    cash: float,
+    price_lookup: Mapping[str, float],
+    ts: datetime,
+    baseline_equity: float | None,
+    peak_equity: float | None,
+) -> MetricsSampleComputation | None:
+    """Compute one runtime metrics sample without side effects.
+
+    Args:
+        positions: Current positions to value.
+        cash: Current cash balance.
+        price_lookup: Latest prices keyed by symbol.
+        ts: Explicit sample timestamp supplied by the shell.
+        baseline_equity: Existing return baseline, if any.
+        peak_equity: Existing drawdown peak, if any.
+
+    Returns:
+        Immutable sample computation, or `None` when there is no position and
+        no cash state to report. Positions without prices are ignored.
+    """
+    if not positions and cash == 0.0:
+        return None
+    net = 0.0
+    gross = 0.0
+    equity = cash
+    for position in positions:
+        price = price_lookup.get(position.symbol)
+        if price is None:
+            continue
+        notional = position.qty * price
+        equity += notional
+        net += notional
+        gross += abs(notional)
+
+    next_baseline = equity if baseline_equity is None else baseline_equity
+    next_peak = equity if peak_equity is None or equity > peak_equity else peak_equity
+    ret = (equity / next_baseline - 1.0) if next_baseline else None
+    drawdown = (equity / next_peak - 1.0) if next_peak else None
+
+    return MetricsSampleComputation(
+        sample=MetricsSample(
+            ts=ts,
+            equity=equity,
+            cash=cash,
+            net_exposure=net,
+            gross_exposure=gross,
+            return_since_start=ret,
+            drawdown=drawdown,
+        ),
+        baseline_equity=next_baseline,
+        peak_equity=next_peak,
+    )
+
+
+def build_runtime_metrics_snapshot_record(
+    sample: MetricsSample,
+    *,
+    run_id: str | None,
+    asset_class: str,
+    symbols: Sequence[str],
+) -> RuntimeMetricsSnapshotRecord:
+    """Build a runtime metrics snapshot record without persistence."""
+    return RuntimeMetricsSnapshotRecord(
+        ts=sample.ts,
+        run_id=run_id,
+        session_id=run_id,
+        cycle_id=None,
+        sample=sample,
+        asset_class=asset_class,
+        symbols=tuple(symbols),
+    )
+
+
 class MetricsWorker(threading.Thread):
     """Background thread that samples portfolio metrics during live service runs.
 
@@ -128,40 +247,20 @@ class MetricsWorker(threading.Thread):
         if not positions and cash == 0.0:
             return None
 
-        # latest price per symbol
         price_lookup = self._latest_prices()
-        net = 0.0
-        gross = 0.0
-        equity = cash
-        for pos in positions:
-            px = price_lookup.get(pos.symbol)
-            if px is None:
-                continue
-            notional = pos.qty * px
-            equity += notional
-            net += notional
-            gross += abs(notional)
-
-        now = datetime.now(timezone.utc)
-        if self._baseline_equity is None:
-            self._baseline_equity = equity
-            self._peak_equity = equity
-
-        if self._peak_equity is None or equity > self._peak_equity:
-            self._peak_equity = equity
-
-        ret = (equity / self._baseline_equity - 1.0) if self._baseline_equity else None
-        dd = (equity / self._peak_equity - 1.0) if self._peak_equity else None
-
-        return MetricsSample(
-            ts=now,
-            equity=equity,
+        computation = compute_metrics_sample(
+            positions=positions,
             cash=cash,
-            net_exposure=net,
-            gross_exposure=gross,
-            return_since_start=ret,
-            drawdown=dd,
+            price_lookup=price_lookup,
+            ts=datetime.now(timezone.utc),
+            baseline_equity=self._baseline_equity,
+            peak_equity=self._peak_equity,
         )
+        if computation is None:
+            return None
+        self._baseline_equity = computation.baseline_equity
+        self._peak_equity = computation.peak_equity
+        return computation.sample
 
     def _load_positions_and_cash(self) -> tuple[Sequence[Position], float]:
         """Load positions/cash from broker when available, else from event store."""
@@ -208,24 +307,12 @@ class MetricsWorker(threading.Thread):
 
     def _persist(self, sample: MetricsSample) -> None:
         """Persist a metrics snapshot to the event store."""
-        payload = {
-            "ts": sample.ts,
-            "run_id": self._run_id,
-            "session_id": self._run_id,
-            "cycle_id": None,
-            "payload": json.dumps(
-                {
-                    "equity": sample.equity,
-                    "cash": sample.cash,
-                    "net_exposure": sample.net_exposure,
-                    "gross_exposure": sample.gross_exposure,
-                    "return_since_start": sample.return_since_start,
-                    "drawdown": sample.drawdown,
-                    "asset_class": self._asset_class,
-                    "symbols": self._symbols,
-                }
-            ),
-        }
+        payload = build_runtime_metrics_snapshot_record(
+            sample,
+            run_id=self._run_id,
+            asset_class=self._asset_class,
+            symbols=self._symbols,
+        ).to_record()
         try:
             self._event_store.record_event("metrics_snapshots", payload)
         except Exception as exc:  # pragma: no cover

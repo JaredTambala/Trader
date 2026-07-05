@@ -5,7 +5,33 @@ from __future__ import annotations
 from typing import Iterable, Mapping, Sequence, Tuple
 
 from .context import RiskContext
-from .manager import RiskManager
+from .manager import RiskEvaluation, RiskManager
+
+
+def evaluate_risk_pipeline(
+    managers: Sequence[RiskManager],
+    orders: Iterable[Mapping[str, object]],
+    context: RiskContext,
+) -> RiskEvaluation:
+    """Evaluate candidate orders through managers in deterministic order.
+
+    Args:
+        managers: Ordered risk managers to apply.
+        orders: Candidate order payloads.
+        context: Immutable risk context shared by each manager.
+
+    Returns:
+        Immutable final approved orders and accumulated rejections. Later
+        managers see only orders approved by earlier managers.
+    """
+    approved: Sequence[Mapping[str, object]] = list(orders)
+    rejected_all: list[Mapping[str, object]] = []
+    for manager in managers:
+        approved, rejected = manager.evaluate(approved, context)
+        rejected_all.extend(rejected)
+        if not approved:
+            break
+    return RiskEvaluation(approved=tuple(approved), rejected=tuple(rejected_all))
 
 
 class RiskPipeline(RiskManager):
@@ -52,11 +78,4 @@ class RiskPipeline(RiskManager):
         pipeline stops early when no orders remain, and returns both the final
         approved set and all rejection records emitted along the way.
         """
-        approved: Sequence[Mapping[str, object]] = list(orders)
-        rejected_all: list[Mapping[str, object]] = []
-        for manager in self._managers:
-            approved, rejected = manager.evaluate(approved, context)
-            rejected_all.extend(rejected)
-            if not approved:
-                break
-        return approved, rejected_all
+        return evaluate_risk_pipeline(self.managers, orders, context).as_tuple()

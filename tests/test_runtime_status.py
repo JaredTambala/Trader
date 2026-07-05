@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from trader.config import Config
-from trader.runtime.status import runtime_status, set_halt_state
+from trader.runtime.status import assess_runtime_health, evaluate_health, runtime_status, set_halt_state
 from tests.support.duckdb_store import DuckDBEventStore
 
 
@@ -46,6 +46,49 @@ def _config(*, max_age_seconds: int = 60) -> Config:
         log_position_snapshots=True,
         broker_type="noop",
     )
+
+
+def test_assess_runtime_health_returns_typed_healthy_assessment() -> None:
+    assessment = assess_runtime_health(
+        latest_run={"status": "success"},
+        latest_cycle={"status": "success"},
+        market_data={"missing_count": 0, "stale_count": 0},
+        open_orders={"stale_count": 0},
+        halt={"halted": False},
+    )
+
+    assert assessment.status == "healthy"
+    assert assessment.exit_code == 0
+    assert assessment.reasons == ()
+    assert assessment.to_record() == {"status": "healthy", "exit_code": 0, "reasons": []}
+
+
+def test_assess_runtime_health_accumulates_degraded_and_unhealthy_reasons() -> None:
+    assessment = assess_runtime_health(
+        latest_run={"status": "failed"},
+        latest_cycle=None,
+        market_data={"missing_count": 1, "stale_count": 1},
+        open_orders={"stale_count": 2},
+        halt={"halted": True},
+    )
+
+    assert assessment.status == "unhealthy"
+    assert assessment.exit_code == 2
+    assert assessment.reasons == (
+        "latest_run_failed",
+        "no_cycle",
+        "halted",
+        "missing_market_data",
+        "stale_market_data",
+        "stale_open_orders",
+    )
+    assert evaluate_health(
+        latest_run={"status": "failed"},
+        latest_cycle=None,
+        market_data={"missing_count": 1, "stale_count": 1},
+        open_orders={"stale_count": 2},
+        halt={"halted": True},
+    ) == assessment.to_record()
 
 
 def test_runtime_status_empty_store_is_degraded(tmp_path) -> None:

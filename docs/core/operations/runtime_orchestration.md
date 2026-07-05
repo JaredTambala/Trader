@@ -116,6 +116,8 @@ uv run python run_operator.py configs/example.yaml reconcile --json
 `status`, `health`, `positions`, `open-orders`, and `halt status` are event-store-first and do not need broker access.
 `reconcile` constructs the configured broker and appends local order/fill events when broker state differs from local
 history.
+Health classification is computed as a typed pure assessment from normalized run, cycle, market-data, halt, and
+open-order subsections before it is serialized for CLI/API output.
 
 AI/tool discovery may read JSON emitted by these operator commands as context. Recommendation and promotion readiness
 will surface halted, stale, or unhealthy runtime state, but the discovery tools do not clear halt state, reconcile broker

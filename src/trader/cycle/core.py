@@ -61,6 +61,181 @@ class CycleResult:
     status: str
 
 
+@dataclass(frozen=True)
+class CycleOrderIntent:
+    """Normalized strategy order intent before cycle metadata enrichment."""
+
+    source: Mapping[str, object]
+    symbol: str
+    side: str
+    qty: float
+
+
+@dataclass(frozen=True)
+class EnrichedCycleOrder:
+    """Strategy order intent enriched with cycle, pricing, and venue metadata."""
+
+    source: Mapping[str, object]
+    symbol: str
+    run_id: str
+    session_id: str
+    cycle_id: str
+    client_order_id: object
+    price: object | None
+    created_at: object
+    asset_class: str
+    time_in_force: object
+
+    def to_record(self) -> dict[str, object]:
+        """Return a mapping suitable for risk checks and broker submission."""
+        return {
+            **self.source,
+            "symbol": self.symbol,
+            "run_id": self.run_id,
+            "session_id": self.session_id,
+            "cycle_id": self.cycle_id,
+            "client_order_id": self.client_order_id,
+            "price": self.price,
+            "created_at": self.created_at,
+            "asset_class": self.asset_class,
+            "time_in_force": self.time_in_force,
+        }
+
+
+@dataclass(frozen=True)
+class MarketDataReadiness:
+    """Pure assessment of whether market data is usable for a trading decision."""
+
+    should_skip: bool
+    max_age_seconds: int
+    latest_ts: datetime | None
+    age_seconds: float | None
+    is_stale: bool
+    reason: str | None
+
+
+@dataclass(frozen=True)
+class MarketDataEventFreshness:
+    """Pure freshness assessment for one streaming market-data event."""
+
+    ts: datetime
+    age_seconds: float
+    max_age_seconds: int
+    is_stale: bool
+
+
+@dataclass(frozen=True)
+class MetricsSnapshotPayload:
+    """Computed portfolio metrics payload for a cycle snapshot."""
+
+    equity: float
+    cash: float
+    net_exposure: float
+    gross_exposure: float
+    asset_class: str
+    symbols: tuple[str, ...]
+
+    def to_payload(self) -> dict[str, object]:
+        """Return the JSON-compatible metrics payload."""
+        return {
+            "equity": self.equity,
+            "cash": self.cash,
+            "net_exposure": self.net_exposure,
+            "gross_exposure": self.gross_exposure,
+            "asset_class": self.asset_class,
+            "symbols": list(self.symbols),
+        }
+
+
+@dataclass(frozen=True)
+class MetricsSnapshotEvent:
+    """Event-store record for one computed metrics snapshot."""
+
+    ts: datetime
+    run_id: str
+    session_id: str
+    cycle_id: str | None
+    payload: MetricsSnapshotPayload
+
+    def to_record(self) -> dict[str, object]:
+        """Return an event-store-compatible metrics snapshot record."""
+        return {
+            "ts": self.ts,
+            "run_id": self.run_id,
+            "session_id": self.session_id,
+            "cycle_id": self.cycle_id,
+            "payload": json.dumps(self.payload.to_payload()),
+        }
+
+
+@dataclass(frozen=True)
+class CycleOrderEventPayload:
+    """Immutable order lifecycle event prepared by the decision cycle."""
+
+    order_event_id: str
+    client_order_id: object | None
+    run_id: object | None
+    session_id: object | None
+    cycle_id: object | None
+    symbol: object | None
+    side: object | None
+    qty: object | None
+    order_type: object
+    status: str
+    broker_order_id: object | None
+    rejection_reason: object | None
+    created_at: datetime
+
+    def to_record(self) -> dict[str, object]:
+        """Return an event-store-compatible order event mapping."""
+        return {
+            "order_event_id": self.order_event_id,
+            "client_order_id": self.client_order_id,
+            "run_id": self.run_id,
+            "session_id": self.session_id,
+            "cycle_id": self.cycle_id,
+            "symbol": self.symbol,
+            "side": self.side,
+            "qty": self.qty,
+            "order_type": self.order_type,
+            "status": self.status,
+            "broker_order_id": self.broker_order_id,
+            "rejection_reason": self.rejection_reason,
+            "created_at": self.created_at,
+        }
+
+
+@dataclass(frozen=True)
+class CycleFillEventPayload:
+    """Immutable fill event prepared from a broker response."""
+
+    client_order_id: object | None
+    run_id: object | None
+    session_id: object | None
+    cycle_id: object | None
+    fill_ts: datetime
+    fill_qty: float
+    raw_fill_price: object | None
+    fill_price: float
+    slippage_amount: object | None
+    fee_amount: object | None
+
+    def to_record(self) -> dict[str, object]:
+        """Return an event-store-compatible fill event mapping."""
+        return {
+            "client_order_id": self.client_order_id,
+            "run_id": self.run_id,
+            "session_id": self.session_id,
+            "cycle_id": self.cycle_id,
+            "fill_ts": self.fill_ts,
+            "fill_qty": self.fill_qty,
+            "raw_fill_price": self.raw_fill_price,
+            "fill_price": self.fill_price,
+            "slippage_amount": self.slippage_amount,
+            "fee_amount": self.fee_amount,
+        }
+
+
 def _log_order_status(
     status: str,
     order: Mapping[str, object],
@@ -530,6 +705,92 @@ def _build_price_lookup(events: Sequence[MarketDataEvent]) -> Mapping[str, float
     return {symbol: price for symbol, (_, price) in latest_prices.items()}
 
 
+def normalize_cycle_order_intent(order: Mapping[str, object]) -> CycleOrderIntent:
+    """Normalize symbol, side, and quantity from a strategy order intent.
+
+    Args:
+        order: Raw strategy order intent.
+
+    Returns:
+        Immutable normalized order intent. The original mapping is preserved as
+        source data and is not mutated.
+    """
+    return CycleOrderIntent(
+        source=order,
+        symbol=str(order.get("symbol", "")).strip().upper(),
+        side=str(order.get("side", "")).lower().strip(),
+        qty=float(order.get("qty", 0.0) or 0.0),
+    )
+
+
+def enrich_cycle_order_intent(
+    intent: CycleOrderIntent,
+    *,
+    run_id: str,
+    cycle_id: str,
+    created_at: datetime,
+    price_lookup: Mapping[str, float],
+    asset_class: str,
+    time_in_force: str,
+) -> EnrichedCycleOrder:
+    """Attach deterministic cycle metadata to a normalized order intent.
+
+    Args:
+        intent: Normalized order intent.
+        run_id: Runtime session identifier.
+        cycle_id: Decision-cycle identifier.
+        created_at: Cycle decision timestamp used when the intent has no
+            explicit `created_at`.
+        price_lookup: Latest prices keyed by normalized symbol.
+        asset_class: Venue asset class attached for broker submission.
+        time_in_force: Default broker time-in-force.
+
+    Returns:
+        Immutable enriched order. Use `to_record()` for the legacy mapping
+        shape consumed by risk managers and brokers.
+    """
+    client_order_id = intent.source.get("client_order_id") or deterministic_client_order_id(
+        cycle_id,
+        intent.symbol,
+        intent.side,
+        intent.qty,
+    )
+    return EnrichedCycleOrder(
+        source=intent.source,
+        symbol=intent.symbol,
+        run_id=run_id,
+        session_id=run_id,
+        cycle_id=cycle_id,
+        client_order_id=client_order_id,
+        price=price_lookup.get(intent.symbol),
+        created_at=intent.source.get("created_at") or created_at,
+        asset_class=asset_class,
+        time_in_force=intent.source.get("time_in_force", time_in_force),
+    )
+
+
+def build_enriched_cycle_order(
+    order: Mapping[str, object],
+    *,
+    run_id: str,
+    cycle_id: str,
+    created_at: datetime,
+    price_lookup: Mapping[str, float],
+    asset_class: str,
+    time_in_force: str,
+) -> EnrichedCycleOrder:
+    """Normalize and enrich one strategy order intent without side effects."""
+    return enrich_cycle_order_intent(
+        normalize_cycle_order_intent(order),
+        run_id=run_id,
+        cycle_id=cycle_id,
+        created_at=created_at,
+        price_lookup=price_lookup,
+        asset_class=asset_class,
+        time_in_force=time_in_force,
+    )
+
+
 def _attach_order_metadata(
     orders: Sequence[Mapping[str, object]],
     *,
@@ -549,31 +810,155 @@ def _attach_order_metadata(
     """
     enriched: list[Mapping[str, object]] = []
     for order in orders:
-        symbol = str(order.get("symbol", "")).strip().upper()
-        side = str(order.get("side", "")).lower().strip()
-        qty = float(order.get("qty", 0.0) or 0.0)
-        price = price_lookup.get(symbol)
-        client_order_id = order.get("client_order_id") or deterministic_client_order_id(
-            cycle_id,
-            symbol,
-            side,
-            qty,
-        )
         enriched.append(
-            {
-                **order,
-                "symbol": symbol,
-                "run_id": run_id,
-                "session_id": run_id,
-                "cycle_id": cycle_id,
-                "client_order_id": client_order_id,
-                "price": price,
-                "created_at": order.get("created_at") or created_at,
-                "asset_class": asset_class,
-                "time_in_force": order.get("time_in_force", time_in_force),
-            }
+            build_enriched_cycle_order(
+                order,
+                run_id=run_id,
+                cycle_id=cycle_id,
+                created_at=created_at,
+                price_lookup=price_lookup,
+                asset_class=asset_class,
+                time_in_force=time_in_force,
+            ).to_record()
         )
     return enriched
+
+
+def resolve_order_lifecycle_event_timestamp(
+    order: Mapping[str, object],
+    *,
+    status: str,
+    fallback_ts: datetime,
+    event_ts: datetime | None = None,
+) -> datetime:
+    """Choose a deterministic lifecycle timestamp for a cycle order event.
+
+    Args:
+        order: Enriched order payload with optional `created_at`.
+        status: Lifecycle status being persisted.
+        fallback_ts: Explicit timestamp supplied by the shell when the order
+            does not carry a datetime `created_at`.
+        event_ts: Optional explicit timestamp that takes precedence.
+
+    Returns:
+        Timestamp for the lifecycle event. Created, validated, submitted, and
+        rejected events receive stable microsecond ordering from `created_at`.
+    """
+    if event_ts is not None:
+        return event_ts
+    base_ts = order.get("created_at")
+    if isinstance(base_ts, datetime):
+        status_offsets = {
+            "created": 0,
+            "validated": 1,
+            "submitted": 2,
+            "rejected": 2,
+        }
+        return base_ts + timedelta(microseconds=status_offsets.get(status, 0))
+    return fallback_ts
+
+
+def build_order_lifecycle_event_payload(
+    order: Mapping[str, object],
+    *,
+    status: str,
+    broker_order_id: object | None,
+    created_at: datetime,
+    order_event_id: str,
+) -> CycleOrderEventPayload:
+    """Build a deterministic cycle order lifecycle payload.
+
+    Args:
+        order: Enriched order payload produced by the cycle.
+        status: Lifecycle status being persisted.
+        broker_order_id: Optional broker-side order identifier.
+        created_at: Timestamp selected for this lifecycle event.
+        order_event_id: Explicit event identifier generated by the shell.
+
+    Returns:
+        Immutable payload value object. The input mapping is not mutated.
+    """
+    return CycleOrderEventPayload(
+        order_event_id=order_event_id,
+        client_order_id=order.get("client_order_id"),
+        run_id=order.get("run_id"),
+        session_id=order.get("session_id") or order.get("run_id"),
+        cycle_id=order.get("cycle_id"),
+        symbol=order.get("symbol"),
+        side=order.get("side"),
+        qty=order.get("qty"),
+        order_type=order.get("order_type", "market"),
+        status=status,
+        broker_order_id=broker_order_id,
+        rejection_reason=order.get("rejection_reason"),
+        created_at=created_at,
+    )
+
+
+def build_broker_fill_event_payload(
+    order: Mapping[str, object],
+    response: Mapping[str, object],
+    *,
+    fill_ts: datetime,
+) -> CycleFillEventPayload | None:
+    """Build a deterministic fill event payload from a broker response.
+
+    Args:
+        order: Enriched order payload matched by `client_order_id`.
+        response: Broker response for the order.
+        fill_ts: Resolved fill timestamp for event-store ordering.
+
+    Returns:
+        Immutable fill payload, or `None` when the resolved quantity or price
+        is `None`. Missing response keys fall back to the original order, while
+        explicit response `None` values are treated as missing evidence.
+    """
+    fill_qty = response.get("fill_qty", order.get("qty"))
+    fill_price = response.get("fill_price", order.get("price"))
+    if fill_qty is None or fill_price is None:
+        return None
+    return CycleFillEventPayload(
+        client_order_id=response.get("client_order_id"),
+        run_id=order.get("run_id"),
+        session_id=order.get("session_id") or order.get("run_id"),
+        cycle_id=order.get("cycle_id"),
+        fill_ts=fill_ts,
+        fill_qty=float(fill_qty),
+        raw_fill_price=response.get("raw_fill_price"),
+        fill_price=float(fill_price),
+        slippage_amount=response.get("slippage_amount"),
+        fee_amount=response.get("fee_amount"),
+    )
+
+
+def resolve_terminal_event_timestamp(
+    *,
+    proposed_ts: object | None,
+    latest_order_ts: datetime | None,
+    fallback_ts: datetime,
+) -> datetime:
+    """Choose a deterministic terminal timestamp for broker response events.
+
+    Args:
+        proposed_ts: Broker-supplied terminal timestamp, when available.
+        latest_order_ts: Latest local lifecycle timestamp for the order.
+        fallback_ts: Explicit fallback timestamp supplied by the shell when the
+            broker response has no datetime timestamp.
+
+    Returns:
+        A timezone-aware timestamp that preserves broker time when it sorts
+        after local lifecycle rows, otherwise one microsecond after the latest
+        local lifecycle timestamp.
+    """
+    candidate = (
+        _normalize_event_ts(proposed_ts)
+        if isinstance(proposed_ts, datetime)
+        else _normalize_event_ts(fallback_ts)
+    )
+    latest = _normalize_event_ts(latest_order_ts) if latest_order_ts is not None else None
+    if latest is None or candidate > latest:
+        return candidate
+    return latest + timedelta(microseconds=1)
 
 
 def _record_order_events(
@@ -591,40 +976,23 @@ def _record_order_events(
     lifecycle queries deterministic even when all statuses are produced inside
     the same decision cycle.
     """
-    status_offsets = {
-        "created": 0,
-        "validated": 1,
-        "submitted": 2,
-        "rejected": 2,
-    }
     for order in orders:
-        if event_ts is not None:
-            timestamp = event_ts
-        else:
-            base_ts = order.get("created_at")
-            if isinstance(base_ts, datetime):
-                offset = status_offsets.get(status, 0)
-                timestamp = base_ts + timedelta(microseconds=offset)
-            else:
-                timestamp = datetime.now(timezone.utc)
-        session_id = order.get("session_id") or order.get("run_id")
+        timestamp = resolve_order_lifecycle_event_timestamp(
+            order,
+            status=status,
+            fallback_ts=datetime.now(timezone.utc),
+            event_ts=event_ts,
+        )
+        payload = build_order_lifecycle_event_payload(
+            order,
+            status=status,
+            broker_order_id=broker_order_id,
+            created_at=timestamp,
+            order_event_id=f"order_evt_{uuid.uuid4().hex}",
+        )
         event_store.record_event(
             "order_events",
-            {
-                "order_event_id": f"order_evt_{uuid.uuid4().hex}",
-                "client_order_id": order.get("client_order_id"),
-                "run_id": order.get("run_id"),
-                "session_id": session_id,
-                "cycle_id": order.get("cycle_id"),
-                "symbol": order.get("symbol"),
-                "side": order.get("side"),
-                "qty": order.get("qty"),
-                "order_type": order.get("order_type", "market"),
-                "status": status,
-                "broker_order_id": broker_order_id,
-                "rejection_reason": order.get("rejection_reason"),
-                "created_at": timestamp,
-            },
+            payload.to_record(),
         )
 
 
@@ -666,29 +1034,18 @@ def _record_broker_responses(
             event_ts=resolved_fill_ts,
         )
         if status in {"filled", "partially_filled"}:
-            fill_qty = response.get("fill_qty", order.get("qty"))
-            fill_price = response.get("fill_price", order.get("price"))
-            if fill_qty is None or fill_price is None:
+            fill_payload = build_broker_fill_event_payload(
+                order,
+                response,
+                fill_ts=resolved_fill_ts,
+            )
+            if fill_payload is None:
                 logger.warning(
                     "Fill event missing price/qty client_order_id=%s",
                     client_order_id,
                 )
                 continue
-            event_store.record_event(
-                "fill_events",
-                {
-                    "client_order_id": client_order_id,
-                    "run_id": order.get("run_id"),
-                    "session_id": order.get("session_id") or order.get("run_id"),
-                    "cycle_id": order.get("cycle_id"),
-                    "fill_ts": resolved_fill_ts,
-                    "fill_qty": float(fill_qty),
-                    "raw_fill_price": response.get("raw_fill_price"),
-                    "fill_price": float(fill_price),
-                    "slippage_amount": response.get("slippage_amount"),
-                    "fee_amount": response.get("fee_amount"),
-                },
-            )
+            event_store.record_event("fill_events", fill_payload.to_record())
 
 
 def _resolve_terminal_event_ts(
@@ -703,14 +1060,12 @@ def _resolve_terminal_event_ts(
     submitted events. This helper preserves provider time when safe and nudges
     it forward by one microsecond only when needed to maintain append ordering.
     """
-    if isinstance(proposed_ts, datetime):
-        candidate = _normalize_event_ts(proposed_ts)
-    else:
-        candidate = datetime.now(timezone.utc)
     latest_order_ts = _latest_order_event_ts(event_store, client_order_id)
-    if latest_order_ts is None or candidate > latest_order_ts:
-        return candidate
-    return latest_order_ts + timedelta(microseconds=1)
+    return resolve_terminal_event_timestamp(
+        proposed_ts=proposed_ts,
+        latest_order_ts=latest_order_ts,
+        fallback_ts=datetime.now(timezone.utc),
+    )
 
 
 def _latest_order_event_ts(
@@ -1096,31 +1451,109 @@ def _should_skip_trading(
     Raises:
         ValueError: If max_age_seconds is negative.
     """
+    readiness = assess_market_data_readiness(
+        market_data_events,
+        now=now,
+        max_age_seconds=max_age_seconds,
+    )
+    if readiness.reason == "missing_market_data":
+        logger.warning("Skipping trading due to missing market data")
+        return readiness.should_skip
+    if readiness.latest_ts is None or readiness.age_seconds is None:
+        return readiness.should_skip
+    logger.info(
+        "Market data freshness latest_ts=%s age_seconds=%.2f max_age_seconds=%s stale=%s",
+        readiness.latest_ts.isoformat(),
+        readiness.age_seconds,
+        readiness.max_age_seconds,
+        readiness.is_stale,
+    )
+    return readiness.should_skip
+
+
+def assess_market_data_readiness(
+    market_data_events: Sequence[MarketDataEvent],
+    *,
+    now: datetime,
+    max_age_seconds: int,
+) -> MarketDataReadiness:
+    """Assess market-data availability and freshness without side effects.
+
+    Args:
+        market_data_events: Market-data events available to the cycle.
+        now: Timestamp used for staleness comparison.
+        max_age_seconds: Maximum allowed age in seconds.
+
+    Returns:
+        Immutable readiness result describing whether trading should be skipped.
+
+    Raises:
+        ValueError: If `max_age_seconds` is negative.
+    """
     if max_age_seconds < 0:
         raise ValueError("max_age_seconds must be non-negative")
     if not market_data_events:
-        logger.warning("Skipping trading due to missing market data")
-        return True
-
+        return MarketDataReadiness(
+            should_skip=True,
+            max_age_seconds=max_age_seconds,
+            latest_ts=None,
+            age_seconds=None,
+            is_stale=False,
+            reason="missing_market_data",
+        )
+    normalized_now = _normalize_timestamp(now)
     latest_ts = max(_normalize_timestamp(event.ts) for event in market_data_events)
-    age_seconds = (now - latest_ts).total_seconds()
+    age_seconds = (normalized_now - latest_ts).total_seconds()
     is_stale = age_seconds > max_age_seconds
-    logger.info(
-        "Market data freshness latest_ts=%s age_seconds=%.2f max_age_seconds=%s stale=%s",
-        latest_ts.isoformat(),
-        age_seconds,
-        max_age_seconds,
-        is_stale,
+    return MarketDataReadiness(
+        should_skip=is_stale,
+        max_age_seconds=max_age_seconds,
+        latest_ts=latest_ts,
+        age_seconds=age_seconds,
+        is_stale=is_stale,
+        reason="stale_market_data" if is_stale else None,
     )
-    return is_stale
 
 
 def _is_event_stale(event: MarketDataEvent, now: datetime, max_age_seconds: int) -> bool:
     """Return whether one market-data event is older than the allowed window."""
+    return assess_market_data_event_freshness(
+        event,
+        now=now,
+        max_age_seconds=max_age_seconds,
+    ).is_stale
+
+
+def assess_market_data_event_freshness(
+    event: MarketDataEvent,
+    *,
+    now: datetime,
+    max_age_seconds: int,
+) -> MarketDataEventFreshness:
+    """Assess freshness for one market-data event without side effects.
+
+    Args:
+        event: Market-data event being considered by streaming mode.
+        now: Timestamp used for staleness comparison.
+        max_age_seconds: Maximum allowed age in seconds.
+
+    Returns:
+        Immutable freshness result with normalized timestamp and age.
+
+    Raises:
+        ValueError: If `max_age_seconds` is negative.
+    """
     if max_age_seconds < 0:
         raise ValueError("max_age_seconds must be non-negative")
     ts = _normalize_timestamp(event.ts)
-    return (now - ts).total_seconds() > max_age_seconds
+    age_seconds = (_normalize_timestamp(now) - ts).total_seconds()
+    is_stale = age_seconds > max_age_seconds
+    return MarketDataEventFreshness(
+        ts=ts,
+        age_seconds=age_seconds,
+        max_age_seconds=max_age_seconds,
+        is_stale=is_stale,
+    )
 
 
 def _normalize_timestamp(timestamp: datetime) -> datetime:
@@ -1429,10 +1862,47 @@ def _record_metrics_snapshot(
     Positions without current prices are excluded from exposure calculations
     instead of carrying stale valuations silently.
     """
-    equity = portfolio.cash_balance
+    event = build_metrics_snapshot_event(
+        positions=portfolio.positions,
+        cash_balance=portfolio.cash_balance,
+        price_lookup=price_lookup,
+        asof_ts=asof_ts,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        asset_class=asset_class,
+        symbols=symbols,
+    )
+    event_store.record_event(
+        "metrics_snapshots",
+        event.to_record(),
+    )
+
+
+def build_metrics_snapshot_payload(
+    *,
+    positions: Mapping[str, Position],
+    cash_balance: float,
+    price_lookup: Mapping[str, float],
+    asset_class: str,
+    symbols: Sequence[str],
+) -> MetricsSnapshotPayload:
+    """Compute portfolio equity and exposure metrics without side effects.
+
+    Args:
+        positions: Current positions keyed by symbol.
+        cash_balance: Current portfolio cash balance.
+        price_lookup: Current prices keyed by symbol.
+        asset_class: Configured asset class for the cycle.
+        symbols: Configured trading symbols for the cycle.
+
+    Returns:
+        Immutable metrics payload. Positions without a current price are
+        excluded from exposure and equity calculations.
+    """
+    equity = cash_balance
     net = 0.0
     gross = 0.0
-    for position in portfolio.positions.values():
+    for position in positions.values():
         price = price_lookup.get(position.symbol)
         if price is None:
             continue
@@ -1440,23 +1910,40 @@ def _record_metrics_snapshot(
         equity += notional
         net += notional
         gross += abs(notional)
-    payload = {
-        "equity": equity,
-        "cash": portfolio.cash_balance,
-        "net_exposure": net,
-        "gross_exposure": gross,
-        "asset_class": asset_class,
-        "symbols": list(symbols),
-    }
-    event_store.record_event(
-        "metrics_snapshots",
-        {
-            "ts": asof_ts,
-            "run_id": run_id,
-            "session_id": run_id,
-            "cycle_id": cycle_id,
-            "payload": json.dumps(payload),
-        },
+    return MetricsSnapshotPayload(
+        equity=equity,
+        cash=cash_balance,
+        net_exposure=net,
+        gross_exposure=gross,
+        asset_class=asset_class,
+        symbols=tuple(symbols),
+    )
+
+
+def build_metrics_snapshot_event(
+    *,
+    positions: Mapping[str, Position],
+    cash_balance: float,
+    price_lookup: Mapping[str, float],
+    asof_ts: datetime,
+    run_id: str,
+    cycle_id: str | None,
+    asset_class: str,
+    symbols: Sequence[str],
+) -> MetricsSnapshotEvent:
+    """Build a metrics snapshot event from explicit portfolio inputs."""
+    return MetricsSnapshotEvent(
+        ts=asof_ts,
+        run_id=run_id,
+        session_id=run_id,
+        cycle_id=cycle_id,
+        payload=build_metrics_snapshot_payload(
+            positions=positions,
+            cash_balance=cash_balance,
+            price_lookup=price_lookup,
+            asset_class=asset_class,
+            symbols=symbols,
+        ),
     )
 
 

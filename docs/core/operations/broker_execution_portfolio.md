@@ -28,6 +28,8 @@ Backtest fill model:
 - Sell slippage: `adjusted_price = raw_price * (1 - bps / 10000)`.
 - Slippage amount: `abs(adjusted_price - raw_price) * fill_qty`.
 - Fee amount: `max(minimum_fee, fixed_per_order + abs(fill_qty * adjusted_price) * bps / 10000)`.
+- The internal broker shell owns clocks, random draws, optional latency sleeps, logging, and response IDs; normalized
+  requests, fee math, and fill/rejection response construction are pure value-object helpers.
 
 Portfolio accounting:
 
@@ -78,6 +80,14 @@ Live order history is append-only. Broker responses are normalized into local `o
 recorded in `fill_events`; refreshed cash and holdings are recorded in `position_snapshots`. Reconciliation appends new
 order/fill facts; it never edits or deletes prior lifecycle records. Alpaca paper state is the best available live
 account truth in this system, but paper fills are not proof of live venue fill quality.
+
+Alpaca reconciliation builds order/fill event records through immutable payload helpers before writing to the event
+store. The broker adapter shell owns provider calls, event IDs, fallback timestamps, logging, and persistence.
+Failed Alpaca submissions are likewise converted into deterministic error response payloads before the cycle persists
+the terminal order event.
+Alpaca request-field normalization is also separated from provider request-class construction, so symbol spelling,
+quantity coercion, deterministic client-order IDs, time-in-force promotion, order type, and limit-price selection are
+deterministic data transforms.
 
 Broker contracts:
 

@@ -81,6 +81,9 @@ If the broker account is outside the configured universe, startup aborts. This i
 
 The metrics worker starts after recovery and portfolio reset. This ordering matters: metrics should observe the same
 broker-backed truth that the live runtime will trade against.
+The worker shell owns broker/event-store reads, retained baseline/peak state, sleeps, logging, and persistence. Runtime
+metrics sample math and persisted snapshot records are built through pure helpers from explicit positions, cash, prices,
+timestamps, run IDs, and configured symbols.
 
 ## Steady-State Realtime Path
 
@@ -224,6 +227,19 @@ make consistent decisions:
 - decision timestamp
 - halt state
 
+Risk approval/rejection splitting is implemented as a pure functional-core helper. Orders with explicit
+`client_order_id` are matched by that ID; anonymous order intents are matched by object identity so one approved
+anonymous order does not accidentally approve every anonymous order in the batch.
+
+Before risk evaluation, strategy order intents are normalized and enriched through immutable cycle-order helpers. Those
+helpers own deterministic client-order IDs, price attachment, run/cycle identity, asset class, and time-in-force fields;
+the surrounding cycle shell owns strategy calls, logging, broker submission, and persistence.
+
+Market-data readiness is assessed by a pure helper that returns missing/stale/fresh state, latest timestamp, and age.
+The cycle shell logs that result and decides whether to call the strategy, keeping freshness policy separate from
+logging and event-store access. Streaming mode uses the same pattern for one event at a time: per-event freshness is
+calculated as data, while the stream worker owns queueing and stale-event logs.
+
 ### Open-order guard behavior
 
 The open-buy guard prevents the engine from stacking multiple open buy orders for the same symbol when earlier ones
@@ -238,6 +254,13 @@ Risk rejections are:
 - logged explicitly at runtime
 
 This keeps risk behavior explainable both from logs and from the event store.
+
+Cycle order and fill records are built through immutable payload helpers before event-store writes. The cycle shell owns
+UUID generation, fallback timestamps, broker response matching, logging, and persistence; timestamp ordering and record
+shape are deterministic functional-core helpers. Terminal broker timestamps use a pure resolver that preserves broker
+time when it sorts after local lifecycle rows and nudges stale or equal timestamps forward by one microsecond.
+Metrics snapshots follow the same boundary: portfolio cash, priced positions, exposure, symbols, and asset class are
+converted into a deterministic JSON payload before the event-store write.
 
 ## Broker and Internal-State Reconciliation
 
@@ -256,6 +279,10 @@ the service from starting.
 If local history says an order is still open but broker reality does not confirm that order, the runtime appends a
 terminal local event with `rejection_reason="reconciled_missing"`. This removes stale blockers without rewriting
 history.
+
+Order and fill event records are built through immutable payload helpers before they are written to the event store.
+The recovery shell owns broker reads, timestamps, event IDs, and persistence; the payload builders keep the recovery
+record shape deterministic and directly testable.
 
 ### Broker-open adoption
 

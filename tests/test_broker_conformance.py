@@ -12,6 +12,7 @@ from trader.broker import (
     OrderLookupBroker,
     OrderReconcileBroker,
 )
+from trader.broker.core import build_alpaca_submission_error_response
 from tests.test_alpaca_broker import FakeOrder, FakeTradingClient
 
 
@@ -135,3 +136,17 @@ def test_alpaca_submit_error_is_normalized() -> None:
     assert response["status"] == "error"
     assert response["client_order_id"] == "cid_error"
     assert "broker unavailable" in str(response["rejection_reason"])
+
+
+def test_build_alpaca_submission_error_response_is_deterministic() -> None:
+    response = build_alpaca_submission_error_response(
+        client_order_id="cid_error",
+        error=RuntimeError("broker unavailable"),
+    )
+
+    assert response.to_record() == {
+        "client_order_id": "cid_error",
+        "status": "error",
+        "broker_order_id": None,
+        "rejection_reason": "broker unavailable",
+    }

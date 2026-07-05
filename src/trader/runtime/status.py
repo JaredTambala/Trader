@@ -8,6 +8,7 @@ code.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 from typing import Any, Mapping, Sequence, cast
@@ -17,6 +18,23 @@ from ..event_store import EventStore
 
 _OPEN_ORDER_STATUSES = {"submitted", "accepted", "partially_filled", "error"}
 _TRUE_VALUES = {"1", "true", "yes", "y", "on"}
+
+
+@dataclass(frozen=True)
+class RuntimeHealthAssessment:
+    """Typed runtime health classification for operator status payloads."""
+
+    status: str
+    exit_code: int
+    reasons: tuple[str, ...]
+
+    def to_record(self) -> dict[str, Any]:
+        """Return the JSON-compatible health mapping used by existing callers."""
+        return {
+            "status": self.status,
+            "exit_code": self.exit_code,
+            "reasons": list(self.reasons),
+        }
 
 
 def runtime_status(event_store: EventStore, config: Config, *, now: datetime | None = None) -> dict[str, Any]:
@@ -69,6 +87,35 @@ def evaluate_health(
     classified as unhealthy because they indicate trading decisions may be wrong
     or no longer operating.
     """
+    return assess_runtime_health(
+        latest_run=latest_run,
+        latest_cycle=latest_cycle,
+        market_data=market_data,
+        open_orders=open_orders,
+        halt=halt,
+    ).to_record()
+
+
+def assess_runtime_health(
+    *,
+    latest_run: Mapping[str, Any] | None,
+    latest_cycle: Mapping[str, Any] | None,
+    market_data: Mapping[str, Any],
+    open_orders: Mapping[str, Any],
+    halt: Mapping[str, Any],
+) -> RuntimeHealthAssessment:
+    """Classify runtime health from normalized status subsections.
+
+    Args:
+        latest_run: Latest run-session status mapping, if any.
+        latest_cycle: Latest decision-cycle status mapping, if any.
+        market_data: Market-data status summary.
+        open_orders: Open-order status summary.
+        halt: Operator halt-state summary.
+
+    Returns:
+        Immutable runtime health assessment.
+    """
     reasons: list[str] = []
     exit_code = 0
     if latest_run is None:
@@ -96,7 +143,7 @@ def evaluate_health(
         reasons.append("stale_open_orders")
         exit_code = max(exit_code, 1)
     label = "healthy" if exit_code == 0 else "degraded" if exit_code == 1 else "unhealthy"
-    return {"status": label, "exit_code": exit_code, "reasons": reasons}
+    return RuntimeHealthAssessment(status=label, exit_code=exit_code, reasons=tuple(reasons))
 
 
 def latest_run_status(event_store: EventStore) -> dict[str, Any] | None:

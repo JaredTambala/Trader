@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Iterable, Mapping, Sequence
 
 from trader.portfolio import Position
-from trader.risk import RiskContext, RiskPipeline
+from trader.risk import (
+    RiskContext,
+    RiskManager,
+    RiskPipeline,
+    evaluate_risk_pipeline,
+    split_approved_rejected_orders,
+)
 from trader_standard.risk import (
     HaltRiskManager,
     MaxGrossExposureRiskManager,
@@ -30,6 +37,72 @@ def _context(
         decision_ts=now,
         halted=halted,
     )
+
+
+class _ApproveFirstOnlyRiskManager(RiskManager):
+    def validate(
+        self,
+        orders: Iterable[Mapping[str, object]],
+        context: RiskContext,
+    ) -> Sequence[Mapping[str, object]]:
+        del context
+        return list(orders)[:1]
+
+
+class _RejectBySymbolRiskManager(RiskManager):
+    def __init__(self, rejected_symbol: str, reason: str) -> None:
+        self._rejected_symbol = rejected_symbol
+        self._reason = reason
+
+    def validate(
+        self,
+        orders: Iterable[Mapping[str, object]],
+        context: RiskContext,
+    ) -> Sequence[Mapping[str, object]]:
+        del context
+        return [order for order in orders if order.get("symbol") != self._rejected_symbol]
+
+    def evaluate(
+        self,
+        orders: Iterable[Mapping[str, object]],
+        context: RiskContext,
+    ):
+        approved = self.validate(orders, context)
+        return split_approved_rejected_orders(
+            orders,
+            approved,
+            rejection_reason=self._reason,
+        ).as_tuple()
+
+
+def test_split_approved_rejected_orders_handles_anonymous_orders_by_identity() -> None:
+    approved_order = {"symbol": "AAPL", "side": "buy", "qty": 1.0}
+    rejected_order = {"symbol": "MSFT", "side": "buy", "qty": 1.0}
+
+    result = split_approved_rejected_orders(
+        [approved_order, rejected_order],
+        [approved_order],
+    )
+
+    assert result.approved == (approved_order,)
+    assert result.rejected == ({**rejected_order, "rejection_reason": "risk_rejected"},)
+
+
+def test_default_risk_manager_evaluate_does_not_approve_every_anonymous_order() -> None:
+    context = _context()
+    manager = _ApproveFirstOnlyRiskManager()
+
+    approved, rejected = manager.evaluate(
+        [
+            {"symbol": "AAPL", "side": "buy", "qty": 1.0},
+            {"symbol": "MSFT", "side": "buy", "qty": 1.0},
+        ],
+        context,
+    )
+
+    assert [order["symbol"] for order in approved] == ["AAPL"]
+    assert [order["symbol"] for order in rejected] == ["MSFT"]
+    assert rejected[0]["rejection_reason"] == "risk_rejected"
 
 
 def test_halt_risk_manager_rejects_all_orders() -> None:
@@ -189,3 +262,27 @@ def test_risk_pipeline_runs_sequentially_and_accumulates_rejections() -> None:
     reasons = {order["client_order_id"]: order["rejection_reason"] for order in rejected}
     assert reasons["o1"] == "max_pos_usd_per_symbol"
     assert reasons["o3"] == "max_orders_per_run"
+
+
+def test_evaluate_risk_pipeline_returns_immutable_ordered_result() -> None:
+    context = _context()
+
+    result = evaluate_risk_pipeline(
+        [
+            _RejectBySymbolRiskManager("MSFT", "blocked_msft"),
+            _RejectBySymbolRiskManager("AAPL", "blocked_aapl"),
+        ],
+        [
+            {"client_order_id": "o1", "symbol": "AAPL", "side": "buy", "qty": 1.0},
+            {"client_order_id": "o2", "symbol": "MSFT", "side": "buy", "qty": 1.0},
+            {"client_order_id": "o3", "symbol": "NVDA", "side": "buy", "qty": 1.0},
+        ],
+        context,
+    )
+
+    assert [order["client_order_id"] for order in result.approved] == ["o3"]
+    assert [order["client_order_id"] for order in result.rejected] == ["o2", "o1"]
+    assert [order["rejection_reason"] for order in result.rejected] == [
+        "blocked_msft",
+        "blocked_aapl",
+    ]

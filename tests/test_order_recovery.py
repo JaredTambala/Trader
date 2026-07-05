@@ -7,13 +7,86 @@ from datetime import datetime, timezone
 import pytest
 
 from trader.broker import AlpacaPaperBroker
-from trader.runtime.orders import inspect_recovery_state, run_local_clean_start, run_startup_recovery
+from trader.runtime.orders import (
+    build_fill_event_payload,
+    build_order_event_payload,
+    inspect_recovery_state,
+    run_local_clean_start,
+    run_startup_recovery,
+)
 from tests.support.duckdb_store import DuckDBEventStore
 from tests.test_alpaca_broker import FakeOrder, FakeTradingClient
 
 
 def _broker(store, client):
     return AlpacaPaperBroker(api_key="key", secret_key="secret", event_store=store, client=client)
+
+
+def test_build_order_event_payload_is_deterministic_without_mutating_input() -> None:
+    order = {
+        "client_order_id": "cid_1",
+        "run_id": "run_1",
+        "cycle_id": "cycle_1",
+        "symbol": "BTC/USD",
+        "side": "buy",
+        "qty": 0.25,
+        "broker_order_id": "broker_1",
+    }
+    original = dict(order)
+    event_ts = datetime(2026, 1, 20, 12, 30, tzinfo=timezone.utc)
+
+    payload = build_order_event_payload(
+        order,
+        status="canceled",
+        rejection_reason="reconciled_missing",
+        event_ts=event_ts,
+        order_event_id="order_evt_fixed",
+    )
+
+    assert order == original
+    assert payload.to_record() == {
+        "order_event_id": "order_evt_fixed",
+        "client_order_id": "cid_1",
+        "run_id": "run_1",
+        "session_id": "run_1",
+        "cycle_id": "cycle_1",
+        "symbol": "BTC/USD",
+        "side": "buy",
+        "qty": 0.25,
+        "order_type": "market",
+        "status": "canceled",
+        "broker_order_id": "broker_1",
+        "rejection_reason": "reconciled_missing",
+        "created_at": event_ts,
+    }
+
+
+def test_build_fill_event_payload_requires_fill_fields_and_uses_explicit_fallback_time() -> None:
+    fallback_ts = datetime(2026, 1, 20, 12, 30, tzinfo=timezone.utc)
+    order = {
+        "client_order_id": "cid_1",
+        "run_id": "run_1",
+        "cycle_id": "cycle_1",
+        "fill_qty": "0.5",
+        "fill_price": "41000.25",
+    }
+    original = dict(order)
+
+    payload = build_fill_event_payload(order, fallback_fill_ts=fallback_ts)
+
+    assert order == original
+    assert payload is not None
+    assert payload.to_record() == {
+        "client_order_id": "cid_1",
+        "run_id": "run_1",
+        "session_id": "run_1",
+        "cycle_id": "cycle_1",
+        "fill_ts": fallback_ts,
+        "fill_qty": 0.5,
+        "fill_price": 41000.25,
+    }
+    assert build_fill_event_payload({"fill_qty": 1.0}, fallback_fill_ts=fallback_ts) is None
+    assert build_fill_event_payload({"fill_price": 100.0}, fallback_fill_ts=fallback_ts) is None
 
 
 def test_startup_recovery_closes_missing_local_open(tmp_path) -> None:
