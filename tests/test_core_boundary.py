@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import trader
-import trader.cycle.core as cycle_module
+import trader.cycle.state as cycle_state
 from trader.config import Config
 from trader.cycle import run_cycle
 from trader.event_store import NoOpEventStore
@@ -122,11 +122,11 @@ def test_run_cycle_does_not_apply_hidden_open_buy_order_guard(monkeypatch) -> No
         "created_at": decision_ts,
     }
     monkeypatch.setattr(
-        cycle_module,
+        cycle_state,
         "_load_latest_order_events",
         lambda event_store: [existing_open_order],
     )
-    monkeypatch.setattr(cycle_module, "_load_halt_flag", lambda event_store: False)
+    monkeypatch.setattr(cycle_state, "_load_halt_flag", lambda event_store: False)
 
     result = run_cycle(
         event_store=store,

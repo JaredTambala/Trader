@@ -12,6 +12,7 @@ from trader.broker.core import (
     ensure_alpaca_client_order_id,
     normalize_alpaca_order_request_fields,
 )
+from trader.broker.alpaca_domain import normalize_alpaca_order_response
 from trader.identifiers import deterministic_client_order_id
 from tests.support.duckdb_store import DuckDBEventStore
 
@@ -252,6 +253,36 @@ def test_ensure_alpaca_client_order_id_derives_stable_id_without_mutation() -> N
     assert enriched is not order
     assert enriched["client_order_id"] == deterministic_client_order_id("cycle_1", "AAPL", "buy", 1.0)
     assert enriched["symbol"] == " aapl "
+
+
+def test_normalize_alpaca_order_response_maps_provider_payload_without_mutation() -> None:
+    response = {
+        "id": "alpaca_1",
+        "status": "filled",
+        "symbol": "BTCUSD",
+        "asset_class": "crypto",
+        "side": "BUY",
+        "type": "market",
+        "qty": "0.25",
+        "filled_qty": "0.25",
+        "filled_avg_price": "65000.50",
+        "filled_at": "2026-01-20T12:00:00Z",
+        "client_order_id": "cid_crypto",
+    }
+    original = dict(response)
+
+    normalized = normalize_alpaca_order_response(response, {})
+
+    assert response == original
+    assert normalized["client_order_id"] == "cid_crypto"
+    assert normalized["status"] == "filled"
+    assert normalized["broker_order_id"] == "alpaca_1"
+    assert normalized["symbol"] == "BTC/USD"
+    assert normalized["asset_class"] == "crypto"
+    assert normalized["side"] == "buy"
+    assert normalized["qty"] == 0.25
+    assert normalized["fill_price"] == 65000.50
+    assert normalized["fill_ts"] == datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
 
 
 def test_alpaca_broker_idempotent_submission(tmp_path) -> None:

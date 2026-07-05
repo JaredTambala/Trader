@@ -1,9 +1,7 @@
 """Cycle package public API."""
 
-from .core import (
-    main,
-    run_cycle,
-)
+from .cli import main
+from .core import run_cycle
 from .lifecycle import (
     CycleResult,
 )
