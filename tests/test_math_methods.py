@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from trader_research.math_tools import math_list_method_contracts, math_validate_method_contract
+from trader_research.methods import math_list_method_contracts, math_validate_method_contract
 
 
 def test_math_list_method_contracts_includes_core_and_planned_methods() -> None:

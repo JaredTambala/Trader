@@ -18,7 +18,7 @@ from trader_mcp.constants import (
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
 from trader_research.method_implementations.manifest import SIGNAL_RUNTIME_CONTRACT
-from trader_research.method_packages import MethodPackageManifest
+from trader_research.methods.packages import MethodPackageManifest
 
 
 def test_mcp_strategy_candidate_tools_list_create_and_validate(tmp_path: Path) -> None:

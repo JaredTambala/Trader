@@ -6,11 +6,11 @@ from functools import lru_cache
 import json
 from pathlib import Path
 
-from .knowledge.store import KnowledgeStore
-from .math_domain import MethodRegistryEntry
+from trader_research.knowledge.store import KnowledgeStore
+from .contracts import MethodRegistryEntry
 
 
-BOOTSTRAP_METHOD_CONTRACTS_PATH = Path(__file__).with_name("method_contracts_seed.json")
+BOOTSTRAP_METHOD_CONTRACTS_PATH = Path(__file__).resolve().parents[1] / "method_contracts_seed.json"
 
 
 @lru_cache(maxsize=1)

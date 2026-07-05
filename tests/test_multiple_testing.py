@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from trader_research.math_tools import math_run_multiple_testing_report
+from trader_research.methods import math_run_multiple_testing_report
 
 
 def test_multiple_testing_applies_benjamini_hochberg_to_declared_family(tmp_path: Path) -> None:

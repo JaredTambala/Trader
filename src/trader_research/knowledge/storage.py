@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from trader_research.contracts import write_json_artifact
-from trader_research.math_domain import MethodRegistryEntry
+from trader_research.methods.contracts import MethodRegistryEntry
 
 from .domain import (
     KnowledgeChunk,

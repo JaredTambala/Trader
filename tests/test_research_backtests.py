@@ -22,9 +22,9 @@ from trader_research.data import DataInventoryRequest, DataQualityRequest, data_
 from trader_research.domain import BACKTEST_RUN_REF, COMPARISON_REPORT, BacktestRunRef
 from trader_research.method_implementations.io import file_sha256
 from trader_research.method_implementations.manifest import SIGNAL_RUNTIME_CONTRACT
-from trader_research.method_packages import MethodPackageManifest
-from trader_research.strategies import create_strategy_candidate
-from trader_research.strategy_validation import validate_strategy_candidate
+from trader_research.methods.packages import MethodPackageManifest
+from trader_research.strategy_candidates import create_strategy_candidate
+from trader_research.strategy_candidates import validate_strategy_candidate
 
 
 SAMPLE_CSV = Path("examples/data/demo_stock_1min.csv")

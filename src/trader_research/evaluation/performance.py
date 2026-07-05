@@ -10,7 +10,7 @@ import math
 from pathlib import Path
 from typing import Any, Mapping
 
-from .contracts import (
+from trader_research.contracts import (
     ArtifactReference,
     SCHEMA_VERSION,
     SideEffect,
@@ -19,7 +19,13 @@ from .contracts import (
     success_envelope,
     write_json_artifact,
 )
-from .domain import BACKTEST_RUN_REF, DATA_QUALITY_REPORT, EVALUATION_REPORT, ResearchIssue, stable_research_id
+from trader_research.domain import (
+    BACKTEST_RUN_REF,
+    DATA_QUALITY_REPORT,
+    EVALUATION_REPORT,
+    ResearchIssue,
+    stable_research_id,
+)
 
 
 EVALUATION_GENERATE_PERFORMANCE_REPORT = "evaluation_generate_performance_report"

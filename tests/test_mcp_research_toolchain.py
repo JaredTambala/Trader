@@ -25,7 +25,7 @@ from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
 from trader_research.knowledge.domain import MethodCard
 from trader_research.knowledge.store import JsonKnowledgeStore
-from trader_research.math_domain import MethodRegistryEntry, ParameterSpec
+from trader_research.methods.contracts import MethodRegistryEntry, ParameterSpec
 
 
 METHOD_ID = "bollinger_bwma_action_signal"

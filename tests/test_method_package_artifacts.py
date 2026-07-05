@@ -5,14 +5,14 @@ from pathlib import Path
 
 from trader_research.knowledge.domain import MethodCard
 from trader_research.knowledge.store import JsonKnowledgeStore
-from trader_research.math_domain import MethodRegistryEntry, ParameterSpec
-from trader_research.math_tools import (
+from trader_research.methods.contracts import MethodRegistryEntry, ParameterSpec
+from trader_research.methods import (
     math_package_method_artifact,
     math_register_method_implementation,
     math_run_indicator_fixtures,
     math_run_signal_fixtures,
 )
-from trader_research.method_packages import MethodPackageManifest
+from trader_research.methods.packages import MethodPackageManifest
 
 
 def test_package_validated_indicator_method_artifact(tmp_path: Path) -> None:

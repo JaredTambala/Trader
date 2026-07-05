@@ -176,9 +176,9 @@ package.
 
 ## Strategy Candidate Catalog And Builder
 
-Task 25 implements the deterministic `trader_research.strategies.list_strategy_templates` service for the
+Task 25 implements the deterministic `trader_research.strategy_candidates.list_strategy_templates` service for the
 `research_list_strategy_templates` command. Task 26 implements the deterministic
-`trader_research.strategies.create_strategy_candidate` service for the `research_create_strategy_candidate` command.
+`trader_research.strategy_candidates.create_strategy_candidate` service for the `research_create_strategy_candidate` command.
 Task 27 registers both tools through MCP and adds `research_validate_strategy_candidate`.
 
 The read-only success payload is:

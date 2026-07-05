@@ -13,6 +13,23 @@ Research agents produce deterministic artifacts for inspection and backtesting; 
 | `trader_mcp` | MCP server, tool registration, JSON adapters, server policy/config metadata, dependency injection into research services. | Research business logic, agent decision state. |
 | `trader_agents` | LangGraph identities, state schemas, policy routing, tool allowlists, and handoff wiring over MCP tools. | Direct platform mutation or bypassing MCP when a tool exists. |
 
+## `trader_research` Capability Packages
+
+`trader_research` mirrors the bounded capability style used by the core `trader` package. Stable package-level exports
+are canonical public surfaces; broad top-level service modules are not compatibility shims and should not be
+reintroduced.
+
+| Package | Responsibility |
+| --- | --- |
+| `trader_research.data` | Data Agent discovery, inventory, quality, provider context, and explicit loading services. |
+| `trader_research.methods` | Quantitative Methods contracts, registry access, fixtures, diagnostics, multiple testing, kernels, and method-package handoffs. |
+| `trader_research.strategy_candidates` | Maintained strategy template catalog, source-backed candidate generation, and candidate validation. |
+| `trader_research.risk_managers` | Risk-manager template catalog and source-backed candidate generation. |
+| `trader_research.backtests` | Data-scoped baseline backtest execution, result lookup, and comparison reports. |
+| `trader_research.evaluation` | Evaluation-owned report services over persisted research evidence. |
+| `trader_research.knowledge` | Knowledge-source registration, ingestion, indexing, retrieval, method cards, and citation validation. |
+| `trader_research.method_implementations` | Python method implementation registration, quarantine generation, and deterministic fixtures. |
+
 ## Control Plane And Execution Plane
 
 The MCP server is the control plane. It starts over stdio, lists tools, exposes health/config metadata, declares

@@ -19,7 +19,7 @@ from trader_research.contracts import ArtifactReference, SideEffect, ToolEnvelop
 from trader_research.domain import stable_research_id
 from trader_research.knowledge.method_cards import has_approved_method_card
 from trader_research.knowledge.store import KnowledgeStore, KnowledgeStoreError
-from trader_research.math_registry import get_method
+from trader_research.methods.registry import get_method
 from trader_research.method_implementations.io import file_sha256, local_mutating_error, save_manifest
 from trader_research.method_implementations.manifest import (
     DEFAULT_ALLOWED_IMPORTS,

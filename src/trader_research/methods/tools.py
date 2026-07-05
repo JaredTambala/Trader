@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from trader_research.contracts import SideEffect, ToolEnvelope, error_envelope, success_envelope
-from trader_research.cpp_kernel_artifacts import compile_cpp_kernel, generate_cpp_kernel
+from trader_research.methods.kernels import compile_cpp_kernel, generate_cpp_kernel
 from trader_research.knowledge.citation_validation import validate_citations
 from trader_research.knowledge.method_cards import get_method_card, has_approved_method_card
 from trader_research.knowledge.store import KnowledgeStore, KnowledgeStoreError
@@ -16,16 +16,20 @@ from trader_research.method_implementations import (
     run_indicator_fixtures,
     run_signal_fixtures,
 )
-from trader_research.method_packages import package_method_artifact
-from trader_research.multiple_testing import run_multiple_testing_report
-from trader_research.signal_diagnostics import run_signal_diagnostics
+from trader_research.methods.packages import package_method_artifact
+from trader_research.methods.multiple_testing import run_multiple_testing_report
+from trader_research.methods.diagnostics import run_signal_diagnostics
 
-from .math_domain import MethodContract, MethodRegistryEntry, MethodValidationReport, ParameterSpec
-from .math_registry import get_method, list_methods
+from .contracts import MethodContract, MethodRegistryEntry, MethodValidationReport, ParameterSpec
+from .registry import get_method, list_methods
 
 
 MATH_LIST_METHOD_CONTRACTS = "math_list_method_contracts"
 MATH_VALIDATE_METHOD_CONTRACT = "math_validate_method_contract"
+MATH_REGISTER_METHOD_IMPLEMENTATION = "math_register_method_implementation"
+MATH_RUN_INDICATOR_FIXTURES = "math_run_indicator_fixtures"
+MATH_RUN_SIGNAL_FIXTURES = "math_run_signal_fixtures"
+MATH_GENERATE_PYTHON_METHOD = "math_generate_python_method"
 MATH_RUN_SIGNAL_DIAGNOSTICS = "math_run_signal_diagnostics"
 MATH_RUN_MULTIPLE_TESTING_REPORT = "math_run_multiple_testing_report"
 MATH_GENERATE_CPP_KERNEL = "math_generate_cpp_kernel"

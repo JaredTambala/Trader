@@ -11,7 +11,7 @@ from trader_research.knowledge.ingestion import ingest_documents
 from trader_research.knowledge.postgres_store import PostgresKnowledgeStore
 from trader_research.knowledge.retrieval import get_evidence_chunks, retrieve_evidence
 from trader_research.knowledge.sources import register_source
-from trader_research.math_domain import MethodRegistryEntry, ParameterSpec
+from trader_research.methods.contracts import MethodRegistryEntry, ParameterSpec
 
 
 pytestmark = pytest.mark.postgres

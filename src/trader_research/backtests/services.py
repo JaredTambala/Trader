@@ -18,7 +18,7 @@ from trader.portfolio import Position
 from trader.strategies import Strategy
 from trader_standard.risk import NoOpRiskManager
 
-from .contracts import (
+from trader_research.contracts import (
     ArtifactReference,
     SCHEMA_VERSION,
     SideEffect,
@@ -27,7 +27,7 @@ from .contracts import (
     success_envelope,
     write_json_artifact,
 )
-from .domain import (
+from trader_research.domain import (
     BACKTEST_RUN_REF,
     COMPARISON_REPORT,
     DATASET_MANIFEST,
@@ -37,10 +37,13 @@ from .domain import (
     StrategyCandidateManifest,
     stable_research_id,
 )
-from .method_implementations.io import file_sha256
-from .research import attach_research_metadata, config_snapshot_hash, export_research_bundle, result_summary
-from .strategies import get_strategy_template, strategy_candidate_path
-from .strategy_validation import strategy_candidate_validation_report_path
+from trader_research.method_implementations.io import file_sha256
+from trader_research.research import attach_research_metadata, config_snapshot_hash, export_research_bundle, result_summary
+from trader_research.strategy_candidates import (
+    get_strategy_template,
+    strategy_candidate_path,
+    strategy_candidate_validation_report_path,
+)
 
 
 RESEARCH_RUN_BACKTEST = "research_run_backtest"

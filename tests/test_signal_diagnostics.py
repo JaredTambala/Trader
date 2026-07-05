@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from trader_research.math_tools import math_run_signal_diagnostics
+from trader_research.methods import math_run_signal_diagnostics
 
 
 def test_signal_diagnostics_evaluate_declared_signal_candidates(tmp_path: Path) -> None:

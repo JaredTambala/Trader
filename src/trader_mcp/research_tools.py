@@ -34,11 +34,11 @@ from trader_research.risk_managers import (
     create_risk_manager_candidate as create_risk_manager_candidate_service,
     list_risk_manager_templates as list_risk_manager_templates_service,
 )
-from trader_research.strategies import (
+from trader_research.strategy_candidates import (
     create_strategy_candidate as create_strategy_candidate_service,
     list_strategy_templates as list_strategy_templates_service,
 )
-from trader_research.strategy_validation import validate_strategy_candidate as validate_strategy_candidate_service
+from trader_research.strategy_candidates import validate_strategy_candidate as validate_strategy_candidate_service
 
 
 EventStoreProvider = Callable[[], EventStore]

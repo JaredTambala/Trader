@@ -32,7 +32,7 @@ from trader_mcp.server import create_server
 from trader_agents.llm_client import StaticJsonLlmClient
 from trader_research.knowledge.embeddings import DeterministicEmbeddingProvider
 from trader_research.knowledge.store import JsonKnowledgeStore
-from trader_research.math_domain import MethodRegistryEntry, ParameterSpec
+from trader_research.methods.contracts import MethodRegistryEntry, ParameterSpec
 
 
 def test_mcp_quant_methods_core_evidence_flow(tmp_path: Path) -> None:

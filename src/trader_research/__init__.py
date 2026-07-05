@@ -1,8 +1,9 @@
-"""Research-agent service metadata.
+"""Deterministic research services and artifact contracts for MCP agents.
 
-This package holds deterministic research-domain services and contracts. The
-initial skeleton exposes only ownership metadata; behavior is added in later
-MCP tool slices.
+The package exposes stable research-domain contracts plus ergonomic package
+surfaces for Data Agent services, Quantitative Methods tools, strategy/risk
+candidate generation, backtests, and Evaluation reports. MCP transport and
+LangGraph orchestration live outside this package.
 """
 
 from .agents import (

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping, Protocol, Sequence
 
 from trader_research.contracts import ArtifactReference
-from trader_research.math_domain import MethodRegistryEntry
+from trader_research.methods.contracts import MethodRegistryEntry
 
 from .domain import KnowledgeChunk, KnowledgeEmbeddingManifest, KnowledgeIngestionReport, KnowledgeSourceManifest, MethodCard
 from .embeddings import TOKEN_PATTERN, cosine_similarity

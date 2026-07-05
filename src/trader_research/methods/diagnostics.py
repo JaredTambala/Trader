@@ -21,8 +21,8 @@ from trader_research.domain import stable_research_id
 from trader_research.knowledge.citation_validation import validate_citations
 from trader_research.knowledge.method_cards import has_approved_method_card
 from trader_research.knowledge.store import KnowledgeStore, KnowledgeStoreError
-from trader_research.math_domain import MethodContract
-from trader_research.math_registry import get_method
+from trader_research.methods.contracts import MethodContract
+from trader_research.methods.registry import get_method
 from trader_research.method_implementations.io import load_manifest
 from trader_research.method_implementations.manifest import (
     MethodImplementationManifest,

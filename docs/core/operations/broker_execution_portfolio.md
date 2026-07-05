@@ -36,6 +36,8 @@ Portfolio accounting:
 - Average prices update across multiple buys.
 - Realized PnL uses adjusted fill prices and fees.
 - The benchmark remains frictionless.
+- The accounting decision logic lives in pure portfolio state-transition helpers; the mutable `Portfolio` object is the
+  imperative shell that applies those returned values and handles logging/persistence.
 
 Latency is recorded as an assumption. It does not sleep the process or change bar selection.
 

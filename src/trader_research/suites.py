@@ -9,8 +9,8 @@ import json
 from typing import Any, Mapping, Sequence
 
 from trader_research.research import apply_parameter_overrides
-from trader_research.strategies import SUPPORTED_STRATEGY_FAMILIES as _SUPPORTED_STRATEGY_FAMILIES
-from trader_research.strategies import normalize_strategy_family
+from trader_research.strategy_candidates import SUPPORTED_STRATEGY_FAMILIES as _SUPPORTED_STRATEGY_FAMILIES
+from trader_research.strategy_candidates import normalize_strategy_family
 
 
 SUPPORTED_STRATEGY_FAMILIES = _SUPPORTED_STRATEGY_FAMILIES

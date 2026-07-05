@@ -12,7 +12,7 @@ from trader_research.knowledge.method_cards import (
     search_method_cards,
 )
 from trader_research.knowledge.store import JsonKnowledgeStore
-from trader_research.math_tools import math_validate_method_contract
+from trader_research.methods import math_validate_method_contract
 
 
 FIXTURE = Path("tests/fixtures/knowledge/sma_method.md")

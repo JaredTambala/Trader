@@ -18,9 +18,9 @@ from trader_research.domain import (
     StrategyCandidateSourceRef,
 )
 from trader_research.method_implementations.manifest import INDICATOR_RUNTIME_CONTRACT, SIGNAL_RUNTIME_CONTRACT
-from trader_research.method_packages import MethodPackageManifest, method_package_path
+from trader_research.methods.packages import MethodPackageManifest, method_package_path
 import trader_research.suites as suites
-from trader_research.strategies import (
+from trader_research.strategy_candidates import (
     METHOD_PACKAGE_MANIFEST,
     RESEARCH_CREATE_STRATEGY_CANDIDATE,
     SUPPORTED_STRATEGY_FAMILIES,

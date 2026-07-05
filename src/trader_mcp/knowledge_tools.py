@@ -54,7 +54,7 @@ from trader_research.knowledge.retrieval import (
 )
 from trader_research.knowledge.sources import list_sources as list_sources_service
 from trader_research.knowledge.sources import register_source as register_source_service
-from trader_research.math_tools import (
+from trader_research.methods import (
     math_compile_kernel as compile_kernel_service,
     math_generate_cpp_kernel as generate_cpp_kernel_service,
     math_generate_python_method as generate_python_method_service,

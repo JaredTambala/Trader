@@ -15,8 +15,15 @@ from pathlib import Path
 import textwrap
 from typing import Any, Mapping, Sequence
 
-from .contracts import ArtifactReference, SideEffect, ToolEnvelope, error_envelope, success_envelope, write_json_artifact
-from .domain import (
+from trader_research.contracts import (
+    ArtifactReference,
+    SideEffect,
+    ToolEnvelope,
+    error_envelope,
+    success_envelope,
+    write_json_artifact,
+)
+from trader_research.domain import (
     METHOD_PACKAGE_MANIFEST,
     RISK_MANAGER_CANDIDATE,
     RISK_MANAGER_IMPLEMENTATION,
@@ -26,9 +33,9 @@ from .domain import (
     StrategyCandidateArtifactLink,
     stable_research_id,
 )
-from .method_implementations.io import file_sha256
-from .method_implementations.manifest import INDICATOR_RUNTIME_CONTRACT, SIGNAL_RUNTIME_CONTRACT
-from .method_packages import MethodPackageManifest, method_package_path
+from trader_research.method_implementations.io import file_sha256
+from trader_research.method_implementations.manifest import INDICATOR_RUNTIME_CONTRACT, SIGNAL_RUNTIME_CONTRACT
+from trader_research.methods.packages import MethodPackageManifest, method_package_path
 
 
 RESEARCH_LIST_RISK_MANAGER_TEMPLATES = "research_list_risk_manager_templates"

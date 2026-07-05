@@ -10,9 +10,9 @@ from trader_research.contracts import SideEffect
 from trader_research.domain import STRATEGY_CANDIDATE_VALIDATION_REPORT
 from trader_research.method_implementations.io import file_sha256
 from trader_research.method_implementations.manifest import SIGNAL_RUNTIME_CONTRACT
-from trader_research.method_packages import MethodPackageManifest
-from trader_research.strategies import create_strategy_candidate, strategy_candidate_path
-from trader_research.strategy_validation import (
+from trader_research.methods.packages import MethodPackageManifest
+from trader_research.strategy_candidates import create_strategy_candidate, strategy_candidate_path
+from trader_research.strategy_candidates import (
     RESEARCH_VALIDATE_STRATEGY_CANDIDATE,
     strategy_candidate_validation_report_path,
     validate_strategy_candidate,

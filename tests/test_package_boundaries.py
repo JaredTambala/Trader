@@ -47,6 +47,34 @@ REMOVED_COMPAT_IMPORTS = {
     "trader.trader_service",
 }
 
+REMOVED_RESEARCH_FLAT_MODULES = {
+    Path("src/trader_research/backtests.py"),
+    Path("src/trader_research/cpp_kernel_artifacts.py"),
+    Path("src/trader_research/data.py"),
+    Path("src/trader_research/evaluation.py"),
+    Path("src/trader_research/math_domain.py"),
+    Path("src/trader_research/math_registry.py"),
+    Path("src/trader_research/math_tools.py"),
+    Path("src/trader_research/method_packages.py"),
+    Path("src/trader_research/multiple_testing.py"),
+    Path("src/trader_research/risk_managers.py"),
+    Path("src/trader_research/signal_diagnostics.py"),
+    Path("src/trader_research/strategies.py"),
+    Path("src/trader_research/strategy_validation.py"),
+}
+
+REMOVED_RESEARCH_FLAT_IMPORTS = {
+    "trader_research.cpp_kernel_artifacts",
+    "trader_research.math_domain",
+    "trader_research.math_registry",
+    "trader_research.math_tools",
+    "trader_research.method_packages",
+    "trader_research.multiple_testing",
+    "trader_research.signal_diagnostics",
+    "trader_research.strategies",
+    "trader_research.strategy_validation",
+}
+
 
 def test_removed_trader_compatibility_surfaces_do_not_exist() -> None:
     offenders = [str(path) for path in sorted(REMOVED_COMPAT_SURFACES) if path.exists()]
@@ -70,6 +98,26 @@ def test_repo_code_does_not_import_removed_trader_compatibility_surfaces() -> No
                 imported.startswith(f"{module}.") for module in REMOVED_COMPAT_IMPORTS
             ):
                 offenders.append(f"{path}: imports {imported}")
+
+    assert offenders == []
+
+
+def test_removed_trader_research_flat_service_modules_do_not_exist() -> None:
+    offenders = [str(path) for path in sorted(REMOVED_RESEARCH_FLAT_MODULES) if path.exists()]
+    assert offenders == []
+
+
+def test_repo_code_uses_canonical_trader_research_capability_packages() -> None:
+    offenders: list[str] = []
+    for root in (Path("src"), Path("tests"), Path("examples")):
+        for path in root.rglob("*.py"):
+            if path == Path("tests/test_package_boundaries.py"):
+                continue
+            for imported in _imported_modules(path):
+                if imported in REMOVED_RESEARCH_FLAT_IMPORTS or any(
+                    imported.startswith(f"{module}.") for module in REMOVED_RESEARCH_FLAT_IMPORTS
+                ):
+                    offenders.append(f"{path}: imports {imported}")
 
     assert offenders == []
 

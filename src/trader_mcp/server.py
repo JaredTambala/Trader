@@ -74,7 +74,7 @@ from trader_research.data import (
 from trader_research.knowledge.embeddings import EmbeddingProvider, embedding_runtime_summary
 from trader_research.knowledge.postgres_store import PostgresKnowledgeStore
 from trader_research.knowledge.store import KnowledgeStore, UnavailableKnowledgeStore
-from trader_research.math_registry import save_bootstrap_method_contracts
+from trader_research.methods.registry import save_bootstrap_method_contracts
 from trader_research.providers import AlpacaSymbolCatalogProvider
 
 

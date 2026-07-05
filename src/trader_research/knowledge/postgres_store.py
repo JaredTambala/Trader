@@ -11,7 +11,7 @@ from trader.knowledge.store import (
     PostgresKnowledgeVectorExtensionUnavailable,
 )
 from trader_research.contracts import ArtifactReference
-from trader_research.math_domain import MethodRegistryEntry
+from trader_research.methods.contracts import MethodRegistryEntry
 
 from .domain import KnowledgeChunk, KnowledgeEmbeddingManifest, KnowledgeIngestionReport, KnowledgeSourceManifest, MethodCard
 from .store import (

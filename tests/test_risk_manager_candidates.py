@@ -12,7 +12,7 @@ import pytest
 from trader.risk import RiskContext, RiskManager
 from trader_research.domain import RISK_MANAGER_CANDIDATE, RISK_MANAGER_IMPLEMENTATION, RiskManagerCandidateManifest
 from trader_research.method_implementations.manifest import INDICATOR_RUNTIME_CONTRACT
-from trader_research.method_packages import MethodPackageManifest, method_package_path
+from trader_research.methods.packages import MethodPackageManifest, method_package_path
 from trader_research.risk_managers import (
     RESEARCH_CREATE_RISK_MANAGER_CANDIDATE,
     RESEARCH_LIST_RISK_MANAGER_TEMPLATES,

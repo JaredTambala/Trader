@@ -415,7 +415,7 @@ def _python_manifest_blockers(manifest: MethodImplementationManifest) -> list[st
 def _template_for_method(method_id: str, template_id: str) -> _KernelTemplate | None:
     if method_id != "sma" or template_id != "sma_scalar_series_v1":
         return None
-    template_path = Path(__file__).resolve().parents[1] / "trader_standard" / "indicators" / "cpp" / "sma_kernel.cpp.template"
+    template_path = Path(__file__).resolve().parents[2] / "trader_standard" / "indicators" / "cpp" / "sma_kernel.cpp.template"
     if not template_path.exists():
         return None
     return _KernelTemplate(

@@ -2,8 +2,13 @@
 
 from .core import (
     Portfolio,
+    PortfolioOrder,
+    PortfolioOrderApplication,
     PortfolioSnapshot,
+    PortfolioState,
     Position,
+    apply_portfolio_order,
+    apply_portfolio_orders,
     load_latest_cash,
     load_latest_positions,
     snapshot_now,
@@ -11,8 +16,13 @@ from .core import (
 
 __all__ = [
     "Portfolio",
+    "PortfolioOrder",
+    "PortfolioOrderApplication",
     "PortfolioSnapshot",
+    "PortfolioState",
     "Position",
+    "apply_portfolio_order",
+    "apply_portfolio_orders",
     "load_latest_cash",
     "load_latest_positions",
     "snapshot_now",

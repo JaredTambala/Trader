@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from trader_research.math_tools import (
+from trader_research.methods import (
     math_generate_python_method,
     math_list_method_contracts,
     math_register_method_implementation,
@@ -12,7 +12,7 @@ from trader_research.math_tools import (
 )
 from trader_research.knowledge.domain import MethodCard
 from trader_research.knowledge.store import JsonKnowledgeStore
-from trader_research.math_domain import MethodRegistryEntry, ParameterSpec
+from trader_research.methods.contracts import MethodRegistryEntry, ParameterSpec
 from trader.signals import Signal
 from trader_standard.signals import BollingerBwmaActionSignal
 

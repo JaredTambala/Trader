@@ -6,7 +6,7 @@ import shutil
 
 import pytest
 
-from trader_research.math_tools import (
+from trader_research.methods import (
     math_compile_kernel,
     math_generate_cpp_kernel,
     math_register_method_implementation,

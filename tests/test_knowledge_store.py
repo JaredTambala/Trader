@@ -8,7 +8,7 @@ from trader_research.knowledge.extractors import extract_text
 from trader_research.knowledge.index import index_chunks, reciprocal_rank_fusion, search_chunks
 from trader_research.knowledge.chunking import chunk_sections
 from trader_research.knowledge.store import JsonKnowledgeStore
-from trader_research.math_domain import MethodRegistryEntry, ParameterSpec
+from trader_research.methods.contracts import MethodRegistryEntry, ParameterSpec
 
 
 FIXTURE = Path("tests/fixtures/knowledge/sma_method.md")

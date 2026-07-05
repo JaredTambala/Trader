@@ -82,6 +82,67 @@ class PortfolioSnapshot:
             )
 
 
+@dataclass(frozen=True)
+class PortfolioState:
+    """Immutable portfolio state used by pure position/cash calculations.
+
+    Attributes:
+        positions: Current positions keyed by symbol. Callers may pass any
+            mapping; calculation helpers copy before updating.
+        cash_balance: Cash balance before applying portfolio decisions.
+    """
+
+    positions: Mapping[str, Position]
+    cash_balance: float
+
+
+@dataclass(frozen=True)
+class PortfolioOrder:
+    """Validated order input for pure portfolio state transitions.
+
+    Attributes:
+        symbol: Canonical symbol being traded.
+        side: Normalized order side, either `buy` or `sell`.
+        qty: Positive order quantity.
+        price: Optional execution/reference price used for cash and cost basis.
+        fee_amount: Fee charged for the order.
+    """
+
+    symbol: str
+    side: str
+    qty: float
+    price: float | None = None
+    fee_amount: float = 0.0
+
+    def __post_init__(self) -> None:
+        """Validate the normalized order before state transitions use it."""
+        if not self.symbol.strip():
+            raise ValueError("portfolio order symbol is required")
+        if self.side not in {"buy", "sell"}:
+            raise ValueError(f"portfolio order side must be buy or sell: {self.side}")
+        if self.qty <= 0:
+            raise ValueError("portfolio order qty must be positive")
+
+    @property
+    def signed_qty_delta(self) -> float:
+        """Return the signed position quantity delta represented by the order."""
+        return self.qty if self.side == "buy" else -self.qty
+
+
+@dataclass(frozen=True)
+class PortfolioOrderApplication:
+    """Result of applying one or more orders to immutable portfolio state.
+
+    Attributes:
+        state: Updated portfolio state.
+        cash_update_skipped_symbols: Symbols whose cash update was skipped
+            because no execution/reference price was available.
+    """
+
+    state: PortfolioState
+    cash_update_skipped_symbols: tuple[str, ...] = ()
+
+
 @dataclass
 class Portfolio:
     """Mutable in-memory portfolio used during one cycle or backtest replay.
@@ -155,35 +216,27 @@ class Portfolio:
                 continue
             if side not in {"buy", "sell"}:
                 raise ValueError(f"Invalid side for order: {order}")
-
-            delta = qty_float if side == "buy" else -qty_float
             price = order.get("price")
             if price is None:
                 price = price_lookup.get(symbol)
             price_value = float(price) if price is not None else None
             fee_amount = order.get("fee_amount")
             fee_value = float(fee_amount) if fee_amount is not None else 0.0
-
-            current = self.positions.get(symbol, Position(symbol=symbol, qty=0.0, avg_price=None))
-            new_qty = current.qty + delta
-            new_avg = _compute_avg_price(current, delta, new_qty, price_value)
-
-            if price_value is None:
-                if fee_value:
-                    self.cash_balance -= fee_value
-                logger.warning("Cash update skipped; missing price for order symbol=%s", symbol)
-            else:
-                notional = qty_float * price_value
-                if side == "buy":
-                    self.cash_balance -= notional + fee_value
-                else:
-                    self.cash_balance += notional - fee_value
-
-            if abs(new_qty) < 1e-12:
-                self.positions.pop(symbol, None)
-                continue
-
-            self.positions[symbol] = Position(symbol=symbol, qty=new_qty, avg_price=new_avg)
+            portfolio_order = PortfolioOrder(
+                symbol=symbol,
+                side=side,
+                qty=qty_float,
+                price=price_value,
+                fee_amount=fee_value,
+            )
+            result = apply_portfolio_order(
+                PortfolioState(positions=self.positions, cash_balance=self.cash_balance),
+                portfolio_order,
+            )
+            self.positions = dict(result.state.positions)
+            self.cash_balance = result.state.cash_balance
+            for skipped_symbol in result.cash_update_skipped_symbols:
+                logger.warning("Cash update skipped; missing price for order symbol=%s", skipped_symbol)
 
     def snapshot(
         self,
@@ -338,6 +391,67 @@ def snapshot_now(positions: Iterable[Position]) -> PortfolioSnapshot:
     )
 
 
+def apply_portfolio_orders(
+    state: PortfolioState,
+    orders: Iterable[PortfolioOrder],
+) -> PortfolioOrderApplication:
+    """Apply validated orders to portfolio state without mutating inputs.
+
+    Args:
+        state: Starting portfolio positions and cash balance.
+        orders: Validated orders in execution order.
+
+    Returns:
+        Updated state plus cash-update caveats for the imperative shell to log.
+    """
+    current_state = PortfolioState(positions=dict(state.positions), cash_balance=state.cash_balance)
+    skipped_symbols: list[str] = []
+    for order in orders:
+        result = apply_portfolio_order(current_state, order)
+        current_state = result.state
+        skipped_symbols.extend(result.cash_update_skipped_symbols)
+    return PortfolioOrderApplication(
+        state=current_state,
+        cash_update_skipped_symbols=tuple(skipped_symbols),
+    )
+
+
+def apply_portfolio_order(
+    state: PortfolioState,
+    order: PortfolioOrder,
+) -> PortfolioOrderApplication:
+    """Apply one validated order to portfolio state without side effects.
+
+    The calculation updates quantity, average price, and cash deterministically.
+    Missing prices still update positions and fees, but report a skipped cash
+    update so callers can decide how to log or surface the caveat.
+
+    Args:
+        state: Starting portfolio positions and cash balance.
+        order: Validated order to apply.
+
+    Returns:
+        Updated portfolio state and any cash-update skipped symbol.
+    """
+    positions = dict(state.positions)
+    current = positions.get(order.symbol, Position(symbol=order.symbol, qty=0.0, avg_price=None))
+    delta = order.signed_qty_delta
+    new_qty = current.qty + delta
+    new_avg = _compute_avg_price(current, delta, new_qty, order.price)
+    cash_balance = _cash_balance_after_order(state.cash_balance, order)
+
+    if abs(new_qty) < 1e-12:
+        positions.pop(order.symbol, None)
+    else:
+        positions[order.symbol] = Position(symbol=order.symbol, qty=new_qty, avg_price=new_avg)
+
+    skipped = (order.symbol,) if order.price is None else ()
+    return PortfolioOrderApplication(
+        state=PortfolioState(positions=positions, cash_balance=cash_balance),
+        cash_update_skipped_symbols=skipped,
+    )
+
+
 def _compute_avg_price(
     current: Position,
     delta: float,
@@ -366,6 +480,17 @@ def _compute_avg_price(
         return current.avg_price
 
     return price
+
+
+def _cash_balance_after_order(cash_balance: float, order: PortfolioOrder) -> float:
+    """Return cash balance after one order without mutating portfolio state."""
+    if order.price is None:
+        return cash_balance - order.fee_amount
+
+    notional = order.qty * order.price
+    if order.side == "buy":
+        return cash_balance - notional - order.fee_amount
+    return cash_balance + notional - order.fee_amount
 
 
 def _param_placeholder(connection: object) -> str:

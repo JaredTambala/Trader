@@ -7,6 +7,20 @@ and capability flags are defined in `src/trader_mcp/constants.py`; owner lookup 
 Every tool returns a shared `ToolEnvelope` through MCP `structuredContent` and text content. See
 [tool_contracts.md](tool_contracts.md) for detailed request and artifact schemas.
 
+## Backing Service Packages
+
+MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded `trader_research` packages.
+
+| MCP family | Backing service package |
+| --- | --- |
+| Data Agent tools | `trader_research.data` |
+| Knowledge tools | `trader_research.knowledge` |
+| Quantitative Methods math tools | `trader_research.methods` |
+| Strategy candidate tools | `trader_research.strategy_candidates` |
+| Risk-manager candidate tools | `trader_research.risk_managers` |
+| Backtest/result/comparison tools | `trader_research.backtests` |
+| Evaluation tools | `trader_research.evaluation` |
+
 ## Support Tools
 
 | Tool | Owner | Side effect | Purpose |

@@ -44,6 +44,7 @@ Use focused checks after changing docs, MCP registrations, agent identities, or 
 ```bash
 uv run pytest tests/test_agent_identities.py tests/test_mcp_server.py tests/test_research_domain.py -q
 uv run pytest tests/test_research_agent_docs.py -q
+uv run pytest tests/test_package_boundaries.py -q
 uv run ruff check tests
 python -m compileall -q src/trader_research src/trader_mcp src/trader_agents
 ```

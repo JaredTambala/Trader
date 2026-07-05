@@ -16,7 +16,7 @@ from trader.portfolio import Portfolio
 from trader.signals import Bar
 from trader.strategies import Strategy
 
-from .contracts import (
+from trader_research.contracts import (
     ArtifactReference,
     SCHEMA_VERSION,
     SideEffect,
@@ -25,7 +25,7 @@ from .contracts import (
     success_envelope,
     write_json_artifact,
 )
-from .domain import (
+from trader_research.domain import (
     METHOD_PACKAGE_MANIFEST,
     STRATEGY_IMPLEMENTATION,
     STRATEGY_CANDIDATE_VALIDATION_REPORT,
@@ -35,9 +35,9 @@ from .domain import (
     StrategyCandidateSourceRef,
     stable_research_id,
 )
-from .method_implementations.io import file_sha256
-from .method_implementations.manifest import SIGNAL_RUNTIME_CONTRACT
-from .strategies import get_strategy_template, strategy_candidate_path
+from trader_research.method_implementations.io import file_sha256
+from trader_research.method_implementations.manifest import SIGNAL_RUNTIME_CONTRACT
+from .services import get_strategy_template, strategy_candidate_path
 
 
 RESEARCH_VALIDATE_STRATEGY_CANDIDATE = "research_validate_strategy_candidate"
