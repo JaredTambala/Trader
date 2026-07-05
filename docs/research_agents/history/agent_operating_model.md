@@ -108,7 +108,13 @@ Outputs:
 - `strategy_implementation.py`.
 - `strategy_candidate_manifest.json`.
 - `strategy_candidate_validation_report.json`.
+- `risk_manager_implementation.py`.
+- `risk_manager_candidate_manifest.json`.
+- `risk_manager_candidate_validation_report.json`.
+- `strategy_risk_stack_manifest.json`.
+- `strategy_risk_stack_validation_report.json`.
 - `backtest_run_ref.json`.
+- `portfolio_backtest_run_ref.json`.
 - `comparison_report.json`.
 - Recommendation report.
 - Promotion-readiness assessment.
@@ -433,6 +439,7 @@ The intended operating loop is:
 | Feature/model/drift artifacts | planned ML tools | ML Agent |
 | Hypothesis card creation | `hypothesis_create_card` | Hypothesis Agent |
 | Strategy catalog and validation | `research_list_strategy_templates`, `research_create_strategy_candidate`, `research_validate_strategy_candidate` | Quant Research Supervisor Agent |
+| Risk-manager catalog and candidate generation | `research_list_risk_manager_templates`, `research_create_risk_manager_candidate` | Quant Research Supervisor Agent |
 | Baseline backtests and result lookup | `research_run_backtest`, `research_get_backtest_results` | Quant Research Supervisor Agent |
 | Backtest comparison | `research_compare_backtest_results` | Quant Research Supervisor Agent |
 | Attribution | `research_analyze_return_attribution` | Quant Research Supervisor Agent |

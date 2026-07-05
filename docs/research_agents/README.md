@@ -1,25 +1,27 @@
-# Research Agents and MCP Documentation
+# Research Agents And MCP Documentation
 
-This context is bounded to research-agent identities, deterministic research tools, MCP tool contracts, LangGraph
-orchestration, and agent-owned artifacts.
+This directory contains the current operating documentation for Trader research agents, MCP tools, and LangGraph
+orchestration. It is intentionally split by concern so agents do not have to infer current behavior from old plans.
 
-It covers:
+## Authoritative Current References
 
-- Quant Research Supervisor, Data, Quantitative Methods, Hypothesis, Evaluation, Adversarial, and ML agent identities
-- MCP tool envelopes, side-effect boundaries, and agent-owned artifact references
-- LangGraph state, role policy, tool allowlists, and graph orchestration
-- data-quality, dataset, knowledge-base, method-card, hypothesis, experiment, evaluation, robustness, and recommendation
-  artifacts
-- implementation plans for agent-facing tools
+- [architecture.md](architecture.md): package boundaries, layer responsibilities, and safety model.
+- [agents.md](agents.md): agent identities, owned artifacts, tool allowlists, and handoff rules.
+- [mcp_tools.md](mcp_tools.md): current registered MCP tool catalog and planned tool ownership.
+- [workflows.md](workflows.md): supported research workflows and near-term portfolio/risk workflow direction.
+- [operations.md](operations.md): local MCP server startup, policy gates, persistence expectations, and verification.
+- [tool_contracts.md](tool_contracts.md): detailed request/response and artifact contract appendix.
 
-It does not own core runtime behavior such as broker execution, `TraderService`, event-store schema, or strategy/risk
-interfaces. Those belong in [../core/README.md](../core/README.md).
+## Historical Context
 
-## Start Here
+Older briefs, implementation notes, and superseded user guides live under [history/](history/). They can be useful for
+context, but they are not authoritative for current tool availability, agent boundaries, or operation.
 
-- [agent_operating_model.md](agent_operating_model.md)
-- [tool_contracts.md](tool_contracts.md)
-- [ai_tool_workflows.md](ai_tool_workflows.md)
-- [codex_trading_research_framework_brief.md](codex_trading_research_framework_brief.md)
-- [mcp_trading_research_tools.md](mcp_trading_research_tools.md)
-- [agents_mcp_user_guide.md](agents_mcp_user_guide.md)
+## Sources Of Truth
+
+When the docs and implementation disagree, resolve the docs from the implementation:
+
+- Registered MCP tools and capability flags: `src/trader_mcp/constants.py`.
+- Agent identities and allowlists: `src/trader_research/agents.py`.
+- Artifact types and ownership: `src/trader_research/domain.py`.
+- Implementation status and roadmap: `plans/mcp_trading_research_tools_plan.md`.

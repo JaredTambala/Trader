@@ -140,10 +140,12 @@ Core platform documentation for `trader` and `trader_standard`:
 Research-agent, MCP, and LangGraph documentation:
 
 - [docs/research_agents/README.md](docs/research_agents/README.md)
-- [docs/research_agents/agent_operating_model.md](docs/research_agents/agent_operating_model.md)
+- [docs/research_agents/architecture.md](docs/research_agents/architecture.md)
+- [docs/research_agents/agents.md](docs/research_agents/agents.md)
+- [docs/research_agents/mcp_tools.md](docs/research_agents/mcp_tools.md)
+- [docs/research_agents/workflows.md](docs/research_agents/workflows.md)
+- [docs/research_agents/operations.md](docs/research_agents/operations.md)
 - [docs/research_agents/tool_contracts.md](docs/research_agents/tool_contracts.md)
-- [docs/research_agents/ai_tool_workflows.md](docs/research_agents/ai_tool_workflows.md)
-- [docs/research_agents/mcp_trading_research_tools.md](docs/research_agents/mcp_trading_research_tools.md)
 
 ## Live Runtime Safety
 
@@ -192,8 +194,9 @@ uv run python run_research_discovery.py configs/reproducible_backtest.yaml \
 uv run python run_research_recommendations.py configs/reproducible_backtest.yaml --experiment demo_discovery --json
 ```
 
-See [docs/research_agents/tool_contracts.md](docs/research_agents/tool_contracts.md) for the stable envelope schema and side-effect classes, and
-[docs/research_agents/ai_tool_workflows.md](docs/research_agents/ai_tool_workflows.md) for the discovery, recommendation, and promotion workflows.
+See [docs/research_agents/tool_contracts.md](docs/research_agents/tool_contracts.md) for the stable envelope schema and
+side-effect classes, and [docs/research_agents/workflows.md](docs/research_agents/workflows.md) for the current
+research-agent workflow model.
 
 ## Order Recovery
 

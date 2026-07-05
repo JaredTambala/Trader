@@ -45,7 +45,7 @@ Current safety boundaries:
 
 - No raw SQL tool is exposed.
 - No broker-mutating or live-trading tool is exposed.
-- No backtest tool is exposed through MCP yet.
+- Historical status at the time of writing: backtest execution was not exposed through MCP.
 - The only MCP tool that calls an LLM is `math_generate_python_method`; it uses the provider-neutral
   `TRADER_AGENTS_LLM_*` runtime and writes generated code only to quarantine before validation. The optional Data Agent
   LLM policy graph runs outside MCP and calls only validated Data Agent MCP tools.

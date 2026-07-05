@@ -21,17 +21,29 @@ from trader_research.domain import (
     METHOD_PACKAGE_MANIFEST,
     MODEL_CARD,
     MULTIPLE_TESTING_REPORT,
+    PORTFOLIO_BACKTEST_RUN_REF,
+    RISK_MANAGER_CANDIDATE,
+    RISK_MANAGER_CANDIDATE_VALIDATION_REPORT,
+    RISK_MANAGER_IMPLEMENTATION,
     ROBUSTNESS_REPORT,
     SIGNAL_DIAGNOSTIC_REPORT,
     STATISTICAL_TEST_REPORT,
     STRATEGY_CANDIDATE,
     STRATEGY_IMPLEMENTATION,
     STRATEGY_CANDIDATE_VALIDATION_REPORT,
+    STRATEGY_RISK_STACK,
+    STRATEGY_RISK_STACK_VALIDATION_REPORT,
     BoundedResearchRequest,
     DataRequirement,
+    PortfolioBacktestRunRef,
     ResearchIssue,
+    RiskManagerCandidateManifest,
+    RiskManagerCandidateSourceRef,
     SpecialistHandoff,
+    StrategyCandidateArtifactLink,
     StrategyCandidateManifest,
+    StrategyRiskStackManifest,
+    StrategyRiskStackValidationReport,
     artifact_report_ref,
     stable_research_id,
 )
@@ -119,7 +131,13 @@ def test_planned_artifact_reference_types_are_json_safe() -> None:
         artifact_report_ref(STRATEGY_CANDIDATE, "strategy_candidate_demo"),
         artifact_report_ref(STRATEGY_IMPLEMENTATION, "strategy_implementation_demo"),
         artifact_report_ref(STRATEGY_CANDIDATE_VALIDATION_REPORT, "strategy_candidate_validation_demo"),
+        artifact_report_ref(RISK_MANAGER_CANDIDATE, "risk_manager_candidate_demo"),
+        artifact_report_ref(RISK_MANAGER_IMPLEMENTATION, "risk_manager_implementation_demo"),
+        artifact_report_ref(RISK_MANAGER_CANDIDATE_VALIDATION_REPORT, "risk_manager_validation_demo"),
+        artifact_report_ref(STRATEGY_RISK_STACK, "strategy_risk_stack_demo"),
+        artifact_report_ref(STRATEGY_RISK_STACK_VALIDATION_REPORT, "strategy_risk_stack_validation_demo"),
         artifact_report_ref(BACKTEST_RUN_REF, "backtest_run_demo"),
+        artifact_report_ref(PORTFOLIO_BACKTEST_RUN_REF, "portfolio_backtest_run_demo"),
         artifact_report_ref(COMPARISON_REPORT, "comparison_demo"),
         artifact_report_ref(EVALUATION_REPORT, "eval_demo"),
         artifact_report_ref(ROBUSTNESS_REPORT, "robust_demo"),
@@ -142,8 +160,14 @@ def test_planned_artifact_reference_types_are_json_safe() -> None:
     assert payload[14]["agent_owner"] == "Quant Research Supervisor Agent"
     assert payload[15]["agent_owner"] == "Quant Research Supervisor Agent"
     assert payload[16]["agent_owner"] == "Quant Research Supervisor Agent"
-    assert payload[17]["agent_owner"] == "Evaluation Agent"
-    assert payload[18]["agent_owner"] == "Adversarial Agent"
+    assert payload[17]["agent_owner"] == "Quant Research Supervisor Agent"
+    assert payload[18]["agent_owner"] == "Quant Research Supervisor Agent"
+    assert payload[19]["agent_owner"] == "Quant Research Supervisor Agent"
+    assert payload[20]["agent_owner"] == "Quant Research Supervisor Agent"
+    assert payload[21]["agent_owner"] == "Quant Research Supervisor Agent"
+    assert payload[22]["agent_owner"] == "Quant Research Supervisor Agent"
+    assert payload[23]["agent_owner"] == "Evaluation Agent"
+    assert payload[24]["agent_owner"] == "Adversarial Agent"
     json.dumps(payload)
 
 
@@ -163,3 +187,74 @@ def test_strategy_candidate_manifest_preserves_execution_assumptions() -> None:
     assert payload["execution_assumptions"]["broker_mutation_allowed"] is False
     assert payload["execution_assumptions"]["runtime_instantiation"] == "deferred_to_strategy_candidate_validation"
     assert StrategyCandidateManifest.from_dict(payload).to_dict() == payload
+
+
+def test_risk_and_portfolio_artifact_schemas_round_trip_json() -> None:
+    risk_source = RiskManagerCandidateSourceRef(
+        artifact_id="risk_manager_candidate_demo",
+        path="artifacts/research/risk_managers/source/risk_manager_candidate_demo.py",
+        source_hash="abc123",
+        class_name="GrossExposureCapResearchRiskManager",
+    )
+    risk_manifest = RiskManagerCandidateManifest(
+        candidate_id="risk_manager_candidate_demo",
+        template_family="gross_exposure_cap",
+        risk_manager_source=risk_source,
+        parameters={"max_gross_exposure": 100_000.0},
+        execution_assumptions={"backtest_only": True, "live_trading_allowed": False},
+    )
+    strategy_ref = StrategyCandidateArtifactLink(
+        artifact_id="strategy_candidate_demo",
+        artifact_type=STRATEGY_CANDIDATE,
+        role="strategy",
+        status="validated",
+    )
+    risk_ref = StrategyCandidateArtifactLink(
+        artifact_id="risk_manager_candidate_demo",
+        artifact_type=RISK_MANAGER_CANDIDATE,
+        role="risk_manager_0",
+        status="validated",
+        metadata={"source_hash": "abc123"},
+    )
+    stack_manifest = StrategyRiskStackManifest(
+        stack_id="strategy_risk_stack_demo",
+        strategy_candidate_ref=strategy_ref,
+        risk_manager_refs=(risk_ref,),
+        execution_assumptions={"live_trading_allowed": False},
+    )
+    stack_report = StrategyRiskStackValidationReport(
+        validation_id="strategy_risk_stack_validation_demo",
+        stack_id="strategy_risk_stack_demo",
+        status="passed",
+        risk_manager_validation_refs=(
+            StrategyCandidateArtifactLink(
+                artifact_id="risk_manager_validation_demo",
+                artifact_type=RISK_MANAGER_CANDIDATE_VALIDATION_REPORT,
+                role="risk_manager_0_validation",
+                status="passed",
+            ),
+        ),
+    )
+    portfolio_ref = PortfolioBacktestRunRef(
+        run_id="portfolio_backtest_run_demo",
+        strategy_risk_stack_id="strategy_risk_stack_demo",
+        strategy_risk_stack_validation_id="strategy_risk_stack_validation_demo",
+        dataset_id="dataset_multi_asset_demo",
+        data_scope={"symbols": ["BTC/USD", "ETH/USD"], "timeframe": "1Hour"},
+        symbol_metrics={"BTC/USD": {"total_return": 0.01}},
+        exposure_summary={"gross_exposure_max": 12_000.0},
+        risk_measure_summary={"var": 0.02, "cvar": 0.03},
+    )
+
+    assert RiskManagerCandidateManifest.from_dict(risk_manifest.to_dict()).to_dict() == risk_manifest.to_dict()
+    assert StrategyRiskStackManifest.from_dict(stack_manifest.to_dict()).to_dict() == stack_manifest.to_dict()
+    assert StrategyRiskStackValidationReport.from_dict(stack_report.to_dict()).to_dict() == stack_report.to_dict()
+    assert PortfolioBacktestRunRef.from_dict(portfolio_ref.to_dict()).to_dict() == portfolio_ref.to_dict()
+    json.dumps(
+        {
+            "portfolio_ref": portfolio_ref.to_dict(),
+            "risk_manifest": risk_manifest.to_dict(),
+            "stack_manifest": stack_manifest.to_dict(),
+            "stack_report": stack_report.to_dict(),
+        }
+    )

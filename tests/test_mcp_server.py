@@ -22,8 +22,10 @@ from trader_mcp.constants import (
     MCP_SERVER_OWNER,
     REGISTERED_TOOL_NAMES,
     RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL,
+    RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL,
     RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
     RESEARCH_GET_BACKTEST_RESULTS_TOOL,
+    RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL,
     RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL,
     RESEARCH_RUN_BACKTEST_TOOL,
     RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL,
@@ -183,6 +185,12 @@ def test_config_tool_excludes_broker_raw_sql_and_gates_backtest_execution() -> N
         run_backtest_tool = next(tool for tool in data["tools"] if tool["name"] == RESEARCH_RUN_BACKTEST_TOOL)
         get_backtest_tool = next(tool for tool in data["tools"] if tool["name"] == RESEARCH_GET_BACKTEST_RESULTS_TOOL)
         compare_tool = next(tool for tool in data["tools"] if tool["name"] == RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL)
+        risk_template_tool = next(
+            tool for tool in data["tools"] if tool["name"] == RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL
+        )
+        create_risk_tool = next(
+            tool for tool in data["tools"] if tool["name"] == RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL
+        )
         performance_tool = next(
             tool for tool in data["tools"] if tool["name"] == EVALUATION_GENERATE_PERFORMANCE_REPORT_TOOL
         )
@@ -199,6 +207,10 @@ def test_config_tool_excludes_broker_raw_sql_and_gates_backtest_execution() -> N
         assert get_backtest_tool["side_effect"] == "read_only"
         assert compare_tool["agent_owner"] == "Quant Research Supervisor Agent"
         assert compare_tool["side_effect"] == "local_mutating"
+        assert risk_template_tool["agent_owner"] == "Quant Research Supervisor Agent"
+        assert risk_template_tool["side_effect"] == "read_only"
+        assert create_risk_tool["agent_owner"] == "Quant Research Supervisor Agent"
+        assert create_risk_tool["side_effect"] == "local_mutating"
         assert performance_tool["agent_owner"] == "Evaluation Agent"
         assert performance_tool["side_effect"] == "local_mutating"
         assert data["policy"] == local_env.policy_flags()

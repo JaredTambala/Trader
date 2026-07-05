@@ -49,7 +49,13 @@ EXPERIMENT_PLAN = "experiment_plan"
 STRATEGY_CANDIDATE = "strategy_candidate"
 STRATEGY_IMPLEMENTATION = "strategy_implementation"
 STRATEGY_CANDIDATE_VALIDATION_REPORT = "strategy_candidate_validation_report"
+RISK_MANAGER_CANDIDATE = "risk_manager_candidate"
+RISK_MANAGER_IMPLEMENTATION = "risk_manager_implementation"
+RISK_MANAGER_CANDIDATE_VALIDATION_REPORT = "risk_manager_candidate_validation_report"
+STRATEGY_RISK_STACK = "strategy_risk_stack"
+STRATEGY_RISK_STACK_VALIDATION_REPORT = "strategy_risk_stack_validation_report"
 BACKTEST_RUN_REF = "backtest_run_ref"
+PORTFOLIO_BACKTEST_RUN_REF = "portfolio_backtest_run_ref"
 COMPARISON_REPORT = "comparison_report"
 EVALUATION_REPORT = "evaluation_report"
 ROBUSTNESS_REPORT = "robustness_report"
@@ -86,7 +92,13 @@ SUPPORTED_ARTIFACT_TYPES = frozenset(
         STRATEGY_CANDIDATE,
         STRATEGY_IMPLEMENTATION,
         STRATEGY_CANDIDATE_VALIDATION_REPORT,
+        RISK_MANAGER_CANDIDATE,
+        RISK_MANAGER_IMPLEMENTATION,
+        RISK_MANAGER_CANDIDATE_VALIDATION_REPORT,
+        STRATEGY_RISK_STACK,
+        STRATEGY_RISK_STACK_VALIDATION_REPORT,
         BACKTEST_RUN_REF,
+        PORTFOLIO_BACKTEST_RUN_REF,
         COMPARISON_REPORT,
         EVALUATION_REPORT,
         ROBUSTNESS_REPORT,
@@ -124,7 +136,13 @@ OWNER_BY_ARTIFACT_TYPE = {
     STRATEGY_CANDIDATE: QUANT_RESEARCH_SUPERVISOR_OWNER,
     STRATEGY_IMPLEMENTATION: QUANT_RESEARCH_SUPERVISOR_OWNER,
     STRATEGY_CANDIDATE_VALIDATION_REPORT: QUANT_RESEARCH_SUPERVISOR_OWNER,
+    RISK_MANAGER_CANDIDATE: QUANT_RESEARCH_SUPERVISOR_OWNER,
+    RISK_MANAGER_IMPLEMENTATION: QUANT_RESEARCH_SUPERVISOR_OWNER,
+    RISK_MANAGER_CANDIDATE_VALIDATION_REPORT: QUANT_RESEARCH_SUPERVISOR_OWNER,
+    STRATEGY_RISK_STACK: QUANT_RESEARCH_SUPERVISOR_OWNER,
+    STRATEGY_RISK_STACK_VALIDATION_REPORT: QUANT_RESEARCH_SUPERVISOR_OWNER,
     BACKTEST_RUN_REF: QUANT_RESEARCH_SUPERVISOR_OWNER,
+    PORTFOLIO_BACKTEST_RUN_REF: QUANT_RESEARCH_SUPERVISOR_OWNER,
     COMPARISON_REPORT: QUANT_RESEARCH_SUPERVISOR_OWNER,
     EVALUATION_REPORT: EVALUATION_AGENT_OWNER,
     ROBUSTNESS_REPORT: ADVERSARIAL_AGENT_OWNER,
@@ -858,6 +876,337 @@ class StrategyCandidateManifest:
 
 
 @dataclass(frozen=True)
+class RiskManagerCandidateSourceRef:
+    """Source-backed Python risk-manager implementation attached to a candidate.
+
+    Attributes:
+        artifact_id: Stable implementation identifier, usually the candidate ID.
+        path: Local Python source path.
+        source_hash: SHA-256 of the source file.
+        class_name: Concrete class expected to implement `trader.risk.RiskManager`.
+        factory_name: Module-level factory used to instantiate the risk manager.
+        runtime_contract: Runtime interface the implementation must satisfy.
+        artifact_type: Risk-manager implementation artifact kind.
+        metadata: Optional JSON-compatible provenance.
+    """
+
+    artifact_id: str
+    path: str
+    source_hash: str
+    class_name: str
+    factory_name: str = "build_risk_manager"
+    runtime_contract: str = "trader.risk.RiskManager"
+    artifact_type: str = RISK_MANAGER_IMPLEMENTATION
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate required source implementation identity fields."""
+        if not self.artifact_id.strip():
+            raise ValueError("risk manager source artifact_id is required")
+        if self.artifact_type != RISK_MANAGER_IMPLEMENTATION:
+            raise ValueError(f"risk manager source artifact_type must be {RISK_MANAGER_IMPLEMENTATION}")
+        if not self.path.strip():
+            raise ValueError("risk manager source path is required")
+        if not self.source_hash.strip():
+            raise ValueError("risk manager source_hash is required")
+        if not self.class_name.strip():
+            raise ValueError("risk manager source class_name is required")
+        if not self.factory_name.strip():
+            raise ValueError("risk manager source factory_name is required")
+        if self.runtime_contract != "trader.risk.RiskManager":
+            raise ValueError("risk manager source runtime_contract must be trader.risk.RiskManager")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the risk-manager implementation reference."""
+        return {
+            "artifact_id": self.artifact_id,
+            "artifact_type": self.artifact_type,
+            "path": self.path,
+            "source_hash": self.source_hash,
+            "class_name": self.class_name,
+            "factory_name": self.factory_name,
+            "runtime_contract": self.runtime_contract,
+            "metadata": _jsonable(self.metadata),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "RiskManagerCandidateSourceRef":
+        """Build a risk-manager implementation reference from manifest data."""
+        return cls(
+            artifact_id=str(payload.get("artifact_id") or ""),
+            artifact_type=str(payload.get("artifact_type") or RISK_MANAGER_IMPLEMENTATION),
+            path=str(payload.get("path") or ""),
+            source_hash=str(payload.get("source_hash") or ""),
+            class_name=str(payload.get("class_name") or ""),
+            factory_name=str(payload.get("factory_name") or "build_risk_manager"),
+            runtime_contract=str(payload.get("runtime_contract") or "trader.risk.RiskManager"),
+            metadata=_mapping(payload.get("metadata")),
+        )
+
+
+@dataclass(frozen=True)
+class RiskManagerCandidateManifest:
+    """Declarative source-backed risk-manager candidate for portfolio research.
+
+    Risk-manager candidates are data-free: symbols, timeframe, dates, and source
+    filters are supplied later by Data Agent dataset manifests and portfolio
+    backtest tooling.
+
+    Attributes:
+        candidate_id: Stable risk-manager candidate identifier.
+        template_family: Maintained risk-manager template family.
+        method_package_refs: Optional validated method packages for sourced risk measures.
+        risk_manager_source: Importable Python risk-manager source reference.
+        parameters: JSON-compatible risk parameter values.
+        policy_intent: Declarative policy semantics for later validation/backtests.
+        execution_assumptions: JSON-compatible execution boundary assumptions.
+        validation_requirements: Deferred checks required before portfolio backtests.
+        warnings: Structured non-fatal manifest issues.
+        blockers: Structured blocking manifest issues.
+        status: Candidate lifecycle state.
+    """
+
+    candidate_id: str
+    template_family: str
+    method_package_refs: tuple[StrategyCandidateArtifactLink, ...] = field(default_factory=tuple)
+    risk_manager_source: RiskManagerCandidateSourceRef | None = None
+    parameters: Mapping[str, Any] = field(default_factory=dict)
+    policy_intent: Mapping[str, Any] = field(default_factory=dict)
+    execution_assumptions: Mapping[str, Any] = field(default_factory=dict)
+    validation_requirements: Mapping[str, Any] = field(default_factory=dict)
+    warnings: tuple[ResearchIssue, ...] = field(default_factory=tuple)
+    blockers: tuple[ResearchIssue, ...] = field(default_factory=tuple)
+    status: str = "candidate"
+    artifact_type: str = RISK_MANAGER_CANDIDATE
+    schema_version: str = "1"
+
+    def __post_init__(self) -> None:
+        """Validate candidate identity, artifact type, and template family."""
+        if not self.candidate_id.strip():
+            raise ValueError("risk manager candidate manifest candidate_id is required")
+        if not self.template_family.strip():
+            raise ValueError("risk manager candidate manifest template_family is required")
+        if self.artifact_type != RISK_MANAGER_CANDIDATE:
+            raise ValueError(f"risk manager candidate manifest artifact_type must be {RISK_MANAGER_CANDIDATE}")
+        if not self.status.strip():
+            raise ValueError("risk manager candidate manifest status is required")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the risk-manager candidate manifest."""
+        return {
+            "candidate_id": self.candidate_id,
+            "artifact_type": self.artifact_type,
+            "schema_version": self.schema_version,
+            "template_family": self.template_family,
+            "method_package_refs": [item.to_dict() for item in self.method_package_refs],
+            "risk_manager_source": (
+                self.risk_manager_source.to_dict() if self.risk_manager_source is not None else None
+            ),
+            "parameters": _jsonable(self.parameters),
+            "policy_intent": _jsonable(self.policy_intent),
+            "execution_assumptions": _jsonable(self.execution_assumptions),
+            "validation_requirements": _jsonable(self.validation_requirements),
+            "warnings": [warning.to_dict() for warning in self.warnings],
+            "blockers": [blocker.to_dict() for blocker in self.blockers],
+            "status": self.status,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "RiskManagerCandidateManifest":
+        """Build a risk-manager candidate manifest from JSON-compatible data."""
+        return cls(
+            candidate_id=str(payload.get("candidate_id") or ""),
+            artifact_type=str(payload.get("artifact_type") or RISK_MANAGER_CANDIDATE),
+            schema_version=str(payload.get("schema_version") or "1"),
+            template_family=str(payload.get("template_family") or ""),
+            method_package_refs=tuple(
+                StrategyCandidateArtifactLink.from_dict(item)
+                for item in _mapping_sequence(payload.get("method_package_refs"))
+            ),
+            risk_manager_source=(
+                RiskManagerCandidateSourceRef.from_dict(_mapping(payload.get("risk_manager_source")))
+                if payload.get("risk_manager_source") is not None
+                else None
+            ),
+            parameters=_mapping(payload.get("parameters")),
+            policy_intent=_mapping(payload.get("policy_intent")),
+            execution_assumptions=_mapping(payload.get("execution_assumptions")),
+            validation_requirements=_mapping(payload.get("validation_requirements")),
+            warnings=tuple(ResearchIssue.from_dict(item) for item in _mapping_sequence(payload.get("warnings"))),
+            blockers=tuple(ResearchIssue.from_dict(item) for item in _mapping_sequence(payload.get("blockers"))),
+            status=str(payload.get("status") or "candidate"),
+        )
+
+
+@dataclass(frozen=True)
+class StrategyRiskStackManifest:
+    """Declarative composition of one strategy candidate and ordered risk managers.
+
+    Attributes:
+        stack_id: Stable strategy/risk stack identifier.
+        strategy_candidate_ref: Reference to the source-backed strategy candidate.
+        risk_manager_refs: Ordered references to risk-manager candidates.
+        strategy_validation_report_ref: Optional passed strategy validation report ref.
+        execution_assumptions: JSON-compatible no-live-trading assumptions.
+        warnings: Structured non-fatal stack issues.
+        blockers: Structured blocking stack issues.
+        status: Stack lifecycle state.
+        artifact_type: Stable artifact kind.
+        schema_version: Serialized schema version.
+    """
+
+    stack_id: str
+    strategy_candidate_ref: StrategyCandidateArtifactLink
+    risk_manager_refs: tuple[StrategyCandidateArtifactLink, ...]
+    strategy_validation_report_ref: StrategyCandidateArtifactLink | None = None
+    execution_assumptions: Mapping[str, Any] = field(default_factory=dict)
+    warnings: tuple[ResearchIssue, ...] = field(default_factory=tuple)
+    blockers: tuple[ResearchIssue, ...] = field(default_factory=tuple)
+    status: str = "candidate"
+    artifact_type: str = STRATEGY_RISK_STACK
+    schema_version: str = "1"
+
+    def __post_init__(self) -> None:
+        """Validate stack identity, artifact type, and risk-manager coverage."""
+        if not self.stack_id.strip():
+            raise ValueError("strategy risk stack stack_id is required")
+        if self.artifact_type != STRATEGY_RISK_STACK:
+            raise ValueError(f"strategy risk stack artifact_type must be {STRATEGY_RISK_STACK}")
+        if not self.risk_manager_refs:
+            raise ValueError("strategy risk stack requires at least one risk manager ref")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize a strategy/risk stack manifest."""
+        return {
+            "stack_id": self.stack_id,
+            "artifact_type": self.artifact_type,
+            "schema_version": self.schema_version,
+            "strategy_candidate_ref": self.strategy_candidate_ref.to_dict(),
+            "strategy_validation_report_ref": (
+                self.strategy_validation_report_ref.to_dict()
+                if self.strategy_validation_report_ref is not None
+                else None
+            ),
+            "risk_manager_refs": [item.to_dict() for item in self.risk_manager_refs],
+            "execution_assumptions": _jsonable(self.execution_assumptions),
+            "warnings": [warning.to_dict() for warning in self.warnings],
+            "blockers": [blocker.to_dict() for blocker in self.blockers],
+            "status": self.status,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "StrategyRiskStackManifest":
+        """Build a strategy/risk stack manifest from JSON-compatible data."""
+        return cls(
+            stack_id=str(payload.get("stack_id") or ""),
+            artifact_type=str(payload.get("artifact_type") or STRATEGY_RISK_STACK),
+            schema_version=str(payload.get("schema_version") or "1"),
+            strategy_candidate_ref=StrategyCandidateArtifactLink.from_dict(
+                _mapping(payload.get("strategy_candidate_ref"))
+            ),
+            strategy_validation_report_ref=(
+                StrategyCandidateArtifactLink.from_dict(_mapping(payload.get("strategy_validation_report_ref")))
+                if payload.get("strategy_validation_report_ref") is not None
+                else None
+            ),
+            risk_manager_refs=tuple(
+                StrategyCandidateArtifactLink.from_dict(item)
+                for item in _mapping_sequence(payload.get("risk_manager_refs"))
+            ),
+            execution_assumptions=_mapping(payload.get("execution_assumptions")),
+            warnings=tuple(ResearchIssue.from_dict(item) for item in _mapping_sequence(payload.get("warnings"))),
+            blockers=tuple(ResearchIssue.from_dict(item) for item in _mapping_sequence(payload.get("blockers"))),
+            status=str(payload.get("status") or "candidate"),
+        )
+
+
+@dataclass(frozen=True)
+class StrategyRiskStackValidationReport:
+    """Validation report contract for a strategy plus ordered risk managers.
+
+    Attributes:
+        validation_id: Stable strategy/risk stack validation identifier.
+        stack_id: Strategy/risk stack validated by this report.
+        status: Validation result state, such as `passed` or `blocked`.
+        checks: JSON-compatible check results.
+        fixture_summary: Deterministic smoke-fixture summary.
+        strategy_validation_report_ref: Optional strategy validation report ref.
+        risk_manager_validation_refs: Ordered risk-manager validation refs.
+        warnings: Structured non-fatal validation issues.
+        blockers: Structured blocking validation issues.
+        artifact_type: Stable artifact kind.
+        schema_version: Serialized schema version.
+    """
+
+    validation_id: str
+    stack_id: str
+    status: str
+    checks: Mapping[str, Any] = field(default_factory=dict)
+    fixture_summary: Mapping[str, Any] = field(default_factory=dict)
+    strategy_validation_report_ref: StrategyCandidateArtifactLink | None = None
+    risk_manager_validation_refs: tuple[StrategyCandidateArtifactLink, ...] = field(default_factory=tuple)
+    warnings: tuple[ResearchIssue, ...] = field(default_factory=tuple)
+    blockers: tuple[ResearchIssue, ...] = field(default_factory=tuple)
+    artifact_type: str = STRATEGY_RISK_STACK_VALIDATION_REPORT
+    schema_version: str = "1"
+
+    def __post_init__(self) -> None:
+        """Validate report identity and artifact type."""
+        if not self.validation_id.strip():
+            raise ValueError("strategy risk stack validation_id is required")
+        if not self.stack_id.strip():
+            raise ValueError("strategy risk stack validation stack_id is required")
+        if self.artifact_type != STRATEGY_RISK_STACK_VALIDATION_REPORT:
+            raise ValueError(
+                f"strategy risk stack validation artifact_type must be {STRATEGY_RISK_STACK_VALIDATION_REPORT}"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize a strategy/risk stack validation report."""
+        return {
+            "validation_id": self.validation_id,
+            "artifact_type": self.artifact_type,
+            "schema_version": self.schema_version,
+            "stack_id": self.stack_id,
+            "status": self.status,
+            "checks": _jsonable(self.checks),
+            "fixture_summary": _jsonable(self.fixture_summary),
+            "strategy_validation_report_ref": (
+                self.strategy_validation_report_ref.to_dict()
+                if self.strategy_validation_report_ref is not None
+                else None
+            ),
+            "risk_manager_validation_refs": [item.to_dict() for item in self.risk_manager_validation_refs],
+            "warnings": [warning.to_dict() for warning in self.warnings],
+            "blockers": [blocker.to_dict() for blocker in self.blockers],
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "StrategyRiskStackValidationReport":
+        """Build a strategy/risk stack validation report from JSON-compatible data."""
+        return cls(
+            validation_id=str(payload.get("validation_id") or ""),
+            artifact_type=str(payload.get("artifact_type") or STRATEGY_RISK_STACK_VALIDATION_REPORT),
+            schema_version=str(payload.get("schema_version") or "1"),
+            stack_id=str(payload.get("stack_id") or ""),
+            status=str(payload.get("status") or ""),
+            checks=_mapping(payload.get("checks")),
+            fixture_summary=_mapping(payload.get("fixture_summary")),
+            strategy_validation_report_ref=(
+                StrategyCandidateArtifactLink.from_dict(_mapping(payload.get("strategy_validation_report_ref")))
+                if payload.get("strategy_validation_report_ref") is not None
+                else None
+            ),
+            risk_manager_validation_refs=tuple(
+                StrategyCandidateArtifactLink.from_dict(item)
+                for item in _mapping_sequence(payload.get("risk_manager_validation_refs"))
+            ),
+            warnings=tuple(ResearchIssue.from_dict(item) for item in _mapping_sequence(payload.get("warnings"))),
+            blockers=tuple(ResearchIssue.from_dict(item) for item in _mapping_sequence(payload.get("blockers"))),
+        )
+
+
+@dataclass(frozen=True)
 class BacktestRunRef:
     """Pointer from research planning/evaluation artifacts to a persisted backtest run.
 
@@ -874,10 +1223,15 @@ class BacktestRunRef:
     artifact_type: str = BACKTEST_RUN_REF
     candidate_id: str | None = None
     validation_id: str | None = None
+    strategy_risk_stack_id: str | None = None
+    strategy_risk_stack_validation_id: str | None = None
     dataset_id: str | None = None
     data_scope: Mapping[str, Any] = field(default_factory=dict)
     status: str | None = None
     summary: Mapping[str, Any] = field(default_factory=dict)
+    symbol_metrics: Mapping[str, Any] = field(default_factory=dict)
+    exposure_summary: Mapping[str, Any] = field(default_factory=dict)
+    risk_measure_summary: Mapping[str, Any] = field(default_factory=dict)
     artifact_paths: Mapping[str, Any] = field(default_factory=dict)
     warnings: tuple[ResearchIssue, ...] = ()
     blockers: tuple[ResearchIssue, ...] = ()
@@ -892,10 +1246,15 @@ class BacktestRunRef:
             "artifact_dir": self.artifact_dir,
             "candidate_id": self.candidate_id,
             "validation_id": self.validation_id,
+            "strategy_risk_stack_id": self.strategy_risk_stack_id,
+            "strategy_risk_stack_validation_id": self.strategy_risk_stack_validation_id,
             "dataset_id": self.dataset_id,
             "data_scope": dict(self.data_scope),
             "status": self.status,
             "summary": dict(self.summary),
+            "symbol_metrics": dict(self.symbol_metrics),
+            "exposure_summary": dict(self.exposure_summary),
+            "risk_measure_summary": dict(self.risk_measure_summary),
             "artifact_paths": dict(self.artifact_paths),
             "warnings": [issue.to_dict() for issue in self.warnings],
             "blockers": [issue.to_dict() for issue in self.blockers],
@@ -912,10 +1271,122 @@ class BacktestRunRef:
             artifact_type=str(payload.get("artifact_type") or BACKTEST_RUN_REF),
             candidate_id=str(payload["candidate_id"]) if payload.get("candidate_id") is not None else None,
             validation_id=str(payload["validation_id"]) if payload.get("validation_id") is not None else None,
+            strategy_risk_stack_id=(
+                str(payload["strategy_risk_stack_id"]) if payload.get("strategy_risk_stack_id") is not None else None
+            ),
+            strategy_risk_stack_validation_id=(
+                str(payload["strategy_risk_stack_validation_id"])
+                if payload.get("strategy_risk_stack_validation_id") is not None
+                else None
+            ),
             dataset_id=str(payload["dataset_id"]) if payload.get("dataset_id") is not None else None,
             data_scope=_mapping(payload.get("data_scope")),
             status=str(payload["status"]) if payload.get("status") is not None else None,
             summary=_mapping(payload.get("summary")),
+            symbol_metrics=_mapping(payload.get("symbol_metrics")),
+            exposure_summary=_mapping(payload.get("exposure_summary")),
+            risk_measure_summary=_mapping(payload.get("risk_measure_summary")),
+            artifact_paths=_mapping(payload.get("artifact_paths")),
+            warnings=tuple(ResearchIssue.from_dict(item) for item in _mapping_sequence(payload.get("warnings"))),
+            blockers=tuple(ResearchIssue.from_dict(item) for item in _mapping_sequence(payload.get("blockers"))),
+        )
+
+
+@dataclass(frozen=True)
+class PortfolioBacktestRunRef:
+    """Pointer to a future risk-scoped portfolio backtest bundle.
+
+    This schema is intentionally separate from the current baseline `BacktestRunRef`
+    so portfolio backtests can require a validated strategy/risk stack while
+    retaining the same Data Agent data-scope discipline.
+
+    Attributes:
+        run_id: Stable portfolio backtest run identifier.
+        strategy_risk_stack_id: Validated strategy/risk stack used by the run.
+        strategy_risk_stack_validation_id: Passed stack validation report identifier.
+        dataset_id: Data Agent dataset manifest identifier.
+        data_scope: Normalized multi-symbol data scope supplied by the manifest.
+        artifact_dir: Optional local bundle directory.
+        status: Run status.
+        summary: Portfolio-level summary metrics.
+        symbol_metrics: Per-symbol metrics.
+        exposure_summary: Gross/net exposure and concentration summaries.
+        risk_measure_summary: VaR/CVaR or supplied risk-measure summaries.
+        artifact_paths: Bundle artifact paths.
+        warnings: Structured non-fatal run issues.
+        blockers: Structured blocking run issues.
+        artifact_type: Stable artifact kind.
+        schema_version: Serialized schema version.
+    """
+
+    run_id: str
+    strategy_risk_stack_id: str
+    strategy_risk_stack_validation_id: str
+    dataset_id: str
+    data_scope: Mapping[str, Any]
+    artifact_dir: str | None = None
+    status: str | None = None
+    summary: Mapping[str, Any] = field(default_factory=dict)
+    symbol_metrics: Mapping[str, Any] = field(default_factory=dict)
+    exposure_summary: Mapping[str, Any] = field(default_factory=dict)
+    risk_measure_summary: Mapping[str, Any] = field(default_factory=dict)
+    artifact_paths: Mapping[str, Any] = field(default_factory=dict)
+    warnings: tuple[ResearchIssue, ...] = ()
+    blockers: tuple[ResearchIssue, ...] = ()
+    artifact_type: str = PORTFOLIO_BACKTEST_RUN_REF
+    schema_version: str = "1"
+
+    def __post_init__(self) -> None:
+        """Validate required portfolio run identity and stack references."""
+        if not self.run_id.strip():
+            raise ValueError("portfolio backtest run_id is required")
+        if not self.strategy_risk_stack_id.strip():
+            raise ValueError("portfolio backtest strategy_risk_stack_id is required")
+        if not self.strategy_risk_stack_validation_id.strip():
+            raise ValueError("portfolio backtest strategy_risk_stack_validation_id is required")
+        if not self.dataset_id.strip():
+            raise ValueError("portfolio backtest dataset_id is required")
+        if self.artifact_type != PORTFOLIO_BACKTEST_RUN_REF:
+            raise ValueError(f"portfolio backtest artifact_type must be {PORTFOLIO_BACKTEST_RUN_REF}")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize a portfolio backtest run reference."""
+        return {
+            "artifact_type": self.artifact_type,
+            "schema_version": self.schema_version,
+            "run_id": self.run_id,
+            "artifact_dir": self.artifact_dir,
+            "strategy_risk_stack_id": self.strategy_risk_stack_id,
+            "strategy_risk_stack_validation_id": self.strategy_risk_stack_validation_id,
+            "dataset_id": self.dataset_id,
+            "data_scope": _jsonable(self.data_scope),
+            "status": self.status,
+            "summary": _jsonable(self.summary),
+            "symbol_metrics": _jsonable(self.symbol_metrics),
+            "exposure_summary": _jsonable(self.exposure_summary),
+            "risk_measure_summary": _jsonable(self.risk_measure_summary),
+            "artifact_paths": _jsonable(self.artifact_paths),
+            "warnings": [issue.to_dict() for issue in self.warnings],
+            "blockers": [issue.to_dict() for issue in self.blockers],
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PortfolioBacktestRunRef":
+        """Build a portfolio backtest run reference from JSON-compatible data."""
+        return cls(
+            run_id=str(payload.get("run_id") or ""),
+            artifact_type=str(payload.get("artifact_type") or PORTFOLIO_BACKTEST_RUN_REF),
+            schema_version=str(payload.get("schema_version") or "1"),
+            artifact_dir=str(payload["artifact_dir"]) if payload.get("artifact_dir") is not None else None,
+            strategy_risk_stack_id=str(payload.get("strategy_risk_stack_id") or ""),
+            strategy_risk_stack_validation_id=str(payload.get("strategy_risk_stack_validation_id") or ""),
+            dataset_id=str(payload.get("dataset_id") or ""),
+            data_scope=_mapping(payload.get("data_scope")),
+            status=str(payload["status"]) if payload.get("status") is not None else None,
+            summary=_mapping(payload.get("summary")),
+            symbol_metrics=_mapping(payload.get("symbol_metrics")),
+            exposure_summary=_mapping(payload.get("exposure_summary")),
+            risk_measure_summary=_mapping(payload.get("risk_measure_summary")),
             artifact_paths=_mapping(payload.get("artifact_paths")),
             warnings=tuple(ResearchIssue.from_dict(item) for item in _mapping_sequence(payload.get("warnings"))),
             blockers=tuple(ResearchIssue.from_dict(item) for item in _mapping_sequence(payload.get("blockers"))),

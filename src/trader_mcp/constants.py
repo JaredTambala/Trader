@@ -110,6 +110,12 @@ RESEARCH_GET_BACKTEST_RESULTS_TOOL: Final = "research_get_backtest_results"
 RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL: Final = "research_compare_backtest_results"
 """Tool name for comparing persisted baseline backtest result bundles."""
 
+RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL: Final = "research_list_risk_manager_templates"
+"""Tool name for listing source-generatable risk-manager templates."""
+
+RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL: Final = "research_create_risk_manager_candidate"
+"""Tool name for creating source-backed risk-manager candidate manifests."""
+
 EVALUATION_GENERATE_PERFORMANCE_REPORT_TOOL: Final = "evaluation_generate_performance_report"
 """Tool name for generating Evaluation-owned backtest performance reports."""
 
@@ -160,6 +166,8 @@ RESEARCH_TOOL_NAMES: Final = (
     RESEARCH_RUN_BACKTEST_TOOL,
     RESEARCH_GET_BACKTEST_RESULTS_TOOL,
     RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL,
+    RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL,
+    RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL,
 )
 """Quant Research Supervisor tool names exposed by the MCP server."""
 
@@ -226,6 +234,8 @@ RESEARCH_TOOL_DESCRIPTIONS: Final = {
     RESEARCH_RUN_BACKTEST_TOOL: "Run a baseline backtest over a Data Agent dataset manifest.",
     RESEARCH_GET_BACKTEST_RESULTS_TOOL: "Read a persisted baseline backtest artifact bundle.",
     RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL: "Compare persisted baseline backtest bundles and write a comparison report.",
+    RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL: "List source-generatable risk-manager templates.",
+    RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL: "Create a source-backed risk-manager candidate manifest.",
 }
 """Descriptions for Quant Research Supervisor tools exposed by the MCP server."""
 
@@ -244,6 +254,7 @@ CAPABILITY_REGISTRATION_FLAGS: Final = {
     "knowledge_tools_registered": True,
     "math_method_tools_registered": True,
     "strategy_candidate_tools_registered": True,
+    "risk_manager_candidate_tools_registered": True,
     "backtest_tools_registered": True,
     "evaluation_tools_registered": True,
 }
@@ -255,6 +266,7 @@ UNREGISTERED_CAPABILITY_FLAGS: Final = {
     "symbol_discovery_tools_registered": False,
     "data_loading_tools_registered": False,
     "strategy_candidate_tools_registered": False,
+    "risk_manager_candidate_tools_registered": False,
     "backtest_tools_registered": False,
     "evaluation_tools_registered": False,
 }

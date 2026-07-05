@@ -12,8 +12,8 @@ store, brokers, strategy/risk interfaces, backtesting, live runtime, operations,
 
 ## Research Agents and MCP
 
-Use [research_agents/README.md](research_agents/README.md) for research-agent identities, MCP tool contracts,
-LangGraph orchestration, data/research artifacts, and implementation plans for agent-facing tooling.
+Use [research_agents/README.md](research_agents/README.md) for research-agent architecture, agent identities, MCP tool
+catalogs, workflows, operations, detailed contracts, and implementation plans for agent-facing tooling.
 
 ## History
 

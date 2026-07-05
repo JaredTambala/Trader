@@ -151,7 +151,7 @@ This document is the intermediate acceptance contract for the slice. Do not mark
   - calls `data_summarize_quality` again
   - verifies every `content[0].text` JSON parses back to the same `structuredContent`
 - Add a Data Agent graph evidence test that completes the same workflow through the MCP client and asserts final state artifacts.
-- Update `docs/research_agents/mcp_trading_research_tools.md` with the exact pytest command and the asserted envelope fields.
+- Update `docs/research_agents/history/mcp_trading_research_tools.md` with the exact pytest command and the asserted envelope fields.
 - Mark chunks 10-16 `Done` only when the evidence tests and docs are in place.
 
 ## Final Slice Verification

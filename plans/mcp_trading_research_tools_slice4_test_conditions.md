@@ -207,8 +207,8 @@ reproducible command output.
     compatibility shims under test
   - `trader_research` does not import `trader_mcp` or `trader_agents`
   - `trader_agents` does not import platform data/query internals when an MCP/Data Agent handoff exists
-- Update `docs/research_agents/mcp_trading_research_tools.md` and
-  `docs/research_agents/agents_mcp_user_guide.md` with the exact pytest command and the asserted supervisor handoff
+- Update `docs/research_agents/history/mcp_trading_research_tools.md` and
+  `docs/research_agents/history/agents_mcp_user_guide.md` with the exact pytest command and the asserted supervisor handoff
   fields.
 - Mark chunks 17-22 `Done` only when the migration, schema, graph, handoff, and boundary tests are all in place.
 

@@ -9,9 +9,12 @@ deterministic trader_research services
 ```
 
 MCP is the tool boundary. LangGraph is the agent identity and orchestration layer. Tools must produce structured
-artifacts that match the owning agent's responsibilities in [agent_operating_model.md](agent_operating_model.md).
+artifacts that match the owning agent's responsibilities in [agents.md](agents.md).
 The Quant Research Supervisor Agent may coordinate specialist work, but each specialist-owned artifact keeps its own
 `agent_owner`.
+
+Use [mcp_tools.md](mcp_tools.md) for the current registered MCP catalog. This file is the detailed contract appendix for
+request fields, envelope shapes, artifact payloads, and validation behavior.
 
 ## Control Plane And Execution Plane
 
@@ -100,7 +103,7 @@ or bypass core platform validation.
 
 These tools are implemented first because the Data Agent owns the ingredients that later research agents consume.
 
-## Planned Agent Tools
+## Agent Tool Inventory
 
 | Tool | Owning agent | Primary artifact |
 | --- | --- | --- |
@@ -136,6 +139,8 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | `research_run_backtest` | Quant Research Supervisor Agent | `backtest_run_ref.json` plus backtest artifact bundle |
 | `research_get_backtest_results` | Quant Research Supervisor Agent | result summary and artifact paths |
 | `research_compare_backtest_results` | Quant Research Supervisor Agent | `comparison_report.json` over explicit backtest refs |
+| `research_list_risk_manager_templates` | Quant Research Supervisor Agent | risk-manager template catalog |
+| `research_create_risk_manager_candidate` | Quant Research Supervisor Agent | `risk_manager_candidate_manifest.json` and risk-manager source |
 | `evaluation_generate_performance_report` | Evaluation Agent | first practical `evaluation_report.json` from backtest/data-quality artifacts |
 | `evaluation_generate_report` | Evaluation Agent | later skeptical critique report |
 | `adversarial_run_robustness` | Adversarial Agent | `robustness_report.json` |
@@ -279,6 +284,85 @@ market buy/sell intents for the fixture symbols. It does not dynamically load ar
 data, touch brokers, mutate SQL, run backtests, or clear runtime/risk state. Task 28 owns baseline backtest execution
 after candidate validation passes. Strategy candidates remain data-free; the backtest data scope is supplied only by a
 Data Agent `dataset_manifest`.
+
+## Risk Manager Candidate Catalog And Builder
+
+`research_list_risk_manager_templates` is a Quant Research Supervisor read-only tool and direct service. It returns
+source-generatable risk-manager template metadata; it does not dynamically import risk code, touch brokers, read market
+data, or validate runtime behavior.
+
+The read-only success payload is:
+
+```json
+{
+  "templates": [],
+  "template_count": 5,
+  "supported_risk_manager_families": [
+    "gross_exposure_cap",
+    "per_symbol_exposure_cap",
+    "concentration_cap",
+    "drawdown_guard",
+    "var_cvar_limit"
+  ]
+}
+```
+
+Each template entry includes:
+
+- `template_family`, `display_name`, `description`, `runtime_contract="trader.risk.RiskManager"`, and
+  `source_generator`.
+- Scalar `parameters` with JSON value types, required flags, defaults where available, and validation constraints.
+- Optional `method_package_roles` for sourced risk-measure telemetry; refs must be validated
+  `method_package_manifest.json` artifacts.
+- Declarative `policy_intent`, no-live-trading `execution_assumptions`, `validation_requirements`, and additional
+  constraints.
+
+`research_create_risk_manager_candidate` is a local-mutating MCP/direct service. It accepts:
+
+- `artifact_root`.
+- `template_family`, one of the maintained risk-manager catalog families.
+- Optional scalar `parameters`.
+- Optional `method_package_refs`, where each item supplies a template `role` plus exactly one of `package_id`, `path`,
+  or inline `package_manifest`.
+- Optional `execution_assumptions`.
+
+Successful calls write two coupled artifacts:
+
+- `risk_manager_candidate_manifest.json` under
+  `artifact_root / "risk_managers" / "manifests" / f"{candidate_id}.json"`.
+- A deterministic Python risk-manager source file under
+  `artifact_root / "risk_managers" / "source" / f"{candidate_id}.py"`.
+
+The generated Python source is a backtest-only research candidate. It exposes `build_risk_manager(...)` and returns an
+object implementing `trader.risk.RiskManager`; it records the template family and bounded parameters but does not
+mutate brokers, raw SQL, or live risk state. Policy validation/enforcement and portfolio backtest use are deferred to
+the later risk-manager validation and strategy/risk stack tasks.
+
+`risk_manager_candidate_manifest.json` uses artifact type `risk_manager_candidate` and records:
+
+- `candidate_id`, `template_family`, optional `method_package_refs`, and template `parameters`.
+- `risk_manager_source` with artifact type `risk_manager_implementation`, source path, source hash, class name,
+  factory name, runtime contract `trader.risk.RiskManager`, and template provenance.
+- Declarative `policy_intent`, JSON-safe no-live-trading `execution_assumptions`, `validation_requirements`, `status`,
+  structured `warnings`, and `blockers`.
+
+Risk-manager candidates deliberately do not record symbols, asset class, timeframe, start, end, or source filters.
+Those fields belong to Data Agent dataset manifests consumed by later strategy/risk stack and portfolio backtest tools.
+
+Candidate construction fails closed before writing when:
+
+- The template family is unsupported.
+- Required parameters are missing, unknown parameters are supplied, parameter grids/lists are supplied, or numeric
+  bounds are violated.
+- A method-package role is unknown, duplicated, unresolved, or references raw `method_implementation_manifest` input
+  instead of a `method_package_manifest`.
+- A method-package ref is not `status="validated"`, has blockers, lacks approved method-card refs, lacks source hash or
+  IDs, or declares an unsupported runtime contract.
+- Execution assumptions attempt live trading, broker mutation, raw SQL access, or disable the backtest-only boundary.
+
+Task 33B registers `research_list_risk_manager_templates` and `research_create_risk_manager_candidate` through MCP.
+It does not register `research_validate_risk_manager_candidate`, compose strategy/risk stacks, run portfolio backtests,
+or generate portfolio/risk evaluation reports; those are later task-33 slices.
 
 ## Data-Scoped Baseline Backtests
 

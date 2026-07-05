@@ -14,8 +14,10 @@ from trader.event_store import EventStore
 from trader_mcp.adapters import envelope_to_mcp_result
 from trader_mcp.constants import (
     RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL,
+    RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL,
     RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
     RESEARCH_GET_BACKTEST_RESULTS_TOOL,
+    RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL,
     RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL,
     RESEARCH_RUN_BACKTEST_TOOL,
     RESEARCH_TOOL_DESCRIPTIONS,
@@ -28,6 +30,10 @@ from trader_research.backtests import (
     run_baseline_backtest as run_baseline_backtest_service,
 )
 from trader_research.contracts import SideEffect, error_envelope
+from trader_research.risk_managers import (
+    create_risk_manager_candidate as create_risk_manager_candidate_service,
+    list_risk_manager_templates as list_risk_manager_templates_service,
+)
 from trader_research.strategies import (
     create_strategy_candidate as create_strategy_candidate_service,
     list_strategy_templates as list_strategy_templates_service,
@@ -206,5 +212,34 @@ def register_research_tools(
             backtest_runs=backtest_runs,
             ranking_metric=ranking_metric,
             sort_order=sort_order,
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL,
+        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL],
+    )
+    def research_list_risk_manager_templates(families: list[str] | None = None) -> CallToolResult:
+        """List source-generatable risk-manager templates."""
+        envelope = list_risk_manager_templates_service(families=families)
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL,
+        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL],
+    )
+    def research_create_risk_manager_candidate(
+        template_family: str,
+        parameters: dict[str, Any] | None = None,
+        method_package_refs: list[dict[str, Any]] | None = None,
+        execution_assumptions: dict[str, Any] | None = None,
+    ) -> CallToolResult:
+        """Create one source-backed risk-manager candidate artifact."""
+        envelope = create_risk_manager_candidate_service(
+            artifact_root=environment.artifact_root,
+            template_family=template_family,
+            parameters=parameters,
+            method_package_refs=method_package_refs,
+            execution_assumptions=execution_assumptions,
         )
         return CallToolResult(**envelope_to_mcp_result(envelope))

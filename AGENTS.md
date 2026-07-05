@@ -16,7 +16,9 @@ Use the existing documentation as the source of truth:
 - Core runtime architecture: [docs/core/system_architecture.md](docs/core/system_architecture.md)
 - Core platform docs: [docs/core/README.md](docs/core/README.md)
 - Research-agent docs: [docs/research_agents/README.md](docs/research_agents/README.md)
-- Agent identities and artifact ownership: [docs/research_agents/agent_operating_model.md](docs/research_agents/agent_operating_model.md)
+- Research-agent architecture: [docs/research_agents/architecture.md](docs/research_agents/architecture.md)
+- Agent identities and artifact ownership: [docs/research_agents/agents.md](docs/research_agents/agents.md)
+- Current MCP tool catalog: [docs/research_agents/mcp_tools.md](docs/research_agents/mcp_tools.md)
 - MCP/tool envelope contracts: [docs/research_agents/tool_contracts.md](docs/research_agents/tool_contracts.md)
 - Active research-agent tracker: [plans/mcp_trading_research_tools_plan.md](plans/mcp_trading_research_tools_plan.md)
 - Python contributor standard: [docs/python_code_quality.md](docs/python_code_quality.md)
@@ -35,7 +37,7 @@ Use the existing documentation as the source of truth:
 
 ## Agent Definitions
 
-Follow [agent_operating_model.md](docs/research_agents/agent_operating_model.md) for the authoritative boundaries.
+Follow [agents.md](docs/research_agents/agents.md) for the authoritative boundaries.
 
 - Data Agent: owns symbol discovery, dataset manifests, data inventory, quality reports, and explicit bounded loading
   evidence.
@@ -91,8 +93,10 @@ Apply [docs/python_code_quality.md](docs/python_code_quality.md) to all Python c
   whenever status, scope, evidence, or follow-on work changes.
 - Update [docs/research_agents/tool_contracts.md](docs/research_agents/tool_contracts.md) when tool inputs, outputs,
   envelopes, side effects, or artifact contracts change.
-- Update [docs/research_agents/agent_operating_model.md](docs/research_agents/agent_operating_model.md) when agent
-  ownership, boundaries, or allowlists change.
+- Update [docs/research_agents/agents.md](docs/research_agents/agents.md) when agent ownership, boundaries, or
+  allowlists change.
+- Update [docs/research_agents/mcp_tools.md](docs/research_agents/mcp_tools.md) when MCP registration, tool ownership,
+  side effects, or capability flags change.
 - Update core docs under [docs/core/](docs/core/) when runtime, storage, strategy/risk, market-data, backtest, or
   operator behavior changes.
 - Do not create new documents when an existing canonical document can be updated.
