@@ -21,39 +21,53 @@ from trader.cycle import (
     resolve_terminal_event_timestamp,
     run_cycle,
 )
-from trader.cycle.core import (
-    _build_cycle_risk_context,
+from trader.cycle.broker_state import (
+    _build_portfolio_from_broker_payload,
+    _build_processed_order_from_broker_response,
+    _broker_position_views_to_positions,
+    _coerce_broker_cash,
+    _resolve_broker_response_status,
+    _should_sync_portfolio_for_broker_response,
+)
+from trader.cycle.filters import _allowed_cycle_event_types
+from trader.cycle.lifecycle import (
     _build_cycle_execution_plan,
     _build_cycle_identity,
     _build_cycle_run_session_outcome,
     _build_post_order_portfolio_snapshot_plan,
-    _build_processed_order_from_broker_response,
-    _build_portfolio_from_broker_payload,
-    _build_stream_risk_price_lookup,
-    _broker_position_views_to_positions,
-    _coerce_broker_cash,
-    _dedupe_latest_order_event_rows,
-    _empty_market_data_pipeline_result,
-    _evaluate_cycle_order_risk,
-    _build_recent_market_data_query,
-    _latest_order_event_row_to_record,
-    _latest_order_events_query,
-    _market_data_event_table_name,
-    _resolve_broker_response_status,
     _resolve_cycle_run_type,
     _resolve_cycle_snapshot_ts,
     _resolve_decision_ts,
     _resolve_market_data_freshness_ts,
     _resolve_portfolio_asof_ts,
-    _resolve_metrics_price_lookup,
+    _should_halt_cycle,
+    _should_load_broker_portfolio,
+    _should_use_stream_ingestion,
+)
+from trader.cycle.market_data import (
+    _build_recent_market_data_query,
+    _empty_market_data_pipeline_result,
+    _market_data_event_table_name,
     _row_to_market_event,
+)
+from trader.cycle.metrics import _resolve_metrics_price_lookup
+from trader.cycle.order_state import (
+    _dedupe_latest_order_event_rows,
+    _latest_order_event_row_to_record,
+    _latest_order_events_query,
+)
+from trader.cycle.orders import _attach_order_metadata
+from trader.cycle.risk import (
+    _build_cycle_risk_context,
+    _build_stream_risk_price_lookup,
+    _evaluate_cycle_order_risk,
+)
+from trader.cycle.recording import (
     _record_owned_run_session_finish,
     _record_owned_run_session_start,
-    _should_halt_cycle,
-    _should_use_stream_ingestion,
-    _should_sync_portfolio_for_broker_response,
-    _should_load_broker_portfolio,
 )
+from trader.cycle.stream import _build_cycle_stream_state, _latest_stream_prices
+from trader.cycle.startup import _mask_secret, _startup_config_log_values
 from trader.identifiers import deterministic_client_order_id, deterministic_run_session_id
 from trader.config import Config
 from trader.market_data import CryptoBarEvent, StaticMarketDataSource, StockBarEvent
@@ -388,6 +402,36 @@ def test_build_enriched_cycle_order_preserves_explicit_order_fields() -> None:
     assert record["created_at"] == explicit_created_at
     assert record["time_in_force"] == "gtc"
     assert record["price"] is None
+
+
+def test_attach_order_metadata_enriches_batch_without_mutating_inputs() -> None:
+    created_at = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    orders = [
+        {"symbol": " aapl ", "side": "BUY", "qty": "2"},
+        {"symbol": "MSFT", "side": "sell", "qty": 1.5, "time_in_force": "gtc"},
+    ]
+    originals = [dict(order) for order in orders]
+
+    enriched = _attach_order_metadata(
+        orders,
+        run_id="run_1",
+        cycle_id="cycle_1",
+        created_at=created_at,
+        price_lookup={"AAPL": 101.0, "MSFT": 250.0},
+        asset_class="stocks",
+        time_in_force="day",
+    )
+
+    assert orders == originals
+    assert [order["symbol"] for order in enriched] == ["AAPL", "MSFT"]
+    assert [order["price"] for order in enriched] == [101.0, 250.0]
+    assert [order["time_in_force"] for order in enriched] == ["day", "gtc"]
+    assert enriched[0]["client_order_id"] == deterministic_client_order_id(
+        "cycle_1",
+        "AAPL",
+        "buy",
+        2.0,
+    )
 
 
 def test_resolve_order_lifecycle_event_timestamp_is_pure_and_stably_ordered() -> None:
@@ -882,6 +926,20 @@ def test_empty_market_data_pipeline_result_is_stable() -> None:
     assert result.price_lookup == {}
 
 
+def test_cycle_stream_state_starts_empty_and_exposes_latest_prices() -> None:
+    ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    state = _build_cycle_stream_state()
+
+    assert state.processed_orders == []
+    assert state.latest_prices == {}
+    assert state.counters.orders_emitted == 0
+
+    state.latest_prices["AAPL"] = (ts, 101.25)
+    state.latest_prices["MSFT"] = (ts, 250.5)
+
+    assert _latest_stream_prices(state) == {"AAPL": 101.25, "MSFT": 250.5}
+
+
 def test_market_data_event_table_name_selects_asset_class_table() -> None:
     assert _market_data_event_table_name("stocks") == "stock_bar_events"
     assert _market_data_event_table_name("stock") == "stock_bar_events"
@@ -1159,6 +1217,61 @@ def _base_config(db_path: str) -> Config:
         log_position_snapshots=True,
         broker_type="noop",
     )
+
+
+def test_allowed_cycle_event_types_respects_logging_flags(tmp_path) -> None:
+    config = _base_config(str(tmp_path / "events.duckdb"))
+
+    assert _allowed_cycle_event_types(config) == {
+        "runs",
+        "run_events",
+        "stock_bar_events",
+        "crypto_bar_events",
+        "config_kv",
+        "signal_events",
+        "indicator_events",
+        "order_events",
+        "fill_events",
+        "position_snapshots",
+    }
+
+    quiet = replace(
+        config,
+        log_signal_events=False,
+        log_indicator_events=False,
+        log_order_events=False,
+        log_fill_events=False,
+        log_position_snapshots=False,
+    )
+
+    assert _allowed_cycle_event_types(quiet) == {
+        "runs",
+        "run_events",
+        "stock_bar_events",
+        "crypto_bar_events",
+        "config_kv",
+    }
+
+
+def test_startup_config_log_values_mask_secrets(tmp_path) -> None:
+    config = replace(
+        _base_config(str(tmp_path / "events.duckdb")),
+        alpaca_api_key="abcdefghijkl",
+        alpaca_secret_key="short",
+        pg_dsn="postgres://user:password@example/db",
+        pg_password="",
+    )
+
+    values = _startup_config_log_values(config)
+
+    assert _mask_secret(None) == "<unset>"
+    assert _mask_secret("short") == "*****"
+    assert _mask_secret("abcdefghijkl") == "abcd***ijkl"
+    assert values["alpaca_api_key"] == "abcd***ijkl"
+    assert values["alpaca_secret_key"] == "*****"
+    assert values["pg_dsn"] == "post***e/db"
+    assert values["pg_password"] == "<unset>"
+    assert values["market_data_symbols"] == "AAPL"
 
 
 def test_indicator_events_persisted(tmp_path) -> None:
