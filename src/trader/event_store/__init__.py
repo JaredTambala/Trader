@@ -1,6 +1,7 @@
 """Event-store contracts, implementations, and factory helpers."""
 
-from .base import EventStore, FilteredEventStore, NoOpEventStore
+from .adapters import FilteredEventStore, NoOpEventStore
+from .base import EventStore
 from .buffered import BufferedEventStore, BufferedEventStoreSettings
 from .factory import build_event_store
 from .postgres import PostgresEventStore

@@ -3,25 +3,46 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import datetime
 import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Iterable, Mapping
 from zoneinfo import ZoneInfo
 
 from ..config import build_config
 from ..event_store import EventStore, build_event_store
-from ..timeframes import normalize_timeframe, parse_timeframe
+from ..timeframes import normalize_timeframe
 from .queries import BarQuery, fetch_bar_timestamps, normalize_bar_query
+from .quality_config import (
+    as_int as _as_int,
+    get_section as _get_section,
+    parse_datetime as _parse_datetime,
+    parse_gap_multipliers as _parse_gap_multipliers,
+    parse_sessions as _parse_sessions,
+    parse_symbols as _parse_symbols,
+)
+from .quality_gaps import (
+    DataQualitySummary,
+    GapRecord,
+    SessionWindow,
+    analyze_gaps as _analyze_gaps,
+)
+from .quality_reports import build_quality_report as _build_report
 
 
 logger = logging.getLogger(__name__)
 
-_MARKET_TZ = ZoneInfo("America/New_York")
-_MARKET_OPEN = time(9, 30)
-_MARKET_CLOSE = time(16, 0)
+__all__ = [
+    "DataQualitySummary",
+    "GapRecord",
+    "SessionWindow",
+    "SymbolQualitySummary",
+    "run_data_quality",
+    "summarize_bar_quality",
+    "write_data_quality_report",
+]
 
 
 @dataclass(frozen=True)
@@ -304,54 +325,6 @@ def _report_id(query: BarQuery) -> str:
     return f"data_quality_{digest}"
 
 
-@dataclass(frozen=True)
-class GapRecord:
-    """One timestamp discontinuity detected during bar coverage analysis.
-
-    The record preserves adjacent timestamps, observed/expected deltas,
-    threshold used for classification, and whether the gap is expected market
-    session downtime or missing data that needs attention.
-    """
-
-    symbol: str
-    prev_ts: datetime
-    next_ts: datetime
-    delta: timedelta
-    expected: timedelta
-    threshold: timedelta
-    reason: str
-
-
-@dataclass(frozen=True)
-class DataQualitySummary:
-    """Per-symbol aggregate counts produced by data-quality checks.
-
-    The summary separates unexpected missing-data gaps from expected market
-    session gaps so operators can prioritize remediation work.
-    """
-
-    symbol: str
-    total_bars: int
-    missing_gaps: int
-    expected_gaps: int
-    max_gap: timedelta | None
-
-
-@dataclass(frozen=True)
-class SessionWindow:
-    """Trading-session window used to classify overnight and weekend gaps.
-
-    Configured windows override default stock-market assumptions for symbols or
-    timeframes with special trading hours.
-    """
-
-    symbol: str
-    timeframe: str
-    start_time: time
-    end_time: time
-    timezone: ZoneInfo
-
-
 def run_data_quality(config_data: Mapping[str, object]) -> dict[str, object]:
     """Run configured bar-coverage checks and return a JSON-ready report.
 
@@ -408,6 +381,7 @@ def run_data_quality(config_data: Mapping[str, object]) -> dict[str, object]:
         end=end,
         summaries=summaries,
         gaps_by_symbol=gaps_by_symbol,
+        generated_at=datetime.now(tz=ZoneInfo("UTC")),
     )
 
 
@@ -460,285 +434,6 @@ def _fetch_timestamps(
         return [_normalize_timestamp(row[0]) for row in cursor.fetchall()]
 
 
-def _analyze_gaps(
-    *,
-    symbol: str,
-    timestamps: Sequence[datetime],
-    asset_class: str,
-    timeframe: str,
-    multipliers: Mapping[str, float],
-    sessions: Mapping[tuple[str, str], SessionWindow],
-) -> tuple[DataQualitySummary, list[GapRecord]]:
-    """Classify oversized timestamp gaps for one symbol.
-
-    Gaps below the timeframe-specific threshold are ignored. Larger gaps are
-    split into expected session gaps and missing-data gaps so reports avoid
-    treating normal market closures as data defects.
-    """
-    if len(timestamps) < 2:
-        summary = DataQualitySummary(
-            symbol=symbol,
-            total_bars=len(timestamps),
-            missing_gaps=0,
-            expected_gaps=0,
-            max_gap=None,
-        )
-        return summary, []
-
-    expected_delta = _expected_delta(timeframe)
-    unit = _timeframe_unit(timeframe)
-    multiplier = multipliers.get(unit, 2.0)
-    threshold = expected_delta * multiplier
-    gaps: list[GapRecord] = []
-    missing = 0
-    expected = 0
-    max_gap = None
-
-    for prev_ts, next_ts in zip(timestamps, timestamps[1:]):
-        delta = next_ts - prev_ts
-        if max_gap is None or delta > max_gap:
-            max_gap = delta
-        if delta <= threshold:
-            continue
-        session = sessions.get((symbol.upper(), normalize_timeframe(timeframe)))
-        reason = _gap_reason(prev_ts, next_ts, asset_class, timeframe, session=session)
-        record = GapRecord(
-            symbol=symbol,
-            prev_ts=prev_ts,
-            next_ts=next_ts,
-            delta=delta,
-            expected=expected_delta,
-            threshold=threshold,
-            reason=reason,
-        )
-        gaps.append(record)
-        if reason == "expected_session_gap":
-            expected += 1
-        else:
-            missing += 1
-
-    summary = DataQualitySummary(
-        symbol=symbol,
-        total_bars=len(timestamps),
-        missing_gaps=missing,
-        expected_gaps=expected,
-        max_gap=max_gap,
-    )
-    return summary, gaps
-
-
-def _gap_reason(
-    prev_ts: datetime,
-    next_ts: datetime,
-    asset_class: str,
-    timeframe: str,
-    *,
-    session: SessionWindow | None,
-) -> str:
-    """Return the data-quality reason code for a timestamp gap."""
-    if asset_class not in {"stocks", "stock"}:
-        if session and _is_expected_window_gap(prev_ts, next_ts, session):
-            return "expected_session_gap"
-        return "gap"
-    unit = _timeframe_unit(timeframe)
-    if unit in {"minute", "hour"}:
-        if session and _is_expected_window_gap(prev_ts, next_ts, session):
-            return "expected_session_gap"
-        if unit == "minute" and prev_ts.date() != next_ts.date():
-            return "expected_session_gap"
-        if _is_expected_session_gap(prev_ts, next_ts):
-            return "expected_session_gap"
-    elif unit in {"day", "week", "month"}:
-        if _is_expected_daily_gap(prev_ts, next_ts, timeframe):
-            return "expected_session_gap"
-    return "gap"
-
-
-def _is_expected_session_gap(prev_ts: datetime, next_ts: datetime) -> bool:
-    """Return whether expected session gap."""
-    prev_local = prev_ts.astimezone(_MARKET_TZ)
-    next_local = next_ts.astimezone(_MARKET_TZ)
-    if prev_local.date() == next_local.date():
-        return False
-    trading_days = _count_trading_days(prev_local.date(), next_local.date())
-    return trading_days <= 1
-
-
-def _is_expected_window_gap(prev_ts: datetime, next_ts: datetime, session: SessionWindow) -> bool:
-    """Return whether expected window gap."""
-    prev_local = prev_ts.astimezone(session.timezone)
-    next_local = next_ts.astimezone(session.timezone)
-    if prev_local.date() == next_local.date():
-        return False
-    if prev_local.time() < session.end_time:
-        return False
-    if next_local.time() > session.start_time:
-        return False
-    return True
-
-
-def _is_expected_daily_gap(prev_ts: datetime, next_ts: datetime, timeframe: str) -> bool:
-    """Return whether a day/week/month gap is normal market-calendar downtime."""
-    prev_local = prev_ts.astimezone(_MARKET_TZ)
-    next_local = next_ts.astimezone(_MARKET_TZ)
-    trading_days = _count_trading_days(prev_local.date(), next_local.date())
-    expected_days = _expected_trading_days(timeframe)
-    return trading_days <= expected_days
-
-
-def _expected_trading_days(timeframe: str) -> int:
-    """Return the approximate trading-day span represented by a timeframe."""
-    tf = normalize_timeframe(timeframe)
-    amount, unit = _parse_timeframe_parts(tf)
-    if unit == "week":
-        return amount * 5
-    if unit == "month":
-        return amount * 21
-    return amount
-
-
-def _count_trading_days(start_date: datetime.date, end_date: datetime.date) -> int:
-    """Count weekdays between two dates, excluding the start date."""
-    if end_date <= start_date:
-        return 0
-    day = start_date + timedelta(days=1)
-    count = 0
-    while day <= end_date:
-        if day.weekday() < 5:
-            count += 1
-        day += timedelta(days=1)
-    return count
-
-
-def _expected_delta(timeframe: str) -> timedelta:
-    """Return the nominal wall-clock delta represented by one bar."""
-    tf = parse_timeframe(timeframe)
-    if tf.unit.name == "Minute":
-        return timedelta(minutes=tf.amount)
-    if tf.unit.name == "Hour":
-        return timedelta(hours=tf.amount)
-    if tf.unit.name == "Day":
-        return timedelta(days=tf.amount)
-    if tf.unit.name == "Week":
-        return timedelta(weeks=tf.amount)
-    return timedelta(days=30 * tf.amount)
-
-
-def _timeframe_unit(timeframe: str) -> str:
-    """Return the coarse unit name for a normalized timeframe string."""
-    tf = normalize_timeframe(timeframe)
-    if tf.endswith("Min"):
-        return "minute"
-    if tf.endswith("Hour"):
-        return "hour"
-    if tf.endswith("Day"):
-        return "day"
-    if tf.endswith("Week"):
-        return "week"
-    if tf.endswith("Month"):
-        return "month"
-    raise ValueError(f"Unsupported timeframe: {timeframe}")
-
-
-def _parse_timeframe_parts(timeframe: str) -> tuple[int, str]:
-    """Return numeric amount and lowercase unit from a normalized timeframe."""
-    tf = normalize_timeframe(timeframe)
-    for unit in ("Min", "Hour", "Day", "Week", "Month"):
-        if tf.endswith(unit):
-            amount = int(tf[: -len(unit)])
-            return amount, unit.lower()
-    raise ValueError(f"Unsupported timeframe: {timeframe}")
-
-
-def _parse_symbols(value: object) -> tuple[str, ...]:
-    """Parse configured symbols from a comma string or sequence."""
-    if value is None:
-        return tuple()
-    if isinstance(value, str):
-        symbols = [symbol.strip().upper() for symbol in value.split(",") if symbol.strip()]
-        return tuple(symbols)
-    if isinstance(value, (list, tuple)):
-        symbols = [str(symbol).strip().upper() for symbol in value if str(symbol).strip()]
-        return tuple(symbols)
-    raise ValueError("data_quality.symbols must be a string or list")
-
-
-def _parse_datetime(value: object | None) -> datetime | None:
-    """Parse optional ISO datetime config values for report bounds."""
-    if value in {None, ""}:
-        return None
-    text = str(value)
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
-    return datetime.fromisoformat(text)
-
-
-def _parse_gap_multipliers(value: object | None) -> dict[str, float]:
-    """Parse per-timeframe gap thresholds, merging with defaults."""
-    defaults = {
-        "minute": 2.0,
-        "hour": 2.0,
-        "day": 1.0,
-        "week": 1.0,
-        "month": 1.0,
-    }
-    if value is None:
-        return defaults
-    if not isinstance(value, Mapping):
-        raise ValueError("data_quality.gap_multipliers must be a mapping")
-    overrides: dict[str, float] = {}
-    for key, raw in value.items():
-        unit = str(key).lower()
-        try:
-            overrides[unit] = float(raw)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"Invalid gap multiplier for {key}: {raw}") from exc
-    defaults.update(overrides)
-    return defaults
-
-
-def _parse_sessions(value: object | None) -> dict[tuple[str, str], SessionWindow]:
-    """Parse optional symbol/timeframe-specific trading session windows."""
-    if value is None:
-        return {}
-    if not isinstance(value, (list, tuple)):
-        raise ValueError("data_quality.sessions must be a list")
-    sessions: dict[tuple[str, str], SessionWindow] = {}
-    for entry in value:
-        if not isinstance(entry, Mapping):
-            raise ValueError("data_quality.sessions entries must be mappings")
-        symbol = str(entry.get("symbol", "")).strip().upper()
-        if not symbol:
-            raise ValueError("data_quality.sessions requires symbol")
-        timeframe = normalize_timeframe(str(entry.get("timeframe", "")))
-        start_raw = entry.get("start_time")
-        end_raw = entry.get("end_time")
-        if not start_raw or not end_raw:
-            raise ValueError("data_quality.sessions requires start_time and end_time")
-        tz_name = str(entry.get("timezone") or "America/New_York")
-        timezone = ZoneInfo(tz_name)
-        start_time = _parse_clock_time(str(start_raw))
-        end_time = _parse_clock_time(str(end_raw))
-        sessions[(symbol, timeframe)] = SessionWindow(
-            symbol=symbol,
-            timeframe=timeframe,
-            start_time=start_time,
-            end_time=end_time,
-            timezone=timezone,
-        )
-    return sessions
-
-
-def _parse_clock_time(value: str) -> time:
-    """Parse `HH:MM` session-clock values into `datetime.time`."""
-    parts = value.split(":")
-    if len(parts) != 2:
-        raise ValueError(f"Invalid time value: {value}")
-    hour = int(parts[0])
-    minute = int(parts[1])
-    return time(hour=hour, minute=minute)
-
-
 def _log_summary(summary: DataQualitySummary) -> None:
     """Emit one concise operator log line for a symbol quality summary."""
     logger.info(
@@ -778,91 +473,12 @@ def _log_gaps(gaps: Iterable[GapRecord], *, max_gap_logs: int) -> None:
         )
 
 
-def _build_report(
-    *,
-    symbols: Sequence[str],
-    asset_class: str,
-    timeframe: str,
-    start: datetime | None,
-    end: datetime | None,
-    summaries: Sequence[DataQualitySummary],
-    gaps_by_symbol: Mapping[str, Sequence[GapRecord]],
-) -> dict[str, object]:
-    """Build a JSON-serializable data quality report."""
-    summary_payload = [_summary_payload(summary) for summary in summaries]
-    gap_payload = {
-        symbol: [_gap_payload(gap) for gap in gaps]
-        for symbol, gaps in gaps_by_symbol.items()
-    }
-    stable_payload = {
-        "symbols": list(symbols),
-        "asset_class": asset_class,
-        "timeframe": timeframe,
-        "start": start.isoformat() if start else None,
-        "end": end.isoformat() if end else None,
-        "summaries": summary_payload,
-    }
-    report_id = "dq_" + hashlib.sha256(
-        json.dumps(stable_payload, sort_keys=True).encode("utf-8")
-    ).hexdigest()[:16]
-    return {
-        "report_id": report_id,
-        "generated_at": datetime.now(tz=ZoneInfo("UTC")).isoformat(),
-        **stable_payload,
-        "gaps": gap_payload,
-    }
-
-
-def _summary_payload(summary: DataQualitySummary) -> dict[str, object]:
-    """Return a JSON-serializable legacy summary payload."""
-    return {
-        "symbol": summary.symbol,
-        "total_bars": summary.total_bars,
-        "missing_gaps": summary.missing_gaps,
-        "expected_gaps": summary.expected_gaps,
-        "max_gap_seconds": summary.max_gap.total_seconds() if summary.max_gap else None,
-    }
-
-
-def _gap_payload(gap: GapRecord) -> dict[str, object]:
-    """Return a JSON-serializable gap payload."""
-    return {
-        "symbol": gap.symbol,
-        "prev_ts": gap.prev_ts.isoformat(),
-        "next_ts": gap.next_ts.isoformat(),
-        "delta_seconds": gap.delta.total_seconds(),
-        "expected_seconds": gap.expected.total_seconds(),
-        "threshold_seconds": gap.threshold.total_seconds(),
-        "reason": gap.reason,
-    }
-
-
 def _param_placeholder(connection: object) -> str:
     """Return the SQL parameter placeholder for the active backend."""
     module = connection.__class__.__module__
     if module.startswith("duckdb"):
         return "?"
     return "%s"
-
-
-def _as_int(value: object | None, default: int) -> int:
-    """Coerce a value into an integer."""
-    if value is None or value == "":
-        return default
-    try:
-        return int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"Invalid integer value: {value}") from exc
-
-
-def _get_section(data: Mapping[str, object], key: str) -> Mapping[str, object]:
-    """Return a nested config section, treating missing/null as empty."""
-    value = data.get(key, {})
-    if value is None:
-        return {}
-    if not isinstance(value, Mapping):
-        raise ValueError(f"Config section '{key}' must be a mapping")
-    return value
 
 
 def _normalize_timestamp(value: datetime) -> datetime:

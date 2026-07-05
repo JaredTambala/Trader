@@ -13,10 +13,10 @@ from ..signals import Bar
 from .data import (
     _fetch_first_prices,
     _fetch_latest_prices,
-    _latest_prices_from_bars,
 )
+from .benchmark import _first_prices_from_bars
 from .models import PortfolioSummary, PositionSummary
-from .performance import _first_prices_from_bars
+from .replay import _latest_prices_from_bars
 
 
 logger = logging.getLogger(__name__)

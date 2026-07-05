@@ -11,7 +11,7 @@ from ..event_store import EventStore, build_event_store
 from .data import _normalize_timestamp
 from .exports import serialize_backtest_result
 from .models import BacktestResult, EquityPoint, TradeStats as _TradeStats
-from .performance import (
+from .trade_accounting import (
     _compute_trade_stats_from_events,
     _normalize_fill_accounting_events,
     _normalize_order_accounting_events,

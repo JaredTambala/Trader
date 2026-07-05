@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from .base import EventStore, NoOpEventStore
+from .adapters import NoOpEventStore
+from .base import EventStore
 from .buffered import BufferedEventStore
 from .postgres import PostgresEventStore
 

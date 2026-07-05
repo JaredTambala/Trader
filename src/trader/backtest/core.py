@@ -21,10 +21,14 @@ from ..strategies import Strategy
 from ..risk import RiskManager
 from ..strategy_metadata import resolve_strategy_id
 from .data import (
-    _PriceState,
     _build_data_sources,
     _build_symbol_schedule,
     _load_bars,
+)
+from .benchmark import (
+    _build_buy_hold_baseline,
+    _compute_equity,
+    _compute_holdings_equity,
 )
 from .models import (
     BacktestAssumptions,
@@ -34,12 +38,8 @@ from .models import (
     TradeStats as _TradeStats,
 )
 from .performance import (
-    _build_buy_hold_baseline,
     _build_performance_summary,
     _build_relative_metrics,
-    _compute_equity,
-    _compute_holdings_equity,
-    _empty_trade_stats,
 )
 from .persistence import _compute_trade_stats
 from .portfolio_state import (
@@ -49,11 +49,13 @@ from .portfolio_state import (
     _filter_positions,
     _seed_positions,
 )
+from .trade_accounting import _empty_trade_stats
 from .results import (
     _build_completed_backtest_result,
     _build_empty_backtest_result,
     _log_backtest_result,
 )
+from .replay import _PriceState
 from .runtime import (
     _build_backtest_broker,
     _build_backtest_runtime_config,
