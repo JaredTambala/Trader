@@ -101,3 +101,33 @@ def test_quantitative_methods_tool_owner_and_identity_use_method_contract_tools(
     assert agent_owner_for_tool("math_compile_kernel") == "Quantitative Methods Agent"
     assert agent_owner_for_tool("math_package_method_artifact") == "Quantitative Methods Agent"
     assert agent_owner_for_tool("math_list_indicator_contracts") == "Quantitative Methods Agent"
+
+
+def test_quant_research_supervisor_owns_strategy_candidate_creation() -> None:
+    identity = build_agent_identity("Quant Research Supervisor Agent")
+
+    assert "research_list_strategy_templates" in identity.tool_allowlist
+    assert "research_create_strategy_candidate" in identity.tool_allowlist
+    assert "research_validate_strategy_candidate" in identity.tool_allowlist
+    assert "research_run_backtest" in identity.tool_allowlist
+    assert "research_get_backtest_results" in identity.tool_allowlist
+    assert "research_compare_backtest_results" in identity.tool_allowlist
+    assert "strategy_implementation.py" in identity.output_artifacts
+    assert "strategy_candidate_manifest.json" in identity.output_artifacts
+    assert "strategy_candidate_validation_report.json" in identity.output_artifacts
+    assert "backtest_run_ref.json" in identity.output_artifacts
+    assert agent_owner_for_tool("research_create_strategy_candidate") == "Quant Research Supervisor Agent"
+    assert agent_owner_for_tool("research_validate_strategy_candidate") == "Quant Research Supervisor Agent"
+    assert agent_owner_for_tool("research_run_backtest") == "Quant Research Supervisor Agent"
+    assert agent_owner_for_tool("research_get_backtest_results") == "Quant Research Supervisor Agent"
+    assert agent_owner_for_tool("research_compare_backtest_results") == "Quant Research Supervisor Agent"
+
+
+def test_evaluation_agent_owns_performance_report_tool() -> None:
+    identity = build_agent_identity("Evaluation Agent")
+
+    assert "evaluation_generate_performance_report" in identity.tool_allowlist
+    assert "evaluation_generate_report" in identity.tool_allowlist
+    assert "evaluation_report.json" in identity.output_artifacts
+    assert agent_owner_for_tool("evaluation_generate_performance_report") == "Evaluation Agent"
+    assert agent_owner_for_tool("evaluation_generate_report") == "Evaluation Agent"

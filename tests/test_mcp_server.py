@@ -16,10 +16,17 @@ from trader_mcp.constants import (
     DATA_ENSURE_LOADED_TOOL,
     DATA_GET_INVENTORY_TOOL,
     DATA_SUMMARIZE_QUALITY_TOOL,
+    EVALUATION_GENERATE_PERFORMANCE_REPORT_TOOL,
     MCP_CONFIG_TOOL,
     MCP_HEALTH_TOOL,
     MCP_SERVER_OWNER,
     REGISTERED_TOOL_NAMES,
+    RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL,
+    RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
+    RESEARCH_GET_BACKTEST_RESULTS_TOOL,
+    RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL,
+    RESEARCH_RUN_BACKTEST_TOOL,
+    RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL,
 )
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
@@ -152,7 +159,7 @@ def test_health_tool_returns_read_only_mcp_server_envelope() -> None:
     anyio.run(_run)
 
 
-def test_config_tool_excludes_broker_raw_sql_and_backtest_tools() -> None:
+def test_config_tool_excludes_broker_raw_sql_and_gates_backtest_execution() -> None:
     local_env = load_local_environment("env.template")
     server = create_server(local_env)
 
@@ -166,16 +173,40 @@ def test_config_tool_excludes_broker_raw_sql_and_backtest_tools() -> None:
         inventory_tool = next(tool for tool in data["tools"] if tool["name"] == DATA_GET_INVENTORY_TOOL)
         quality_tool = next(tool for tool in data["tools"] if tool["name"] == DATA_SUMMARIZE_QUALITY_TOOL)
         ensure_tool = next(tool for tool in data["tools"] if tool["name"] == DATA_ENSURE_LOADED_TOOL)
+        template_tool = next(tool for tool in data["tools"] if tool["name"] == RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL)
+        create_candidate_tool = next(
+            tool for tool in data["tools"] if tool["name"] == RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL
+        )
+        validate_candidate_tool = next(
+            tool for tool in data["tools"] if tool["name"] == RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL
+        )
+        run_backtest_tool = next(tool for tool in data["tools"] if tool["name"] == RESEARCH_RUN_BACKTEST_TOOL)
+        get_backtest_tool = next(tool for tool in data["tools"] if tool["name"] == RESEARCH_GET_BACKTEST_RESULTS_TOOL)
+        compare_tool = next(tool for tool in data["tools"] if tool["name"] == RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL)
+        performance_tool = next(
+            tool for tool in data["tools"] if tool["name"] == EVALUATION_GENERATE_PERFORMANCE_REPORT_TOOL
+        )
         assert inventory_tool["agent_owner"] == "Data Agent"
         assert inventory_tool["side_effect"] == "read_only"
         assert quality_tool["side_effect"] == "read_only"
         assert ensure_tool["side_effect"] == "local_mutating"
-        assert "research_run_backtest" not in tool_names
+        assert template_tool["agent_owner"] == "Quant Research Supervisor Agent"
+        assert template_tool["side_effect"] == "read_only"
+        assert create_candidate_tool["side_effect"] == "local_mutating"
+        assert validate_candidate_tool["side_effect"] == "local_mutating"
+        assert run_backtest_tool["agent_owner"] == "Quant Research Supervisor Agent"
+        assert run_backtest_tool["side_effect"] == "local_mutating"
+        assert get_backtest_tool["side_effect"] == "read_only"
+        assert compare_tool["agent_owner"] == "Quant Research Supervisor Agent"
+        assert compare_tool["side_effect"] == "local_mutating"
+        assert performance_tool["agent_owner"] == "Evaluation Agent"
+        assert performance_tool["side_effect"] == "local_mutating"
         assert data["policy"] == local_env.policy_flags()
         assert data["safety"] == {
             **CAPABILITY_REGISTRATION_FLAGS,
             "symbol_provider_discovery_allowed": local_env.allow_symbol_provider_discovery,
             "data_loading_mutation_allowed": local_env.allow_data_loading,
+            "backtest_execution_allowed": local_env.allow_backtests,
         }
 
     anyio.run(_run)

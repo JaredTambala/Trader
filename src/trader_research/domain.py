@@ -47,7 +47,10 @@ PREDICTION_ARTIFACT = "prediction_artifact"
 DRIFT_REPORT = "drift_report"
 EXPERIMENT_PLAN = "experiment_plan"
 STRATEGY_CANDIDATE = "strategy_candidate"
+STRATEGY_IMPLEMENTATION = "strategy_implementation"
+STRATEGY_CANDIDATE_VALIDATION_REPORT = "strategy_candidate_validation_report"
 BACKTEST_RUN_REF = "backtest_run_ref"
+COMPARISON_REPORT = "comparison_report"
 EVALUATION_REPORT = "evaluation_report"
 ROBUSTNESS_REPORT = "robustness_report"
 RECOMMENDATION_REPORT = "recommendation_report"
@@ -81,7 +84,10 @@ SUPPORTED_ARTIFACT_TYPES = frozenset(
         DRIFT_REPORT,
         EXPERIMENT_PLAN,
         STRATEGY_CANDIDATE,
+        STRATEGY_IMPLEMENTATION,
+        STRATEGY_CANDIDATE_VALIDATION_REPORT,
         BACKTEST_RUN_REF,
+        COMPARISON_REPORT,
         EVALUATION_REPORT,
         ROBUSTNESS_REPORT,
         RECOMMENDATION_REPORT,
@@ -116,7 +122,10 @@ OWNER_BY_ARTIFACT_TYPE = {
     DRIFT_REPORT: ML_AGENT_OWNER,
     EXPERIMENT_PLAN: QUANT_RESEARCH_SUPERVISOR_OWNER,
     STRATEGY_CANDIDATE: QUANT_RESEARCH_SUPERVISOR_OWNER,
+    STRATEGY_IMPLEMENTATION: QUANT_RESEARCH_SUPERVISOR_OWNER,
+    STRATEGY_CANDIDATE_VALIDATION_REPORT: QUANT_RESEARCH_SUPERVISOR_OWNER,
     BACKTEST_RUN_REF: QUANT_RESEARCH_SUPERVISOR_OWNER,
+    COMPARISON_REPORT: QUANT_RESEARCH_SUPERVISOR_OWNER,
     EVALUATION_REPORT: EVALUATION_AGENT_OWNER,
     ROBUSTNESS_REPORT: ADVERSARIAL_AGENT_OWNER,
     RECOMMENDATION_REPORT: QUANT_RESEARCH_SUPERVISOR_OWNER,
@@ -664,24 +673,102 @@ class StrategyCandidateRiskAssumption:
 
 
 @dataclass(frozen=True)
+class StrategyCandidateSourceRef:
+    """Source-backed Python strategy implementation attached to a candidate.
+
+    Attributes:
+        artifact_id: Stable implementation identifier, usually the candidate ID.
+        path: Local Python source path.
+        source_hash: SHA-256 of the source file.
+        class_name: Concrete class expected to implement `trader.strategies.Strategy`.
+        factory_name: Module-level factory used to instantiate the strategy.
+        runtime_contract: Runtime interface the implementation must satisfy.
+        artifact_type: Strategy implementation artifact kind.
+        metadata: Optional JSON-compatible provenance.
+    """
+
+    artifact_id: str
+    path: str
+    source_hash: str
+    class_name: str
+    factory_name: str = "build_strategy"
+    runtime_contract: str = "trader.strategies.Strategy"
+    artifact_type: str = STRATEGY_IMPLEMENTATION
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate required source implementation identity fields."""
+        if not self.artifact_id.strip():
+            raise ValueError("strategy source artifact_id is required")
+        if self.artifact_type != STRATEGY_IMPLEMENTATION:
+            raise ValueError(f"strategy source artifact_type must be {STRATEGY_IMPLEMENTATION}")
+        if not self.path.strip():
+            raise ValueError("strategy source path is required")
+        if not self.source_hash.strip():
+            raise ValueError("strategy source_hash is required")
+        if not self.class_name.strip():
+            raise ValueError("strategy source class_name is required")
+        if not self.factory_name.strip():
+            raise ValueError("strategy source factory_name is required")
+        if self.runtime_contract != "trader.strategies.Strategy":
+            raise ValueError("strategy source runtime_contract must be trader.strategies.Strategy")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the strategy implementation reference for candidate manifests."""
+        return {
+            "artifact_id": self.artifact_id,
+            "artifact_type": self.artifact_type,
+            "path": self.path,
+            "source_hash": self.source_hash,
+            "class_name": self.class_name,
+            "factory_name": self.factory_name,
+            "runtime_contract": self.runtime_contract,
+            "metadata": _jsonable(self.metadata),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "StrategyCandidateSourceRef":
+        """Build a strategy implementation reference from manifest data.
+
+        Args:
+            payload: Mapping with source path, hash, factory, and class metadata.
+
+        Returns:
+            Parsed strategy source reference.
+        """
+        return cls(
+            artifact_id=str(payload.get("artifact_id") or ""),
+            artifact_type=str(payload.get("artifact_type") or STRATEGY_IMPLEMENTATION),
+            path=str(payload.get("path") or ""),
+            source_hash=str(payload.get("source_hash") or ""),
+            class_name=str(payload.get("class_name") or ""),
+            factory_name=str(payload.get("factory_name") or "build_strategy"),
+            runtime_contract=str(payload.get("runtime_contract") or "trader.strategies.Strategy"),
+            metadata=_mapping(payload.get("metadata")),
+        )
+
+
+@dataclass(frozen=True)
 class StrategyCandidateManifest:
     """Rich strategy-candidate artifact prepared for validation and backtesting.
 
     This manifest is declarative. It records template selection, method and
-    signal artifact links, parameterization, semantics, sizing, risk assumptions,
-    and data bounds, but it does not instantiate strategy code.
+    signal artifact links, an importable strategy source file, parameterization,
+    semantics, sizing, and risk assumptions, but it does not bind the strategy
+    to a market-data universe.
 
     Attributes:
         candidate_id: Stable strategy candidate identifier.
         template_family: Maintained strategy template family.
         method_package_refs: Declarative method package references.
         signal_refs: Declarative signal implementation or validation references.
+        strategy_source: Importable Python strategy implementation source.
         parameters: JSON-compatible template parameter values.
         entry_semantics: Declarative entry policy payload.
         exit_semantics: Declarative exit policy payload.
         sizing: Sizing assumptions for the maintained strategy template.
         risk_assumptions: Named risk and execution assumptions.
-        data_requirements: Bounded data requirements attached to the candidate.
+        execution_assumptions: JSON-compatible execution boundary assumptions.
         warnings: Structured non-fatal manifest issues.
         blockers: Structured blocking manifest issues.
     """
@@ -690,12 +777,13 @@ class StrategyCandidateManifest:
     template_family: str
     method_package_refs: tuple[StrategyCandidateArtifactLink, ...] = field(default_factory=tuple)
     signal_refs: tuple[StrategyCandidateArtifactLink, ...] = field(default_factory=tuple)
+    strategy_source: StrategyCandidateSourceRef | None = None
     parameters: Mapping[str, Any] = field(default_factory=dict)
     entry_semantics: Mapping[str, Any] = field(default_factory=dict)
     exit_semantics: Mapping[str, Any] = field(default_factory=dict)
     sizing: StrategyCandidateSizing = field(default_factory=StrategyCandidateSizing)
     risk_assumptions: tuple[StrategyCandidateRiskAssumption, ...] = field(default_factory=tuple)
-    data_requirements: tuple[DataRequirement, ...] = field(default_factory=tuple)
+    execution_assumptions: Mapping[str, Any] = field(default_factory=dict)
     warnings: tuple[ResearchIssue, ...] = field(default_factory=tuple)
     blockers: tuple[ResearchIssue, ...] = field(default_factory=tuple)
     artifact_type: str = STRATEGY_CANDIDATE
@@ -717,12 +805,13 @@ class StrategyCandidateManifest:
             "template_family": self.template_family,
             "method_package_refs": [item.to_dict() for item in self.method_package_refs],
             "signal_refs": [item.to_dict() for item in self.signal_refs],
+            "strategy_source": self.strategy_source.to_dict() if self.strategy_source is not None else None,
             "parameters": _jsonable(self.parameters),
             "entry_semantics": _jsonable(self.entry_semantics),
             "exit_semantics": _jsonable(self.exit_semantics),
             "sizing": self.sizing.to_dict(),
             "risk_assumptions": [item.to_dict() for item in self.risk_assumptions],
-            "data_requirements": [item.to_dict() for item in self.data_requirements],
+            "execution_assumptions": _jsonable(self.execution_assumptions),
             "warnings": [warning.to_dict() for warning in self.warnings],
             "blockers": [blocker.to_dict() for blocker in self.blockers],
         }
@@ -749,6 +838,11 @@ class StrategyCandidateManifest:
             signal_refs=tuple(
                 StrategyCandidateArtifactLink.from_dict(item) for item in _mapping_sequence(payload.get("signal_refs"))
             ),
+            strategy_source=(
+                StrategyCandidateSourceRef.from_dict(_mapping(payload.get("strategy_source")))
+                if payload.get("strategy_source") is not None
+                else None
+            ),
             parameters=_mapping(payload.get("parameters")),
             entry_semantics=_mapping(payload.get("entry_semantics")),
             exit_semantics=_mapping(payload.get("exit_semantics")),
@@ -757,9 +851,7 @@ class StrategyCandidateManifest:
                 StrategyCandidateRiskAssumption.from_dict(item)
                 for item in _mapping_sequence(payload.get("risk_assumptions"))
             ),
-            data_requirements=tuple(
-                DataRequirement.from_dict(item) for item in _mapping_sequence(payload.get("data_requirements"))
-            ),
+            execution_assumptions=_mapping(payload.get("execution_assumptions")),
             warnings=tuple(ResearchIssue.from_dict(item) for item in _mapping_sequence(payload.get("warnings"))),
             blockers=tuple(ResearchIssue.from_dict(item) for item in _mapping_sequence(payload.get("blockers"))),
         )
@@ -770,24 +862,64 @@ class BacktestRunRef:
     """Pointer from research planning/evaluation artifacts to a persisted backtest run.
 
     The reference keeps experiment-level IDs, the concrete runtime `run_id`, and
-    the optional artifact directory together so downstream agents can locate
-    metrics, trades, and provenance without embedding the full backtest payload in
-    every handoff.
+    the artifact directory together with the Data Agent scope that bounded the
+    run so downstream agents can locate metrics, trades, and provenance without
+    embedding the full backtest payload in every handoff.
     """
 
     experiment_id: str
     experiment_run_id: str
     run_id: str
     artifact_dir: str | None = None
+    artifact_type: str = BACKTEST_RUN_REF
+    candidate_id: str | None = None
+    validation_id: str | None = None
+    dataset_id: str | None = None
+    data_scope: Mapping[str, Any] = field(default_factory=dict)
+    status: str | None = None
+    summary: Mapping[str, Any] = field(default_factory=dict)
+    artifact_paths: Mapping[str, Any] = field(default_factory=dict)
+    warnings: tuple[ResearchIssue, ...] = ()
+    blockers: tuple[ResearchIssue, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize experiment and run identifiers used to locate persisted backtest artifacts later."""
         return {
+            "artifact_type": self.artifact_type,
             "experiment_id": self.experiment_id,
             "experiment_run_id": self.experiment_run_id,
             "run_id": self.run_id,
             "artifact_dir": self.artifact_dir,
+            "candidate_id": self.candidate_id,
+            "validation_id": self.validation_id,
+            "dataset_id": self.dataset_id,
+            "data_scope": dict(self.data_scope),
+            "status": self.status,
+            "summary": dict(self.summary),
+            "artifact_paths": dict(self.artifact_paths),
+            "warnings": [issue.to_dict() for issue in self.warnings],
+            "blockers": [issue.to_dict() for issue in self.blockers],
         }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "BacktestRunRef":
+        """Parse a persisted backtest run reference."""
+        return cls(
+            experiment_id=str(payload.get("experiment_id") or ""),
+            experiment_run_id=str(payload.get("experiment_run_id") or ""),
+            run_id=str(payload.get("run_id") or ""),
+            artifact_dir=str(payload["artifact_dir"]) if payload.get("artifact_dir") is not None else None,
+            artifact_type=str(payload.get("artifact_type") or BACKTEST_RUN_REF),
+            candidate_id=str(payload["candidate_id"]) if payload.get("candidate_id") is not None else None,
+            validation_id=str(payload["validation_id"]) if payload.get("validation_id") is not None else None,
+            dataset_id=str(payload["dataset_id"]) if payload.get("dataset_id") is not None else None,
+            data_scope=_mapping(payload.get("data_scope")),
+            status=str(payload["status"]) if payload.get("status") is not None else None,
+            summary=_mapping(payload.get("summary")),
+            artifact_paths=_mapping(payload.get("artifact_paths")),
+            warnings=tuple(ResearchIssue.from_dict(item) for item in _mapping_sequence(payload.get("warnings"))),
+            blockers=tuple(ResearchIssue.from_dict(item) for item in _mapping_sequence(payload.get("blockers"))),
+        )
 
 
 @dataclass(frozen=True)

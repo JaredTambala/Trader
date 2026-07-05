@@ -8,14 +8,37 @@ dynamic imports or arbitrary executable strategy code at discovery time.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
+import math
+from pathlib import Path
+import textwrap
 from typing import Any, Mapping, Sequence
 
-from .contracts import SideEffect, ToolEnvelope, error_envelope, success_envelope
+from .contracts import ArtifactReference, SideEffect, ToolEnvelope, error_envelope, success_envelope, write_json_artifact
+from .domain import (
+    METHOD_PACKAGE_MANIFEST,
+    STRATEGY_CANDIDATE,
+    STRATEGY_IMPLEMENTATION,
+    ResearchIssue,
+    StrategyCandidateArtifactLink,
+    StrategyCandidateManifest,
+    StrategyCandidateRiskAssumption,
+    StrategyCandidateSizing,
+    StrategyCandidateSourceRef,
+    stable_research_id,
+)
+from .method_implementations.io import file_sha256
+from .method_implementations.manifest import SIGNAL_RUNTIME_CONTRACT
+from .method_packages import MethodPackageManifest, method_package_path
 
 
 RESEARCH_LIST_STRATEGY_TEMPLATES = "research_list_strategy_templates"
-METHOD_PACKAGE_MANIFEST = "method_package_manifest"
+RESEARCH_CREATE_STRATEGY_CANDIDATE = "research_create_strategy_candidate"
 SUPPORTED_STRATEGY_FAMILIES = ("trend_following", "mean_reversion", "bollinger_band")
+STRATEGY_RUNTIME_CONTRACT = "trader.strategies.Strategy"
+FORBIDDEN_EXECUTION_TRUE_FLAGS = frozenset(
+    {"arbitrary_strategy_code_allowed", "broker_mutation_allowed", "live_trading_allowed"}
+)
 
 
 @dataclass(frozen=True)
@@ -78,7 +101,8 @@ class StrategyTemplate:
         exit_semantics: Declarative exit behavior for candidate manifests.
         sizing: Sizing assumptions exposed by the template.
         risk_assumptions: Risk and execution assumptions for v1 candidates.
-        data_requirements: Declarative market-data requirements.
+        backtest_context_requirements: Declarative context that later backtest
+            tooling must supply when binding the strategy to market data.
         constraints: Additional validation hints for later candidate tools.
     """
 
@@ -94,7 +118,7 @@ class StrategyTemplate:
     exit_semantics: Mapping[str, Any]
     sizing: Mapping[str, Any]
     risk_assumptions: Mapping[str, Any]
-    data_requirements: Mapping[str, Any]
+    backtest_context_requirements: Mapping[str, Any]
     constraints: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -124,9 +148,18 @@ class StrategyTemplate:
             "exit_semantics": _jsonable(self.exit_semantics),
             "sizing": _jsonable(self.sizing),
             "risk_assumptions": _jsonable(self.risk_assumptions),
-            "data_requirements": _jsonable(self.data_requirements),
+            "backtest_context_requirements": _jsonable(self.backtest_context_requirements),
             "constraints": _jsonable(self.constraints),
         }
+
+
+@dataclass(frozen=True)
+class _ResolvedMethodPackage:
+    """Validated package reference attached to one template role."""
+
+    role: str
+    manifest: MethodPackageManifest
+    path: Path | None = None
 
 
 def list_strategy_templates(*, families: Sequence[str] | None = None) -> ToolEnvelope:
@@ -161,6 +194,150 @@ def list_strategy_templates(*, families: Sequence[str] | None = None) -> ToolEnv
             "supported_strategy_families": list(SUPPORTED_STRATEGY_FAMILIES),
         },
     )
+
+
+def create_strategy_candidate(
+    *,
+    artifact_root: str | Path,
+    template_family: str,
+    method_package_refs: Sequence[Mapping[str, Any]],
+    parameters: Mapping[str, Any] | None = None,
+    sizing: Mapping[str, Any] | None = None,
+    risk_assumptions: Mapping[str, Any] | None = None,
+    execution_assumptions: Mapping[str, Any] | None = None,
+) -> ToolEnvelope:
+    """Build and persist one bounded source-backed strategy candidate.
+
+    Args:
+        artifact_root: Root directory for local research artifacts.
+        template_family: Maintained template family from the catalog.
+        method_package_refs: Role-bound refs to validated `method_package_manifest`
+            artifacts. Each ref must include `role` plus exactly one of
+            `package_id`, `path`, or `package_manifest`.
+        parameters: Optional scalar template parameter overrides.
+        sizing: Optional fixed-quantity sizing assumptions.
+        risk_assumptions: Optional JSON-safe risk assumption overrides.
+        execution_assumptions: Optional execution-boundary assumptions.
+
+    Returns:
+        Standard local-mutating envelope. Invalid inputs fail closed without
+        writing a candidate artifact.
+    """
+    try:
+        template = get_strategy_template(template_family)
+    except ValueError as exc:
+        return error_envelope(
+            command=RESEARCH_CREATE_STRATEGY_CANDIDATE,
+            side_effect=SideEffect.LOCAL_MUTATING,
+            code="unsupported_strategy_template",
+            message=str(exc),
+            data={"supported_strategy_families": list(SUPPORTED_STRATEGY_FAMILIES)},
+        )
+
+    blockers: list[str] = []
+    warnings: list[str] = []
+    resolved_packages = _resolve_method_package_refs(
+        artifact_root=artifact_root,
+        refs=method_package_refs,
+        blockers=blockers,
+    )
+    ordered_packages = _validate_method_package_roles(template, resolved_packages, blockers)
+
+    sizing_target_override = _sizing_target_override(parameters, sizing, blockers)
+    normalized_parameters = _normalize_candidate_parameters(
+        template=template,
+        parameters=parameters,
+        target_qty_override=sizing_target_override,
+        blockers=blockers,
+    )
+    normalized_sizing = _normalize_sizing(
+        sizing=sizing,
+        target_qty_when_long=normalized_parameters.get("target_qty_when_long"),
+        blockers=blockers,
+    )
+    normalized_risk_assumptions = _normalize_risk_assumptions(
+        template=template,
+        risk_assumptions=risk_assumptions,
+        blockers=blockers,
+    )
+    normalized_execution_assumptions = _normalize_execution_assumptions(
+        template=template,
+        execution_assumptions=execution_assumptions,
+        blockers=blockers,
+    )
+
+    if blockers:
+        return _strategy_candidate_error(blockers=blockers, warnings=warnings, template=template)
+
+    method_package_links = tuple(_method_package_link(item) for item in ordered_packages)
+    signal_refs = tuple(
+        _signal_ref(item) for item in ordered_packages if item.manifest.runtime_contract == SIGNAL_RUNTIME_CONTRACT
+    )
+    candidate_id = _candidate_id(
+        template=template,
+        method_packages=ordered_packages,
+        parameters=normalized_parameters,
+        sizing=normalized_sizing,
+        risk_assumptions=normalized_risk_assumptions,
+        execution_assumptions=normalized_execution_assumptions,
+    )
+    strategy_source = _write_strategy_source(
+        artifact_root=artifact_root,
+        candidate_id=candidate_id,
+        template=template,
+        parameters=normalized_parameters,
+        sizing=normalized_sizing,
+        method_package_refs=method_package_links,
+    )
+    manifest = StrategyCandidateManifest(
+        candidate_id=candidate_id,
+        template_family=template.template_family,
+        method_package_refs=method_package_links,
+        signal_refs=signal_refs,
+        strategy_source=strategy_source,
+        parameters=normalized_parameters,
+        entry_semantics=template.entry_semantics,
+        exit_semantics=template.exit_semantics,
+        sizing=normalized_sizing,
+        risk_assumptions=normalized_risk_assumptions,
+        execution_assumptions=normalized_execution_assumptions,
+        warnings=tuple(ResearchIssue(code="strategy_candidate_warning", message=message) for message in warnings),
+    )
+    manifest_path = write_json_artifact(manifest.to_dict(), strategy_candidate_path(artifact_root, manifest.candidate_id))
+    return success_envelope(
+        command=RESEARCH_CREATE_STRATEGY_CANDIDATE,
+        side_effect=SideEffect.LOCAL_MUTATING,
+        data={"strategy_candidate_manifest": manifest.to_dict()},
+        artifacts={
+            "strategy_candidate": ArtifactReference(
+                artifact_type=STRATEGY_CANDIDATE,
+                path=manifest_path,
+                metadata={"id": manifest.candidate_id},
+            ).to_dict(),
+            "strategy_source": ArtifactReference(
+                artifact_type=STRATEGY_IMPLEMENTATION,
+                path=strategy_source.path,
+                metadata={
+                    "class_name": strategy_source.class_name,
+                    "factory_name": strategy_source.factory_name,
+                    "id": strategy_source.artifact_id,
+                    "runtime_contract": strategy_source.runtime_contract,
+                    "sha256": strategy_source.source_hash,
+                },
+            ).to_dict()
+        },
+        warnings=tuple(warnings),
+    )
+
+
+def strategy_candidate_path(artifact_root: str | Path, candidate_id: str) -> Path:
+    """Return the deterministic local path for one strategy candidate manifest."""
+    return Path(artifact_root) / "strategy_candidates" / "manifests" / f"{candidate_id}.json"
+
+
+def strategy_candidate_source_path(artifact_root: str | Path, candidate_id: str) -> Path:
+    """Return the deterministic local source path for one generated strategy module."""
+    return Path(artifact_root) / "strategy_candidates" / "source" / f"{candidate_id}.py"
 
 
 def get_strategy_template(family: str) -> StrategyTemplate:
@@ -210,29 +387,685 @@ def _normalize_requested_families(families: Sequence[str] | None) -> tuple[str, 
     return tuple(normalized)
 
 
+def _resolve_method_package_refs(
+    *,
+    artifact_root: str | Path,
+    refs: Sequence[Mapping[str, Any]],
+    blockers: list[str],
+) -> tuple[_ResolvedMethodPackage, ...]:
+    if isinstance(refs, Mapping) or isinstance(refs, (str, bytes)):
+        blockers.append("method_package_refs must be a sequence of role-bound refs")
+        return ()
+    if not refs:
+        blockers.append("method_package_refs are required")
+        return ()
+
+    resolved: list[_ResolvedMethodPackage] = []
+    for index, ref in enumerate(refs):
+        if not isinstance(ref, Mapping):
+            blockers.append(f"method_package_refs[{index}] must be a mapping")
+            continue
+        role = str(ref.get("role") or "").strip()
+        if not role:
+            blockers.append(f"method_package_refs[{index}].role is required")
+            continue
+        source_keys = [key for key in ("package_id", "path", "package_manifest") if ref.get(key) is not None]
+        if len(source_keys) != 1:
+            blockers.append(
+                f"method_package_refs[{index}] must provide exactly one of package_id, path, or package_manifest"
+            )
+            continue
+        try:
+            package, package_path = _load_method_package_ref(artifact_root=artifact_root, ref=ref)
+        except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
+            blockers.append(f"method_package_refs[{index}] could not be resolved: {exc}")
+            continue
+        resolved.append(_ResolvedMethodPackage(role=role, manifest=package, path=package_path))
+    return tuple(resolved)
+
+
+def _load_method_package_ref(
+    *,
+    artifact_root: str | Path,
+    ref: Mapping[str, Any],
+) -> tuple[MethodPackageManifest, Path | None]:
+    if ref.get("package_manifest") is not None:
+        payload = ref["package_manifest"]
+        if not isinstance(payload, Mapping):
+            raise ValueError("package_manifest must be a mapping")
+        return _method_package_from_payload(payload), None
+
+    if ref.get("package_id") is not None:
+        package_id = str(ref.get("package_id") or "").strip()
+        if not package_id:
+            raise ValueError("package_id is required")
+        path = method_package_path(artifact_root, package_id)
+        return _method_package_from_path(path), path
+
+    path_value = str(ref.get("path") or "").strip()
+    if not path_value:
+        raise ValueError("path is required")
+    path = Path(path_value)
+    return _method_package_from_path(path), path
+
+
+def _method_package_from_path(path: Path) -> MethodPackageManifest:
+    if not path.exists():
+        raise FileNotFoundError(f"method package manifest not found: {path}")
+    return _method_package_from_payload(json.loads(path.read_text(encoding="utf-8")))
+
+
+def _method_package_from_payload(payload: Mapping[str, Any]) -> MethodPackageManifest:
+    artifact_type = str(payload.get("artifact_type") or "")
+    if artifact_type == "method_implementation_manifest":
+        raise ValueError("raw method_implementation_manifest inputs are not accepted; provide method_package_manifest")
+    return MethodPackageManifest.from_dict(payload)
+
+
+def _validate_method_package_roles(
+    template: StrategyTemplate,
+    resolved_packages: Sequence[_ResolvedMethodPackage],
+    blockers: list[str],
+) -> tuple[_ResolvedMethodPackage, ...]:
+    required_by_role = {str(item.get("role") or ""): item for item in template.required_artifact_roles}
+    required_roles = tuple(role for role in required_by_role if role)
+    packages_by_role: dict[str, _ResolvedMethodPackage] = {}
+    for item in resolved_packages:
+        if item.role not in required_by_role:
+            blockers.append(f"unknown method package role for {template.template_family}: {item.role}")
+            continue
+        if item.role in packages_by_role:
+            blockers.append(f"duplicate method package role: {item.role}")
+            continue
+        packages_by_role[item.role] = item
+        blockers.extend(_method_package_blockers(item, required_by_role[item.role]))
+
+    for role in required_roles:
+        if role not in packages_by_role:
+            blockers.append(f"missing required method package role: {role}")
+    return tuple(packages_by_role[role] for role in required_roles if role in packages_by_role)
+
+
+def _method_package_blockers(
+    resolved_package: _ResolvedMethodPackage,
+    required_role: Mapping[str, Any],
+) -> list[str]:
+    package = resolved_package.manifest
+    role = resolved_package.role
+    blockers: list[str] = []
+    if package.artifact_type != METHOD_PACKAGE_MANIFEST:
+        blockers.append(f"{role} must reference artifact_type={METHOD_PACKAGE_MANIFEST}")
+    if package.status != "validated":
+        blockers.append(f"{role} package must have status=validated")
+    if package.blockers:
+        blockers.append(f"{role} package blockers must be empty")
+    if not package.method_card_ids:
+        blockers.append(f"{role} package must include approved method-card refs")
+    expected_contract = str(required_role.get("runtime_contract") or "")
+    if package.runtime_contract != expected_contract:
+        blockers.append(f"{role} package runtime_contract must be {expected_contract}")
+    if expected_contract != SIGNAL_RUNTIME_CONTRACT:
+        blockers.append(f"{role} requires unsupported v1 runtime_contract: {expected_contract}")
+    if not package.package_id:
+        blockers.append(f"{role} package_id is required")
+    if not package.method_id:
+        blockers.append(f"{role} method_id is required")
+    if not package.source_hash:
+        blockers.append(f"{role} source_hash is required")
+    return blockers
+
+
+def _sizing_target_override(
+    parameters: Mapping[str, Any] | None,
+    sizing: Mapping[str, Any] | None,
+    blockers: list[str],
+) -> float | None:
+    parameter_target = None
+    sizing_target = None
+    if isinstance(parameters, Mapping) and "target_qty_when_long" in parameters:
+        parameter_target = _coerce_number_or_block(
+            parameters["target_qty_when_long"],
+            field_name="parameters.target_qty_when_long",
+            blockers=blockers,
+        )
+    if isinstance(sizing, Mapping) and "target_qty_when_long" in sizing:
+        sizing_target = _coerce_number_or_block(
+            sizing["target_qty_when_long"],
+            field_name="sizing.target_qty_when_long",
+            blockers=blockers,
+        )
+    if parameter_target is not None and sizing_target is not None and parameter_target != sizing_target:
+        blockers.append("target_qty_when_long cannot conflict between parameters and sizing")
+    return sizing_target
+
+
+def _normalize_candidate_parameters(
+    *,
+    template: StrategyTemplate,
+    parameters: Mapping[str, Any] | None,
+    target_qty_override: float | None,
+    blockers: list[str],
+) -> dict[str, Any]:
+    raw_parameters = _optional_mapping(parameters, "parameters", blockers)
+    parameter_by_name = {parameter.name: parameter for parameter in template.parameters}
+    normalized: dict[str, Any] = {}
+
+    for name in sorted(set(raw_parameters).difference(parameter_by_name)):
+        blockers.append(f"unknown strategy template parameter: {name}")
+    for name, value in raw_parameters.items():
+        if isinstance(value, Mapping) or (
+            isinstance(value, Sequence) and not isinstance(value, (str, bytes))
+        ):
+            blockers.append(f"{name} must be a single scalar value, not a parameter grid")
+
+    for parameter in template.parameters:
+        value = _candidate_parameter_value(
+            parameter=parameter,
+            raw_parameters=raw_parameters,
+            target_qty_override=target_qty_override,
+            blockers=blockers,
+        )
+        if value is not None or parameter.required:
+            normalized[parameter.name] = value
+
+    _validate_parameter_constraints(template, normalized, blockers)
+    return normalized
+
+
+def _candidate_parameter_value(
+    *,
+    parameter: StrategyTemplateParameter,
+    raw_parameters: Mapping[str, Any],
+    target_qty_override: float | None,
+    blockers: list[str],
+) -> Any:
+    if parameter.name == "target_qty_when_long" and target_qty_override is not None:
+        return target_qty_override
+    if parameter.name in raw_parameters:
+        return _coerce_parameter_value(parameter, raw_parameters[parameter.name], blockers)
+    if parameter.default is not None:
+        return parameter.default
+    if parameter.required:
+        blockers.append(f"required strategy template parameter is missing: {parameter.name}")
+    return None
+
+
+def _coerce_parameter_value(
+    parameter: StrategyTemplateParameter,
+    value: Any,
+    blockers: list[str],
+) -> Any:
+    if parameter.value_type == "integer":
+        return _coerce_integer_or_block(value, field_name=f"parameters.{parameter.name}", blockers=blockers)
+    if parameter.value_type == "number":
+        return _coerce_number_or_block(value, field_name=f"parameters.{parameter.name}", blockers=blockers)
+    if parameter.value_type == "string":
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        blockers.append(f"parameters.{parameter.name} must be a non-empty string")
+        return None
+    if parameter.value_type == "array[string]":
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            values = [str(item).strip() for item in value if str(item).strip()]
+            if values:
+                return values
+        blockers.append(f"parameters.{parameter.name} must be a non-empty string array")
+        return None
+    return _jsonable(value)
+
+
+def _validate_parameter_constraints(
+    template: StrategyTemplate,
+    parameters: Mapping[str, Any],
+    blockers: list[str],
+) -> None:
+    for parameter in template.parameters:
+        value = parameters.get(parameter.name)
+        constraints = parameter.constraints
+        if "allowed_values" in constraints and value not in constraints["allowed_values"]:
+            blockers.append(f"{parameter.name} must be one of {constraints['allowed_values']}")
+        if "min_items" in constraints and isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            if len(value) < int(constraints["min_items"]):
+                blockers.append(f"{parameter.name} must contain at least {constraints['min_items']} items")
+        if "max_items" in constraints and isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            if len(value) > int(constraints["max_items"]):
+                blockers.append(f"{parameter.name} must contain at most {constraints['max_items']} items")
+        numeric_value = _numeric_value(value)
+        if "minimum" in constraints and numeric_value is not None:
+            if numeric_value < float(constraints["minimum"]):
+                blockers.append(f"{parameter.name} must be >= {constraints['minimum']}")
+        if "maximum" in constraints and numeric_value is not None:
+            if numeric_value > float(constraints["maximum"]):
+                blockers.append(f"{parameter.name} must be <= {constraints['maximum']}")
+        if "must_exceed" in constraints:
+            other_name = str(constraints["must_exceed"])
+            other_value = _numeric_value(parameters.get(other_name))
+            if numeric_value is not None and other_value is not None:
+                if numeric_value <= other_value:
+                    blockers.append(f"{parameter.name} must exceed {other_name}")
+
+
+def _normalize_sizing(
+    *,
+    sizing: Mapping[str, Any] | None,
+    target_qty_when_long: Any,
+    blockers: list[str],
+) -> StrategyCandidateSizing:
+    raw_sizing = _optional_mapping(sizing, "sizing", blockers)
+    model = str(raw_sizing.get("model") or "fixed_quantity")
+    if model != "fixed_quantity":
+        blockers.append("v1 strategy candidates require sizing.model=fixed_quantity")
+    target_qty = _coerce_number_or_block(
+        raw_sizing.get("target_qty_when_long", target_qty_when_long),
+        field_name="sizing.target_qty_when_long",
+        blockers=blockers,
+    )
+    max_position_qty = None
+    if raw_sizing.get("max_position_qty") is not None:
+        max_position_qty = _coerce_number_or_block(
+            raw_sizing["max_position_qty"],
+            field_name="sizing.max_position_qty",
+            blockers=blockers,
+        )
+    metadata = _optional_mapping(raw_sizing.get("metadata"), "sizing.metadata", blockers)
+    try:
+        return StrategyCandidateSizing(
+            model=model,
+            target_qty_when_long=target_qty if target_qty is not None else 1.0,
+            max_position_qty=max_position_qty,
+            metadata=metadata,
+        )
+    except ValueError as exc:
+        blockers.append(str(exc))
+        return StrategyCandidateSizing()
+
+
+def _normalize_risk_assumptions(
+    *,
+    template: StrategyTemplate,
+    risk_assumptions: Mapping[str, Any] | None,
+    blockers: list[str],
+) -> tuple[StrategyCandidateRiskAssumption, ...]:
+    raw_assumptions = _optional_mapping(risk_assumptions, "risk_assumptions", blockers)
+    merged = dict(template.risk_assumptions)
+    merged.update(raw_assumptions)
+    return tuple(
+        StrategyCandidateRiskAssumption(name=name, value=_jsonable(merged[name]))
+        for name in sorted(merged)
+    )
+
+
+def _normalize_execution_assumptions(
+    *,
+    template: StrategyTemplate,
+    execution_assumptions: Mapping[str, Any] | None,
+    blockers: list[str],
+) -> dict[str, Any]:
+    raw_assumptions = _optional_mapping(execution_assumptions, "execution_assumptions", blockers)
+    normalized = {
+        "arbitrary_strategy_code_allowed": False,
+        "backtest_execution": "deferred",
+        "broker_mutation_allowed": False,
+        "dynamic_stop_policy_configuration": False,
+        "live_trading_allowed": False,
+        "order_type": template.entry_semantics.get("order_type", "market"),
+        "position_model": template.entry_semantics.get("position_model", "long_flat"),
+        "runtime_instantiation": "deferred_to_strategy_candidate_validation",
+    }
+    normalized.update(raw_assumptions)
+    if normalized.get("order_type") != "market":
+        blockers.append("v1 strategy candidates require execution_assumptions.order_type=market")
+    for flag in sorted(FORBIDDEN_EXECUTION_TRUE_FLAGS):
+        if _truthy(normalized.get(flag)):
+            blockers.append(f"execution_assumptions.{flag} must remain false")
+    if _truthy(normalized.get("dynamic_stop_policy_configuration")):
+        blockers.append("execution_assumptions.dynamic_stop_policy_configuration must remain false")
+    return dict(_jsonable(normalized))
+
+
+def _candidate_id(
+    *,
+    template: StrategyTemplate,
+    method_packages: Sequence[_ResolvedMethodPackage],
+    parameters: Mapping[str, Any],
+    sizing: StrategyCandidateSizing,
+    risk_assumptions: Sequence[StrategyCandidateRiskAssumption],
+    execution_assumptions: Mapping[str, Any],
+) -> str:
+    return stable_research_id(
+        "strategy_candidate",
+        {
+            "execution_assumptions": execution_assumptions,
+            "method_packages": [
+                {
+                    "package_id": item.manifest.package_id,
+                    "role": item.role,
+                    "source_hash": item.manifest.source_hash,
+                }
+                for item in method_packages
+            ],
+            "parameters": parameters,
+            "risk_assumptions": [item.to_dict() for item in risk_assumptions],
+            "sizing": sizing.to_dict(),
+            "template_family": template.template_family,
+        },
+    )
+
+
+def _method_package_link(resolved_package: _ResolvedMethodPackage) -> StrategyCandidateArtifactLink:
+    package = resolved_package.manifest
+    return StrategyCandidateArtifactLink(
+        artifact_id=package.package_id,
+        artifact_type=METHOD_PACKAGE_MANIFEST,
+        role=resolved_package.role,
+        path=str(resolved_package.path) if resolved_package.path is not None else None,
+        agent_owner="Quantitative Methods Agent",
+        status=package.status,
+        metadata={
+            "entrypoint": package.entrypoint,
+            "implementation_id": package.implementation_id,
+            "method_id": package.method_id,
+            "package_id": package.package_id,
+            "runtime_contract": package.runtime_contract,
+            "source_hash": package.source_hash,
+            "validation_report_ref": package.validation_report_ref,
+        },
+    )
+
+
+def _signal_ref(resolved_package: _ResolvedMethodPackage) -> StrategyCandidateArtifactLink:
+    package = resolved_package.manifest
+    validation_ref = package.validation_report_ref
+    return StrategyCandidateArtifactLink(
+        artifact_id=str(validation_ref.get("validation_id") or package.implementation_id),
+        artifact_type=str(validation_ref.get("artifact_type") or "signal_implementation_validation_report"),
+        role=resolved_package.role,
+        path=str(validation_ref.get("path")) if validation_ref.get("path") is not None else None,
+        agent_owner="Quantitative Methods Agent",
+        status=str(validation_ref.get("status") or "passed"),
+        metadata={
+            "implementation_id": package.implementation_id,
+            "method_id": package.method_id,
+            "package_id": package.package_id,
+            "runtime_contract": package.runtime_contract,
+            "source_hash": package.source_hash,
+        },
+    )
+
+
+def _write_strategy_source(
+    *,
+    artifact_root: str | Path,
+    candidate_id: str,
+    template: StrategyTemplate,
+    parameters: Mapping[str, Any],
+    sizing: StrategyCandidateSizing,
+    method_package_refs: Sequence[StrategyCandidateArtifactLink],
+) -> StrategyCandidateSourceRef:
+    source_path = strategy_candidate_source_path(artifact_root, candidate_id)
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    class_name = _strategy_class_name(template.template_family)
+    source_path.write_text(
+        _render_strategy_source(
+            candidate_id=candidate_id,
+            class_name=class_name,
+            template=template,
+            parameters=parameters,
+            sizing=sizing,
+        ),
+        encoding="utf-8",
+    )
+    source_hash = file_sha256(source_path)
+    return StrategyCandidateSourceRef(
+        artifact_id=candidate_id,
+        path=str(source_path),
+        source_hash=source_hash,
+        class_name=class_name,
+        metadata={
+            "candidate_id": candidate_id,
+            "method_package_refs": [item.to_dict() for item in method_package_refs],
+            "runtime_builder_path": template.runtime_builder_path,
+            "template_family": template.template_family,
+        },
+    )
+
+
+def _render_strategy_source(
+    *,
+    candidate_id: str,
+    class_name: str,
+    template: StrategyTemplate,
+    parameters: Mapping[str, Any],
+    sizing: StrategyCandidateSizing,
+) -> str:
+    module_name, function_name = _builder_import_parts(template.runtime_builder_path)
+    parameters_json = json.dumps(_jsonable(parameters), sort_keys=True)
+    strategy_parameters_literal = repr(parameters_json)
+    default_qty = float(sizing.target_qty_when_long)
+    return textwrap.dedent(
+        f'''\
+        """Generated strategy implementation for research candidate {candidate_id}.
+
+        Source reference:
+            Generated by trader_research.strategies.research_create_strategy_candidate.
+
+        Implements:
+            trader.strategies.Strategy via a deterministic wrapper around
+            {template.runtime_builder_path}.
+
+        This module is a local research artifact. It binds strategy logic and
+        strategy parameters only; symbols, asset class, timeframe, and date
+        ranges are supplied by validation or backtest tooling.
+        """
+
+        from __future__ import annotations
+
+        from datetime import datetime
+        import json
+        from typing import Mapping, Sequence
+
+        from trader.event_store import EventStore
+        from trader.portfolio import Portfolio
+        from trader.strategies import Strategy
+        from trader.strategy_metadata import StrategyInfo, resolve_strategy_info
+        from {module_name} import {function_name} as _build_inner_strategy
+
+
+        CANDIDATE_ID = "{candidate_id}"
+        TEMPLATE_FAMILY = "{template.template_family}"
+        RUNTIME_BUILDER_PATH = "{template.runtime_builder_path}"
+        _STRATEGY_PARAMETERS = json.loads({strategy_parameters_literal})
+        _DEFAULT_TARGET_QTY_WHEN_LONG = {default_qty!r}
+
+
+        class {class_name}(Strategy):
+            """Source-backed strategy candidate implementing the Trader Strategy interface."""
+
+            def __init__(
+                self,
+                *,
+                symbols: Sequence[str],
+                asset_class: str,
+                timeframe: str,
+                target_qty_when_long: float | None = None,
+            ) -> None:
+                runtime_parameters = dict(_STRATEGY_PARAMETERS)
+                runtime_parameters["target_qty_when_long"] = (
+                    _DEFAULT_TARGET_QTY_WHEN_LONG
+                    if target_qty_when_long is None
+                    else float(target_qty_when_long)
+                )
+                self._inner = _build_inner_strategy(
+                    symbols=symbols,
+                    asset_class=asset_class,
+                    timeframe=timeframe,
+                    **runtime_parameters,
+                )
+
+            @property
+            def strategy_id(self) -> str:
+                """Return the stable strategy candidate identifier."""
+                return CANDIDATE_ID
+
+            @property
+            def strategy_info(self) -> StrategyInfo:
+                """Return strategy metadata with candidate-level provenance."""
+                inner_info = resolve_strategy_info(self._inner, fallback_id=TEMPLATE_FAMILY)
+                parameters = dict(inner_info.parameters)
+                parameters.update(_STRATEGY_PARAMETERS)
+                parameters["candidate_id"] = CANDIDATE_ID
+                parameters["runtime_builder_path"] = RUNTIME_BUILDER_PATH
+                return StrategyInfo(
+                    strategy_id=CANDIDATE_ID,
+                    name=TEMPLATE_FAMILY,
+                    version="1",
+                    description="Generated source-backed research strategy candidate.",
+                    parameters=parameters,
+                    author="trader_research",
+                    source=f"{{self.__class__.__module__}}.{{self.__class__.__qualname__}}",
+                )
+
+            def generate_orders(
+                self,
+                *,
+                run_id: str,
+                cycle_id: str,
+                decision_ts: datetime,
+                event_store: EventStore,
+                portfolio: Portfolio,
+            ) -> Sequence[Mapping[str, object]]:
+                """Delegate order generation to the maintained inner strategy."""
+                return self._inner.generate_orders(
+                    run_id=run_id,
+                    cycle_id=cycle_id,
+                    decision_ts=decision_ts,
+                    event_store=event_store,
+                    portfolio=portfolio,
+                )
+
+            def generate_orders_for_symbol(
+                self,
+                symbol: str,
+                *,
+                run_id: str,
+                cycle_id: str,
+                decision_ts: datetime,
+                event_store: EventStore,
+                portfolio: Portfolio,
+            ) -> Sequence[Mapping[str, object]]:
+                """Delegate per-symbol order generation to the maintained inner strategy."""
+                return self._inner.generate_orders_for_symbol(
+                    symbol,
+                    run_id=run_id,
+                    cycle_id=cycle_id,
+                    decision_ts=decision_ts,
+                    event_store=event_store,
+                    portfolio=portfolio,
+                )
+
+
+        def build_strategy(
+            *,
+            symbols: Sequence[str],
+            asset_class: str,
+            timeframe: str,
+            target_qty_when_long: float | None = None,
+        ) -> Strategy:
+            """Instantiate the generated strategy candidate for a concrete data context."""
+            return {class_name}(
+                symbols=symbols,
+                asset_class=asset_class,
+                timeframe=timeframe,
+                target_qty_when_long=target_qty_when_long,
+            )
+        '''
+    )
+
+
+def _builder_import_parts(runtime_builder_path: str) -> tuple[str, str]:
+    if ":" not in runtime_builder_path:
+        raise ValueError(f"runtime_builder_path must use module:function syntax: {runtime_builder_path}")
+    module_name, function_name = runtime_builder_path.split(":", 1)
+    if not module_name or not function_name:
+        raise ValueError(f"runtime_builder_path must use module:function syntax: {runtime_builder_path}")
+    return module_name, function_name
+
+
+def _strategy_class_name(template_family: str) -> str:
+    return f"{_pascal_case(template_family)}ResearchStrategy"
+
+
+def _pascal_case(value: str) -> str:
+    parts = [part for part in value.replace("-", "_").split("_") if part]
+    return "".join(part[:1].upper() + part[1:] for part in parts) or "Generated"
+
+
+def _strategy_candidate_error(
+    *,
+    blockers: Sequence[str],
+    warnings: Sequence[str],
+    template: StrategyTemplate,
+) -> ToolEnvelope:
+    return error_envelope(
+        command=RESEARCH_CREATE_STRATEGY_CANDIDATE,
+        side_effect=SideEffect.LOCAL_MUTATING,
+        code="invalid_strategy_candidate",
+        message="Strategy candidate construction failed",
+        data={
+            "blockers": list(blockers),
+            "required_artifact_roles": _jsonable(template.required_artifact_roles),
+            "supported_strategy_families": list(SUPPORTED_STRATEGY_FAMILIES),
+            "template_family": template.template_family,
+            "warnings": list(warnings),
+        },
+    )
+
+
+def _optional_mapping(value: Mapping[str, Any] | Any, field_name: str, blockers: list[str]) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, Mapping):
+        return dict(value)
+    blockers.append(f"{field_name} must be a mapping")
+    return {}
+
+
+def _coerce_integer_or_block(value: Any, *, field_name: str, blockers: list[str]) -> int | None:
+    number = _coerce_number_or_block(value, field_name=field_name, blockers=blockers)
+    if number is None:
+        return None
+    if not float(number).is_integer():
+        blockers.append(f"{field_name} must be an integer")
+        return None
+    return int(number)
+
+
+def _coerce_number_or_block(value: Any, *, field_name: str, blockers: list[str]) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        blockers.append(f"{field_name} must be numeric")
+        return None
+    number = float(value)
+    if not math.isfinite(number):
+        blockers.append(f"{field_name} must be finite")
+        return None
+    return number
+
+
+def _numeric_value(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y"}
+    return bool(value)
+
+
 def _shared_parameters() -> tuple[StrategyTemplateParameter, ...]:
     return (
-        StrategyTemplateParameter(
-            name="symbols",
-            value_type="array[string]",
-            description="Canonical symbol universe for the strategy candidate.",
-            required=True,
-            constraints={"min_items": 1, "max_items": 20},
-        ),
-        StrategyTemplateParameter(
-            name="asset_class",
-            value_type="string",
-            description="Market-data asset class used to select the bar event table.",
-            required=True,
-            constraints={"allowed_values": ["stocks", "stock", "crypto", "cryptocurrency"]},
-        ),
-        StrategyTemplateParameter(
-            name="timeframe",
-            value_type="string",
-            description="Bar timeframe consumed by the maintained runtime builder.",
-            required=True,
-            constraints={"examples": ["1Min", "5Min", "1Day"]},
-        ),
         StrategyTemplateParameter(
             name="target_qty_when_long",
             value_type="number",
@@ -303,12 +1136,11 @@ def _risk_assumptions() -> dict[str, Any]:
     }
 
 
-def _data_requirements() -> dict[str, Any]:
+def _backtest_context_requirements() -> dict[str, Any]:
     return {
         "market_data": "event_store_bars",
-        "symbols_parameter": "symbols",
-        "asset_class_parameter": "asset_class",
-        "timeframe_parameter": "timeframe",
+        "required_backtest_fields": ["symbols", "asset_class", "timeframe", "start", "end"],
+        "candidate_fields": [],
         "bar_order": "latest_first",
         "warmup": "max_signal_window",
     }
@@ -372,7 +1204,7 @@ TREND_FOLLOWING_TEMPLATE = StrategyTemplate(
     exit_semantics=_exit_semantics(signal_roles=("ema_crossover_signal", "macd_crossover_signal"), require_all=False),
     sizing=_sizing_contract(),
     risk_assumptions=_risk_assumptions(),
-    data_requirements=_data_requirements(),
+    backtest_context_requirements=_backtest_context_requirements(),
     constraints=_template_constraints(),
 )
 
@@ -430,7 +1262,7 @@ MEAN_REVERSION_TEMPLATE = StrategyTemplate(
     exit_semantics=_exit_semantics(signal_roles=("rsi_recovery_signal", "sma_stretch_signal"), require_all=False),
     sizing=_sizing_contract(),
     risk_assumptions=_risk_assumptions(),
-    data_requirements=_data_requirements(),
+    backtest_context_requirements=_backtest_context_requirements(),
     constraints=_template_constraints(),
 )
 
@@ -463,7 +1295,7 @@ BOLLINGER_BAND_TEMPLATE = StrategyTemplate(
     exit_semantics=_exit_semantics(signal_roles=("bollinger_band_signal",), require_all=True),
     sizing=_sizing_contract(),
     risk_assumptions=_risk_assumptions(),
-    data_requirements=_data_requirements(),
+    backtest_context_requirements=_backtest_context_requirements(),
     constraints=_template_constraints(),
 )
 
@@ -473,4 +1305,3 @@ STRATEGY_TEMPLATE_CATALOG = (
     BOLLINGER_BAND_TEMPLATE,
 )
 _TEMPLATE_BY_FAMILY = {template.template_family: template for template in STRATEGY_TEMPLATE_CATALOG}
-

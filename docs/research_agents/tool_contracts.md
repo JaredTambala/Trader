@@ -131,10 +131,11 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | `hypothesis_create_card` | Hypothesis Agent | `hypothesis_card.json` |
 | `research_create_plan` | Quant Research Supervisor Agent | experiment plan |
 | `research_list_strategy_templates` | Quant Research Supervisor Agent | strategy template catalog |
-| `research_create_strategy_candidate` | Quant Research Supervisor Agent | `strategy_candidate_manifest.json` |
+| `research_create_strategy_candidate` | Quant Research Supervisor Agent | `strategy_candidate_manifest.json` and strategy source |
 | `research_validate_strategy_candidate` | Quant Research Supervisor Agent | strategy candidate validation report |
-| `research_run_backtest` | Quant Research Supervisor Agent | backtest artifact bundle |
-| `research_get_backtest_results` | Quant Research Supervisor Agent | result summary |
+| `research_run_backtest` | Quant Research Supervisor Agent | `backtest_run_ref.json` plus backtest artifact bundle |
+| `research_get_backtest_results` | Quant Research Supervisor Agent | result summary and artifact paths |
+| `research_compare_backtest_results` | Quant Research Supervisor Agent | `comparison_report.json` over explicit backtest refs |
 | `evaluation_generate_performance_report` | Evaluation Agent | first practical `evaluation_report.json` from backtest/data-quality artifacts |
 | `evaluation_generate_report` | Evaluation Agent | later skeptical critique report |
 | `adversarial_run_robustness` | Adversarial Agent | `robustness_report.json` |
@@ -168,10 +169,12 @@ failed, blocked, mismatched, or the wrong report type. C++ refs are optimization
 uncompiled, mismatched, or otherwise invalid C++ refs produce warnings and are excluded without blocking a valid Python
 package.
 
-## Strategy Candidate Catalog
+## Strategy Candidate Catalog And Builder
 
 Task 25 implements the deterministic `trader_research.strategies.list_strategy_templates` service for the
-`research_list_strategy_templates` command. MCP registration remains task 27.
+`research_list_strategy_templates` command. Task 26 implements the deterministic
+`trader_research.strategies.create_strategy_candidate` service for the `research_create_strategy_candidate` command.
+Task 27 registers both tools through MCP and adds `research_validate_strategy_candidate`.
 
 The read-only success payload is:
 
@@ -189,23 +192,206 @@ Each template entry includes:
 - `parameters` with names, JSON value types, required flags, defaults where available, and validation constraints.
 - `required_artifact_types` and `required_artifact_roles`, currently declarative `method_package_manifest` refs for
   validated signal packages.
-- `entry_semantics`, `exit_semantics`, `sizing`, `risk_assumptions`, `data_requirements`, and `constraints`.
+- `entry_semantics`, `exit_semantics`, `sizing`, `risk_assumptions`, `backtest_context_requirements`, and
+  `constraints`.
 
 The public catalog exposes only maintained long/flat strategy families already backed by `trader_standard` builders:
 `trend_following`, `mean_reversion`, and `bollinger_band`. It does not dynamically import arbitrary strategy code,
 expose test helpers such as no-op strategies, or allow broker mutation.
 
+`research_create_strategy_candidate` writes two coupled artifacts:
+
+- `strategy_candidate_manifest.json`, the provenance and validation contract.
+- A deterministic Python strategy source file under
+  `artifact_root / "strategy_candidates" / "source" / f"{candidate_id}.py"`.
+
+The generated Python source is the strategy implementation. It must expose a `build_strategy(...)` factory that returns
+an object implementing `trader.strategies.Strategy`. The source binds the maintained strategy family and strategy
+parameters, while validation or backtest tooling supplies symbols, asset class, and timeframe when instantiating it.
+The generated class name is semantic and template-derived, such as `BollingerBandResearchStrategy`; the opaque
+`candidate_id` remains in `CANDIDATE_ID`, manifest metadata, `strategy_id`, and `strategy_info` rather than being baked
+into the class name.
+
 `strategy_candidate_manifest.json` uses artifact type `strategy_candidate` and records:
 
-- `candidate_id`, `template_family`, `method_package_refs`, `signal_refs`, and template `parameters`.
+- `candidate_id`, `template_family`, `method_package_refs`, `signal_refs`, `strategy_source`, and template
+  `parameters`.
+- `strategy_source` with artifact type `strategy_implementation`, source path, source hash, class name, factory name,
+  runtime contract `trader.strategies.Strategy`, and template/builder provenance.
 - Declarative `entry_semantics` and `exit_semantics`.
 - `sizing` assumptions for fixed-quantity long/flat templates.
 - Named `risk_assumptions`.
-- Bounded `data_requirements`.
+- JSON-safe `execution_assumptions`, including the explicit deferred runtime-instantiation boundary and no-live-trading
+  flags.
 - Structured `warnings` and `blockers`.
 
-Task 23N provides validated `method_package_manifest.json` artifacts for these refs. Strategy candidate creation and
-template-level validation remain later supervisor-owned tasks.
+Strategy candidates deliberately do not record symbols, asset class, timeframe, start, or end. Those fields belong to
+the later backtest or experiment request that binds a validated strategy candidate to a data window.
+
+`research_create_strategy_candidate` is a local-mutating direct service. It accepts:
+
+- `artifact_root`.
+- `template_family`, which must be one of the maintained catalog families.
+- `method_package_refs`, where each item supplies a template `role` plus exactly one of `package_id`, `path`, or inline
+  `package_manifest`.
+- Optional scalar `parameters`, fixed-quantity `sizing`, `risk_assumptions`, and `execution_assumptions`.
+
+Package IDs resolve from `artifact_root / "method_packages" / "manifests" / f"{package_id}.json"`. Successful calls
+write the strategy source file, write
+`artifact_root / "strategy_candidates" / "manifests" / f"{candidate_id}.json"`, and return
+`data["strategy_candidate_manifest"]` plus `strategy_candidate` and `strategy_source` artifact references.
+
+Candidate construction fails closed before writing when:
+
+- The template family is unsupported.
+- Required template roles are missing, duplicated, or unknown.
+- A role does not reference a `method_package_manifest` with `status="validated"`, empty blockers, approved method-card
+  refs, source hash, package ID, method ID, and the required runtime contract.
+- Raw `method_implementation_manifest` inputs are supplied instead of method packages.
+- Parameter grids/lists, unknown parameters, invalid numeric bounds, or `must_exceed` violations are supplied.
+- Symbols, asset class, timeframe, start, or end are supplied as strategy parameters.
+- Fixed-quantity sizing is negative, uses an unsupported sizing model, or conflicts with `target_qty_when_long`.
+- Execution assumptions attempt arbitrary strategy code, broker mutation, live trading, dynamic stop-policy
+  configuration, or non-market orders.
+
+Task 23N provides validated `method_package_manifest.json` artifacts for these refs. Task 26 creates source-backed
+strategy code but does not run backtests, validate executable behavior, or expose MCP tools.
+
+`research_validate_strategy_candidate` is a local-mutating MCP/direct service. It accepts exactly one of:
+
+- `candidate_id`, resolved from `artifact_root / "strategy_candidates" / "manifests" / f"{candidate_id}.json"`.
+- `path` to a `strategy_candidate_manifest.json`.
+- Inline `strategy_candidate_manifest`.
+
+Validation writes `strategy_candidate_validation_report.json` under
+`artifact_root / "strategy_candidates" / "validation_reports" / f"{validation_id}.json"` and returns
+`data["strategy_candidate_validation_report"]`.
+
+The validation report contains `validation_id`, `candidate_id`, `template_family`, `status`, `runtime_builder_path`,
+`runtime_strategy_id`, `strategy_info`, `checks`, `fixture_summary`, `warnings`, `blockers`, and schema version. Passed
+reports have `status="passed"` and no blockers. Resolved candidates that fail validation still persist a failed report
+and return an error envelope containing that report.
+
+Validation proves maintained-template runtime compatibility only. It verifies the strategy source ref, checks the
+current source SHA-256, imports the generated strategy module, calls its `build_strategy(...)` factory with an internal
+synthetic fixture context, runs a deterministic synthetic-bar smoke fixture, and verifies any emitted orders are bounded
+market buy/sell intents for the fixture symbols. It does not dynamically load arbitrary package entrypoints, read market
+data, touch brokers, mutate SQL, run backtests, or clear runtime/risk state. Task 28 owns baseline backtest execution
+after candidate validation passes. Strategy candidates remain data-free; the backtest data scope is supplied only by a
+Data Agent `dataset_manifest`.
+
+## Data-Scoped Baseline Backtests
+
+`research_run_backtest` is a Quant Research Supervisor local-mutating tool and direct service. It runs one baseline
+backtest through the platform `BacktestRunner` with `NoOpRiskManager` and a generated strategy source file from a
+passed strategy-candidate validation report.
+
+Required request inputs:
+
+- Exactly one strategy candidate ref: `candidate_id`, `candidate_path`, or inline `strategy_candidate_manifest`.
+- Exactly one passed validation report ref: `validation_id`, `validation_report_path`, or inline
+  `strategy_candidate_validation_report`.
+- Exactly one Data Agent dataset manifest input: inline `dataset_manifest`, `dataset_manifest_path`, or
+  `dataset_manifest_ref`.
+
+Optional request inputs:
+
+- `data_quality_report` or `data_quality_report_path`; when supplied, it must match the dataset manifest symbols, asset
+  class, timeframe, window, source filter, row counts, and completeness.
+- `assumptions`, `initial_cash`, `initial_positions`, `max_runs`, and `log_cycle_details`.
+
+Loose backtest scope fields are rejected. Do not pass `symbols`, `asset_class`, `timeframe`, `start`, `end`, or
+`source_filter` outside the dataset manifest. The normalized `BacktestDataScope` is derived from `dataset_id`,
+`symbols`, `asset_class`, `timeframe`, `requested_window`/`time_range`, `source_filter`, `total_rows`, and `complete`.
+The v1 runner records `source_filter` in provenance but fails closed when a non-null source filter is supplied because
+the underlying platform bar loader does not yet source-filter replay queries.
+
+The service writes a bundle under `artifact_root / "backtests" / "runs" / run_id /`:
+
+- `backtest_run_ref.json`
+- `result.json`
+- `metrics.json`
+- `provenance.json`
+- `equity_curve.csv`
+- `benchmark_curve.csv`
+- `positions.csv`
+- `trades.csv` when trades exist
+
+Success data contains `backtest_run_ref`, summary metrics, the normalized data scope, and artifact paths. The run ref
+records `candidate_id`, `validation_id`, `dataset_id`, full data scope, status, warnings, blockers, and bundle paths.
+
+`research_get_backtest_results` is read-only. It accepts exactly one of `run_id`, `artifact_dir`, or inline
+`backtest_run_ref`, reads only task-28 bundles, and returns the run ref, summary metrics, data scope, candidate and
+validation refs, warning/blocker summaries, provenance, and artifact paths.
+
+`research_compare_backtest_results` is Quant Research Supervisor local-mutating because it writes
+`comparison_report.json`. It accepts:
+
+- `backtest_runs`: explicit refs only, minimum 2 and maximum 50. Each ref must contain exactly one of `run_id`,
+  `artifact_dir`, or inline `backtest_run_ref`.
+- Optional `ranking_metric`, defaulting to `sharpe`.
+- Optional `sort_order`, either `ascending` or `descending`; omitted values use the metric default.
+
+The comparison service reads only task-28 bundles: `backtest_run_ref.json`, `metrics.json`, and `provenance.json`. It
+does not scan directories, query SQL/event-store experiment tables, run backtests, or recompute metrics from curves or
+trades. Reports are written under
+`artifact_root / "backtests" / "comparisons" / f"{comparison_id}.json"`.
+
+Supported ranking metrics are `sharpe`, `total_return`, `max_drawdown`, `turnover`, `alpha`, `beta`, `fees`,
+`slippage`, `warnings_count`, `trade_count`, `failed_runs`, and `total_runs`. Default sort order is descending for
+`sharpe`, `total_return`, `alpha`, `beta`, `trade_count`, and `total_runs`; it is ascending for `max_drawdown`,
+`turnover`, `fees`, `slippage`, `warnings_count`, and `failed_runs`. Runs with missing or non-numeric ranking metrics
+are included but unranked and placed after ranked rows. Fewer than two rankable rows is blocking.
+
+`comparison_report.json` contains `comparison_id`, `artifact_type="comparison_report"`, `status`, `ranking_metric`,
+`sort_order`, `run_count`, `ranked_rows`, `best_run_id`, `comparable_dimensions`, `warnings`, `blockers`, and schema
+version. Ranked rows include run ID, candidate ID, validation ID, dataset ID, run status, summary metrics, data scope,
+artifact paths, warning/blocker counts, ranking metric value, and rank where available.
+
+The service warns, but does not block, when runs differ in dataset ID, symbols, asset class, timeframe, time range,
+source filter, assumptions, candidate ID, or validation ID. It fails closed for too few refs, duplicate run IDs,
+unresolved refs, invalid metric/order, missing `backtest_run_ref.json`, invalid artifact type, or missing metrics.
+
+MCP registration exposes all three backtest-result tools. `research_run_backtest` remains execution-gated by
+`TRADER_MCP_ALLOW_BACKTESTS=true`; disabled environments still list the tool and return `backtests_not_allowed` before
+touching the event store or runtime config. `research_get_backtest_results` is read-only.
+`research_compare_backtest_results` is not gated by `TRADER_MCP_ALLOW_BACKTESTS` because it compares persisted bundles
+only.
+
+## Evaluation Performance Reports
+
+`evaluation_generate_performance_report` is an Evaluation Agent local-mutating tool and direct service. It reads one
+persisted task-28 backtest bundle and writes a descriptive `evaluation_report.json`; it does not run backtests, query
+SQL/event-store tables, create strategies, scan arbitrary directories, or recompute core metrics from raw curves.
+
+Required request input:
+
+- Exactly one backtest ref: `run_id`, `artifact_dir`, or inline `backtest_run_ref`.
+
+Optional request input:
+
+- One data-quality evidence input: inline `data_quality_report`, `data_quality_report_path`, or
+  `data_quality_report_ref`.
+
+The service reads only `backtest_run_ref.json`, `metrics.json`, `result.json`, `provenance.json`, optional `trades.csv`,
+and artifact paths in the resolved bundle. Reports are written under
+`artifact_root / "evaluation" / "performance_reports" / f"{report_id}.json"`.
+
+The report uses `artifact_type="evaluation_report"` and `report_kind="performance_report"`. It contains `report_id`,
+`status`, `run_id`, candidate/validation/dataset refs, normalized data scope, core metrics, trade stats, cost
+assumptions and realized costs, benchmark and relative metrics, data-quality summary, artifact paths, caveats,
+warnings, blockers, and schema version. Core metrics include total return, Sharpe, max drawdown, turnover, trade count,
+hit rate when available, fees, slippage, failed runs, warning count, alpha, beta, tracking error, and information ratio.
+
+Resolved backtest bundles always produce a report. The report has `status="blocked"` when blockers exist and
+`status="passed"` otherwise. Missing or incomplete data-quality evidence, data-quality scope mismatches, failed runs,
+run blockers, and zero-trade backtests are blocking. Missing optional benchmark fields, missing hit-rate/trade stats,
+runtime warnings, and zero fee/slippage assumptions are caveats or warnings. Unresolved refs, corrupt JSON, invalid
+artifact type, missing `metrics.json`, or missing `result.json` fail closed before writing a report.
+
+MCP exposes `evaluation_generate_performance_report` with `agent_owner="Evaluation Agent"` and
+`side_effect="local_mutating"`. It is not gated by `TRADER_MCP_ALLOW_BACKTESTS` because it only reads persisted bundles
+and writes an Evaluation-owned report.
 
 Compatibility aliases may be kept while the older Math Coder naming is retired:
 

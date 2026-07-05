@@ -92,6 +92,27 @@ MATH_COMPILE_KERNEL_TOOL: Final = "math_compile_kernel"
 MATH_PACKAGE_METHOD_ARTIFACT_TOOL: Final = "math_package_method_artifact"
 """Tool name for packaging validated Python method implementations for strategy handoff."""
 
+RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL: Final = "research_list_strategy_templates"
+"""Tool name for listing maintained strategy templates."""
+
+RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL: Final = "research_create_strategy_candidate"
+"""Tool name for creating source-backed strategy candidate manifests."""
+
+RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL: Final = "research_validate_strategy_candidate"
+"""Tool name for validating strategy candidates before backtests."""
+
+RESEARCH_RUN_BACKTEST_TOOL: Final = "research_run_backtest"
+"""Tool name for running a data-scoped baseline research backtest."""
+
+RESEARCH_GET_BACKTEST_RESULTS_TOOL: Final = "research_get_backtest_results"
+"""Tool name for reading a persisted baseline backtest result bundle."""
+
+RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL: Final = "research_compare_backtest_results"
+"""Tool name for comparing persisted baseline backtest result bundles."""
+
+EVALUATION_GENERATE_PERFORMANCE_REPORT_TOOL: Final = "evaluation_generate_performance_report"
+"""Tool name for generating Evaluation-owned backtest performance reports."""
+
 SUPPORT_TOOL_NAMES: Final = (MCP_HEALTH_TOOL, MCP_CONFIG_TOOL)
 """Read-only support tool names exposed by the MCP server."""
 
@@ -132,7 +153,27 @@ MATH_TOOL_NAMES: Final = (
 )
 """Quant Methods math tool names exposed by the MCP server."""
 
-REGISTERED_TOOL_NAMES: Final = (*SUPPORT_TOOL_NAMES, *DATA_TOOL_NAMES, *KNOWLEDGE_TOOL_NAMES, *MATH_TOOL_NAMES)
+RESEARCH_TOOL_NAMES: Final = (
+    RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL,
+    RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
+    RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL,
+    RESEARCH_RUN_BACKTEST_TOOL,
+    RESEARCH_GET_BACKTEST_RESULTS_TOOL,
+    RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL,
+)
+"""Quant Research Supervisor tool names exposed by the MCP server."""
+
+EVALUATION_TOOL_NAMES: Final = (EVALUATION_GENERATE_PERFORMANCE_REPORT_TOOL,)
+"""Evaluation Agent tool names exposed by the MCP server."""
+
+REGISTERED_TOOL_NAMES: Final = (
+    *SUPPORT_TOOL_NAMES,
+    *DATA_TOOL_NAMES,
+    *KNOWLEDGE_TOOL_NAMES,
+    *MATH_TOOL_NAMES,
+    *RESEARCH_TOOL_NAMES,
+    *EVALUATION_TOOL_NAMES,
+)
 """All tool names currently exposed by the MCP server."""
 
 SUPPORT_TOOL_DESCRIPTIONS: Final = {
@@ -178,6 +219,23 @@ MATH_TOOL_DESCRIPTIONS: Final = {
 }
 """Descriptions for Quant Methods method tools exposed by the MCP server."""
 
+RESEARCH_TOOL_DESCRIPTIONS: Final = {
+    RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL: "List maintained strategy templates and candidate parameter schemas.",
+    RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL: "Create a bounded source-backed strategy candidate manifest.",
+    RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL: "Validate a strategy candidate with maintained runtime builders.",
+    RESEARCH_RUN_BACKTEST_TOOL: "Run a baseline backtest over a Data Agent dataset manifest.",
+    RESEARCH_GET_BACKTEST_RESULTS_TOOL: "Read a persisted baseline backtest artifact bundle.",
+    RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL: "Compare persisted baseline backtest bundles and write a comparison report.",
+}
+"""Descriptions for Quant Research Supervisor tools exposed by the MCP server."""
+
+EVALUATION_TOOL_DESCRIPTIONS: Final = {
+    EVALUATION_GENERATE_PERFORMANCE_REPORT_TOOL: (
+        "Generate an Evaluation-owned performance report from a persisted backtest bundle."
+    ),
+}
+"""Descriptions for Evaluation Agent tools exposed by the MCP server."""
+
 CAPABILITY_REGISTRATION_FLAGS: Final = {
     "broker_mutating_tools_registered": False,
     "raw_sql_tools_registered": False,
@@ -185,7 +243,9 @@ CAPABILITY_REGISTRATION_FLAGS: Final = {
     "data_loading_tools_registered": True,
     "knowledge_tools_registered": True,
     "math_method_tools_registered": True,
-    "backtest_tools_registered": False,
+    "strategy_candidate_tools_registered": True,
+    "backtest_tools_registered": True,
+    "evaluation_tools_registered": True,
 }
 """Safety flags for registered and intentionally unregistered tool families."""
 
@@ -194,6 +254,8 @@ UNREGISTERED_CAPABILITY_FLAGS: Final = {
     "raw_sql_tools_registered": False,
     "symbol_discovery_tools_registered": False,
     "data_loading_tools_registered": False,
+    "strategy_candidate_tools_registered": False,
     "backtest_tools_registered": False,
+    "evaluation_tools_registered": False,
 }
 """Historical pre-loading safety flags retained for older tests and docs."""

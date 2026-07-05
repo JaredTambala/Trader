@@ -73,15 +73,17 @@ HYPOTHESIS_AGENT_TOOLS = ("hypothesis_create_card",)
 QUANT_RESEARCH_SUPERVISOR_TOOLS = (
     "research_create_plan",
     "research_list_strategy_templates",
+    "research_create_strategy_candidate",
     "research_validate_strategy_candidate",
     "research_run_backtest",
     "research_get_backtest_results",
+    "research_compare_backtest_results",
     "research_analyze_return_attribution",
     "research_generate_recommendation",
     "research_run_experiment",
 )
 
-EVALUATION_AGENT_TOOLS = ("evaluation_generate_report",)
+EVALUATION_AGENT_TOOLS = ("evaluation_generate_performance_report", "evaluation_generate_report")
 
 ADVERSARIAL_AGENT_TOOLS = ("adversarial_run_robustness",)
 
@@ -94,6 +96,10 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
         owned_artifacts=(
             "experiment_plan.json",
             "research_suite.json",
+            "strategy_implementation.py",
+            "strategy_candidate_manifest.json",
+            "strategy_candidate_validation_report.json",
+            "backtest_run_ref.json",
             "comparison_report.json",
             "recommendation_report.json",
         ),

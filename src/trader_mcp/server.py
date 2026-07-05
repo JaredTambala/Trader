@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from mcp.types import CallToolResult
 
-from trader.config import build_config, load_yaml_config
+from trader.config import Config, build_config, load_yaml_config
 from trader.event_store import EventStore, NoOpEventStore, build_event_store
 from trader_mcp.adapters import envelope_to_mcp_result
 from trader_mcp.constants import (
@@ -20,6 +20,8 @@ from trader_mcp.constants import (
     DATA_GET_INVENTORY_TOOL,
     DATA_SUMMARIZE_QUALITY_TOOL,
     DATA_TOOL_DESCRIPTIONS,
+    EVALUATION_TOOL_DESCRIPTIONS,
+    EVALUATION_TOOL_NAMES,
     KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
     MCP_CONFIG_TOOL,
     MCP_HEALTH_TOOL,
@@ -41,11 +43,19 @@ from trader_mcp.constants import (
     MATH_TOOL_DESCRIPTIONS,
     MATH_TOOL_NAMES,
     REGISTERED_TOOL_NAMES,
+    RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL,
+    RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
+    RESEARCH_RUN_BACKTEST_TOOL,
+    RESEARCH_TOOL_DESCRIPTIONS,
+    RESEARCH_TOOL_NAMES,
+    RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL,
     SERVER_NAME,
     SUPPORT_TOOL_DESCRIPTIONS,
 )
 from trader_mcp.environment import McpEnvironment, load_local_environment
+from trader_mcp.evaluation_tools import register_evaluation_tools
 from trader_mcp.knowledge_tools import register_quant_methods_tools
+from trader_mcp.research_tools import register_research_tools
 from trader_research.agents import agent_owner_for_tool
 from trader_research.contracts import SCHEMA_VERSION, SideEffect, ToolEnvelope, error_envelope, success_envelope
 from trader_research.data import (
@@ -70,6 +80,9 @@ from trader_research.providers import AlpacaSymbolCatalogProvider
 EventStoreProvider = Callable[[], EventStore]
 """Callable that returns the event store used by read-only MCP tools."""
 
+ToolConfigProvider = Callable[[], Config]
+"""Callable that returns runtime config for tools that execute platform code."""
+
 KnowledgeStoreProvider = Callable[[], KnowledgeStore]
 """Callable that returns the store used by Quant Methods knowledge tools."""
 
@@ -89,6 +102,7 @@ def create_server(
     knowledge_embedding_provider: EmbeddingProvider | None = None,
     knowledge_store_provider: KnowledgeStoreProvider | None = None,
     method_generation_llm_client: Any | None = None,
+    backtest_config_provider: ToolConfigProvider | None = None,
 ) -> FastMCP:
     """Create the MCP server and register read-only tools.
 
@@ -103,6 +117,7 @@ def create_server(
     """
     local_env = environment or load_local_environment()
     data_event_store_provider = event_store_provider or build_event_store_provider(local_env)
+    resolved_backtest_config_provider = backtest_config_provider or (lambda: _load_tool_config(local_env))
     resolved_knowledge_store_provider = knowledge_store_provider or build_knowledge_store_provider(local_env)
     resolved_data_loading_policy = data_loading_policy or DataEnsureLoadedPolicy(
         allow_data_loading=local_env.allow_data_loading,
@@ -323,6 +338,13 @@ def create_server(
         knowledge_store_provider=resolved_knowledge_store_provider,
         method_generation_llm_client=method_generation_llm_client,
     )
+    register_research_tools(
+        server,
+        local_env,
+        event_store_provider=data_event_store_provider,
+        backtest_config_provider=resolved_backtest_config_provider,
+    )
+    register_evaluation_tools(server, local_env)
 
     return server
 
@@ -537,10 +559,37 @@ def build_config_envelope(
         }
         for tool_name in MATH_TOOL_NAMES
     )
+    tool_metadata.extend(
+        {
+            "name": tool_name,
+            "agent_owner": agent_owner_for_tool(tool_name),
+            "side_effect": SideEffect.LOCAL_MUTATING.value
+            if tool_name
+            in {
+                RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
+                RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL,
+                RESEARCH_RUN_BACKTEST_TOOL,
+                RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL,
+            }
+            else SideEffect.READ_ONLY.value,
+            "description": RESEARCH_TOOL_DESCRIPTIONS[tool_name],
+        }
+        for tool_name in RESEARCH_TOOL_NAMES
+    )
+    tool_metadata.extend(
+        {
+            "name": tool_name,
+            "agent_owner": agent_owner_for_tool(tool_name),
+            "side_effect": SideEffect.LOCAL_MUTATING.value,
+            "description": EVALUATION_TOOL_DESCRIPTIONS[tool_name],
+        }
+        for tool_name in EVALUATION_TOOL_NAMES
+    )
     safety = {
         **CAPABILITY_REGISTRATION_FLAGS,
         "symbol_provider_discovery_allowed": local_env.allow_symbol_provider_discovery,
         "data_loading_mutation_allowed": local_env.allow_data_loading,
+        "backtest_execution_allowed": local_env.allow_backtests,
     }
     return success_envelope(
         command=MCP_CONFIG_TOOL,

@@ -6,6 +6,8 @@ import pytest
 
 from trader_research.contracts import SideEffect
 from trader_research.domain import (
+    BACKTEST_RUN_REF,
+    COMPARISON_REPORT,
     DATA_QUALITY_REPORT,
     DATASET_MANIFEST,
     CITATION_VALIDATION_REPORT,
@@ -23,10 +25,13 @@ from trader_research.domain import (
     SIGNAL_DIAGNOSTIC_REPORT,
     STATISTICAL_TEST_REPORT,
     STRATEGY_CANDIDATE,
+    STRATEGY_IMPLEMENTATION,
+    STRATEGY_CANDIDATE_VALIDATION_REPORT,
     BoundedResearchRequest,
     DataRequirement,
     ResearchIssue,
     SpecialistHandoff,
+    StrategyCandidateManifest,
     artifact_report_ref,
     stable_research_id,
 )
@@ -112,6 +117,10 @@ def test_planned_artifact_reference_types_are_json_safe() -> None:
         artifact_report_ref(FEATURE_MANIFEST, "feature_demo"),
         artifact_report_ref(MODEL_CARD, "model_demo"),
         artifact_report_ref(STRATEGY_CANDIDATE, "strategy_candidate_demo"),
+        artifact_report_ref(STRATEGY_IMPLEMENTATION, "strategy_implementation_demo"),
+        artifact_report_ref(STRATEGY_CANDIDATE_VALIDATION_REPORT, "strategy_candidate_validation_demo"),
+        artifact_report_ref(BACKTEST_RUN_REF, "backtest_run_demo"),
+        artifact_report_ref(COMPARISON_REPORT, "comparison_demo"),
         artifact_report_ref(EVALUATION_REPORT, "eval_demo"),
         artifact_report_ref(ROBUSTNESS_REPORT, "robust_demo"),
     ]
@@ -129,6 +138,28 @@ def test_planned_artifact_reference_types_are_json_safe() -> None:
     assert payload[8]["agent_owner"] == "Quantitative Methods Agent"
     assert payload[10]["agent_owner"] == "ML Agent"
     assert payload[12]["agent_owner"] == "Quant Research Supervisor Agent"
-    assert payload[13]["agent_owner"] == "Evaluation Agent"
-    assert payload[14]["agent_owner"] == "Adversarial Agent"
+    assert payload[13]["agent_owner"] == "Quant Research Supervisor Agent"
+    assert payload[14]["agent_owner"] == "Quant Research Supervisor Agent"
+    assert payload[15]["agent_owner"] == "Quant Research Supervisor Agent"
+    assert payload[16]["agent_owner"] == "Quant Research Supervisor Agent"
+    assert payload[17]["agent_owner"] == "Evaluation Agent"
+    assert payload[18]["agent_owner"] == "Adversarial Agent"
     json.dumps(payload)
+
+
+def test_strategy_candidate_manifest_preserves_execution_assumptions() -> None:
+    manifest = StrategyCandidateManifest(
+        candidate_id="strategy_candidate_execution_demo",
+        template_family="bollinger_band",
+        execution_assumptions={
+            "broker_mutation_allowed": False,
+            "live_trading_allowed": False,
+            "runtime_instantiation": "deferred_to_strategy_candidate_validation",
+        },
+    )
+
+    payload = manifest.to_dict()
+
+    assert payload["execution_assumptions"]["broker_mutation_allowed"] is False
+    assert payload["execution_assumptions"]["runtime_instantiation"] == "deferred_to_strategy_candidate_validation"
+    assert StrategyCandidateManifest.from_dict(payload).to_dict() == payload

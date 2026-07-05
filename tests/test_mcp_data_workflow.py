@@ -229,8 +229,9 @@ def test_mcp_config_safety_distinguishes_registration_and_runtime_permission() -
         assert data["safety"]["data_loading_mutation_allowed"] is environment.allow_data_loading
         assert data["safety"]["broker_mutating_tools_registered"] is False
         assert data["safety"]["raw_sql_tools_registered"] is False
-        assert data["safety"]["backtest_tools_registered"] is False
-        assert "research_run_backtest" not in tool_names
+        assert data["safety"]["backtest_tools_registered"] is True
+        assert data["safety"]["backtest_execution_allowed"] is environment.allow_backtests
+        assert "research_run_backtest" in tool_names
         assert "raw_sql" not in tool_names
 
     anyio.run(_run)

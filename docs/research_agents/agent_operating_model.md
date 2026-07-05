@@ -105,7 +105,11 @@ Outputs:
 
 - `experiment_plan.json`.
 - Research suite artifact.
-- Comparison report.
+- `strategy_implementation.py`.
+- `strategy_candidate_manifest.json`.
+- `strategy_candidate_validation_report.json`.
+- `backtest_run_ref.json`.
+- `comparison_report.json`.
 - Recommendation report.
 - Promotion-readiness assessment.
 - Suggested next experiments.
@@ -345,6 +349,7 @@ Responsibilities:
 - Check instability across time windows, symbols, and regimes.
 - Check turnover, slippage sensitivity, warning counts, and data-quality issues.
 - Identify whether the evidence supports, weakly supports, or rejects the hypothesis.
+- Generate the first descriptive performance report through `evaluation_generate_performance_report`.
 
 Outputs:
 
@@ -429,7 +434,8 @@ The intended operating loop is:
 | Hypothesis card creation | `hypothesis_create_card` | Hypothesis Agent |
 | Strategy catalog and validation | `research_list_strategy_templates`, `research_create_strategy_candidate`, `research_validate_strategy_candidate` | Quant Research Supervisor Agent |
 | Baseline backtests and result lookup | `research_run_backtest`, `research_get_backtest_results` | Quant Research Supervisor Agent |
-| Attribution and comparison | `research_analyze_return_attribution` | Quant Research Supervisor Agent |
+| Backtest comparison | `research_compare_backtest_results` | Quant Research Supervisor Agent |
+| Attribution | `research_analyze_return_attribution` | Quant Research Supervisor Agent |
 | Performance report and evidence critique | `evaluation_generate_performance_report`, later `evaluation_generate_report` | Evaluation Agent |
 | Robustness testing | `adversarial_run_robustness` | Adversarial Agent |
 | Recommendation synthesis | `research_generate_recommendation`, later `research_run_experiment` | Quant Research Supervisor Agent |
