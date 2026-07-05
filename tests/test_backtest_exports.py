@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -19,6 +20,11 @@ from trader.backtest import (
     export_backtest_result_json,
     export_backtest_trades_csv,
     serialize_backtest_result,
+)
+from trader.backtest.core import (
+    _build_backtest_metrics_snapshot_payload,
+    _build_equity_curve_csv_rows,
+    _build_trade_csv_rows,
 )
 
 
@@ -48,6 +54,76 @@ def test_export_backtest_files_have_stable_columns(tmp_path: Path) -> None:
         "client_order_id,cycle_id,symbol,side,fill_ts,fill_qty,raw_fill_price,fill_price,"
         "fee_amount,slippage_amount,notional,realized_pnl"
     )
+
+
+def test_build_equity_curve_csv_rows_aligns_short_benchmark_curve() -> None:
+    result = _sample_result()
+    extra_point = EquityPoint(
+        ts=datetime(2026, 1, 20, 12, 1, tzinfo=timezone.utc),
+        equity=1010.0,
+    )
+    result = replace(
+        result,
+        equity_curve=(*result.equity_curve, extra_point),
+        benchmark_curve=result.benchmark_curve[:1],
+    )
+
+    rows = _build_equity_curve_csv_rows(result)
+
+    assert rows == (
+        {
+            "ts": "2026-01-20T12:00:00+00:00",
+            "strategy_equity": 1000.0,
+            "benchmark_equity": 1000.0,
+        },
+        {
+            "ts": "2026-01-20T12:01:00+00:00",
+            "strategy_equity": 1010.0,
+            "benchmark_equity": None,
+        },
+    )
+
+
+def test_build_trade_csv_rows_uses_stable_trade_accounting_fields() -> None:
+    result = _sample_result()
+
+    rows = _build_trade_csv_rows(result.trades)
+
+    assert rows == (
+        {
+            "client_order_id": "cid_1",
+            "cycle_id": "cycle_1",
+            "symbol": "AAPL",
+            "side": "buy",
+            "fill_ts": "2026-01-20T12:00:00+00:00",
+            "fill_qty": 1.0,
+            "raw_fill_price": 100.0,
+            "fill_price": 100.1,
+            "fee_amount": 0.1,
+            "slippage_amount": 0.1,
+            "notional": 100.1,
+            "realized_pnl": None,
+        },
+    )
+
+
+def test_build_backtest_metrics_snapshot_payload_is_json_stable() -> None:
+    result = _sample_result()
+    ts = datetime(2026, 1, 20, 12, 5, tzinfo=timezone.utc)
+
+    payload = _build_backtest_metrics_snapshot_payload(
+        run_id="run_1",
+        result=result,
+        ts=ts,
+    )
+
+    serialized = json.loads(str(payload["payload"]))
+    assert payload["ts"] == ts
+    assert payload["run_id"] == "run_1"
+    assert payload["session_id"] == "run_1"
+    assert payload["cycle_id"] is None
+    assert serialized["symbols"] == ["AAPL"]
+    assert serialized["total_fees"] == 0.2
 
 
 def _sample_result() -> BacktestResult:

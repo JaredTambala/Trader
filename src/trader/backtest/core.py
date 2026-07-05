@@ -36,6 +36,23 @@ from ..timeframes import normalize_timeframe
 logger = logging.getLogger(__name__)
 
 
+_EQUITY_CURVE_CSV_FIELDS = ("ts", "strategy_equity", "benchmark_equity")
+_TRADES_CSV_FIELDS = (
+    "client_order_id",
+    "cycle_id",
+    "symbol",
+    "side",
+    "fill_ts",
+    "fill_qty",
+    "raw_fill_price",
+    "fill_price",
+    "fee_amount",
+    "slippage_amount",
+    "notional",
+    "realized_pnl",
+)
+
+
 @dataclass(frozen=True)
 class FeeAssumptions:
     """Fee model applied by the internal broker during backtests.
@@ -262,6 +279,29 @@ class _TradeStats:
     total_slippage: float
 
 
+@dataclass(frozen=True)
+class _OrderAccountingEvent:
+    """Normalized order evidence needed to interpret fill direction and symbol."""
+
+    client_order_id: str
+    symbol: str
+    side: str
+    cycle_id: str | None
+
+
+@dataclass(frozen=True)
+class _FillAccountingEvent:
+    """Normalized fill evidence used by pure trade-stat accounting."""
+
+    client_order_id: str | None
+    fill_ts: datetime
+    fill_qty: float
+    fill_price: float
+    raw_fill_price: float | None
+    fee_amount: float
+    slippage_amount: float
+
+
 def build_backtest_assumptions(data: Mapping[str, object] | None = None) -> BacktestAssumptions:
     """Normalize user/config mapping data into typed backtest assumptions.
 
@@ -317,6 +357,64 @@ def _empty_performance_summary() -> PerformanceSummary:
         avg_loss=None,
         turnover=None,
     )
+
+
+def _build_empty_backtest_result(
+    *,
+    asset_class: str,
+    symbols: Sequence[str],
+    timeframe: str,
+    assumptions: BacktestAssumptions,
+    run_id: str,
+    timestamp: datetime,
+    warning: str,
+) -> BacktestResult:
+    """Build a zero-run backtest result from explicit shell-provided values."""
+    empty_summary = _empty_performance_summary()
+    return BacktestResult(
+        total_runs=0,
+        success_runs=0,
+        failed_runs=0,
+        started_at=timestamp,
+        finished_at=timestamp,
+        duration_seconds=0.0,
+        asset_class=asset_class,
+        symbols=tuple(symbols),
+        timeframe=timeframe,
+        position_count=0,
+        long_positions=0,
+        short_positions=0,
+        net_qty=0.0,
+        gross_qty=0.0,
+        net_notional=None,
+        gross_notional=None,
+        positions=tuple(),
+        assumptions=assumptions,
+        warnings=(warning,),
+        trades=tuple(),
+        realized_pnl=None,
+        total_fees=0.0,
+        total_slippage=0.0,
+        strategy_performance=empty_summary,
+        benchmark_performance=empty_summary,
+        tracking_error=None,
+        information_ratio=None,
+        alpha=None,
+        beta=None,
+        equity_curve=tuple(),
+        benchmark_curve=tuple(),
+        run_id=run_id,
+    )
+
+
+@dataclass(frozen=True)
+class _BacktestBarSelection:
+    """Decision for serving one symbol at one backtest timestamp."""
+
+    bar: Bar | None
+    warning: str | None
+    warning_kind: str | None
+    latest_ts: datetime | None = None
 
 
 class BacktestMarketDataSource(MarketDataSource):
@@ -387,47 +485,24 @@ class BacktestMarketDataSource(MarketDataSource):
         events: list[MarketDataEvent] = []
         for symbol, bars in self._bars_by_symbol.items():
             timestamps = self._timestamps_by_symbol.get(symbol, [])
-            if not timestamps:
+            selection = _select_backtest_bar(
+                symbol=symbol,
+                bars=bars,
+                timestamps=timestamps,
+                target=self._as_of_ts,
+                allow_latest_prior_bar=self._allow_latest_prior_bar,
+            )
+            if selection.warning:
+                self._log_bar_selection_warning(symbol, selection)
+                self._append_warning(selection.warning)
+            if selection.bar is None:
                 continue
-            idx = bisect_left(timestamps, self._as_of_ts)
-            if idx >= len(timestamps) or timestamps[idx] != self._as_of_ts:
-                if not self._allow_latest_prior_bar:
-                    logger.warning(
-                        "Backtest exact-bar requirement failed symbol=%s decision_ts=%s; skipping",
-                        symbol,
-                        self._as_of_ts.isoformat(),
-                    )
-                    self._append_warning(
-                        f"Missing exact bar for {symbol} at {self._as_of_ts.isoformat()}; skipped symbol."
-                    )
-                    continue
-                idx = idx - 1
-                if idx < 0:
-                    logger.warning(
-                        "Backtest price misalignment symbol=%s decision_ts=%s latest_ts=<none>; skipping",
-                        symbol,
-                        self._as_of_ts.isoformat(),
-                    )
-                    self._append_warning(
-                        f"No prior bar available for {symbol} at {self._as_of_ts.isoformat()}; skipped symbol."
-                    )
-                    continue
-                logger.warning(
-                    "Backtest price misalignment symbol=%s decision_ts=%s latest_ts=%s; using latest bar",
-                    symbol,
-                    self._as_of_ts.isoformat(),
-                    timestamps[idx].isoformat(),
-                )
-                self._append_warning(
-                    f"Used latest prior bar for {symbol} at {self._as_of_ts.isoformat()} from {timestamps[idx].isoformat()}."
-                )
-            bar = bars[idx]
             events.append(
                 _build_market_event(
                     asset_class=self._asset_class,
                     symbol=symbol,
                     timeframe=self._timeframe,
-                    bar=bar,
+                    bar=selection.bar,
                     source=self._source,
                     ingested_at=self._as_of_ts,
                 )
@@ -438,6 +513,69 @@ class BacktestMarketDataSource(MarketDataSource):
         """Add a warning once while preserving insertion order."""
         if message not in self._warnings:
             self._warnings.append(message)
+
+    def _log_bar_selection_warning(self, symbol: str, selection: _BacktestBarSelection) -> None:
+        """Log a market-data alignment warning selected by the pure lookup helper."""
+        if self._as_of_ts is None:
+            return
+        if selection.warning_kind == "missing_exact":
+            logger.warning(
+                "Backtest exact-bar requirement failed symbol=%s decision_ts=%s; skipping",
+                symbol,
+                self._as_of_ts.isoformat(),
+            )
+            return
+        if selection.warning_kind == "no_prior":
+            logger.warning(
+                "Backtest price misalignment symbol=%s decision_ts=%s latest_ts=<none>; skipping",
+                symbol,
+                self._as_of_ts.isoformat(),
+            )
+            return
+        if selection.warning_kind == "latest_prior":
+            logger.warning(
+                "Backtest price misalignment symbol=%s decision_ts=%s latest_ts=%s; using latest bar",
+                symbol,
+                self._as_of_ts.isoformat(),
+                selection.latest_ts.isoformat() if selection.latest_ts else "<none>",
+            )
+
+
+def _select_backtest_bar(
+    *,
+    symbol: str,
+    bars: Sequence[Bar],
+    timestamps: Sequence[datetime],
+    target: datetime,
+    allow_latest_prior_bar: bool,
+) -> _BacktestBarSelection:
+    """Select the bar to serve for one symbol at one decision timestamp."""
+    target_ts = _normalize_timestamp(target)
+    if not timestamps:
+        return _BacktestBarSelection(bar=None, warning=None, warning_kind=None)
+    idx = bisect_left(timestamps, target_ts)
+    if idx < len(timestamps) and timestamps[idx] == target_ts:
+        return _BacktestBarSelection(bar=bars[idx], warning=None, warning_kind=None)
+    if not allow_latest_prior_bar:
+        return _BacktestBarSelection(
+            bar=None,
+            warning=f"Missing exact bar for {symbol} at {target_ts.isoformat()}; skipped symbol.",
+            warning_kind="missing_exact",
+        )
+    latest_idx = idx - 1
+    if latest_idx < 0:
+        return _BacktestBarSelection(
+            bar=None,
+            warning=f"No prior bar available for {symbol} at {target_ts.isoformat()}; skipped symbol.",
+            warning_kind="no_prior",
+        )
+    latest_ts = timestamps[latest_idx]
+    return _BacktestBarSelection(
+        bar=bars[latest_idx],
+        warning=f"Used latest prior bar for {symbol} at {target_ts.isoformat()} from {latest_ts.isoformat()}.",
+        warning_kind="latest_prior",
+        latest_ts=latest_ts,
+    )
 
 
 class BacktestRunner:
@@ -506,14 +644,11 @@ class BacktestRunner:
             raise ValueError("BacktestRunner requires an injected risk manager instance.")
         self._strategy = strategy
         self._risk_manager = risk_manager
-        self._config = replace(
+        self._config = _build_backtest_runtime_config(
             config,
-            mode="backtest",
-            market_data_source="noop",
-            market_data_symbols=tuple(self._symbols),
-            market_data_asset_class=self._asset_class,
-            strategy_timeframe=spec.timeframe,
-            broker_type="internal",
+            symbols=self._symbols,
+            asset_class=self._asset_class,
+            timeframe=spec.timeframe,
         )
 
     def run(
@@ -545,40 +680,14 @@ class BacktestRunner:
             started_at = self._started_at or datetime.now(timezone.utc)
             run_id = self._run_id or deterministic_run_session_id("backtest", started_at)
             now = datetime.now(timezone.utc)
-            empty_summary = _empty_performance_summary()
-            return BacktestResult(
-                total_runs=0,
-                success_runs=0,
-                failed_runs=0,
-                started_at=now,
-                finished_at=now,
-                duration_seconds=0.0,
+            return _build_empty_backtest_result(
                 asset_class=self._asset_class,
-                symbols=tuple(self._symbols),
+                symbols=self._symbols,
                 timeframe=self._spec.timeframe,
-                position_count=0,
-                long_positions=0,
-                short_positions=0,
-                net_qty=0.0,
-                gross_qty=0.0,
-                net_notional=None,
-                gross_notional=None,
-                positions=tuple(),
                 assumptions=self._assumptions,
-                warnings=("No symbols configured for backtest.",),
-                trades=tuple(),
-                realized_pnl=None,
-                total_fees=0.0,
-                total_slippage=0.0,
-                strategy_performance=empty_summary,
-                benchmark_performance=empty_summary,
-                tracking_error=None,
-                information_ratio=None,
-                alpha=None,
-                beta=None,
-                equity_curve=tuple(),
-                benchmark_curve=tuple(),
                 run_id=run_id,
+                timestamp=now,
+                warning="No symbols configured for backtest.",
             )
         if self._spec.start > self._spec.end:
             raise ValueError("Backtest start must be <= end")
@@ -600,40 +709,14 @@ class BacktestRunner:
             started_at = self._started_at or datetime.now(timezone.utc)
             run_id = self._run_id or deterministic_run_session_id("backtest", started_at)
             now = datetime.now(timezone.utc)
-            empty_summary = _empty_performance_summary()
-            return BacktestResult(
-                total_runs=0,
-                success_runs=0,
-                failed_runs=0,
-                started_at=now,
-                finished_at=now,
-                duration_seconds=0.0,
+            return _build_empty_backtest_result(
                 asset_class=self._asset_class,
-                symbols=tuple(self._symbols),
+                symbols=self._symbols,
                 timeframe=self._spec.timeframe,
-                position_count=0,
-                long_positions=0,
-                short_positions=0,
-                net_qty=0.0,
-                gross_qty=0.0,
-                net_notional=None,
-                gross_notional=None,
-                positions=tuple(),
                 assumptions=self._assumptions,
-                warnings=("No bars found for backtest window.",),
-                trades=tuple(),
-                realized_pnl=None,
-                total_fees=0.0,
-                total_slippage=0.0,
-                strategy_performance=empty_summary,
-                benchmark_performance=empty_summary,
-                tracking_error=None,
-                information_ratio=None,
-                alpha=None,
-                beta=None,
-                equity_curve=tuple(),
-                benchmark_curve=tuple(),
                 run_id=run_id,
+                timestamp=now,
+                warning="No bars found for backtest window.",
             )
 
         count = 0
@@ -715,8 +798,8 @@ class BacktestRunner:
                 len(seeded_positions),
                 self._initial_cash,
             )
-        total_bars = sum(len(symbol_schedule[ts]) for ts in timestamps)
-        effective_limit = min(total_bars, limit) if limit is not None else total_bars
+        total_bars = _count_scheduled_symbol_runs(symbol_schedule, timestamps)
+        effective_limit = _resolve_effective_replay_limit(total_bars=total_bars, max_runs=limit)
 
         data_sources_by_symbol = _build_data_sources(
             bars_by_symbol=bars_by_symbol,
@@ -726,10 +809,7 @@ class BacktestRunner:
             allow_latest_prior_bar=self._assumptions.data.allow_latest_prior_bar,
             warnings=warnings,
         )
-        configs_by_symbol = {
-            symbol: replace(self._config, market_data_symbols=(symbol,))
-            for symbol in self._symbols
-        }
+        configs_by_symbol = _build_symbol_runtime_configs(self._config, self._symbols)
         portfolio = _build_initial_portfolio(seeded_positions, cash_balance=self._initial_cash)
         trade_stats: _TradeStats | None = None
         try:
@@ -762,9 +842,15 @@ class BacktestRunner:
                             stop = True
                             break
                     prices = price_state.advance(ts)
-                    equity, net_notional, gross_notional, invested_pct = _compute_equity(portfolio, prices)
-                    equity_curve.append(EquityPoint(ts=ts, equity=equity))
-                    exposure_samples.append((net_notional, gross_notional, invested_pct))
+                    valuation = _compute_equity(portfolio, prices)
+                    equity_curve.append(EquityPoint(ts=ts, equity=valuation.equity))
+                    exposure_samples.append(
+                        (
+                            valuation.net_notional,
+                            valuation.gross_notional,
+                            valuation.invested_pct,
+                        )
+                    )
                     benchmark_equity = _compute_holdings_equity(benchmark_holdings, prices)
                     benchmark_curve.append(EquityPoint(ts=ts, equity=benchmark_equity))
                     if stop:
@@ -800,19 +886,7 @@ class BacktestRunner:
             if self._owns_event_store:
                 self._event_store.close()
 
-        trade_stats = trade_stats or _TradeStats(
-            trade_count=0,
-            hit_rate=None,
-            profit_factor=None,
-            expectancy=None,
-            avg_win=None,
-            avg_loss=None,
-            turnover=None,
-            realized_pnl=None,
-            trades=tuple(),
-            total_fees=0.0,
-            total_slippage=0.0,
-        )
+        trade_stats = trade_stats or _empty_trade_stats()
 
         finished_at = datetime.now(timezone.utc)
         strategy_summary = _build_performance_summary(
@@ -832,94 +906,180 @@ class BacktestRunner:
             benchmark_curve=benchmark_curve,
             timeframe=self._spec.timeframe,
         )
-        result = BacktestResult(
+        result = _build_completed_backtest_result(
             total_runs=count,
-            success_runs=count - failed,
             failed_runs=failed,
             started_at=started_at,
             finished_at=finished_at,
-            duration_seconds=(finished_at - started_at).total_seconds(),
             asset_class=self._asset_class,
-            symbols=tuple(self._symbols),
+            symbols=self._symbols,
             timeframe=self._spec.timeframe,
-            position_count=summary.position_count,
-            long_positions=summary.long_positions,
-            short_positions=summary.short_positions,
-            net_qty=summary.net_qty,
-            gross_qty=summary.gross_qty,
-            net_notional=summary.net_notional,
-            gross_notional=summary.gross_notional,
-            positions=summary.positions,
+            portfolio_summary=summary,
             assumptions=self._assumptions,
-            warnings=tuple(warnings),
-            trades=trade_stats.trades,
-            realized_pnl=trade_stats.realized_pnl,
-            total_fees=trade_stats.total_fees,
-            total_slippage=trade_stats.total_slippage,
+            warnings=warnings,
+            trade_stats=trade_stats,
             strategy_performance=strategy_summary,
             benchmark_performance=benchmark_summary,
-            tracking_error=comparison.tracking_error,
-            information_ratio=comparison.information_ratio,
-            alpha=comparison.alpha,
-            beta=comparison.beta,
-            equity_curve=tuple(equity_curve),
-            benchmark_curve=tuple(benchmark_curve),
+            relative_metrics=comparison,
+            equity_curve=equity_curve,
+            benchmark_curve=benchmark_curve,
             run_id=run_id,
         )
-        logger.info(
-            "Backtest complete total=%s success=%s failed=%s duration_seconds=%.2f",
-            result.total_runs,
-            result.success_runs,
-            result.failed_runs,
-            result.duration_seconds,
-        )
-        logger.info(
-            "Backtest portfolio positions=%s long=%s short=%s net_qty=%.4f gross_qty=%.4f net_notional=%s gross_notional=%s",
-            result.position_count,
-            result.long_positions,
-            result.short_positions,
-            result.net_qty,
-            result.gross_qty,
-            _format_optional_float(result.net_notional),
-            _format_optional_float(result.gross_notional),
-        )
-        logger.info(
-            "Backtest performance total_return=%s cagr=%s volatility=%s sharpe=%s sortino=%s max_drawdown=%s",
-            _format_optional_pct(result.strategy_performance.total_return),
-            _format_optional_pct(result.strategy_performance.cagr),
-            _format_optional_pct(result.strategy_performance.volatility),
-            _format_optional_float(result.strategy_performance.sharpe),
-            _format_optional_float(result.strategy_performance.sortino),
-            _format_optional_pct(result.strategy_performance.max_drawdown),
-        )
-        logger.info(
-            "Backtest benchmark total_return=%s cagr=%s volatility=%s sharpe=%s sortino=%s max_drawdown=%s",
-            _format_optional_pct(result.benchmark_performance.total_return),
-            _format_optional_pct(result.benchmark_performance.cagr),
-            _format_optional_pct(result.benchmark_performance.volatility),
-            _format_optional_float(result.benchmark_performance.sharpe),
-            _format_optional_float(result.benchmark_performance.sortino),
-            _format_optional_pct(result.benchmark_performance.max_drawdown),
-        )
-        logger.info(
-            "Backtest relative tracking_error=%s information_ratio=%s alpha=%s beta=%s",
-            _format_optional_pct(result.tracking_error),
-            _format_optional_float(result.information_ratio),
-            _format_optional_pct(result.alpha),
-            _format_optional_float(result.beta),
-        )
-        for position in result.positions:
-            logger.info(
-                "Backtest position symbol=%s qty=%.4f avg_price=%s last_price=%s last_ts=%s market_value=%s pnl=%s",
-                position.symbol,
-                position.qty,
-                _format_optional_float(position.avg_price),
-                _format_optional_float(position.last_price),
-                position.last_ts.isoformat() if position.last_ts else "<unset>",
-                _format_optional_float(position.market_value),
-                _format_optional_float(position.unrealized_pnl),
-            )
+        _log_backtest_result(result)
         return result
+
+
+def _build_backtest_runtime_config(
+    config: Config,
+    *,
+    symbols: Sequence[str],
+    asset_class: str,
+    timeframe: str,
+) -> Config:
+    """Return the production config transformed for deterministic backtest execution."""
+    return replace(
+        config,
+        mode="backtest",
+        market_data_source="noop",
+        market_data_symbols=tuple(symbols),
+        market_data_asset_class=asset_class,
+        strategy_timeframe=timeframe,
+        broker_type="internal",
+    )
+
+
+def _build_symbol_runtime_configs(config: Config, symbols: Sequence[str]) -> dict[str, Config]:
+    """Return one runtime config per symbol for single-symbol cycle execution."""
+    return {symbol: replace(config, market_data_symbols=(symbol,)) for symbol in symbols}
+
+
+def _count_scheduled_symbol_runs(
+    symbol_schedule: Mapping[datetime, Sequence[str]],
+    timestamps: Sequence[datetime],
+) -> int:
+    """Count symbol-level cycle executions in a timestamp schedule."""
+    return sum(len(symbol_schedule[ts]) for ts in timestamps)
+
+
+def _resolve_effective_replay_limit(*, total_bars: int, max_runs: int | None) -> int:
+    """Resolve the progress denominator after applying an optional max-runs cap."""
+    if max_runs is None:
+        return total_bars
+    return min(total_bars, max_runs)
+
+
+def _build_completed_backtest_result(
+    *,
+    total_runs: int,
+    failed_runs: int,
+    started_at: datetime,
+    finished_at: datetime,
+    asset_class: str,
+    symbols: Sequence[str],
+    timeframe: str,
+    portfolio_summary: "PortfolioSummary",
+    assumptions: BacktestAssumptions,
+    warnings: Sequence[str],
+    trade_stats: _TradeStats,
+    strategy_performance: PerformanceSummary,
+    benchmark_performance: PerformanceSummary,
+    relative_metrics: _RelativeMetrics,
+    equity_curve: Sequence[EquityPoint],
+    benchmark_curve: Sequence[EquityPoint],
+    run_id: str,
+) -> BacktestResult:
+    """Assemble a completed backtest result from explicit summary values."""
+    return BacktestResult(
+        total_runs=total_runs,
+        success_runs=total_runs - failed_runs,
+        failed_runs=failed_runs,
+        started_at=started_at,
+        finished_at=finished_at,
+        duration_seconds=(finished_at - started_at).total_seconds(),
+        asset_class=asset_class,
+        symbols=tuple(symbols),
+        timeframe=timeframe,
+        position_count=portfolio_summary.position_count,
+        long_positions=portfolio_summary.long_positions,
+        short_positions=portfolio_summary.short_positions,
+        net_qty=portfolio_summary.net_qty,
+        gross_qty=portfolio_summary.gross_qty,
+        net_notional=portfolio_summary.net_notional,
+        gross_notional=portfolio_summary.gross_notional,
+        positions=portfolio_summary.positions,
+        assumptions=assumptions,
+        warnings=tuple(warnings),
+        trades=trade_stats.trades,
+        realized_pnl=trade_stats.realized_pnl,
+        total_fees=trade_stats.total_fees,
+        total_slippage=trade_stats.total_slippage,
+        strategy_performance=strategy_performance,
+        benchmark_performance=benchmark_performance,
+        tracking_error=relative_metrics.tracking_error,
+        information_ratio=relative_metrics.information_ratio,
+        alpha=relative_metrics.alpha,
+        beta=relative_metrics.beta,
+        equity_curve=tuple(equity_curve),
+        benchmark_curve=tuple(benchmark_curve),
+        run_id=run_id,
+    )
+
+
+def _log_backtest_result(result: BacktestResult) -> None:
+    """Emit human-readable summary logs for a completed backtest result."""
+    logger.info(
+        "Backtest complete total=%s success=%s failed=%s duration_seconds=%.2f",
+        result.total_runs,
+        result.success_runs,
+        result.failed_runs,
+        result.duration_seconds,
+    )
+    logger.info(
+        "Backtest portfolio positions=%s long=%s short=%s net_qty=%.4f gross_qty=%.4f net_notional=%s gross_notional=%s",
+        result.position_count,
+        result.long_positions,
+        result.short_positions,
+        result.net_qty,
+        result.gross_qty,
+        _format_optional_float(result.net_notional),
+        _format_optional_float(result.gross_notional),
+    )
+    logger.info(
+        "Backtest performance total_return=%s cagr=%s volatility=%s sharpe=%s sortino=%s max_drawdown=%s",
+        _format_optional_pct(result.strategy_performance.total_return),
+        _format_optional_pct(result.strategy_performance.cagr),
+        _format_optional_pct(result.strategy_performance.volatility),
+        _format_optional_float(result.strategy_performance.sharpe),
+        _format_optional_float(result.strategy_performance.sortino),
+        _format_optional_pct(result.strategy_performance.max_drawdown),
+    )
+    logger.info(
+        "Backtest benchmark total_return=%s cagr=%s volatility=%s sharpe=%s sortino=%s max_drawdown=%s",
+        _format_optional_pct(result.benchmark_performance.total_return),
+        _format_optional_pct(result.benchmark_performance.cagr),
+        _format_optional_pct(result.benchmark_performance.volatility),
+        _format_optional_float(result.benchmark_performance.sharpe),
+        _format_optional_float(result.benchmark_performance.sortino),
+        _format_optional_pct(result.benchmark_performance.max_drawdown),
+    )
+    logger.info(
+        "Backtest relative tracking_error=%s information_ratio=%s alpha=%s beta=%s",
+        _format_optional_pct(result.tracking_error),
+        _format_optional_float(result.information_ratio),
+        _format_optional_pct(result.alpha),
+        _format_optional_float(result.beta),
+    )
+    for position in result.positions:
+        logger.info(
+            "Backtest position symbol=%s qty=%.4f avg_price=%s last_price=%s last_ts=%s market_value=%s pnl=%s",
+            position.symbol,
+            position.qty,
+            _format_optional_float(position.avg_price),
+            _format_optional_float(position.last_price),
+            position.last_ts.isoformat() if position.last_ts else "<unset>",
+            _format_optional_float(position.market_value),
+            _format_optional_float(position.unrealized_pnl),
+        )
 
 
 @dataclass(frozen=True)
@@ -973,7 +1133,14 @@ def _build_portfolio_summary(
             [position.symbol for position in positions],
             timeframe,
         )
+    return _summarize_portfolio_positions(positions, latest_prices)
 
+
+def _summarize_portfolio_positions(
+    positions: Sequence[Position],
+    latest_prices: Mapping[str, tuple[datetime, float]],
+) -> PortfolioSummary:
+    """Compute final position, notional, and unrealized-PnL summary values."""
     summaries: list[PositionSummary] = []
     net_qty = 0.0
     gross_qty = 0.0
@@ -1042,7 +1209,7 @@ def _fetch_latest_prices(
     timeframe: str,
 ) -> dict[str, tuple[datetime, float]]:
     """Fetch the latest persisted close price per symbol for final valuation."""
-    table = "crypto_bar_events" if asset_class in {"crypto", "cryptocurrency"} else "stock_bar_events"
+    table = _bar_event_table_name(asset_class)
     connection = getattr(event_store, "connection", lambda: None)()
     if connection is None:
         return {}
@@ -1073,11 +1240,18 @@ def _latest_prices_from_bars(bars_by_symbol: Mapping[str, Sequence[Bar]]) -> dic
     """Return the last in-memory bar timestamp/close for each populated symbol."""
     latest: dict[str, tuple[datetime, float]] = {}
     for symbol, bars in bars_by_symbol.items():
-        if not bars:
-            continue
-        bar = bars[-1]
-        latest[symbol] = (_normalize_timestamp(bar.ts), float(bar.close))
+        price = _latest_price_from_bars(bars)
+        if price is not None:
+            latest[symbol] = price
     return latest
+
+
+def _latest_price_from_bars(bars: Sequence[Bar]) -> tuple[datetime, float] | None:
+    """Return the last bar timestamp/close pair from one symbol's in-memory bars."""
+    if not bars:
+        return None
+    bar = bars[-1]
+    return _normalize_timestamp(bar.ts), float(bar.close)
 
 
 @dataclass
@@ -1097,26 +1271,87 @@ class _PriceState:
         newer bar is seen. Without carry-forward, only exact-timestamp prices
         are returned so valuation gaps stay visible.
         """
-        target = _normalize_timestamp(ts)
-        if not self.allow_price_carry_forward:
-            current_prices: dict[str, float] = {}
-            for symbol, bars in self.bars_by_symbol.items():
-                idx = self._indices.get(symbol, 0)
-                while idx < len(bars) and _normalize_timestamp(bars[idx].ts) < target:
-                    idx += 1
-                if idx < len(bars) and _normalize_timestamp(bars[idx].ts) == target:
-                    current_prices[symbol] = float(bars[idx].close)
-                    idx += 1
-                self._indices[symbol] = idx
-            self._last_prices = current_prices
-            return dict(self._last_prices)
-        for symbol, bars in self.bars_by_symbol.items():
-            idx = self._indices.get(symbol, 0)
-            while idx < len(bars) and _normalize_timestamp(bars[idx].ts) <= target:
-                self._last_prices[symbol] = float(bars[idx].close)
-                idx += 1
-            self._indices[symbol] = idx
+        advanced = _advance_price_cursors(
+            self.bars_by_symbol,
+            indices=self._indices,
+            previous_prices=self._last_prices,
+            target=ts,
+            allow_price_carry_forward=self.allow_price_carry_forward,
+        )
+        self._indices = dict(advanced.indices)
+        self._last_prices = dict(advanced.prices)
         return dict(self._last_prices)
+
+
+@dataclass(frozen=True)
+class _PriceAdvanceResult:
+    """Updated price cursor state for one replay timestamp."""
+
+    indices: Mapping[str, int]
+    prices: Mapping[str, float]
+
+
+def _advance_price_cursors(
+    bars_by_symbol: Mapping[str, Sequence[Bar]],
+    *,
+    indices: Mapping[str, int],
+    previous_prices: Mapping[str, float],
+    target: datetime,
+    allow_price_carry_forward: bool,
+) -> _PriceAdvanceResult:
+    """Advance price cursors without mutating caller-owned state."""
+    target_ts = _normalize_timestamp(target)
+    if allow_price_carry_forward:
+        return _advance_price_cursors_with_carry_forward(
+            bars_by_symbol,
+            indices=indices,
+            previous_prices=previous_prices,
+            target=target_ts,
+        )
+    return _advance_price_cursors_exact(
+        bars_by_symbol,
+        indices=indices,
+        target=target_ts,
+    )
+
+
+def _advance_price_cursors_exact(
+    bars_by_symbol: Mapping[str, Sequence[Bar]],
+    *,
+    indices: Mapping[str, int],
+    target: datetime,
+) -> _PriceAdvanceResult:
+    """Advance cursors and return only exact-timestamp prices."""
+    next_indices: dict[str, int] = {}
+    current_prices: dict[str, float] = {}
+    for symbol, bars in bars_by_symbol.items():
+        idx = indices.get(symbol, 0)
+        while idx < len(bars) and _normalize_timestamp(bars[idx].ts) < target:
+            idx += 1
+        if idx < len(bars) and _normalize_timestamp(bars[idx].ts) == target:
+            current_prices[symbol] = float(bars[idx].close)
+            idx += 1
+        next_indices[symbol] = idx
+    return _PriceAdvanceResult(indices=next_indices, prices=current_prices)
+
+
+def _advance_price_cursors_with_carry_forward(
+    bars_by_symbol: Mapping[str, Sequence[Bar]],
+    *,
+    indices: Mapping[str, int],
+    previous_prices: Mapping[str, float],
+    target: datetime,
+) -> _PriceAdvanceResult:
+    """Advance cursors while keeping latest known prices available."""
+    next_indices: dict[str, int] = {}
+    current_prices = dict(previous_prices)
+    for symbol, bars in bars_by_symbol.items():
+        idx = indices.get(symbol, 0)
+        while idx < len(bars) and _normalize_timestamp(bars[idx].ts) <= target:
+            current_prices[symbol] = float(bars[idx].close)
+            idx += 1
+        next_indices[symbol] = idx
+    return _PriceAdvanceResult(indices=next_indices, prices=current_prices)
 
 
 @dataclass(frozen=True)
@@ -1126,11 +1361,94 @@ class _Holdings:
 
 
 @dataclass(frozen=True)
+class _PortfolioValuation:
+    """Portfolio equity and exposure at one replay timestamp."""
+
+    equity: float
+    net_notional: float
+    gross_notional: float
+    invested_pct: float | None
+
+
+@dataclass(frozen=True)
 class _RelativeMetrics:
+    """Benchmark-relative return statistics for a backtest equity curve."""
+
     tracking_error: float | None
     information_ratio: float | None
     alpha: float | None
     beta: float | None
+
+
+@dataclass(frozen=True)
+class _ReturnPerformanceMetrics:
+    """Risk and return metrics derived only from an equity curve."""
+
+    start_equity: float
+    end_equity: float
+    total_return: float | None
+    cagr: float | None
+    volatility: float | None
+    sharpe: float | None
+    sortino: float | None
+    max_drawdown: float | None
+    max_drawdown_duration: int | None
+    calmar: float | None
+    ulcer_index: float | None
+
+
+@dataclass(frozen=True)
+class _ExposureSummary:
+    """Average exposure metrics derived from timestamp-level samples."""
+
+    avg_net_exposure: float | None
+    avg_gross_exposure: float | None
+    avg_invested_pct: float | None
+
+
+@dataclass(frozen=True)
+class _RealizedTradeSummary:
+    """Win/loss metrics derived from realized trade PnL values."""
+
+    trade_count: int
+    hit_rate: float | None
+    profit_factor: float | None
+    expectancy: float | None
+    avg_win: float | None
+    avg_loss: float | None
+    realized_pnl: float | None
+
+
+@dataclass(frozen=True)
+class _PositionAccountingState:
+    """Open position quantity and average effective price during fill accounting."""
+
+    qty: float
+    avg_price: float | None
+
+
+@dataclass(frozen=True)
+class _PositionAccountingTransition:
+    """Result of applying one fill to one symbol position state."""
+
+    state: _PositionAccountingState | None
+    realized_pnl: float | None
+
+
+@dataclass(frozen=True)
+class _PositionSelection:
+    """Selected and ignored initial positions for a backtest symbol universe."""
+
+    selected: tuple[Position, ...]
+    ignored_symbols: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _InitialAvgPriceFill:
+    """Initial positions after avg-price filling plus unresolved symbols."""
+
+    positions: tuple[Position, ...]
+    missing_price_symbols: tuple[str, ...]
 
 
 def _build_buy_hold_baseline(
@@ -1149,26 +1467,43 @@ def _build_buy_hold_baseline(
     """
     holdings: dict[str, float] = {position.symbol: position.qty for position in initial_positions}
     cash_balance = float(initial_cash)
-    if cash_balance <= 0:
-        return _Holdings(cash_balance=cash_balance, positions=holdings)
     first_prices = _first_prices_from_bars(bars_by_symbol, start)
+    return _allocate_buy_hold_cash(
+        holdings=holdings,
+        cash_balance=cash_balance,
+        symbols=symbols,
+        first_prices=first_prices,
+    )
+
+
+def _allocate_buy_hold_cash(
+    *,
+    holdings: Mapping[str, float],
+    cash_balance: float,
+    symbols: Sequence[str],
+    first_prices: Mapping[str, float],
+) -> _Holdings:
+    """Allocate positive cash equally across symbols with valid first prices."""
+    allocated_holdings = dict(holdings)
+    if cash_balance <= 0:
+        return _Holdings(cash_balance=cash_balance, positions=allocated_holdings)
     alloc_symbols = [symbol for symbol in symbols if symbol in first_prices]
     if not alloc_symbols:
-        return _Holdings(cash_balance=cash_balance, positions=holdings)
+        return _Holdings(cash_balance=cash_balance, positions=allocated_holdings)
     allocation = cash_balance / len(alloc_symbols)
     for symbol in alloc_symbols:
         price = first_prices[symbol]
         if price <= 0:
             continue
         qty = allocation / price
-        holdings[symbol] = holdings.get(symbol, 0.0) + qty
-    return _Holdings(cash_balance=0.0, positions=holdings)
+        allocated_holdings[symbol] = allocated_holdings.get(symbol, 0.0) + qty
+    return _Holdings(cash_balance=0.0, positions=allocated_holdings)
 
 
 def _compute_equity(
     portfolio: Portfolio,
     prices: Mapping[str, float],
-) -> tuple[float, float, float, float | None]:
+) -> _PortfolioValuation:
     """Compute equity, net exposure, gross exposure, and invested fraction.
 
     Positions without a current price are excluded from notional exposure rather
@@ -1187,7 +1522,12 @@ def _compute_equity(
     invested_pct = None
     if equity != 0:
         invested_pct = gross_notional / equity
-    return equity, net_notional, gross_notional, invested_pct
+    return _PortfolioValuation(
+        equity=equity,
+        net_notional=net_notional,
+        gross_notional=gross_notional,
+        invested_pct=invested_pct,
+    )
 
 
 def _compute_holdings_equity(holdings: _Holdings, prices: Mapping[str, float]) -> float:
@@ -1206,7 +1546,7 @@ def _compute_trade_stats(
     run_id: str,
     equity_curve: Sequence[EquityPoint],
 ) -> _TradeStats | None:
-    """Compute trade-level statistics from fill events."""
+    """Load fill evidence and compute trade-level statistics."""
     connection = getattr(event_store, "connection", lambda: None)()
     if connection is None or not hasattr(connection, "cursor"):
         return None
@@ -1221,14 +1561,6 @@ def _compute_trade_stats(
             [run_id],
         )
         order_rows = cursor.fetchall()
-        order_lookup: dict[str, tuple[str, str, str | None]] = {}
-        for client_order_id, symbol, side, cycle_id in order_rows:
-            if client_order_id and client_order_id not in order_lookup:
-                order_lookup[str(client_order_id)] = (
-                    str(symbol),
-                    str(side).lower(),
-                    str(cycle_id) if cycle_id is not None else None,
-                )
 
         cursor.execute(
             """
@@ -1241,142 +1573,302 @@ def _compute_trade_stats(
         )
         fill_rows = cursor.fetchall()
 
-    if not fill_rows:
-        return _TradeStats(
-            trade_count=0,
-            hit_rate=None,
-            profit_factor=None,
-            expectancy=None,
-            avg_win=None,
-            avg_loss=None,
-            turnover=None,
-            realized_pnl=None,
-            trades=tuple(),
-            total_fees=0.0,
-            total_slippage=0.0,
-        )
+    return _compute_trade_stats_from_events(
+        order_events=_normalize_order_accounting_events(order_rows),
+        fill_events=_normalize_fill_accounting_events(fill_rows),
+        equity_curve=equity_curve,
+    )
 
-    positions: dict[str, tuple[float, float | None]] = {}
+
+def _normalize_order_accounting_events(rows: Sequence[Sequence[object]]) -> tuple[_OrderAccountingEvent, ...]:
+    """Normalize raw order-event SQL rows for deterministic trade accounting."""
+    events: list[_OrderAccountingEvent] = []
+    for client_order_id, symbol, side, cycle_id in rows:
+        if client_order_id is None:
+            continue
+        events.append(
+            _OrderAccountingEvent(
+                client_order_id=str(client_order_id),
+                symbol=str(symbol),
+                side=str(side).lower(),
+                cycle_id=str(cycle_id) if cycle_id is not None else None,
+            )
+        )
+    return tuple(events)
+
+
+def _normalize_fill_accounting_events(rows: Sequence[Sequence[object]]) -> tuple[_FillAccountingEvent, ...]:
+    """Normalize raw fill-event SQL rows for deterministic trade accounting."""
+    events: list[_FillAccountingEvent] = []
+    for client_order_id, fill_ts, fill_qty, fill_price, raw_fill_price, fee_amount, slippage_amount in rows:
+        events.append(
+            _FillAccountingEvent(
+                client_order_id=str(client_order_id) if client_order_id is not None else None,
+                fill_ts=_normalize_timestamp(fill_ts),  # type: ignore[arg-type]
+                fill_qty=float(fill_qty or 0.0),
+                fill_price=float(fill_price or 0.0),
+                raw_fill_price=float(raw_fill_price) if raw_fill_price is not None else None,
+                fee_amount=float(fee_amount or 0.0),
+                slippage_amount=float(slippage_amount or 0.0),
+            )
+        )
+    return tuple(events)
+
+
+def _empty_trade_stats() -> _TradeStats:
+    """Return a zero-valued trade-stat summary for runs without valid fills."""
+    return _TradeStats(
+        trade_count=0,
+        hit_rate=None,
+        profit_factor=None,
+        expectancy=None,
+        avg_win=None,
+        avg_loss=None,
+        turnover=None,
+        realized_pnl=None,
+        trades=tuple(),
+        total_fees=0.0,
+        total_slippage=0.0,
+    )
+
+
+def _compute_trade_stats_from_events(
+    *,
+    order_events: Sequence[_OrderAccountingEvent],
+    fill_events: Sequence[_FillAccountingEvent],
+    equity_curve: Sequence[EquityPoint],
+) -> _TradeStats:
+    """Compute trade-level statistics from normalized order and fill events."""
+    if not fill_events:
+        return _empty_trade_stats()
+
+    order_lookup: dict[str, _OrderAccountingEvent] = {}
+    for order_event in order_events:
+        if order_event.client_order_id not in order_lookup:
+            order_lookup[order_event.client_order_id] = order_event
+
+    if not order_lookup:
+        return _empty_trade_stats()
+
+    return _compute_trade_accounting(
+        order_lookup=order_lookup,
+        fill_events=fill_events,
+        equity_curve=equity_curve,
+    )
+
+
+def _compute_trade_accounting(
+    *,
+    order_lookup: Mapping[str, _OrderAccountingEvent],
+    fill_events: Sequence[_FillAccountingEvent],
+    equity_curve: Sequence[EquityPoint],
+) -> _TradeStats:
+    """Apply deterministic position accounting over normalized fills."""
+    if not fill_events:
+        return _empty_trade_stats()
+
+    positions: dict[str, _PositionAccountingState] = {}
     trades: list[TradeRecord] = []
     realized_pnls: list[float] = []
     traded_notional = 0.0
     total_fees = 0.0
     total_slippage = 0.0
 
-    for client_order_id, fill_ts, fill_qty, fill_price, raw_fill_price, fee_amount, slippage_amount in fill_rows:
-        if client_order_id is None:
+    for fill_event in fill_events:
+        if fill_event.client_order_id is None:
             continue
-        order = order_lookup.get(str(client_order_id))
+        order = order_lookup.get(fill_event.client_order_id)
         if order is None:
             continue
-        symbol, side, cycle_id = order
-        qty = float(fill_qty or 0.0)
-        price = float(fill_price or 0.0)
-        raw_price = float(raw_fill_price) if raw_fill_price is not None else None
-        fee = float(fee_amount or 0.0)
-        slippage = float(slippage_amount or 0.0)
+        symbol = order.symbol
+        side = order.side
+        cycle_id = order.cycle_id
+        qty = fill_event.fill_qty
+        price = fill_event.fill_price
+        fee = fill_event.fee_amount
+        slippage = fill_event.slippage_amount
         if qty <= 0 or price <= 0:
             continue
         total_fees += fee
         total_slippage += slippage
         notional = abs(qty * price)
         traded_notional += notional
-        sign = 1.0 if side == "buy" else -1.0
-        current_qty, avg_price = positions.get(symbol, (0.0, None))
-        delta = sign * qty
         fee_per_unit = fee / qty if qty else 0.0
         effective_unit_price = price + fee_per_unit if side == "buy" else price - fee_per_unit
-        realized_pnl: float | None = None
-
-        if current_qty == 0 or avg_price is None:
-            new_qty = current_qty + delta
-            if abs(new_qty) < 1e-12:
-                positions.pop(symbol, None)
-            else:
-                positions[symbol] = (new_qty, effective_unit_price)
-        elif current_qty > 0 and delta < 0:
-            close_qty = min(current_qty, qty)
-            realized_pnl = (effective_unit_price - avg_price) * close_qty
-            realized_pnls.append(realized_pnl)
-            remaining = current_qty - close_qty
-            if qty > close_qty:
-                positions[symbol] = (-(qty - close_qty), effective_unit_price)
-            elif abs(remaining) < 1e-12:
-                positions.pop(symbol, None)
-            else:
-                positions[symbol] = (remaining, avg_price)
-        elif current_qty < 0 and delta > 0:
-            close_qty = min(abs(current_qty), qty)
-            realized_pnl = (avg_price - effective_unit_price) * close_qty
-            realized_pnls.append(realized_pnl)
-            remaining = abs(current_qty) - close_qty
-            if qty > close_qty:
-                positions[symbol] = (qty - close_qty, effective_unit_price)
-            elif abs(remaining) < 1e-12:
-                positions.pop(symbol, None)
-            else:
-                positions[symbol] = (-remaining, avg_price)
+        transition = _apply_fill_to_position_state(
+            positions.get(symbol),
+            side=side,
+            qty=qty,
+            effective_unit_price=effective_unit_price,
+        )
+        if transition.state is None:
+            positions.pop(symbol, None)
         else:
-            new_qty = current_qty + delta
-            if abs(new_qty) < 1e-12:
-                positions.pop(symbol, None)
-            else:
-                avg_price_new = ((current_qty * avg_price) + (delta * effective_unit_price)) / new_qty
-                positions[symbol] = (new_qty, avg_price_new)
+            positions[symbol] = transition.state
+        if transition.realized_pnl is not None:
+            realized_pnls.append(transition.realized_pnl)
 
         trades.append(
             TradeRecord(
-                client_order_id=str(client_order_id),
+                client_order_id=fill_event.client_order_id,
                 cycle_id=cycle_id,
                 symbol=symbol,
                 side=side,
-                fill_ts=_normalize_timestamp(fill_ts),
+                fill_ts=fill_event.fill_ts,
                 fill_qty=qty,
-                raw_fill_price=raw_price,
+                raw_fill_price=fill_event.raw_fill_price,
                 fill_price=price,
                 fee_amount=fee,
                 slippage_amount=slippage,
                 notional=notional,
-                realized_pnl=realized_pnl,
+                realized_pnl=transition.realized_pnl,
             )
         )
 
-    trade_count = len(realized_pnls)
-    wins = [pnl for pnl in realized_pnls if pnl > 0]
-    losses = [pnl for pnl in realized_pnls if pnl < 0]
-    hit_rate = None
-    if trade_count:
-        hit_rate = len(wins) / trade_count
-    avg_win = _mean(wins) if wins else None
-    avg_loss = _mean(losses) if losses else None
-    profit_factor = None
-    gross_loss = abs(sum(losses)) if losses else 0.0
-    if gross_loss > 0:
-        profit_factor = sum(wins) / gross_loss if wins else 0.0
-    expectancy = None
-    if trade_count:
-        win_rate = hit_rate or 0.0
-        loss_rate = 1.0 - win_rate
-        expectancy = (win_rate * (avg_win or 0.0)) + (loss_rate * (avg_loss or 0.0))
+    realized_summary = _summarize_realized_trade_pnls(realized_pnls)
 
-    avg_equity = _mean([point.equity for point in equity_curve]) if equity_curve else 0.0
-    turnover = None
-    if avg_equity:
-        turnover = traded_notional / avg_equity
-    realized_total = sum(realized_pnls) if realized_pnls else None
+    turnover = _compute_turnover(
+        traded_notional=traded_notional,
+        equity_curve=equity_curve,
+    )
 
     return _TradeStats(
+        trade_count=realized_summary.trade_count,
+        hit_rate=realized_summary.hit_rate,
+        profit_factor=realized_summary.profit_factor,
+        expectancy=realized_summary.expectancy,
+        avg_win=realized_summary.avg_win,
+        avg_loss=realized_summary.avg_loss,
+        turnover=turnover,
+        realized_pnl=realized_summary.realized_pnl,
+        trades=tuple(trades),
+        total_fees=total_fees,
+        total_slippage=total_slippage,
+    )
+
+
+def _compute_turnover(*, traded_notional: float, equity_curve: Sequence[EquityPoint]) -> float | None:
+    """Compute traded notional divided by average equity when defined."""
+    avg_equity = _mean([point.equity for point in equity_curve]) if equity_curve else 0.0
+    if not avg_equity:
+        return None
+    return traded_notional / avg_equity
+
+
+def _apply_fill_to_position_state(
+    current: _PositionAccountingState | None,
+    *,
+    side: str,
+    qty: float,
+    effective_unit_price: float,
+) -> _PositionAccountingTransition:
+    """Return the next open position state and any realized PnL for one fill."""
+    sign = 1.0 if side == "buy" else -1.0
+    delta = sign * qty
+    current_qty = current.qty if current is not None else 0.0
+    avg_price = current.avg_price if current is not None else None
+
+    if current_qty == 0 or avg_price is None:
+        return _open_position_from_delta(
+            qty=delta,
+            avg_price=effective_unit_price,
+            realized_pnl=None,
+        )
+
+    if current_qty > 0 and delta < 0:
+        close_qty = min(current_qty, qty)
+        realized_pnl = (effective_unit_price - avg_price) * close_qty
+        remaining = current_qty - close_qty
+        if qty > close_qty:
+            return _PositionAccountingTransition(
+                state=_PositionAccountingState(
+                    qty=-(qty - close_qty),
+                    avg_price=effective_unit_price,
+                ),
+                realized_pnl=realized_pnl,
+            )
+        return _open_position_from_delta(
+            qty=remaining,
+            avg_price=avg_price,
+            realized_pnl=realized_pnl,
+        )
+
+    if current_qty < 0 and delta > 0:
+        close_qty = min(abs(current_qty), qty)
+        realized_pnl = (avg_price - effective_unit_price) * close_qty
+        remaining = abs(current_qty) - close_qty
+        if qty > close_qty:
+            return _PositionAccountingTransition(
+                state=_PositionAccountingState(
+                    qty=qty - close_qty,
+                    avg_price=effective_unit_price,
+                ),
+                realized_pnl=realized_pnl,
+            )
+        return _open_position_from_delta(
+            qty=-remaining,
+            avg_price=avg_price,
+            realized_pnl=realized_pnl,
+        )
+
+    new_qty = current_qty + delta
+    avg_price_new = ((current_qty * avg_price) + (delta * effective_unit_price)) / new_qty
+    return _open_position_from_delta(
+        qty=new_qty,
+        avg_price=avg_price_new,
+        realized_pnl=None,
+    )
+
+
+def _open_position_from_delta(
+    *,
+    qty: float,
+    avg_price: float,
+    realized_pnl: float | None,
+) -> _PositionAccountingTransition:
+    """Represent a remaining position, treating near-zero quantity as closed."""
+    if abs(qty) < 1e-12:
+        return _PositionAccountingTransition(state=None, realized_pnl=realized_pnl)
+    return _PositionAccountingTransition(
+        state=_PositionAccountingState(qty=qty, avg_price=avg_price),
+        realized_pnl=realized_pnl,
+    )
+
+
+def _summarize_realized_trade_pnls(realized_pnls: Sequence[float]) -> _RealizedTradeSummary:
+    """Compute win/loss statistics from realized PnL values."""
+    trade_count = len(realized_pnls)
+    if trade_count == 0:
+        return _RealizedTradeSummary(
+            trade_count=0,
+            hit_rate=None,
+            profit_factor=None,
+            expectancy=None,
+            avg_win=None,
+            avg_loss=None,
+            realized_pnl=None,
+        )
+
+    wins = [pnl for pnl in realized_pnls if pnl > 0]
+    losses = [pnl for pnl in realized_pnls if pnl < 0]
+    hit_rate = len(wins) / trade_count
+    avg_win = _mean(wins) if wins else None
+    avg_loss = _mean(losses) if losses else None
+    gross_loss = abs(sum(losses)) if losses else 0.0
+    profit_factor = None
+    if gross_loss > 0:
+        profit_factor = sum(wins) / gross_loss if wins else 0.0
+    win_rate = hit_rate or 0.0
+    loss_rate = 1.0 - win_rate
+    expectancy = (win_rate * (avg_win or 0.0)) + (loss_rate * (avg_loss or 0.0))
+    return _RealizedTradeSummary(
         trade_count=trade_count,
         hit_rate=hit_rate,
         profit_factor=profit_factor,
         expectancy=expectancy,
         avg_win=avg_win,
         avg_loss=avg_loss,
-        turnover=turnover,
-        realized_pnl=realized_total,
-        trades=tuple(trades),
-        total_fees=total_fees,
-        total_slippage=total_slippage,
+        realized_pnl=sum(realized_pnls),
     )
 
 
@@ -1394,33 +1886,46 @@ def _build_performance_summary(
     fill-derived accounting in one object.
     """
     if len(equity_curve) < 2:
-        return PerformanceSummary(
-            start_equity=None,
-            end_equity=None,
-            total_return=None,
-            cagr=None,
-            volatility=None,
-            sharpe=None,
-            sortino=None,
-            max_drawdown=None,
-            max_drawdown_duration=None,
-            calmar=None,
-            ulcer_index=None,
-            avg_net_exposure=None,
-            avg_gross_exposure=None,
-            avg_invested_pct=None,
-            trade_count=None,
-            hit_rate=None,
-            profit_factor=None,
-            expectancy=None,
-            avg_win=None,
-            avg_loss=None,
-            turnover=None,
-        )
+        return _empty_performance_summary()
+    return_metrics = _summarize_return_performance(
+        equity_curve,
+        periods_per_year=_annualization_factor(timeframe),
+    )
+    exposure = _summarize_exposure_samples(exposure_samples or ())
+    return PerformanceSummary(
+        start_equity=return_metrics.start_equity,
+        end_equity=return_metrics.end_equity,
+        total_return=return_metrics.total_return,
+        cagr=return_metrics.cagr,
+        volatility=return_metrics.volatility,
+        sharpe=return_metrics.sharpe,
+        sortino=return_metrics.sortino,
+        max_drawdown=return_metrics.max_drawdown,
+        max_drawdown_duration=return_metrics.max_drawdown_duration,
+        calmar=return_metrics.calmar,
+        ulcer_index=return_metrics.ulcer_index,
+        avg_net_exposure=exposure.avg_net_exposure,
+        avg_gross_exposure=exposure.avg_gross_exposure,
+        avg_invested_pct=exposure.avg_invested_pct,
+        trade_count=trade_stats.trade_count if trade_stats else None,
+        hit_rate=trade_stats.hit_rate if trade_stats else None,
+        profit_factor=trade_stats.profit_factor if trade_stats else None,
+        expectancy=trade_stats.expectancy if trade_stats else None,
+        avg_win=trade_stats.avg_win if trade_stats else None,
+        avg_loss=trade_stats.avg_loss if trade_stats else None,
+        turnover=trade_stats.turnover if trade_stats else None,
+    )
+
+
+def _summarize_return_performance(
+    equity_curve: Sequence[EquityPoint],
+    *,
+    periods_per_year: float,
+) -> _ReturnPerformanceMetrics:
+    """Compute return, volatility, and drawdown metrics from an equity curve."""
     start_equity = equity_curve[0].equity
     end_equity = equity_curve[-1].equity
     returns = _returns_from_curve(equity_curve)
-    periods_per_year = _annualization_factor(timeframe)
     total_return = None
     if start_equity != 0:
         total_return = (end_equity / start_equity) - 1.0
@@ -1432,18 +1937,7 @@ def _build_performance_summary(
     calmar = None
     if cagr is not None and drawdown.max_drawdown not in {None, 0.0}:
         calmar = cagr / drawdown.max_drawdown
-    avg_net = avg_gross = avg_invested = None
-    if exposure_samples:
-        net_sum = sum(sample[0] for sample in exposure_samples)
-        gross_sum = sum(sample[1] for sample in exposure_samples)
-        invested_vals = [sample[2] for sample in exposure_samples if sample[2] is not None]
-        count = len(exposure_samples)
-        if count:
-            avg_net = net_sum / count
-            avg_gross = gross_sum / count
-        if invested_vals:
-            avg_invested = sum(invested_vals) / len(invested_vals)
-    return PerformanceSummary(
+    return _ReturnPerformanceMetrics(
         start_equity=start_equity,
         end_equity=end_equity,
         total_return=total_return,
@@ -1455,16 +1949,28 @@ def _build_performance_summary(
         max_drawdown_duration=drawdown.max_drawdown_duration,
         calmar=calmar,
         ulcer_index=drawdown.ulcer_index,
-        avg_net_exposure=avg_net,
-        avg_gross_exposure=avg_gross,
+    )
+
+
+def _summarize_exposure_samples(
+    exposure_samples: Sequence[tuple[float, float, float | None]],
+) -> _ExposureSummary:
+    """Average net, gross, and invested exposure samples."""
+    if not exposure_samples:
+        return _ExposureSummary(
+            avg_net_exposure=None,
+            avg_gross_exposure=None,
+            avg_invested_pct=None,
+        )
+    sample_count = len(exposure_samples)
+    invested_values = [sample[2] for sample in exposure_samples if sample[2] is not None]
+    avg_invested = None
+    if invested_values:
+        avg_invested = sum(invested_values) / len(invested_values)
+    return _ExposureSummary(
+        avg_net_exposure=sum(sample[0] for sample in exposure_samples) / sample_count,
+        avg_gross_exposure=sum(sample[1] for sample in exposure_samples) / sample_count,
         avg_invested_pct=avg_invested,
-        trade_count=trade_stats.trade_count if trade_stats else None,
-        hit_rate=trade_stats.hit_rate if trade_stats else None,
-        profit_factor=trade_stats.profit_factor if trade_stats else None,
-        expectancy=trade_stats.expectancy if trade_stats else None,
-        avg_win=trade_stats.avg_win if trade_stats else None,
-        avg_loss=trade_stats.avg_loss if trade_stats else None,
-        turnover=trade_stats.turnover if trade_stats else None,
     )
 
 
@@ -1477,13 +1983,26 @@ def _build_relative_metrics(
     """Compute tracking, information-ratio, alpha, and beta versus benchmark."""
     returns = _returns_from_curve(strategy_curve)
     benchmark_returns = _returns_from_curve(benchmark_curve)
+    return _build_relative_metrics_from_returns(
+        returns=returns,
+        benchmark_returns=benchmark_returns,
+        periods_per_year=_annualization_factor(timeframe),
+    )
+
+
+def _build_relative_metrics_from_returns(
+    *,
+    returns: Sequence[float],
+    benchmark_returns: Sequence[float],
+    periods_per_year: float,
+) -> _RelativeMetrics:
+    """Compute benchmark-relative metrics from aligned period return inputs."""
     length = min(len(returns), len(benchmark_returns))
     if length == 0:
         return _RelativeMetrics(None, None, None, None)
     returns = returns[:length]
     benchmark_returns = benchmark_returns[:length]
     excess = [r - b for r, b in zip(returns, benchmark_returns)]
-    periods_per_year = _annualization_factor(timeframe)
     excess_std = _variance(excess) ** 0.5 if excess else 0.0
     tracking_error = None if excess_std == 0.0 else excess_std * (periods_per_year ** 0.5)
     info_ratio = None
@@ -1690,7 +2209,7 @@ def _load_bars(
     earlier bars for indicators that need warmup history without allowing those
     pre-window bars to create decision cycles.
     """
-    table = "crypto_bar_events" if asset_class in {"crypto", "cryptocurrency"} else "stock_bar_events"
+    table = _bar_event_table_name(asset_class)
     connection = getattr(event_store, "connection", lambda: None)()
     if connection is None:
         logger.warning("Backtest bar load skipped; event store has no connection")
@@ -1867,7 +2386,7 @@ def _fetch_first_prices(
     start: datetime,
 ) -> dict[str, float]:
     """Fetch the first persisted close at or after the backtest start."""
-    table = "crypto_bar_events" if asset_class in {"crypto", "cryptocurrency"} else "stock_bar_events"
+    table = _bar_event_table_name(asset_class)
     connection = getattr(event_store, "connection", lambda: None)()
     if connection is None:
         return {}
@@ -1902,13 +2421,20 @@ def _first_prices_from_bars(
 ) -> dict[str, float]:
     """Return first in-memory close at or after the backtest start per symbol."""
     first: dict[str, float] = {}
-    start_ts = _normalize_timestamp(start)
     for symbol, bars in bars_by_symbol.items():
-        for bar in bars:
-            if _normalize_timestamp(bar.ts) >= start_ts:
-                first[symbol] = float(bar.close)
-                break
+        price = _first_price_from_bars(bars, start)
+        if price is not None:
+            first[symbol] = price
     return first
+
+
+def _first_price_from_bars(bars: Sequence[Bar], start: datetime) -> float | None:
+    """Return the first close at or after the requested start for one symbol."""
+    start_ts = _normalize_timestamp(start)
+    for bar in bars:
+        if _normalize_timestamp(bar.ts) >= start_ts:
+            return float(bar.close)
+    return None
 
 
 def _format_optional_float(value: float | None) -> str:
@@ -1934,7 +2460,7 @@ def _fetch_timestamps(
     end: datetime,
 ) -> list[datetime]:
     """Fetch unique replay timestamps across symbols within the backtest window."""
-    table = "crypto_bar_events" if asset_class in {"crypto", "cryptocurrency"} else "stock_bar_events"
+    table = _bar_event_table_name(asset_class)
     connection = getattr(event_store, "connection", lambda: None)()
     if connection is None:
         logger.warning("Backtest lookup skipped; event store has no connection")
@@ -1979,6 +2505,13 @@ def _param_placeholder(connection: object) -> str:
     if module.startswith("duckdb"):
         return "?"
     return "%s"
+
+
+def _bar_event_table_name(asset_class: str) -> str:
+    """Return the persisted bar-event table name for an asset class."""
+    if asset_class in {"crypto", "cryptocurrency"}:
+        return "crypto_bar_events"
+    return "stock_bar_events"
 
 
 def _parse_datetime(value: str) -> datetime:
@@ -2085,30 +2618,32 @@ def _parse_initial_positions(value: object | None) -> Sequence[Position] | None:
         return None
     if not isinstance(value, (list, tuple)):
         raise ValueError("backtest.initial_positions must be a list")
-    positions: list[Position] = []
-    for item in value:
-        if not isinstance(item, Mapping):
-            raise ValueError("backtest.initial_positions entries must be mappings")
-        symbol = str(item.get("symbol", "")).strip().upper()
-        if not symbol:
-            raise ValueError("backtest.initial_positions requires symbol")
-        qty_raw = item.get("qty")
-        if qty_raw is None:
-            raise ValueError("backtest.initial_positions requires qty")
+    return [_parse_initial_position(item) for item in value]
+
+
+def _parse_initial_position(item: object) -> Position:
+    """Parse one initial-position config entry into a typed position."""
+    if not isinstance(item, Mapping):
+        raise ValueError("backtest.initial_positions entries must be mappings")
+    symbol = str(item.get("symbol", "")).strip().upper()
+    if not symbol:
+        raise ValueError("backtest.initial_positions requires symbol")
+    qty_raw = item.get("qty")
+    if qty_raw is None:
+        raise ValueError("backtest.initial_positions requires qty")
+    try:
+        qty = float(qty_raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid qty for initial position: {item}") from exc
+    avg_price = item.get("avg_price")
+    if avg_price is None:
+        avg_value = None
+    else:
         try:
-            qty = float(qty_raw)
+            avg_value = float(avg_price)
         except (TypeError, ValueError) as exc:
-            raise ValueError(f"Invalid qty for initial position: {item}") from exc
-        avg_price = item.get("avg_price")
-        if avg_price is None:
-            avg_value = None
-        else:
-            try:
-                avg_value = float(avg_price)
-            except (TypeError, ValueError) as exc:
-                raise ValueError(f"Invalid avg_price for initial position: {item}") from exc
-        positions.append(Position(symbol=symbol, qty=qty, avg_price=avg_value))
-    return positions
+            raise ValueError(f"Invalid avg_price for initial position: {item}") from exc
+    return Position(symbol=symbol, qty=qty, avg_price=avg_value)
 
 
 def _parse_initial_cash(value: object | None) -> float:
@@ -2123,15 +2658,24 @@ def _parse_initial_cash(value: object | None) -> float:
 
 def _filter_positions(positions: Sequence[Position], symbols: set[str]) -> list[Position]:
     """Drop initial positions outside the selected backtest symbol universe."""
+    selection = _select_positions_for_symbols(positions, symbols)
+    for symbol in selection.ignored_symbols:
+        logger.warning("Initial position ignored; symbol not in backtest symbols: %s", symbol)
+    return list(selection.selected)
+
+
+def _select_positions_for_symbols(positions: Sequence[Position], symbols: set[str]) -> _PositionSelection:
+    """Select initial positions that belong to the configured symbol universe."""
     if not positions or not symbols:
-        return list(positions)
-    filtered: list[Position] = []
+        return _PositionSelection(selected=tuple(positions), ignored_symbols=tuple())
+    selected: list[Position] = []
+    ignored_symbols: list[str] = []
     for position in positions:
         if position.symbol in symbols:
-            filtered.append(position)
+            selected.append(position)
         else:
-            logger.warning("Initial position ignored; symbol not in backtest symbols: %s", position.symbol)
-    return filtered
+            ignored_symbols.append(position.symbol)
+    return _PositionSelection(selected=tuple(selected), ignored_symbols=tuple(ignored_symbols))
 
 
 def _fill_initial_avg_prices(
@@ -2153,18 +2697,33 @@ def _fill_initial_avg_prices(
         first_prices = _first_prices_from_bars(bars_by_symbol, start)
     else:
         first_prices = _fetch_first_prices(event_store, asset_class, missing, timeframe, start)
+    fill_result = _fill_missing_initial_avg_prices(positions, first_prices)
+    for symbol in fill_result.missing_price_symbols:
+        logger.warning(
+            "Initial position avg_price missing and no first bar found symbol=%s",
+            symbol,
+        )
+    return list(fill_result.positions)
+
+
+def _fill_missing_initial_avg_prices(
+    positions: Sequence[Position],
+    first_prices: Mapping[str, float],
+) -> _InitialAvgPriceFill:
+    """Fill missing initial avg prices from explicit first-price evidence."""
     filled: list[Position] = []
+    missing_price_symbols: list[str] = []
     for position in positions:
         avg_price = position.avg_price
         if avg_price is None:
             avg_price = first_prices.get(position.symbol)
             if avg_price is None:
-                logger.warning(
-                    "Initial position avg_price missing and no first bar found symbol=%s",
-                    position.symbol,
-                )
+                missing_price_symbols.append(position.symbol)
         filled.append(Position(symbol=position.symbol, qty=position.qty, avg_price=avg_price))
-    return filled
+    return _InitialAvgPriceFill(
+        positions=tuple(filled),
+        missing_price_symbols=tuple(missing_price_symbols),
+    )
 
 
 def _seed_positions(
@@ -2230,19 +2789,26 @@ def export_backtest_equity_curve_csv(result: BacktestResult, path: str | Path) -
     with output_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(
             handle,
-            fieldnames=["ts", "strategy_equity", "benchmark_equity"],
+            fieldnames=list(_EQUITY_CURVE_CSV_FIELDS),
         )
         writer.writeheader()
-        for index, point in enumerate(result.equity_curve):
-            benchmark_point = result.benchmark_curve[index] if index < len(result.benchmark_curve) else None
-            writer.writerow(
-                {
-                    "ts": point.ts.isoformat(),
-                    "strategy_equity": point.equity,
-                    "benchmark_equity": benchmark_point.equity if benchmark_point is not None else None,
-                }
-            )
+        writer.writerows(_build_equity_curve_csv_rows(result))
     return output_path
+
+
+def _build_equity_curve_csv_rows(result: BacktestResult) -> tuple[dict[str, object], ...]:
+    """Build stable CSV rows for aligned strategy and benchmark equity curves."""
+    rows: list[dict[str, object]] = []
+    for index, point in enumerate(result.equity_curve):
+        benchmark_point = result.benchmark_curve[index] if index < len(result.benchmark_curve) else None
+        rows.append(
+            {
+                "ts": point.ts.isoformat(),
+                "strategy_equity": point.equity,
+                "benchmark_equity": benchmark_point.equity if benchmark_point is not None else None,
+            }
+        )
+    return tuple(rows)
 
 
 def export_backtest_trades_csv(result: BacktestResult, path: str | Path) -> Path:
@@ -2255,40 +2821,48 @@ def export_backtest_trades_csv(result: BacktestResult, path: str | Path) -> Path
     with output_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(
             handle,
-            fieldnames=[
-                "client_order_id",
-                "cycle_id",
-                "symbol",
-                "side",
-                "fill_ts",
-                "fill_qty",
-                "raw_fill_price",
-                "fill_price",
-                "fee_amount",
-                "slippage_amount",
-                "notional",
-                "realized_pnl",
-            ],
+            fieldnames=list(_TRADES_CSV_FIELDS),
         )
         writer.writeheader()
-        for trade in result.trades:
-            writer.writerow(
-                {
-                    "client_order_id": trade.client_order_id,
-                    "cycle_id": trade.cycle_id,
-                    "symbol": trade.symbol,
-                    "side": trade.side,
-                    "fill_ts": trade.fill_ts.isoformat(),
-                    "fill_qty": trade.fill_qty,
-                    "raw_fill_price": trade.raw_fill_price,
-                    "fill_price": trade.fill_price,
-                    "fee_amount": trade.fee_amount,
-                    "slippage_amount": trade.slippage_amount,
-                    "notional": trade.notional,
-                    "realized_pnl": trade.realized_pnl,
-                }
-            )
+        writer.writerows(_build_trade_csv_rows(result.trades))
     return output_path
+
+
+def _build_trade_csv_rows(trades: Sequence[TradeRecord]) -> tuple[dict[str, object], ...]:
+    """Build stable CSV rows for executed trade accounting records."""
+    return tuple(
+        {
+            "client_order_id": trade.client_order_id,
+            "cycle_id": trade.cycle_id,
+            "symbol": trade.symbol,
+            "side": trade.side,
+            "fill_ts": trade.fill_ts.isoformat(),
+            "fill_qty": trade.fill_qty,
+            "raw_fill_price": trade.raw_fill_price,
+            "fill_price": trade.fill_price,
+            "fee_amount": trade.fee_amount,
+            "slippage_amount": trade.slippage_amount,
+            "notional": trade.notional,
+            "realized_pnl": trade.realized_pnl,
+        }
+        for trade in trades
+    )
+
+
+def _build_backtest_metrics_snapshot_payload(
+    *,
+    run_id: str,
+    result: BacktestResult,
+    ts: datetime,
+) -> dict[str, object]:
+    """Build the aggregate metrics-snapshot event payload for a backtest result."""
+    return {
+        "ts": _normalize_timestamp(ts),
+        "run_id": run_id,
+        "session_id": run_id,
+        "cycle_id": None,
+        "payload": json.dumps(serialize_backtest_result(result)),
+    }
 
 
 def persist_backtest_result(run_id: str, result: BacktestResult, config: Config) -> None:
@@ -2302,13 +2876,11 @@ def persist_backtest_result(run_id: str, result: BacktestResult, config: Config)
     try:
         event_store.record_event(
             "metrics_snapshots",
-            {
-                "ts": datetime.now(timezone.utc),
-                "run_id": run_id,
-                "session_id": run_id,
-                "cycle_id": None,
-                "payload": json.dumps(serialize_backtest_result(result)),
-            },
+            _build_backtest_metrics_snapshot_payload(
+                run_id=run_id,
+                result=result,
+                ts=datetime.now(timezone.utc),
+            ),
         )
     finally:
         event_store.close()
