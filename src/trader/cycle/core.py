@@ -13,7 +13,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 import uuid
 import json
-from typing import AsyncIterator, Mapping, Sequence
+from typing import AsyncIterator, Literal, Mapping, Sequence
 
 from ..broker import AlpacaPaperBroker, Broker, InternalPaperBroker, NoOpBroker
 from ..config import Config
@@ -40,7 +40,7 @@ from ..risk import (
     RiskPipeline,
 )
 from ..strategy_metadata import resolve_strategy_id, resolve_strategy_type
-from ..symbols import find_unmatched_positions, normalize_broker_positions
+from ..symbols import BrokerPositionView, find_unmatched_positions, normalize_broker_positions
 
 
 logger = logging.getLogger(__name__)
@@ -169,6 +169,144 @@ class MetricsSnapshotEvent:
 
 
 @dataclass(frozen=True)
+class CycleExecutionPlan:
+    """Pure execution decisions derived from cycle configuration."""
+
+    run_type: str
+    broker_kind: str
+    stream_mode: bool
+    sync_portfolio_on_fill: bool
+    portfolio_source: str | None
+
+
+@dataclass(frozen=True)
+class CycleIdentity:
+    """Deterministic run and cycle identity for one decision timestamp."""
+
+    run_id: str
+    cycle_id: str
+    owns_run_session: bool
+
+
+@dataclass(frozen=True)
+class CycleRunSessionOutcome:
+    """Terminal run-session status derived from the cycle result."""
+
+    status: str
+    error_message: str | None
+
+
+@dataclass(frozen=True)
+class CycleWorkflowResult:
+    """Cycle result paired with the run-session outcome it implies."""
+
+    cycle_result: CycleResult
+    run_session_outcome: CycleRunSessionOutcome
+
+
+@dataclass(frozen=True)
+class CycleRuntimeSetup:
+    """Runtime dependencies and identities prepared before executing a cycle."""
+
+    event_store: EventStore
+    owns_event_store: bool
+    broker: Broker
+    decision_ts: datetime
+    execution_plan: CycleExecutionPlan
+    started_at: datetime
+    cycle_identity: CycleIdentity
+
+
+PortfolioSnapshotAction = Literal[
+    "none",
+    "skip_alpaca_synced",
+    "persist_broker_fill_snapshot",
+    "persist_order_intent_snapshot",
+]
+
+
+@dataclass(frozen=True)
+class CyclePortfolioSnapshotPlan:
+    """Decision describing how processed orders should affect portfolio snapshots."""
+
+    action: PortfolioSnapshotAction
+
+
+@dataclass(frozen=True)
+class CycleMarketDataPipelineResult:
+    """Orders, bars, and prices produced by cycle market-data processing."""
+
+    processed_orders: Sequence[Mapping[str, object]]
+    market_data_events: Sequence[MarketDataEvent]
+    price_lookup: Mapping[str, float]
+
+
+@dataclass(frozen=True)
+class RecentMarketDataQuery:
+    """SQL and parameters for loading one symbol's latest stored market bar."""
+
+    sql: str
+    params: tuple[object, ...]
+
+
+@dataclass(frozen=True)
+class CycleRiskRejectionLog:
+    """Rejected order plus the risk manager that rejected it."""
+
+    order: Mapping[str, object]
+    manager_name: str
+
+
+@dataclass(frozen=True)
+class CycleRiskEvaluationResult:
+    """Approved and rejected order payloads from cycle risk validation."""
+
+    approved_orders: tuple[Mapping[str, object], ...]
+    rejected_orders: tuple[Mapping[str, object], ...]
+    rejection_logs: tuple[CycleRiskRejectionLog, ...]
+
+
+@dataclass(frozen=True)
+class CycleStreamRuntime:
+    """Immutable dependencies shared by market-stream pipeline stages."""
+
+    event_store: EventStore
+    strategy: Strategy
+    broker: Broker
+    portfolio: Portfolio
+    run_id: str
+    cycle_id: str
+    max_age_seconds: int
+    enforce_staleness: bool
+    asset_class: str
+    time_in_force: str
+    sync_portfolio_on_fill: bool
+    broker_type: str
+    config: Config
+    risk_manager: RiskManager
+
+
+@dataclass
+class CycleStreamCounters:
+    """Mutable counters for one market-stream pipeline execution."""
+
+    orders_emitted: int = 0
+    orders_rejected_locally: int = 0
+    orders_validated: int = 0
+    orders_submitted: int = 0
+    broker_responses: int = 0
+
+
+@dataclass
+class CycleStreamState:
+    """Mutable state accumulated while market-stream pipeline stages run."""
+
+    processed_orders: list[Mapping[str, object]]
+    latest_prices: dict[str, tuple[datetime, float]]
+    counters: CycleStreamCounters
+
+
+@dataclass(frozen=True)
 class CycleOrderEventPayload:
     """Immutable order lifecycle event prepared by the decision cycle."""
 
@@ -269,6 +407,658 @@ def _iter_risk_managers(risk_manager: RiskManager) -> Sequence[RiskManager]:
     return (risk_manager,)
 
 
+def _resolve_cycle_run_type(mode: str, run_type: str | None) -> str:
+    """Return the effective run type for cycle lifecycle records."""
+    return (run_type or ("backtest" if mode.lower() == "backtest" else "trading")).lower()
+
+
+def _build_cycle_execution_plan(
+    *,
+    mode: str,
+    broker_type: str,
+    portfolio_source: str | None,
+    run_type: str | None,
+) -> CycleExecutionPlan:
+    """Build deterministic cycle execution decisions from explicit inputs."""
+    broker_kind = (broker_type or "noop").lower()
+    effective_run_type = _resolve_cycle_run_type(mode, run_type)
+    return CycleExecutionPlan(
+        run_type=effective_run_type,
+        broker_kind=broker_kind,
+        stream_mode=mode.lower() != "backtest",
+        sync_portfolio_on_fill=broker_kind in {"alpaca", "internal"},
+        portfolio_source=portfolio_source,
+    )
+
+
+def _build_cycle_identity(
+    *,
+    strategy_id: str,
+    decision_ts: datetime,
+    run_type: str,
+    started_at: datetime,
+    run_id: str | None,
+) -> CycleIdentity:
+    """Build deterministic run/cycle identity without touching storage."""
+    owns_run_session = run_id is None
+    effective_run_id = (
+        deterministic_run_session_id(run_type, started_at)
+        if owns_run_session
+        else run_id
+    )
+    return CycleIdentity(
+        run_id=effective_run_id,
+        cycle_id=deterministic_cycle_id(strategy_id, decision_ts),
+        owns_run_session=owns_run_session,
+    )
+
+
+def _build_cycle_run_session_outcome(
+    status: str,
+    error_message: str | None = None,
+) -> CycleRunSessionOutcome:
+    """Build a terminal run-session outcome value."""
+    return CycleRunSessionOutcome(status=status, error_message=error_message)
+
+
+def _should_load_broker_portfolio(plan: CycleExecutionPlan) -> bool:
+    """Return whether broker state should be authoritative for this cycle."""
+    return (
+        plan.run_type != "backtest"
+        and plan.broker_kind == "alpaca"
+        and plan.portfolio_source == "alpaca"
+    )
+
+
+def _resolve_portfolio_asof_ts(mode: str, decision_ts: datetime) -> datetime | None:
+    """Return the portfolio read timestamp used by backtests."""
+    return decision_ts if mode.lower() == "backtest" else None
+
+
+def _resolve_cycle_snapshot_ts(
+    *,
+    mode: str,
+    decision_ts: datetime,
+    current_ts: datetime,
+) -> datetime:
+    """Return the timestamp to use for cycle snapshots in this mode."""
+    return decision_ts if mode.lower() == "backtest" else current_ts
+
+
+def _build_post_order_portfolio_snapshot_plan(
+    *,
+    processed_orders: Sequence[Mapping[str, object]],
+    sync_portfolio_on_fill: bool,
+    broker_kind: str,
+) -> CyclePortfolioSnapshotPlan:
+    """Decide how portfolio state should be persisted after submitted orders."""
+    if not processed_orders:
+        return CyclePortfolioSnapshotPlan(action="none")
+    if sync_portfolio_on_fill and broker_kind == "alpaca":
+        return CyclePortfolioSnapshotPlan(action="skip_alpaca_synced")
+    if sync_portfolio_on_fill and broker_kind == "internal":
+        return CyclePortfolioSnapshotPlan(action="persist_broker_fill_snapshot")
+    return CyclePortfolioSnapshotPlan(action="persist_order_intent_snapshot")
+
+
+def _should_use_stream_ingestion(*, ingest_market_data: bool, stream_mode: bool) -> bool:
+    """Return whether the cycle should use streaming market-data ingestion."""
+    return ingest_market_data and stream_mode
+
+
+def _resolve_market_data_freshness_ts(
+    *,
+    mode: str,
+    decision_ts: datetime,
+    current_ts: datetime,
+) -> datetime:
+    """Return the timestamp used for cycle market-data freshness checks."""
+    return decision_ts if mode.lower() == "backtest" else current_ts
+
+
+def _empty_market_data_pipeline_result() -> CycleMarketDataPipelineResult:
+    """Return an empty market-data processing result."""
+    return CycleMarketDataPipelineResult(
+        processed_orders=(),
+        market_data_events=(),
+        price_lookup={},
+    )
+
+
+def _record_owned_run_session_start(
+    *,
+    event_store: EventStore,
+    owns_run_session: bool,
+    run_id: str,
+    run_type: str,
+    started_at: datetime,
+    strategy_id: str,
+    config_snapshot: Mapping[str, object] | None,
+    mode: str,
+    symbols: Sequence[str],
+    timeframe: str,
+) -> None:
+    """Record run-session start when this cycle owns the session lifecycle."""
+    if not owns_run_session:
+        return
+    event_store.record_run_session_start(
+        run_id=run_id,
+        run_type=run_type,
+        started_at=started_at,
+        strategy_id=strategy_id,
+        config_snapshot=config_snapshot,
+        mode=mode,
+        symbols=symbols,
+        timeframe=timeframe,
+    )
+
+
+def _record_owned_run_session_finish(
+    *,
+    event_store: EventStore,
+    owns_run_session: bool,
+    run_id: str,
+    run_type: str,
+    started_at: datetime,
+    outcome: CycleRunSessionOutcome,
+    strategy_id: str,
+    mode: str,
+    symbols: Sequence[str],
+    timeframe: str,
+) -> None:
+    """Record run-session finish when this cycle owns the session lifecycle."""
+    if not owns_run_session:
+        return
+    event_store.record_run_session_finish(
+        run_id=run_id,
+        run_type=run_type,
+        started_at=started_at,
+        finished_at=datetime.now(timezone.utc),
+        status=outcome.status,
+        error_message=outcome.error_message,
+        strategy_id=strategy_id,
+        mode=mode,
+        symbols=symbols,
+        timeframe=timeframe,
+    )
+
+
+def _resolve_decision_ts(
+    decision_ts: datetime | None,
+    *,
+    current_ts: datetime,
+) -> datetime:
+    """Return the cycle decision timestamp normalized to timezone-aware UTC."""
+    resolved = decision_ts or current_ts
+    if resolved.tzinfo is None:
+        resolved = resolved.replace(tzinfo=timezone.utc)
+    return resolved
+
+
+def _should_halt_cycle(*, run_type: str, halted: bool) -> bool:
+    """Return whether the global halt flag should stop this cycle."""
+    return run_type != "backtest" and halted
+
+
+def _record_terminal_cycle_finish(
+    *,
+    event_store: EventStore,
+    run_id: str,
+    cycle_id: str,
+    strategy_id: str,
+    mode: str,
+    decision_ts: datetime,
+    started_at: datetime,
+    status: str,
+    error_message: str | None,
+) -> None:
+    """Record terminal completion state for one decision cycle."""
+    event_store.record_cycle_finish(
+        run_id=run_id,
+        cycle_id=cycle_id,
+        strategy_id=strategy_id,
+        mode=mode,
+        decision_ts=decision_ts,
+        started_at=started_at,
+        finished_at=datetime.now(timezone.utc),
+        status=status,
+        error_message=error_message,
+    )
+
+
+def _record_successful_cycle_finish(
+    *,
+    event_store: EventStore,
+    run_id: str,
+    cycle_id: str,
+    strategy_id: str,
+    mode: str,
+    decision_ts: datetime,
+    started_at: datetime,
+) -> None:
+    """Record successful completion for one decision cycle."""
+    _record_terminal_cycle_finish(
+        event_store=event_store,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        strategy_id=strategy_id,
+        mode=mode,
+        decision_ts=decision_ts,
+        started_at=started_at,
+        status="success",
+        error_message=None,
+    )
+
+
+def _record_halted_cycle_finish(
+    *,
+    event_store: EventStore,
+    run_id: str,
+    cycle_id: str,
+    strategy_id: str,
+    mode: str,
+    decision_ts: datetime,
+    started_at: datetime,
+) -> None:
+    """Record global-halt completion for one decision cycle."""
+    _record_terminal_cycle_finish(
+        event_store=event_store,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        strategy_id=strategy_id,
+        mode=mode,
+        decision_ts=decision_ts,
+        started_at=started_at,
+        status="halted",
+        error_message="global_halt",
+    )
+
+
+def _record_failed_cycle_finish(
+    *,
+    event_store: EventStore,
+    run_id: str,
+    cycle_id: str,
+    strategy_id: str,
+    mode: str,
+    decision_ts: datetime,
+    started_at: datetime,
+    error_message: str,
+) -> None:
+    """Record failed completion for one decision cycle."""
+    _record_terminal_cycle_finish(
+        event_store=event_store,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        strategy_id=strategy_id,
+        mode=mode,
+        decision_ts=decision_ts,
+        started_at=started_at,
+        status="failed",
+        error_message=error_message,
+    )
+
+
+def _load_cycle_portfolio(
+    *,
+    broker: Broker,
+    event_store: EventStore,
+    run_id: str,
+    cycle_id: str,
+    decision_ts: datetime,
+    config: Config,
+    execution_plan: CycleExecutionPlan,
+    portfolio: Portfolio | None,
+) -> Portfolio:
+    """Load the portfolio used for strategy decisions in one cycle."""
+    if _should_load_broker_portfolio(execution_plan):
+        loaded = _load_portfolio_from_broker(
+            broker=broker,
+            event_store=event_store,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            config=config,
+        )
+        logger.info(
+            "Broker refresh reason=cycle_portfolio_source_alpaca positions=%s cash=%s",
+            len(loaded.positions),
+            loaded.cash_balance,
+        )
+        return loaded
+    if portfolio is None:
+        portfolio_asof = _resolve_portfolio_asof_ts(config.mode, decision_ts)
+        loaded = Portfolio.from_event_store(event_store, asof_ts=portfolio_asof)
+        logger.info("Portfolio loaded positions=%s", len(loaded.positions))
+        return loaded
+    logger.info("Portfolio override positions=%s", len(portfolio.positions))
+    return portfolio
+
+
+def _record_post_order_portfolio_snapshot(
+    *,
+    event_store: EventStore,
+    portfolio: Portfolio,
+    processed_orders: Sequence[Mapping[str, object]],
+    sync_portfolio_on_fill: bool,
+    broker_kind: str,
+    mode: str,
+    decision_ts: datetime,
+    run_id: str,
+    cycle_id: str,
+    price_lookup: Mapping[str, float],
+) -> None:
+    """Persist portfolio state after processed orders when the broker requires it."""
+    snapshot_plan = _build_post_order_portfolio_snapshot_plan(
+        processed_orders=processed_orders,
+        sync_portfolio_on_fill=sync_portfolio_on_fill,
+        broker_kind=broker_kind,
+    )
+    if snapshot_plan.action == "none":
+        return
+    if snapshot_plan.action == "skip_alpaca_synced":
+        logger.info("Portfolio snapshot skipped; alpaca fills sync portfolio state")
+        return
+
+    snapshot_ts = _resolve_cycle_snapshot_ts(
+        mode=mode,
+        decision_ts=decision_ts,
+        current_ts=datetime.now(timezone.utc),
+    )
+    if snapshot_plan.action == "persist_broker_fill_snapshot":
+        snapshot = portfolio.snapshot(
+            asof_ts=snapshot_ts,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            session_id=run_id,
+        )
+        snapshot.persist(event_store)
+        logger.info("Portfolio snapshot recorded (broker fills) count=%s", len(snapshot.positions))
+        return
+
+    _record_portfolio_snapshot(
+        event_store=event_store,
+        portfolio=portfolio,
+        orders=processed_orders,
+        market_data_events=[],
+        asof_ts=snapshot_ts,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        price_lookup=price_lookup,
+    )
+
+
+def _resolve_metrics_price_lookup(
+    *,
+    price_lookup: Mapping[str, float],
+    market_data_events: Sequence[MarketDataEvent],
+) -> Mapping[str, float]:
+    """Return the price lookup used for metrics snapshots."""
+    if price_lookup:
+        return price_lookup
+    if market_data_events:
+        return _build_price_lookup(market_data_events)
+    return {}
+
+
+def _record_cycle_metrics_snapshot_if_enabled(
+    *,
+    event_store: EventStore,
+    portfolio: Portfolio,
+    price_lookup: Mapping[str, float],
+    market_data_events: Sequence[MarketDataEvent],
+    metrics_enabled: bool,
+    mode: str,
+    decision_ts: datetime,
+    run_id: str,
+    cycle_id: str,
+    asset_class: str,
+    symbols: Sequence[str],
+) -> Mapping[str, float]:
+    """Record metrics snapshot when enabled and return the resolved prices."""
+    resolved_price_lookup = _resolve_metrics_price_lookup(
+        price_lookup=price_lookup,
+        market_data_events=market_data_events,
+    )
+    if not metrics_enabled or not resolved_price_lookup:
+        return resolved_price_lookup
+
+    snapshot_ts = _resolve_cycle_snapshot_ts(
+        mode=mode,
+        decision_ts=decision_ts,
+        current_ts=datetime.now(timezone.utc),
+    )
+    _record_metrics_snapshot(
+        event_store=event_store,
+        portfolio=portfolio,
+        price_lookup=resolved_price_lookup,
+        asof_ts=snapshot_ts,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        asset_class=asset_class,
+        symbols=symbols,
+    )
+    return resolved_price_lookup
+
+
+def _initialize_cycle_runtime(
+    *,
+    config: Config,
+    event_store: EventStore | None,
+    broker: Broker | None,
+    decision_ts: datetime | None,
+    run_type: str | None,
+    run_id: str | None,
+    strategy_id: str,
+) -> CycleRuntimeSetup:
+    """Prepare runtime dependencies and deterministic identities for a cycle."""
+    owns_event_store = False
+    if event_store is None:
+        event_store = build_event_store(config)
+        owns_event_store = True
+        logger.info("Event store initialized backend=%s", config.event_store.lower())
+
+    resolved_broker = broker or _build_broker(config, event_store)
+    resolved_decision_ts = _resolve_decision_ts(
+        decision_ts,
+        current_ts=datetime.now(timezone.utc),
+    )
+
+    filtered_event_store = _apply_event_filters(event_store, config)
+    filtered_event_store.flush()
+
+    raw_broker_kind = config.broker_type.lower()
+    execution_plan = _build_cycle_execution_plan(
+        mode=config.mode,
+        broker_type=config.broker_type,
+        portfolio_source=getattr(
+            config,
+            "trader_service_portfolio_source",
+            "alpaca" if raw_broker_kind == "alpaca" else "db",
+        ),
+        run_type=run_type,
+    )
+    started_at = datetime.now(timezone.utc)
+    cycle_identity = _build_cycle_identity(
+        strategy_id=strategy_id,
+        decision_ts=resolved_decision_ts,
+        run_type=execution_plan.run_type,
+        started_at=started_at,
+        run_id=run_id,
+    )
+    return CycleRuntimeSetup(
+        event_store=filtered_event_store,
+        owns_event_store=owns_event_store,
+        broker=resolved_broker,
+        decision_ts=resolved_decision_ts,
+        execution_plan=execution_plan,
+        started_at=started_at,
+        cycle_identity=cycle_identity,
+    )
+
+
+def _run_market_data_pipeline_for_plan(
+    *,
+    event_store: EventStore,
+    strategy: Strategy,
+    risk_manager: RiskManager,
+    broker: Broker,
+    config: Config,
+    execution_plan: CycleExecutionPlan,
+    portfolio: Portfolio,
+    run_id: str,
+    cycle_id: str,
+    decision_ts: datetime,
+    market_data_source: MarketDataSource | None,
+    ingest_market_data: bool,
+) -> CycleMarketDataPipelineResult:
+    """Run the market-data/order pipeline selected by the execution plan."""
+    resolved_market_data_source = market_data_source or _build_market_data_source(config)
+    if _should_use_stream_ingestion(
+        ingest_market_data=ingest_market_data,
+        stream_mode=execution_plan.stream_mode,
+    ):
+        return _run_streaming_market_data_pipeline(
+            event_store=event_store,
+            strategy=strategy,
+            broker=broker,
+            portfolio=portfolio,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            market_data_source=resolved_market_data_source,
+            config=config,
+            decision_ts=decision_ts,
+            sync_portfolio_on_fill=execution_plan.sync_portfolio_on_fill,
+            broker_kind=execution_plan.broker_kind,
+            risk_manager=risk_manager,
+        )
+    return _run_batch_market_data_pipeline(
+        event_store=event_store,
+        strategy=strategy,
+        broker=broker,
+        portfolio=portfolio,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        market_data_source=resolved_market_data_source,
+        config=config,
+        decision_ts=decision_ts,
+        ingest_market_data=ingest_market_data,
+        sync_portfolio_on_fill=execution_plan.sync_portfolio_on_fill,
+        broker_kind=execution_plan.broker_kind,
+        risk_manager=risk_manager,
+    )
+
+
+def _execute_cycle_workflow(
+    *,
+    event_store: EventStore,
+    strategy: Strategy,
+    risk_manager: RiskManager,
+    broker: Broker,
+    config: Config,
+    execution_plan: CycleExecutionPlan,
+    strategy_id: str,
+    run_id: str,
+    cycle_id: str,
+    decision_ts: datetime,
+    started_at: datetime,
+    market_data_source: MarketDataSource | None,
+    portfolio: Portfolio | None,
+    ingest_market_data: bool,
+) -> CycleWorkflowResult:
+    """Run the side-effecting cycle workflow after setup is complete."""
+    event_store.record_cycle_start(
+        run_id=run_id,
+        cycle_id=cycle_id,
+        strategy_id=strategy_id,
+        mode=config.mode,
+        decision_ts=decision_ts,
+        started_at=started_at,
+    )
+    if _should_halt_cycle(run_type=execution_plan.run_type, halted=_load_halt_flag(event_store)):
+        logger.warning("Cycle halted by global halt run_id=%s cycle_id=%s", run_id, cycle_id)
+        _record_halted_cycle_finish(
+            event_store=event_store,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            strategy_id=strategy_id,
+            mode=config.mode,
+            decision_ts=decision_ts,
+            started_at=started_at,
+        )
+        return CycleWorkflowResult(
+            cycle_result=CycleResult(run_id=run_id, cycle_id=cycle_id, status="halted"),
+            run_session_outcome=_build_cycle_run_session_outcome("halted", "global_halt"),
+        )
+
+    loaded_portfolio = _load_cycle_portfolio(
+        broker=broker,
+        event_store=event_store,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        decision_ts=decision_ts,
+        config=config,
+        execution_plan=execution_plan,
+        portfolio=portfolio,
+    )
+
+    market_data_result = _run_market_data_pipeline_for_plan(
+        event_store=event_store,
+        strategy=strategy,
+        risk_manager=risk_manager,
+        broker=broker,
+        config=config,
+        execution_plan=execution_plan,
+        portfolio=loaded_portfolio,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        decision_ts=decision_ts,
+        market_data_source=market_data_source,
+        ingest_market_data=ingest_market_data,
+    )
+    processed_orders = market_data_result.processed_orders
+    market_data_events = market_data_result.market_data_events
+    price_lookup = _record_cycle_metrics_snapshot_if_enabled(
+        event_store=event_store,
+        portfolio=loaded_portfolio,
+        price_lookup=market_data_result.price_lookup,
+        market_data_events=market_data_events,
+        metrics_enabled=config.metrics_enable_snapshots,
+        mode=config.mode,
+        decision_ts=decision_ts,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        asset_class=config.market_data_asset_class,
+        symbols=config.market_data_symbols,
+    )
+
+    _record_post_order_portfolio_snapshot(
+        event_store=event_store,
+        portfolio=loaded_portfolio,
+        processed_orders=processed_orders,
+        sync_portfolio_on_fill=execution_plan.sync_portfolio_on_fill,
+        broker_kind=execution_plan.broker_kind,
+        mode=config.mode,
+        decision_ts=decision_ts,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        price_lookup=price_lookup,
+    )
+    _record_successful_cycle_finish(
+        event_store=event_store,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        strategy_id=strategy_id,
+        mode=config.mode,
+        decision_ts=decision_ts,
+        started_at=started_at,
+    )
+    return CycleWorkflowResult(
+        cycle_result=CycleResult(run_id=run_id, cycle_id=cycle_id, status="success"),
+        run_session_outcome=_build_cycle_run_session_outcome("success"),
+    )
+
+
 def run_cycle(
     strategy: Strategy,
     risk_manager: RiskManager,
@@ -320,301 +1110,93 @@ def run_cycle(
         ",".join(config.market_data_symbols) if config.market_data_symbols else "<none>",
         config.strategy_timeframe,
     )
-    owns_event_store = False
-    if event_store is None:
-        event_store = build_event_store(config)
-        owns_event_store = True
-        logger.info("Event store initialized backend=%s", config.event_store.lower())
+    runtime_setup = _initialize_cycle_runtime(
+        config=config,
+        event_store=event_store,
+        broker=broker,
+        decision_ts=decision_ts,
+        run_type=run_type,
+        run_id=run_id,
+        strategy_id=strategy_id,
+    )
+    event_store = runtime_setup.event_store
+    broker = runtime_setup.broker
+    decision_ts = runtime_setup.decision_ts
+    execution_plan = runtime_setup.execution_plan
+    run_type = execution_plan.run_type
+    started_at = runtime_setup.started_at
+    cycle_identity = runtime_setup.cycle_identity
+    run_id = cycle_identity.run_id
+    cycle_id = cycle_identity.cycle_id
+    owns_run_session = cycle_identity.owns_run_session
+    owns_event_store = runtime_setup.owns_event_store
+    run_session_outcome = _build_cycle_run_session_outcome("success")
+    _record_owned_run_session_start(
+        event_store=event_store,
+        owns_run_session=owns_run_session,
+        run_id=run_id,
+        run_type=run_type,
+        started_at=started_at,
+        strategy_id=strategy_id,
+        config_snapshot=config_snapshot,
+        mode=config.mode,
+        symbols=config.market_data_symbols,
+        timeframe=config.strategy_timeframe,
+    )
 
-    broker = broker or _build_broker(config, event_store)
-
-    decision_ts = decision_ts or datetime.now(timezone.utc)
-    if decision_ts.tzinfo is None:
-        decision_ts = decision_ts.replace(tzinfo=timezone.utc)
-
-    event_store = _apply_event_filters(event_store, config)
-    event_store.flush()
-
-    run_type = (run_type or ("backtest" if config.mode.lower() == "backtest" else "trading")).lower()
-    broker_kind = config.broker_type.lower()
-    cycle_id = deterministic_cycle_id(strategy_id, decision_ts)
-    started_at = datetime.now(timezone.utc)
-    owns_run_session = False
-    run_session_status = "success"
-    run_session_error: str | None = None
-    if run_id is None:
-        run_id = deterministic_run_session_id(run_type, started_at)
-        event_store.record_run_session_start(
+    workflow_result: CycleWorkflowResult | None = None
+    try:
+        workflow_result = _execute_cycle_workflow(
+            event_store=event_store,
+            strategy=strategy,
+            risk_manager=risk_manager,
+            broker=broker,
+            config=config,
+            execution_plan=execution_plan,
+            strategy_id=strategy_id,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            started_at=started_at,
+            market_data_source=market_data_source,
+            portfolio=portfolio,
+            ingest_market_data=ingest_market_data,
+        )
+        run_session_outcome = workflow_result.run_session_outcome
+    except Exception as exc:
+        _record_failed_cycle_finish(
+            event_store=event_store,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            strategy_id=strategy_id,
+            mode=config.mode,
+            decision_ts=decision_ts,
+            started_at=started_at,
+            error_message=str(exc),
+        )
+        run_session_outcome = _build_cycle_run_session_outcome("failed", str(exc))
+        raise
+    finally:
+        _record_owned_run_session_finish(
+            event_store=event_store,
+            owns_run_session=owns_run_session,
             run_id=run_id,
             run_type=run_type,
             started_at=started_at,
+            outcome=run_session_outcome,
             strategy_id=strategy_id,
-            config_snapshot=config_snapshot,
             mode=config.mode,
             symbols=config.market_data_symbols,
             timeframe=config.strategy_timeframe,
         )
-        owns_run_session = True
-
-    try:
-        event_store.record_cycle_start(
-            run_id=run_id,
-            cycle_id=cycle_id,
-            strategy_id=strategy_id,
-            mode=config.mode,
-            decision_ts=decision_ts,
-            started_at=started_at,
-        )
-        if run_type != "backtest" and _load_halt_flag(event_store):
-            finished_at = datetime.now(timezone.utc)
-            logger.warning("Cycle halted by global halt run_id=%s cycle_id=%s", run_id, cycle_id)
-            event_store.record_cycle_finish(
-                run_id=run_id,
-                cycle_id=cycle_id,
-                strategy_id=strategy_id,
-                mode=config.mode,
-                decision_ts=decision_ts,
-                started_at=started_at,
-                finished_at=finished_at,
-                status="halted",
-                error_message="global_halt",
-            )
-            run_session_status = "halted"
-            run_session_error = "global_halt"
-            return CycleResult(run_id=run_id, cycle_id=cycle_id, status="halted")
-
-        portfolio_source = getattr(
-            config,
-            "trader_service_portfolio_source",
-            "alpaca" if broker_kind == "alpaca" else "db",
-        )
-        # Refresh from Alpaca only when the live service explicitly owns broker-backed portfolio state.
-        if run_type != "backtest" and broker_kind == "alpaca" and portfolio_source == "alpaca":
-            portfolio = _load_portfolio_from_broker(
-                broker=broker,
-                event_store=event_store,
-                run_id=run_id,
-                cycle_id=cycle_id,
-                decision_ts=decision_ts,
-                config=config,
-            )
-            logger.info(
-                "Broker refresh reason=cycle_portfolio_source_alpaca positions=%s cash=%s",
-                len(portfolio.positions),
-                portfolio.cash_balance,
-            )
-        elif portfolio is None:
-            portfolio_asof = decision_ts if config.mode.lower() == "backtest" else None
-            portfolio = Portfolio.from_event_store(event_store, asof_ts=portfolio_asof)
-            logger.info("Portfolio loaded positions=%s", len(portfolio.positions))
-        else:
-            logger.info("Portfolio override positions=%s", len(portfolio.positions))
-
-        if market_data_source is None:
-            market_data_source = _build_market_data_source(config)
-
-        stream_mode = config.mode.lower() != "backtest"
-        sync_portfolio_on_fill = broker_kind in {"alpaca", "internal"}
-        processed_orders: Sequence[Mapping[str, object]] = []
-        market_data_events: Sequence[MarketDataEvent] = []
-        price_lookup: Mapping[str, float] = {}
-        cycle_finished = False
-        if ingest_market_data and stream_mode:
-            event_counter = {"count": 0}
-            processed_orders, price_lookup = asyncio.run(
-                _process_market_stream_async(
-                    event_store=event_store,
-                    strategy=strategy,
-                    broker=broker,
-                    portfolio=portfolio,
-                    run_id=run_id,
-                    cycle_id=cycle_id,
-                    event_stream=_event_stream_with_count(
-                        MarketDataIngestor(event_store, market_data_source).ingest_stream(),
-                        event_counter,
-                    ),
-                    max_age_seconds=config.market_data_max_age_seconds,
-                    enforce_staleness=True,
-                    asset_class=config.market_data_asset_class,
-                    time_in_force=config.broker_time_in_force,
-                    sync_portfolio_on_fill=sync_portfolio_on_fill,
-                    broker_type=broker_kind,
-                    config=config,
-                    risk_manager=risk_manager,
-                )
-            )
-            if event_counter["count"] == 0:
-                market_data_events = _load_recent_market_data(event_store, config, decision_ts)
-                freshness_ts = decision_ts if config.mode.lower() == "backtest" else datetime.now(timezone.utc)
-                should_skip = _should_skip_trading(
-                    market_data_events,
-                    freshness_ts,
-                    config.market_data_max_age_seconds,
-                )
-                if should_skip:
-                    logger.warning("Skipping trading due to missing or stale market data")
-                else:
-                    processed_orders, price_lookup = asyncio.run(
-                        _process_market_stream_async(
-                            event_store=event_store,
-                            strategy=strategy,
-                            broker=broker,
-                            portfolio=portfolio,
-                            run_id=run_id,
-                            cycle_id=cycle_id,
-                            event_stream=_event_stream_from_list(market_data_events),
-                            max_age_seconds=config.market_data_max_age_seconds,
-                            enforce_staleness=False,
-                            asset_class=config.market_data_asset_class,
-                            time_in_force=config.broker_time_in_force,
-                            sync_portfolio_on_fill=sync_portfolio_on_fill,
-                            broker_type=broker_kind,
-                            config=config,
-                            risk_manager=risk_manager,
-                        )
-                    )
-        else:
-            if ingest_market_data:
-                with event_store.transaction():
-                    market_data_events = MarketDataIngestor(event_store, market_data_source).ingest()
-            else:
-                market_data_events = market_data_source.fetch()
-                logger.info("Market data fetched without ingest count=%s", len(market_data_events))
-            if not market_data_events:
-                market_data_events = _load_recent_market_data(event_store, config, decision_ts)
-            freshness_ts = decision_ts if config.mode.lower() == "backtest" else datetime.now(timezone.utc)
-            should_skip = _should_skip_trading(
-                market_data_events,
-                freshness_ts,
-                config.market_data_max_age_seconds,
-            )
-
-            if should_skip:
-                logger.warning("Skipping trading due to missing or stale market data")
-            else:
-                processed_orders, price_lookup = asyncio.run(
-                    _process_market_stream_async(
-                        event_store=event_store,
-                        strategy=strategy,
-                        broker=broker,
-                        portfolio=portfolio,
-                        run_id=run_id,
-                        cycle_id=cycle_id,
-                        event_stream=_event_stream_from_list(market_data_events),
-                        max_age_seconds=config.market_data_max_age_seconds,
-                        enforce_staleness=False,
-                        asset_class=config.market_data_asset_class,
-                        time_in_force=config.broker_time_in_force,
-                        sync_portfolio_on_fill=sync_portfolio_on_fill,
-                        broker_type=broker_kind,
-                        config=config,
-                        risk_manager=risk_manager,
-                    )
-                )
-
-        if config.metrics_enable_snapshots:
-            snapshot_ts = decision_ts if config.mode.lower() == "backtest" else datetime.now(timezone.utc)
-            if not price_lookup and market_data_events:
-                price_lookup = _build_price_lookup(market_data_events)
-            if price_lookup:
-                _record_metrics_snapshot(
-                    event_store=event_store,
-                    portfolio=portfolio,
-                    price_lookup=price_lookup,
-                    asof_ts=snapshot_ts,
-                    run_id=run_id,
-                    cycle_id=cycle_id,
-                    asset_class=config.market_data_asset_class,
-                    symbols=config.market_data_symbols,
-                )
-
-        if processed_orders:
-            if sync_portfolio_on_fill and broker_kind == "alpaca":
-                logger.info("Portfolio snapshot skipped; alpaca fills sync portfolio state")
-            elif sync_portfolio_on_fill and broker_kind == "internal":
-                snapshot_ts = decision_ts if config.mode.lower() == "backtest" else datetime.now(timezone.utc)
-                snapshot = portfolio.snapshot(
-                    asof_ts=snapshot_ts,
-                    run_id=run_id,
-                    cycle_id=cycle_id,
-                    session_id=run_id,
-                )
-                snapshot.persist(event_store)
-                logger.info("Portfolio snapshot recorded (broker fills) count=%s", len(snapshot.positions))
-            else:
-                snapshot_ts = decision_ts if config.mode.lower() == "backtest" else datetime.now(timezone.utc)
-                _record_portfolio_snapshot(
-                    event_store=event_store,
-                    portfolio=portfolio,
-                    orders=processed_orders,
-                    market_data_events=[],
-                    asof_ts=snapshot_ts,
-                    run_id=run_id,
-                    cycle_id=cycle_id,
-                    price_lookup=price_lookup,
-                )
-
-            finished_at = datetime.now(timezone.utc)
-            event_store.record_cycle_finish(
-                run_id=run_id,
-                cycle_id=cycle_id,
-                strategy_id=strategy_id,
-                mode=config.mode,
-                decision_ts=decision_ts,
-                started_at=started_at,
-                finished_at=finished_at,
-                status="success",
-                error_message=None,
-            )
-            cycle_finished = True
-        if not cycle_finished:
-            finished_at = datetime.now(timezone.utc)
-            event_store.record_cycle_finish(
-                run_id=run_id,
-                cycle_id=cycle_id,
-                strategy_id=strategy_id,
-                mode=config.mode,
-                decision_ts=decision_ts,
-                started_at=started_at,
-                finished_at=finished_at,
-                status="success",
-                error_message=None,
-            )
-    except Exception as exc:
-        finished_at = datetime.now(timezone.utc)
-        event_store.record_cycle_finish(
-            run_id=run_id,
-            cycle_id=cycle_id,
-            strategy_id=strategy_id,
-            mode=config.mode,
-            decision_ts=decision_ts,
-            started_at=started_at,
-            finished_at=finished_at,
-            status="failed",
-            error_message=str(exc),
-        )
-        run_session_status = "failed"
-        run_session_error = str(exc)
-        raise
-    finally:
-        if owns_run_session:
-            event_store.record_run_session_finish(
-                run_id=run_id,
-                run_type=run_type,
-                started_at=started_at,
-                finished_at=datetime.now(timezone.utc),
-                status=run_session_status,
-                error_message=run_session_error,
-                strategy_id=strategy_id,
-                mode=config.mode,
-                symbols=config.market_data_symbols,
-                timeframe=config.strategy_timeframe,
-            )
         if owns_event_store:
             event_store.close()
 
-    logger.info("Completed cycle", extra={"run_id": run_id, "cycle_id": cycle_id})
-    return CycleResult(run_id=run_id, cycle_id=cycle_id, status="success")
+    if workflow_result is None:
+        raise RuntimeError("cycle workflow did not produce a result")
+    if workflow_result.cycle_result.status == "success":
+        logger.info("Completed cycle", extra={"run_id": run_id, "cycle_id": cycle_id})
+    return workflow_result.cycle_result
 
 
 async def _event_stream_with_count(
@@ -625,6 +1207,197 @@ async def _event_stream_with_count(
     async for event in event_stream:
         counter["count"] = counter.get("count", 0) + 1
         yield event
+
+
+def _run_market_event_stream_pipeline(
+    *,
+    event_store: EventStore,
+    strategy: Strategy,
+    broker: Broker,
+    portfolio: Portfolio,
+    run_id: str,
+    cycle_id: str,
+    event_stream: AsyncIterator[MarketDataEvent],
+    config: Config,
+    enforce_staleness: bool,
+    sync_portfolio_on_fill: bool,
+    broker_kind: str,
+    risk_manager: RiskManager,
+) -> tuple[Sequence[Mapping[str, object]], Mapping[str, float]]:
+    """Run a market-event stream through strategy, risk, and broker stages."""
+    return asyncio.run(
+        _process_market_stream_async(
+            event_store=event_store,
+            strategy=strategy,
+            broker=broker,
+            portfolio=portfolio,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            event_stream=event_stream,
+            max_age_seconds=config.market_data_max_age_seconds,
+            enforce_staleness=enforce_staleness,
+            asset_class=config.market_data_asset_class,
+            time_in_force=config.broker_time_in_force,
+            sync_portfolio_on_fill=sync_portfolio_on_fill,
+            broker_type=broker_kind,
+            config=config,
+            risk_manager=risk_manager,
+        )
+    )
+
+
+def _run_streaming_market_data_pipeline(
+    *,
+    event_store: EventStore,
+    strategy: Strategy,
+    broker: Broker,
+    portfolio: Portfolio,
+    run_id: str,
+    cycle_id: str,
+    market_data_source: MarketDataSource,
+    config: Config,
+    decision_ts: datetime,
+    sync_portfolio_on_fill: bool,
+    broker_kind: str,
+    risk_manager: RiskManager,
+) -> CycleMarketDataPipelineResult:
+    """Run stream ingestion with recent-bar fallback when the stream is empty."""
+    event_counter = {"count": 0}
+    processed_orders, price_lookup = _run_market_event_stream_pipeline(
+        event_store=event_store,
+        strategy=strategy,
+        broker=broker,
+        portfolio=portfolio,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        event_stream=_event_stream_with_count(
+            MarketDataIngestor(event_store, market_data_source).ingest_stream(),
+            event_counter,
+        ),
+        config=config,
+        enforce_staleness=True,
+        sync_portfolio_on_fill=sync_portfolio_on_fill,
+        broker_kind=broker_kind,
+        risk_manager=risk_manager,
+    )
+    if event_counter["count"] != 0:
+        return CycleMarketDataPipelineResult(
+            processed_orders=processed_orders,
+            market_data_events=(),
+            price_lookup=price_lookup,
+        )
+
+    market_data_events = _load_recent_market_data(event_store, config, decision_ts)
+    return _run_market_data_events_pipeline(
+        event_store=event_store,
+        strategy=strategy,
+        broker=broker,
+        portfolio=portfolio,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        market_data_events=market_data_events,
+        config=config,
+        decision_ts=decision_ts,
+        sync_portfolio_on_fill=sync_portfolio_on_fill,
+        broker_kind=broker_kind,
+        risk_manager=risk_manager,
+    )
+
+
+def _run_batch_market_data_pipeline(
+    *,
+    event_store: EventStore,
+    strategy: Strategy,
+    broker: Broker,
+    portfolio: Portfolio,
+    run_id: str,
+    cycle_id: str,
+    market_data_source: MarketDataSource,
+    config: Config,
+    decision_ts: datetime,
+    ingest_market_data: bool,
+    sync_portfolio_on_fill: bool,
+    broker_kind: str,
+    risk_manager: RiskManager,
+) -> CycleMarketDataPipelineResult:
+    """Run non-stream market-data ingestion/fetching through the order pipeline."""
+    if ingest_market_data:
+        with event_store.transaction():
+            market_data_events = MarketDataIngestor(event_store, market_data_source).ingest()
+    else:
+        market_data_events = market_data_source.fetch()
+        logger.info("Market data fetched without ingest count=%s", len(market_data_events))
+    if not market_data_events:
+        market_data_events = _load_recent_market_data(event_store, config, decision_ts)
+    return _run_market_data_events_pipeline(
+        event_store=event_store,
+        strategy=strategy,
+        broker=broker,
+        portfolio=portfolio,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        market_data_events=market_data_events,
+        config=config,
+        decision_ts=decision_ts,
+        sync_portfolio_on_fill=sync_portfolio_on_fill,
+        broker_kind=broker_kind,
+        risk_manager=risk_manager,
+    )
+
+
+def _run_market_data_events_pipeline(
+    *,
+    event_store: EventStore,
+    strategy: Strategy,
+    broker: Broker,
+    portfolio: Portfolio,
+    run_id: str,
+    cycle_id: str,
+    market_data_events: Sequence[MarketDataEvent],
+    config: Config,
+    decision_ts: datetime,
+    sync_portfolio_on_fill: bool,
+    broker_kind: str,
+    risk_manager: RiskManager,
+) -> CycleMarketDataPipelineResult:
+    """Run already-loaded market-data events through freshness and order stages."""
+    freshness_ts = _resolve_market_data_freshness_ts(
+        mode=config.mode,
+        decision_ts=decision_ts,
+        current_ts=datetime.now(timezone.utc),
+    )
+    should_skip = _should_skip_trading(
+        market_data_events,
+        freshness_ts,
+        config.market_data_max_age_seconds,
+    )
+    if should_skip:
+        logger.warning("Skipping trading due to missing or stale market data")
+        return CycleMarketDataPipelineResult(
+            processed_orders=(),
+            market_data_events=market_data_events,
+            price_lookup={},
+        )
+
+    processed_orders, price_lookup = _run_market_event_stream_pipeline(
+        event_store=event_store,
+        strategy=strategy,
+        broker=broker,
+        portfolio=portfolio,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        event_stream=_event_stream_from_list(market_data_events),
+        config=config,
+        enforce_staleness=False,
+        sync_portfolio_on_fill=sync_portfolio_on_fill,
+        broker_kind=broker_kind,
+        risk_manager=risk_manager,
+    )
+    return CycleMarketDataPipelineResult(
+        processed_orders=processed_orders,
+        market_data_events=market_data_events,
+        price_lookup=price_lookup,
+    )
 
 
 def _build_market_data_source(config: Config) -> MarketDataSource:
@@ -1125,6 +1898,346 @@ def _normalize_event_ts(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _build_stream_risk_price_lookup(
+    latest_prices: Mapping[str, tuple[datetime, float]],
+    order: Mapping[str, object],
+) -> Mapping[str, float]:
+    """Build the risk price lookup from stream prices and order price evidence."""
+    price_lookup = {symbol: price for symbol, (_, price) in latest_prices.items()}
+    symbol = str(order.get("symbol", "")).strip().upper()
+    order_price = order.get("price")
+    if symbol and order_price is not None:
+        price_lookup[symbol] = float(order_price)
+    return price_lookup
+
+
+def _resolve_order_decision_ts(
+    order: Mapping[str, object],
+    fallback_ts: datetime,
+) -> datetime:
+    """Return the datetime risk managers should use for an order decision."""
+    created_at = order.get("created_at")
+    if isinstance(created_at, datetime):
+        return created_at
+    return fallback_ts
+
+
+def _build_cycle_risk_context(
+    *,
+    positions: Mapping[str, Position],
+    open_orders: Sequence[Mapping[str, object]],
+    latest_prices: Mapping[str, tuple[datetime, float]],
+    order: Mapping[str, object],
+    run_id: str,
+    cycle_id: str,
+    halted: bool,
+    fallback_ts: datetime,
+) -> RiskContext:
+    """Build a risk context from explicit cycle state without storage access."""
+    return RiskContext(
+        positions=positions,
+        open_orders=open_orders,
+        price_lookup=_build_stream_risk_price_lookup(latest_prices, order),
+        run_id=run_id,
+        cycle_id=cycle_id,
+        decision_ts=_resolve_order_decision_ts(order, fallback_ts),
+        halted=halted,
+    )
+
+
+def _evaluate_cycle_order_risk(
+    *,
+    order: Mapping[str, object],
+    context: RiskContext,
+    risk_manager: RiskManager,
+) -> CycleRiskEvaluationResult:
+    """Evaluate one enriched order through the configured risk manager chain."""
+    approved_orders: Sequence[Mapping[str, object]] = [order]
+    rejected_orders: list[Mapping[str, object]] = []
+    rejection_logs: list[CycleRiskRejectionLog] = []
+    for manager in _iter_risk_managers(risk_manager):
+        approved_orders, rejected = manager.evaluate(approved_orders, context)
+        if rejected:
+            for rejected_order in rejected:
+                rejection_logs.append(
+                    CycleRiskRejectionLog(
+                        order=rejected_order,
+                        manager_name=manager.__class__.__name__,
+                    )
+                )
+            rejected_orders.extend(rejected)
+        if not approved_orders:
+            break
+    return CycleRiskEvaluationResult(
+        approved_orders=tuple(approved_orders),
+        rejected_orders=tuple(rejected_orders),
+        rejection_logs=tuple(rejection_logs),
+    )
+
+
+def _resolve_broker_response_status(response: Mapping[str, object]) -> str:
+    """Return the normalized broker response status for cycle decisions."""
+    return str(response.get("status", "submitted"))
+
+
+def _should_sync_portfolio_for_broker_response(
+    *,
+    status: str,
+    sync_portfolio_on_fill: bool,
+) -> bool:
+    """Return whether a broker response should trigger portfolio synchronization."""
+    return sync_portfolio_on_fill and status in {"filled", "partially_filled"}
+
+
+def _build_processed_order_from_broker_response(
+    order: Mapping[str, object],
+    response: Mapping[str, object],
+) -> Mapping[str, object] | None:
+    """Build the processed-order evidence carried forward after broker response."""
+    status = _resolve_broker_response_status(response)
+    if status in {"rejected", "canceled", "expired", "error"}:
+        return None
+    processed_order = order
+    fill_qty = response.get("fill_qty")
+    fill_price = response.get("fill_price")
+    if fill_qty is not None:
+        processed_order = {**processed_order, "qty": float(fill_qty)}
+    if fill_price is not None:
+        processed_order = {**processed_order, "price": float(fill_price)}
+    return processed_order
+
+
+def _build_cycle_stream_state() -> CycleStreamState:
+    """Create empty mutable state for one market-stream pipeline run."""
+    return CycleStreamState(
+        processed_orders=[],
+        latest_prices={},
+        counters=CycleStreamCounters(),
+    )
+
+
+async def _produce_market_events(
+    event_stream: AsyncIterator[MarketDataEvent],
+    event_queue: asyncio.Queue[MarketDataEvent | None],
+) -> None:
+    """Read upstream market events and terminate the queue with a sentinel."""
+    async for event in event_stream:
+        await event_queue.put(event)
+    await event_queue.put(None)
+
+
+async def _generate_stream_orders(
+    *,
+    runtime: CycleStreamRuntime,
+    state: CycleStreamState,
+    event_queue: asyncio.Queue[MarketDataEvent | None],
+    order_queue: asyncio.Queue[Mapping[str, object] | None],
+) -> None:
+    """Generate enriched order intents from fresh per-symbol market events."""
+    while True:
+        event = await event_queue.get()
+        if event is None:
+            await order_queue.put(None)
+            break
+        now = datetime.now(timezone.utc)
+        if runtime.enforce_staleness and _is_event_stale(
+            event,
+            now,
+            runtime.max_age_seconds,
+        ):
+            logger.warning("Skipping stale market data symbol=%s ts=%s", event.symbol, event.ts.isoformat())
+            continue
+        symbol = event.symbol
+        decision_ts = _normalize_timestamp(event.ts)
+        state.latest_prices[symbol] = (decision_ts, float(event.close))
+        async for order in runtime.strategy.order_stream_for_symbol(
+            symbol,
+            run_id=runtime.run_id,
+            cycle_id=runtime.cycle_id,
+            decision_ts=decision_ts,
+            event_store=runtime.event_store,
+            portfolio=runtime.portfolio,
+        ):
+            enriched = _attach_order_metadata(
+                [order],
+                run_id=runtime.run_id,
+                cycle_id=runtime.cycle_id,
+                created_at=decision_ts,
+                price_lookup={symbol: float(event.close)},
+                asset_class=runtime.asset_class,
+                time_in_force=runtime.time_in_force,
+            )[0]
+            _record_order_events(runtime.event_store, [enriched], status="created")
+            _log_order_status(
+                "created",
+                enriched,
+                run_id=runtime.run_id,
+                cycle_id=runtime.cycle_id,
+            )
+            state.counters.orders_emitted += 1
+            await order_queue.put(enriched)
+
+
+async def _validate_stream_orders(
+    *,
+    runtime: CycleStreamRuntime,
+    state: CycleStreamState,
+    order_queue: asyncio.Queue[Mapping[str, object] | None],
+    validated_queue: asyncio.Queue[Mapping[str, object] | None],
+) -> None:
+    """Evaluate queued orders against the configured risk managers."""
+    while True:
+        order = await order_queue.get()
+        if order is None:
+            await validated_queue.put(None)
+            break
+        context = _build_cycle_risk_context(
+            positions=runtime.portfolio.positions,
+            open_orders=_load_latest_order_events(runtime.event_store),
+            latest_prices=state.latest_prices,
+            order=order,
+            run_id=runtime.run_id,
+            cycle_id=runtime.cycle_id,
+            halted=_load_halt_flag(runtime.event_store),
+            fallback_ts=datetime.now(timezone.utc),
+        )
+
+        evaluation = _evaluate_cycle_order_risk(
+            order=order,
+            context=context,
+            risk_manager=runtime.risk_manager,
+        )
+        for rejection in evaluation.rejection_logs:
+            state.counters.orders_rejected_locally += 1
+            _log_order_status(
+                "rejected",
+                rejection.order,
+                run_id=runtime.run_id,
+                cycle_id=runtime.cycle_id,
+                extra="reason=%s manager=%s"
+                % (rejection.order.get("rejection_reason"), rejection.manager_name),
+            )
+        _record_order_events(runtime.event_store, evaluation.rejected_orders, status="rejected")
+        if evaluation.approved_orders:
+            _record_order_events(runtime.event_store, evaluation.approved_orders, status="validated")
+            _log_order_status(
+                "validated",
+                evaluation.approved_orders[0],
+                run_id=runtime.run_id,
+                cycle_id=runtime.cycle_id,
+            )
+            state.counters.orders_validated += len(evaluation.approved_orders)
+            await validated_queue.put(evaluation.approved_orders[0])
+
+
+def _sync_portfolio_for_broker_response(
+    *,
+    runtime: CycleStreamRuntime,
+    order: Mapping[str, object],
+    response: Mapping[str, object],
+    fill_ts: object,
+) -> None:
+    """Apply broker-fill portfolio side effects for supported broker types."""
+    if runtime.broker_type == "alpaca":
+        _sync_portfolio_from_broker(
+            event_store=runtime.event_store,
+            broker=runtime.broker,
+            portfolio=runtime.portfolio,
+            run_id=runtime.run_id,
+            cycle_id=runtime.cycle_id,
+            asof_ts=fill_ts,
+            config=runtime.config,
+        )
+    elif runtime.broker_type == "internal":
+        _apply_fill_to_portfolio(
+            portfolio=runtime.portfolio,
+            order=order,
+            response=response,
+        )
+        snapshot = runtime.portfolio.snapshot(
+            asof_ts=fill_ts,
+            run_id=runtime.run_id,
+            cycle_id=runtime.cycle_id,
+            session_id=runtime.run_id,
+        )
+        snapshot.persist(runtime.event_store)
+        logger.info(
+            "Portfolio snapshot recorded (internal fill) count=%s",
+            len(snapshot.positions),
+        )
+
+
+async def _submit_stream_orders(
+    *,
+    runtime: CycleStreamRuntime,
+    state: CycleStreamState,
+    validated_queue: asyncio.Queue[Mapping[str, object] | None],
+) -> None:
+    """Submit validated orders and persist broker/accounting side effects."""
+    while True:
+        order = await validated_queue.get()
+        if order is None:
+            break
+        _record_order_events(runtime.event_store, [order], status="submitted")
+        _log_order_status(
+            "submitted",
+            order,
+            run_id=runtime.run_id,
+            cycle_id=runtime.cycle_id,
+        )
+        state.counters.orders_submitted += 1
+        responses = await asyncio.to_thread(runtime.broker.submit_orders, [order])
+        _record_broker_responses(runtime.event_store, [order], responses)
+        state.counters.broker_responses += len(responses)
+        processed_order = order
+        if responses:
+            response = responses[0]
+            status = _resolve_broker_response_status(response)
+            _log_order_status(
+                f"broker_response status={status}",
+                order,
+                run_id=runtime.run_id,
+                cycle_id=runtime.cycle_id,
+                extra="broker_order_id=%s reason=%s"
+                % (response.get("broker_order_id"), response.get("rejection_reason")),
+            )
+            processed_order = _build_processed_order_from_broker_response(order, response)
+            if processed_order is None:
+                continue
+            if _should_sync_portfolio_for_broker_response(
+                status=status,
+                sync_portfolio_on_fill=runtime.sync_portfolio_on_fill,
+            ):
+                fill_ts = response.get("fill_ts") or datetime.now(timezone.utc)
+                _sync_portfolio_for_broker_response(
+                    runtime=runtime,
+                    order=order,
+                    response=response,
+                    fill_ts=fill_ts,
+                )
+        state.processed_orders.append(processed_order)
+
+
+def _log_cycle_stream_summary(runtime: CycleStreamRuntime, state: CycleStreamState) -> None:
+    """Log final order counters for one market-stream pipeline run."""
+    counters = state.counters
+    logger.info(
+        "Cycle order summary run_id=%s cycle_id=%s orders_emitted=%s orders_rejected_locally=%s orders_validated=%s orders_submitted=%s broker_responses=%s",
+        runtime.run_id,
+        runtime.cycle_id,
+        counters.orders_emitted,
+        counters.orders_rejected_locally,
+        counters.orders_validated,
+        counters.orders_submitted,
+        counters.broker_responses,
+    )
+
+
+def _latest_stream_prices(state: CycleStreamState) -> Mapping[str, float]:
+    """Return latest stream prices in the legacy mapping shape."""
+    return {symbol: price for symbol, (_, price) in state.latest_prices.items()}
+
+
 async def _process_market_stream_async(
     *,
     event_store: EventStore,
@@ -1153,180 +2266,46 @@ async def _process_market_stream_async(
     event_queue: asyncio.Queue[MarketDataEvent | None] = asyncio.Queue()
     order_queue: asyncio.Queue[Mapping[str, object] | None] = asyncio.Queue()
     validated_queue: asyncio.Queue[Mapping[str, object] | None] = asyncio.Queue()
-    processed: list[Mapping[str, object]] = []
-    latest_prices: dict[str, tuple[datetime, float]] = {}
-    counters = {
-        "orders_emitted": 0,
-        "orders_rejected_locally": 0,
-        "orders_validated": 0,
-        "orders_submitted": 0,
-        "broker_responses": 0,
-    }
-
-    async def producer() -> None:
-        """Read upstream market events and terminate the queue with a sentinel."""
-        async for event in event_stream:
-            await event_queue.put(event)
-        await event_queue.put(None)
-
-    async def signal_worker() -> None:
-        """Generate enriched order intents from fresh per-symbol market events."""
-        while True:
-            event = await event_queue.get()
-            if event is None:
-                await order_queue.put(None)
-                break
-            now = datetime.now(timezone.utc)
-            if enforce_staleness and _is_event_stale(event, now, max_age_seconds):
-                logger.warning("Skipping stale market data symbol=%s ts=%s", event.symbol, event.ts.isoformat())
-                continue
-            symbol = event.symbol
-            decision_ts = _normalize_timestamp(event.ts)
-            latest_prices[symbol] = (decision_ts, float(event.close))
-            async for order in strategy.order_stream_for_symbol(
-                symbol,
-                run_id=run_id,
-                cycle_id=cycle_id,
-                decision_ts=decision_ts,
-                event_store=event_store,
-                portfolio=portfolio,
-            ):
-                enriched = _attach_order_metadata(
-                    [order],
-                    run_id=run_id,
-                    cycle_id=cycle_id,
-                    created_at=decision_ts,
-                    price_lookup={symbol: float(event.close)},
-                    asset_class=asset_class,
-                    time_in_force=time_in_force,
-                )[0]
-                _record_order_events(event_store, [enriched], status="created")
-                _log_order_status("created", enriched, run_id=run_id, cycle_id=cycle_id)
-                counters["orders_emitted"] += 1
-                await order_queue.put(enriched)
-
-    async def validator() -> None:
-        """Evaluate queued orders against the configured risk managers."""
-        while True:
-            order = await order_queue.get()
-            if order is None:
-                await validated_queue.put(None)
-                break
-            symbol = str(order.get("symbol", "")).strip().upper()
-            order_price = order.get("price")
-            price_lookup = {sym: price for sym, (_, price) in latest_prices.items()}
-            if symbol and order_price is not None:
-                price_lookup[symbol] = float(order_price)
-            context = RiskContext(
-                positions=portfolio.positions,
-                open_orders=_load_latest_order_events(event_store),
-                price_lookup=price_lookup,
-                run_id=run_id,
-                cycle_id=cycle_id,
-                decision_ts=order.get("created_at") or datetime.now(timezone.utc),
-                halted=_load_halt_flag(event_store),
-            )
-
-            approved_orders = [order]
-            rejected_orders: list[Mapping[str, object]] = []
-            for manager in _iter_risk_managers(risk_manager):
-                approved_orders, rejected = manager.evaluate(approved_orders, context)
-                if rejected:
-                    for rejected_order in rejected:
-                        counters["orders_rejected_locally"] += 1
-                        _log_order_status(
-                            "rejected",
-                            rejected_order,
-                            run_id=run_id,
-                            cycle_id=cycle_id,
-                            extra="reason=%s manager=%s"
-                            % (rejected_order.get("rejection_reason"), manager.__class__.__name__),
-                        )
-                    rejected_orders.extend(rejected)
-                if not approved_orders:
-                    break
-            _record_order_events(event_store, rejected_orders, status="rejected")
-            if approved_orders:
-                _record_order_events(event_store, approved_orders, status="validated")
-                _log_order_status("validated", approved_orders[0], run_id=run_id, cycle_id=cycle_id)
-                counters["orders_validated"] += len(approved_orders)
-                await validated_queue.put(approved_orders[0])
-
-    async def submitter() -> None:
-        """Submit validated orders and persist broker/accounting side effects."""
-        while True:
-            order = await validated_queue.get()
-            if order is None:
-                break
-            _record_order_events(event_store, [order], status="submitted")
-            _log_order_status("submitted", order, run_id=run_id, cycle_id=cycle_id)
-            counters["orders_submitted"] += 1
-            responses = await asyncio.to_thread(broker.submit_orders, [order])
-            _record_broker_responses(event_store, [order], responses)
-            counters["broker_responses"] += len(responses)
-            processed_order = order
-            if responses:
-                response = responses[0]
-                status = str(response.get("status", "submitted"))
-                _log_order_status(
-                    f"broker_response status={status}",
-                    order,
-                    run_id=run_id,
-                    cycle_id=cycle_id,
-                    extra="broker_order_id=%s reason=%s"
-                    % (response.get("broker_order_id"), response.get("rejection_reason")),
-                )
-                if status in {"rejected", "canceled", "expired", "error"}:
-                    continue
-                if sync_portfolio_on_fill and status in {"filled", "partially_filled"}:
-                    fill_ts = response.get("fill_ts") or datetime.now(timezone.utc)
-                    if broker_type == "alpaca":
-                        _sync_portfolio_from_broker(
-                            event_store=event_store,
-                            broker=broker,
-                            portfolio=portfolio,
-                            run_id=run_id,
-                            cycle_id=cycle_id,
-                            asof_ts=fill_ts,
-                            config=config,
-                        )
-                    elif broker_type == "internal":
-                        _apply_fill_to_portfolio(
-                            portfolio=portfolio,
-                            order=order,
-                            response=response,
-                        )
-                        snapshot = portfolio.snapshot(
-                            asof_ts=fill_ts,
-                            run_id=run_id,
-                            cycle_id=cycle_id,
-                            session_id=run_id,
-                        )
-                        snapshot.persist(event_store)
-                        logger.info(
-                            "Portfolio snapshot recorded (internal fill) count=%s",
-                            len(snapshot.positions),
-                        )
-                fill_qty = response.get("fill_qty")
-                fill_price = response.get("fill_price")
-                if fill_qty is not None:
-                    processed_order = {**processed_order, "qty": float(fill_qty)}
-                if fill_price is not None:
-                    processed_order = {**processed_order, "price": float(fill_price)}
-            processed.append(processed_order)
-
-    await asyncio.gather(producer(), signal_worker(), validator(), submitter())
-    logger.info(
-        "Cycle order summary run_id=%s cycle_id=%s orders_emitted=%s orders_rejected_locally=%s orders_validated=%s orders_submitted=%s broker_responses=%s",
-        run_id,
-        cycle_id,
-        counters["orders_emitted"],
-        counters["orders_rejected_locally"],
-        counters["orders_validated"],
-        counters["orders_submitted"],
-        counters["broker_responses"],
+    runtime = CycleStreamRuntime(
+        event_store=event_store,
+        strategy=strategy,
+        broker=broker,
+        portfolio=portfolio,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        max_age_seconds=max_age_seconds,
+        enforce_staleness=enforce_staleness,
+        asset_class=asset_class,
+        time_in_force=time_in_force,
+        sync_portfolio_on_fill=sync_portfolio_on_fill,
+        broker_type=broker_type,
+        config=config,
+        risk_manager=risk_manager,
     )
-    return processed, {symbol: price for symbol, (_, price) in latest_prices.items()}
+    state = _build_cycle_stream_state()
+
+    await asyncio.gather(
+        _produce_market_events(event_stream, event_queue),
+        _generate_stream_orders(
+            runtime=runtime,
+            state=state,
+            event_queue=event_queue,
+            order_queue=order_queue,
+        ),
+        _validate_stream_orders(
+            runtime=runtime,
+            state=state,
+            order_queue=order_queue,
+            validated_queue=validated_queue,
+        ),
+        _submit_stream_orders(
+            runtime=runtime,
+            state=state,
+            validated_queue=validated_queue,
+        ),
+    )
+    _log_cycle_stream_summary(runtime, state)
+    return state.processed_orders, _latest_stream_prices(state)
 
 
 async def _event_stream_from_list(events: Sequence[MarketDataEvent]) -> AsyncIterator[MarketDataEvent]:
@@ -1362,6 +2341,49 @@ def _apply_event_filters(event_store: EventStore, config: Config) -> EventStore:
     return FilteredEventStore(event_store, allowed_event_types=allowed)
 
 
+def _latest_order_events_query() -> str:
+    """Return the query used to load latest order lifecycle rows."""
+    return (
+        "SELECT client_order_id, run_id, cycle_id, symbol, side, qty, order_type, "
+        "status, broker_order_id, created_at "
+        "FROM order_events ORDER BY created_at DESC, order_event_id DESC"
+    )
+
+
+def _latest_order_event_row_to_record(row: Sequence[object]) -> Mapping[str, object]:
+    """Convert one order-event row into a risk-context record."""
+    return {
+        "client_order_id": row[0],
+        "run_id": row[1],
+        "cycle_id": row[2],
+        "symbol": row[3],
+        "side": row[4],
+        "qty": row[5],
+        "order_type": row[6],
+        "status": row[7],
+        "broker_order_id": row[8],
+        "created_at": row[9],
+    }
+
+
+def _dedupe_latest_order_event_rows(
+    rows: Sequence[Sequence[object]],
+) -> tuple[Mapping[str, object], ...]:
+    """Return one newest order-event record per client order ID."""
+    seen: set[str] = set()
+    latest: list[Mapping[str, object]] = []
+    for row in rows:
+        client_order_id = row[0]
+        if not client_order_id:
+            continue
+        client_order_key = str(client_order_id)
+        if client_order_key in seen:
+            continue
+        seen.add(client_order_key)
+        latest.append(_latest_order_event_row_to_record(row))
+    return tuple(latest)
+
+
 def _load_latest_order_events(event_store: EventStore) -> Sequence[Mapping[str, object]]:
     """Load latest local order state for risk-context open-order checks.
 
@@ -1372,11 +2394,7 @@ def _load_latest_order_events(event_store: EventStore) -> Sequence[Mapping[str, 
     connection = getattr(event_store, "connection", lambda: None)()
     if connection is None:
         return []
-    query = (
-        "SELECT client_order_id, run_id, cycle_id, symbol, side, qty, order_type, "
-        "status, broker_order_id, created_at "
-        "FROM order_events ORDER BY created_at DESC, order_event_id DESC"
-    )
+    query = _latest_order_events_query()
     try:
         if hasattr(connection, "cursor"):
             with connection.cursor() as cursor:
@@ -1387,28 +2405,7 @@ def _load_latest_order_events(event_store: EventStore) -> Sequence[Mapping[str, 
     except Exception as exc:
         logger.warning("Risk context order query failed: %s", exc)
         return []
-    seen: set[str] = set()
-    latest: list[Mapping[str, object]] = []
-    for row in rows or []:
-        client_order_id = row[0]
-        if not client_order_id or client_order_id in seen:
-            continue
-        seen.add(client_order_id)
-        latest.append(
-            {
-                "client_order_id": client_order_id,
-                "run_id": row[1],
-                "cycle_id": row[2],
-                "symbol": row[3],
-                "side": row[4],
-                "qty": row[5],
-                "order_type": row[6],
-                "status": row[7],
-                "broker_order_id": row[8],
-                "created_at": row[9],
-            }
-        )
-    return latest
+    return _dedupe_latest_order_event_rows(rows or [])
 
 
 def _load_halt_flag(event_store: EventStore) -> bool:
@@ -1573,6 +2570,34 @@ def _normalize_timestamp(timestamp: datetime) -> datetime:
     return timestamp.astimezone(timezone.utc)
 
 
+def _market_data_event_table_name(asset_class: str) -> str:
+    """Return the persisted market-data table for an asset class."""
+    return "crypto_bar_events" if asset_class.lower() in {"crypto", "cryptocurrency"} else "stock_bar_events"
+
+
+def _build_recent_market_data_query(
+    *,
+    table: str,
+    symbol: str,
+    timeframe: str,
+    as_of_ts: datetime | None,
+) -> RecentMarketDataQuery:
+    """Build a latest-bar lookup query for one symbol and optional upper bound."""
+    where_clause = "WHERE symbol = %s AND COALESCE(timeframe, '1Min') = %s"
+    params: tuple[object, ...] = (symbol.upper(), timeframe)
+    if as_of_ts is not None:
+        where_clause = f"{where_clause} AND ts <= %s"
+        params = (*params, as_of_ts)
+    sql = f"""
+            SELECT ts, ingested_at, open, high, low, close, volume, trade_count, vwap, source
+            FROM {table}
+            {where_clause}
+            ORDER BY ts DESC
+            LIMIT 1
+        """
+    return RecentMarketDataQuery(sql=sql, params=params)
+
+
 def _load_recent_market_data(
     event_store: EventStore,
     config: Config,
@@ -1589,7 +2614,7 @@ def _load_recent_market_data(
         return []
 
     asset_class = config.market_data_asset_class.lower()
-    table = "crypto_bar_events" if asset_class in {"crypto", "cryptocurrency"} else "stock_bar_events"
+    table = _market_data_event_table_name(asset_class)
     timeframe = config.strategy_timeframe
     connection = getattr(event_store, "connection", lambda: None)()
     if connection is None:
@@ -1603,24 +2628,13 @@ def _load_recent_market_data(
     if hasattr(connection, "cursor"):
         with connection.cursor() as cursor:
             for symbol in config.market_data_symbols:
-                query = f"""
-                        SELECT ts, ingested_at, open, high, low, close, volume, trade_count, vwap, source
-                        FROM {table}
-                        WHERE symbol = %s AND COALESCE(timeframe, '1Min') = %s
-                        ORDER BY ts DESC
-                        LIMIT 1
-                    """
-                params = [symbol.upper(), timeframe]
-                if as_of_ts is not None:
-                    query = f"""
-                            SELECT ts, ingested_at, open, high, low, close, volume, trade_count, vwap, source
-                            FROM {table}
-                            WHERE symbol = %s AND COALESCE(timeframe, '1Min') = %s AND ts <= %s
-                            ORDER BY ts DESC
-                            LIMIT 1
-                        """
-                    params = [symbol.upper(), timeframe, as_of_ts]
-                cursor.execute(query, params)
+                lookup = _build_recent_market_data_query(
+                    table=table,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    as_of_ts=as_of_ts,
+                )
+                cursor.execute(lookup.sql, list(lookup.params))
                 row = cursor.fetchone()
                 if row is None:
                     continue
@@ -1726,6 +2740,41 @@ def _apply_fill_to_portfolio(
     )
 
 
+def _coerce_broker_cash(account: object) -> float:
+    """Return a numeric cash balance from a broker account payload."""
+    cash_raw = account.get("cash", 0.0) if isinstance(account, Mapping) else 0.0
+    return float(cash_raw) if cash_raw is not None else 0.0
+
+
+def _broker_position_views_to_positions(
+    positions: Sequence[BrokerPositionView],
+) -> dict[str, Position]:
+    """Convert normalized broker position views into runtime positions."""
+    return {
+        position.symbol: Position(
+            symbol=position.symbol,
+            qty=position.qty,
+            avg_price=position.avg_entry_price,
+        )
+        for position in positions
+    }
+
+
+def _build_portfolio_from_broker_payload(
+    *,
+    account: object,
+    positions_raw: Sequence[Mapping[str, object]],
+    config: Config,
+) -> Portfolio:
+    """Build a validated runtime portfolio from broker account and position payloads."""
+    normalized_positions = normalize_broker_positions(positions_raw)
+    _validate_broker_positions(normalized_positions, config)
+    return Portfolio(
+        positions=_broker_position_views_to_positions(normalized_positions),
+        cash_balance=_coerce_broker_cash(account),
+    )
+
+
 def _load_portfolio_from_broker(
     *,
     broker: Broker,
@@ -1749,19 +2798,12 @@ def _load_portfolio_from_broker(
 
     try:
         account = get_account()
-        cash_raw = account.get("cash", 0.0) if isinstance(account, Mapping) else 0.0
-        cash = float(cash_raw) if cash_raw is not None else 0.0
         positions_raw = get_positions() or []
-        normalized_positions = normalize_broker_positions(positions_raw)
-        _validate_broker_positions(normalized_positions, config)
-        positions: dict[str, Position] = {}
-        for position in normalized_positions:
-            positions[position.symbol] = Position(
-                symbol=position.symbol,
-                qty=position.qty,
-                avg_price=position.avg_entry_price,
-            )
-        portfolio = Portfolio(positions=positions, cash_balance=cash)
+        portfolio = _build_portfolio_from_broker_payload(
+            account=account,
+            positions_raw=positions_raw,
+            config=config,
+        )
         snapshot = portfolio.snapshot(
             asof_ts=decision_ts,
             run_id=run_id,
@@ -1794,21 +2836,14 @@ def _sync_portfolio_from_broker(
 
     logger.info("Broker refresh reason=post_fill_sync run_id=%s cycle_id=%s", run_id, cycle_id)
     account = get_account()
-    cash_raw = account.get("cash", 0.0) if isinstance(account, Mapping) else 0.0
-    cash = float(cash_raw) if cash_raw is not None else 0.0
     positions_raw = get_positions() or []
-    normalized_positions = normalize_broker_positions(positions_raw)
-    _validate_broker_positions(normalized_positions, config)
-    positions: dict[str, Position] = {}
-    for position in normalized_positions:
-        positions[position.symbol] = Position(
-            symbol=position.symbol,
-            qty=position.qty,
-            avg_price=position.avg_entry_price,
-        )
-
-    portfolio.positions = positions
-    portfolio.cash_balance = cash
+    broker_portfolio = _build_portfolio_from_broker_payload(
+        account=account,
+        positions_raw=positions_raw,
+        config=config,
+    )
+    portfolio.positions = dict(broker_portfolio.positions)
+    portfolio.cash_balance = broker_portfolio.cash_balance
     snapshot = portfolio.snapshot(
         asof_ts=asof_ts,
         run_id=run_id,
@@ -1816,7 +2851,11 @@ def _sync_portfolio_from_broker(
         session_id=run_id,
     )
     snapshot.persist(event_store)
-    logger.info("Portfolio synced from broker positions=%s cash=%s reason=post_fill_sync", len(positions), cash)
+    logger.info(
+        "Portfolio synced from broker positions=%s cash=%s reason=post_fill_sync",
+        len(portfolio.positions),
+        portfolio.cash_balance,
+    )
 
 
 def _validate_broker_positions(positions, config: Config) -> None:

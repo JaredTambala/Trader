@@ -21,12 +21,47 @@ from trader.cycle import (
     resolve_terminal_event_timestamp,
     run_cycle,
 )
-from trader.identifiers import deterministic_client_order_id
+from trader.cycle.core import (
+    _build_cycle_risk_context,
+    _build_cycle_execution_plan,
+    _build_cycle_identity,
+    _build_cycle_run_session_outcome,
+    _build_post_order_portfolio_snapshot_plan,
+    _build_processed_order_from_broker_response,
+    _build_portfolio_from_broker_payload,
+    _build_stream_risk_price_lookup,
+    _broker_position_views_to_positions,
+    _coerce_broker_cash,
+    _dedupe_latest_order_event_rows,
+    _empty_market_data_pipeline_result,
+    _evaluate_cycle_order_risk,
+    _build_recent_market_data_query,
+    _latest_order_event_row_to_record,
+    _latest_order_events_query,
+    _market_data_event_table_name,
+    _resolve_broker_response_status,
+    _resolve_cycle_run_type,
+    _resolve_cycle_snapshot_ts,
+    _resolve_decision_ts,
+    _resolve_market_data_freshness_ts,
+    _resolve_portfolio_asof_ts,
+    _resolve_metrics_price_lookup,
+    _row_to_market_event,
+    _record_owned_run_session_finish,
+    _record_owned_run_session_start,
+    _should_halt_cycle,
+    _should_use_stream_ingestion,
+    _should_sync_portfolio_for_broker_response,
+    _should_load_broker_portfolio,
+)
+from trader.identifiers import deterministic_client_order_id, deterministic_run_session_id
 from trader.config import Config
-from trader.market_data import StaticMarketDataSource, StockBarEvent
+from trader.market_data import CryptoBarEvent, StaticMarketDataSource, StockBarEvent
 from trader.portfolio import Portfolio, Position
+from trader.risk import RiskContext, RiskManager
 from trader.signals import Bar
 from trader.strategies import Strategy
+from trader.symbols import BrokerPositionView
 from tests.support.duckdb_store import DuckDBEventStore
 from trader_standard.indicators import SmaIndicator
 from trader_standard.risk import NoOpRiskManager
@@ -59,6 +94,51 @@ class SingleOrderStrategy(Strategy):
                 "order_type": "market",
             }
         ]
+
+
+class RejectSymbolRiskManager(RiskManager):
+    """Test risk manager that rejects one configured symbol."""
+
+    def __init__(self, symbol: str, reason: str) -> None:
+        self.symbol = symbol
+        self.reason = reason
+
+    def validate(
+        self,
+        orders,
+        context: RiskContext,
+    ):
+        del context
+        return [order for order in orders if order.get("symbol") != self.symbol]
+
+    def evaluate(
+        self,
+        orders,
+        context: RiskContext,
+    ):
+        del context
+        approved = []
+        rejected = []
+        for order in orders:
+            if order.get("symbol") == self.symbol:
+                rejected.append({**order, "rejection_reason": self.reason})
+            else:
+                approved.append(order)
+        return approved, rejected
+
+
+class RunSessionRecorder:
+    """Minimal event-store recorder for run-session helper tests."""
+
+    def __init__(self) -> None:
+        self.starts: list[dict[str, object]] = []
+        self.finishes: list[dict[str, object]] = []
+
+    def record_run_session_start(self, **kwargs) -> None:
+        self.starts.append(dict(kwargs))
+
+    def record_run_session_finish(self, **kwargs) -> None:
+        self.finishes.append(dict(kwargs))
 
 
 def _stock_event(*, ts: datetime, close: float = 100.0) -> StockBarEvent:
@@ -214,6 +294,28 @@ def test_build_metrics_snapshot_event_serializes_payload_deterministically() -> 
         "asset_class": "stocks",
         "symbols": ["AAPL"],
     }
+
+
+def test_resolve_metrics_price_lookup_prefers_stream_prices_and_falls_back_to_events() -> None:
+    base_ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    older = _stock_event(ts=base_ts - timedelta(minutes=1), close=99.0)
+    latest = _stock_event(ts=base_ts, close=101.0)
+
+    assert (
+        _resolve_metrics_price_lookup(
+            price_lookup={"AAPL": 105.0},
+            market_data_events=[older, latest],
+        )
+        == {"AAPL": 105.0}
+    )
+    assert (
+        _resolve_metrics_price_lookup(
+            price_lookup={},
+            market_data_events=[older, latest],
+        )
+        == {"AAPL": 101.0}
+    )
+    assert _resolve_metrics_price_lookup(price_lookup={}, market_data_events=[]) == {}
 
 
 def test_normalize_cycle_order_intent_preserves_source_without_mutation() -> None:
@@ -458,6 +560,565 @@ def test_resolve_terminal_event_timestamp_uses_fallback_and_normalizes_naive_dat
             fallback_ts=fallback_ts,
         )
         == naive_proposed_ts.replace(tzinfo=timezone.utc)
+    )
+
+
+def test_resolve_cycle_run_type_uses_mode_and_explicit_override() -> None:
+    assert _resolve_cycle_run_type("backtest", None) == "backtest"
+    assert _resolve_cycle_run_type("once", None) == "trading"
+    assert _resolve_cycle_run_type("once", "BACKTEST") == "backtest"
+    assert _resolve_cycle_run_type("backtest", "TRADING") == "trading"
+
+
+def test_build_cycle_execution_plan_captures_shell_decisions() -> None:
+    plan = _build_cycle_execution_plan(
+        mode="backtest",
+        broker_type="internal",
+        portfolio_source="",
+        run_type=None,
+    )
+
+    assert plan.run_type == "backtest"
+    assert plan.broker_kind == "internal"
+    assert plan.stream_mode is False
+    assert plan.sync_portfolio_on_fill is True
+    assert plan.portfolio_source == ""
+    assert _should_load_broker_portfolio(plan) is False
+
+    live_alpaca_plan = _build_cycle_execution_plan(
+        mode="once",
+        broker_type="ALPACA",
+        portfolio_source="alpaca",
+        run_type=None,
+    )
+
+    assert live_alpaca_plan.run_type == "trading"
+    assert live_alpaca_plan.broker_kind == "alpaca"
+    assert live_alpaca_plan.stream_mode is True
+    assert live_alpaca_plan.sync_portfolio_on_fill is True
+    assert _should_load_broker_portfolio(live_alpaca_plan) is True
+
+
+def test_build_cycle_identity_is_deterministic_and_preserves_explicit_run_id() -> None:
+    decision_ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    started_at = datetime(2026, 1, 20, 12, 1, tzinfo=timezone.utc)
+
+    owned = _build_cycle_identity(
+        strategy_id="strategy_1",
+        decision_ts=decision_ts,
+        run_type="trading",
+        started_at=started_at,
+        run_id=None,
+    )
+
+    assert owned.run_id == deterministic_run_session_id("trading", started_at)
+    assert owned.owns_run_session is True
+    assert owned.cycle_id
+
+    explicit = _build_cycle_identity(
+        strategy_id="strategy_1",
+        decision_ts=decision_ts,
+        run_type="trading",
+        started_at=started_at,
+        run_id="run_existing",
+    )
+
+    assert explicit.run_id == "run_existing"
+    assert explicit.cycle_id == owned.cycle_id
+    assert explicit.owns_run_session is False
+
+
+def test_cycle_run_session_outcome_and_recording_helpers() -> None:
+    recorder = RunSessionRecorder()
+    started_at = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    success = _build_cycle_run_session_outcome("success")
+    failed = _build_cycle_run_session_outcome("failed", "boom")
+
+    _record_owned_run_session_start(
+        event_store=recorder,
+        owns_run_session=False,
+        run_id="run_ignored",
+        run_type="trading",
+        started_at=started_at,
+        strategy_id="strategy_ignored",
+        config_snapshot=None,
+        mode="once",
+        symbols=("AAPL",),
+        timeframe="1Min",
+    )
+    _record_owned_run_session_finish(
+        event_store=recorder,
+        owns_run_session=False,
+        run_id="run_ignored",
+        run_type="trading",
+        started_at=started_at,
+        outcome=success,
+        strategy_id="strategy_ignored",
+        mode="once",
+        symbols=("AAPL",),
+        timeframe="1Min",
+    )
+
+    assert recorder.starts == []
+    assert recorder.finishes == []
+    assert success.status == "success"
+    assert success.error_message is None
+    assert failed.status == "failed"
+    assert failed.error_message == "boom"
+
+    _record_owned_run_session_start(
+        event_store=recorder,
+        owns_run_session=True,
+        run_id="run_1",
+        run_type="trading",
+        started_at=started_at,
+        strategy_id="strategy_1",
+        config_snapshot={"mode": "once"},
+        mode="once",
+        symbols=("AAPL",),
+        timeframe="1Min",
+    )
+    _record_owned_run_session_finish(
+        event_store=recorder,
+        owns_run_session=True,
+        run_id="run_1",
+        run_type="trading",
+        started_at=started_at,
+        outcome=failed,
+        strategy_id="strategy_1",
+        mode="once",
+        symbols=("AAPL",),
+        timeframe="1Min",
+    )
+
+    assert recorder.starts == [
+        {
+            "run_id": "run_1",
+            "run_type": "trading",
+            "started_at": started_at,
+            "strategy_id": "strategy_1",
+            "config_snapshot": {"mode": "once"},
+            "mode": "once",
+            "symbols": ("AAPL",),
+            "timeframe": "1Min",
+        }
+    ]
+    assert len(recorder.finishes) == 1
+    assert recorder.finishes[0]["run_id"] == "run_1"
+    assert recorder.finishes[0]["run_type"] == "trading"
+    assert recorder.finishes[0]["started_at"] == started_at
+    assert recorder.finishes[0]["status"] == "failed"
+    assert recorder.finishes[0]["error_message"] == "boom"
+    assert recorder.finishes[0]["strategy_id"] == "strategy_1"
+    assert recorder.finishes[0]["mode"] == "once"
+    assert recorder.finishes[0]["symbols"] == ("AAPL",)
+    assert recorder.finishes[0]["timeframe"] == "1Min"
+    assert isinstance(recorder.finishes[0]["finished_at"], datetime)
+
+
+def test_resolve_decision_ts_uses_current_time_and_normalizes_naive_values() -> None:
+    current_ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    naive_ts = datetime(2026, 1, 20, 13, 0)
+
+    assert _resolve_decision_ts(None, current_ts=current_ts) == current_ts
+    assert _resolve_decision_ts(naive_ts, current_ts=current_ts) == naive_ts.replace(
+        tzinfo=timezone.utc
+    )
+
+
+def test_should_halt_cycle_never_halts_backtests() -> None:
+    assert _should_halt_cycle(run_type="trading", halted=True) is True
+    assert _should_halt_cycle(run_type="trading", halted=False) is False
+    assert _should_halt_cycle(run_type="backtest", halted=True) is False
+
+
+def test_cycle_timestamp_resolvers_keep_backtest_time_deterministic() -> None:
+    decision_ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    current_ts = decision_ts + timedelta(minutes=5)
+
+    assert _resolve_portfolio_asof_ts("backtest", decision_ts) == decision_ts
+    assert _resolve_portfolio_asof_ts("once", decision_ts) is None
+    assert (
+        _resolve_cycle_snapshot_ts(
+            mode="backtest",
+            decision_ts=decision_ts,
+            current_ts=current_ts,
+        )
+        == decision_ts
+    )
+    assert (
+        _resolve_cycle_snapshot_ts(
+            mode="once",
+            decision_ts=decision_ts,
+            current_ts=current_ts,
+        )
+        == current_ts
+    )
+
+
+def test_post_order_portfolio_snapshot_plan_selects_side_effect_path() -> None:
+    orders = [{"symbol": "AAPL", "side": "buy", "qty": 1.0}]
+
+    assert (
+        _build_post_order_portfolio_snapshot_plan(
+            processed_orders=[],
+            sync_portfolio_on_fill=False,
+            broker_kind="noop",
+        ).action
+        == "none"
+    )
+    assert (
+        _build_post_order_portfolio_snapshot_plan(
+            processed_orders=orders,
+            sync_portfolio_on_fill=True,
+            broker_kind="alpaca",
+        ).action
+        == "skip_alpaca_synced"
+    )
+    assert (
+        _build_post_order_portfolio_snapshot_plan(
+            processed_orders=orders,
+            sync_portfolio_on_fill=True,
+            broker_kind="internal",
+        ).action
+        == "persist_broker_fill_snapshot"
+    )
+    assert (
+        _build_post_order_portfolio_snapshot_plan(
+            processed_orders=orders,
+            sync_portfolio_on_fill=False,
+            broker_kind="noop",
+        ).action
+        == "persist_order_intent_snapshot"
+    )
+
+
+def test_broker_portfolio_payload_helpers_build_runtime_portfolio() -> None:
+    config = _base_config(":memory:")
+    views = [
+        BrokerPositionView(
+            symbol="AAPL",
+            asset_class="stocks",
+            qty=2.0,
+            avg_entry_price=95.0,
+            side="long",
+            raw_symbol="AAPL",
+            raw_asset_class="us_equity",
+        )
+    ]
+
+    positions = _broker_position_views_to_positions(views)
+    portfolio = _build_portfolio_from_broker_payload(
+        account={"cash": "1234.50"},
+        positions_raw=[
+            {
+                "symbol": "AAPL",
+                "asset_class": "us_equity",
+                "qty": "2",
+                "avg_entry_price": "95",
+                "side": "long",
+            }
+        ],
+        config=config,
+    )
+
+    assert _coerce_broker_cash({"cash": "1234.50"}) == 1234.5
+    assert _coerce_broker_cash({}) == 0.0
+    assert _coerce_broker_cash(object()) == 0.0
+    assert positions == {"AAPL": Position(symbol="AAPL", qty=2.0, avg_price=95.0)}
+    assert portfolio.cash_balance == 1234.5
+    assert portfolio.positions == positions
+
+
+def test_broker_portfolio_payload_rejects_positions_outside_configured_universe() -> None:
+    config = _base_config(":memory:")
+
+    with pytest.raises(ValueError, match="Broker portfolio mismatch"):
+        _build_portfolio_from_broker_payload(
+            account={"cash": "0"},
+            positions_raw=[
+                {
+                    "symbol": "MSFT",
+                    "asset_class": "us_equity",
+                    "qty": "1",
+                    "avg_entry_price": "100",
+                    "side": "long",
+                }
+            ],
+            config=config,
+        )
+
+
+def test_market_data_pipeline_planning_helpers_are_deterministic() -> None:
+    decision_ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    current_ts = decision_ts + timedelta(minutes=1)
+
+    assert _should_use_stream_ingestion(ingest_market_data=True, stream_mode=True) is True
+    assert _should_use_stream_ingestion(ingest_market_data=False, stream_mode=True) is False
+    assert _should_use_stream_ingestion(ingest_market_data=True, stream_mode=False) is False
+    assert (
+        _resolve_market_data_freshness_ts(
+            mode="backtest",
+            decision_ts=decision_ts,
+            current_ts=current_ts,
+        )
+        == decision_ts
+    )
+    assert (
+        _resolve_market_data_freshness_ts(
+            mode="once",
+            decision_ts=decision_ts,
+            current_ts=current_ts,
+        )
+        == current_ts
+    )
+
+
+def test_empty_market_data_pipeline_result_is_stable() -> None:
+    result = _empty_market_data_pipeline_result()
+
+    assert result.processed_orders == ()
+    assert result.market_data_events == ()
+    assert result.price_lookup == {}
+
+
+def test_market_data_event_table_name_selects_asset_class_table() -> None:
+    assert _market_data_event_table_name("stocks") == "stock_bar_events"
+    assert _market_data_event_table_name("stock") == "stock_bar_events"
+    assert _market_data_event_table_name("crypto") == "crypto_bar_events"
+    assert _market_data_event_table_name("cryptocurrency") == "crypto_bar_events"
+
+
+def test_build_recent_market_data_query_shapes_sql_and_params() -> None:
+    as_of_ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+
+    latest = _build_recent_market_data_query(
+        table="stock_bar_events",
+        symbol="aapl",
+        timeframe="1Min",
+        as_of_ts=None,
+    )
+    bounded = _build_recent_market_data_query(
+        table="crypto_bar_events",
+        symbol="btc/usd",
+        timeframe="5Min",
+        as_of_ts=as_of_ts,
+    )
+
+    assert "FROM stock_bar_events" in latest.sql
+    assert "ts <= %s" not in latest.sql
+    assert latest.params == ("AAPL", "1Min")
+    assert "FROM crypto_bar_events" in bounded.sql
+    assert "ts <= %s" in bounded.sql
+    assert bounded.params == ("BTC/USD", "5Min", as_of_ts)
+
+
+def test_row_to_market_event_selects_stock_or_crypto_event() -> None:
+    ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    row = (ts, ts, 100.0, 101.0, 99.0, 100.5, 10.0, None, None, "event_store")
+
+    stock = _row_to_market_event("stocks", "AAPL", "1Min", row)
+    crypto = _row_to_market_event("crypto", "BTC/USD", "1Min", row)
+
+    assert isinstance(stock, StockBarEvent)
+    assert stock.symbol == "AAPL"
+    assert stock.close == 100.5
+    assert isinstance(crypto, CryptoBarEvent)
+    assert crypto.symbol == "BTC/USD"
+    assert crypto.close == 100.5
+
+
+def test_build_stream_risk_price_lookup_uses_latest_prices_and_order_override() -> None:
+    base_ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+
+    price_lookup = _build_stream_risk_price_lookup(
+        {
+            "AAPL": (base_ts, 100.0),
+            "MSFT": (base_ts, 200.0),
+        },
+        {"symbol": " aapl ", "price": "101.25"},
+    )
+
+    assert price_lookup == {"AAPL": 101.25, "MSFT": 200.0}
+
+
+def test_build_cycle_risk_context_uses_explicit_state_without_storage() -> None:
+    base_ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    position = Position(symbol="AAPL", qty=1.0, avg_price=90.0)
+    open_order = {"client_order_id": "cid_open", "symbol": "AAPL"}
+    order = {"symbol": "AAPL", "price": 105.0, "created_at": base_ts}
+
+    context = _build_cycle_risk_context(
+        positions={"AAPL": position},
+        open_orders=[open_order],
+        latest_prices={"AAPL": (base_ts - timedelta(minutes=1), 100.0)},
+        order=order,
+        run_id="run_1",
+        cycle_id="cycle_1",
+        halted=True,
+        fallback_ts=base_ts + timedelta(minutes=5),
+    )
+
+    assert context.positions == {"AAPL": position}
+    assert context.open_orders == [open_order]
+    assert context.price_lookup == {"AAPL": 105.0}
+    assert context.run_id == "run_1"
+    assert context.cycle_id == "cycle_1"
+    assert context.decision_ts == base_ts
+    assert context.halted is True
+
+
+def test_build_cycle_risk_context_uses_fallback_for_missing_order_time() -> None:
+    fallback_ts = datetime(2026, 1, 20, 12, 5, tzinfo=timezone.utc)
+
+    context = _build_cycle_risk_context(
+        positions={},
+        open_orders=[],
+        latest_prices={},
+        order={"symbol": "AAPL"},
+        run_id="run_1",
+        cycle_id="cycle_1",
+        halted=False,
+        fallback_ts=fallback_ts,
+    )
+
+    assert context.decision_ts == fallback_ts
+
+
+def test_latest_order_events_query_selects_lifecycle_fields_in_order() -> None:
+    query = _latest_order_events_query()
+
+    assert "SELECT client_order_id, run_id, cycle_id, symbol, side, qty, order_type" in query
+    assert "FROM order_events" in query
+    assert "ORDER BY created_at DESC, order_event_id DESC" in query
+
+
+def test_latest_order_event_row_helpers_normalize_and_dedupe_rows() -> None:
+    created_new = datetime(2026, 1, 20, 12, 1, tzinfo=timezone.utc)
+    created_old = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    newest = (
+        "cid_1",
+        "run_1",
+        "cycle_1",
+        "AAPL",
+        "buy",
+        1.0,
+        "market",
+        "submitted",
+        "broker_1",
+        created_new,
+    )
+    older_duplicate = (
+        "cid_1",
+        "run_1",
+        "cycle_0",
+        "AAPL",
+        "buy",
+        1.0,
+        "market",
+        "created",
+        None,
+        created_old,
+    )
+    second_order = (
+        "cid_2",
+        "run_1",
+        "cycle_1",
+        "MSFT",
+        "sell",
+        2.0,
+        "market",
+        "filled",
+        "broker_2",
+        created_new,
+    )
+
+    assert _latest_order_event_row_to_record(newest) == {
+        "client_order_id": "cid_1",
+        "run_id": "run_1",
+        "cycle_id": "cycle_1",
+        "symbol": "AAPL",
+        "side": "buy",
+        "qty": 1.0,
+        "order_type": "market",
+        "status": "submitted",
+        "broker_order_id": "broker_1",
+        "created_at": created_new,
+    }
+    assert _dedupe_latest_order_event_rows(
+        [
+            newest,
+            older_duplicate,
+            (None, "run_1", "cycle_1", "NVDA", "buy", 1.0, "market", "created", None, created_new),
+            second_order,
+        ]
+    ) == (
+        _latest_order_event_row_to_record(newest),
+        _latest_order_event_row_to_record(second_order),
+    )
+
+
+def test_evaluate_cycle_order_risk_returns_approved_and_manager_rejection_logs() -> None:
+    base_ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    context = RiskContext(
+        positions={},
+        open_orders=[],
+        price_lookup={},
+        run_id="run_1",
+        cycle_id="cycle_1",
+        decision_ts=base_ts,
+    )
+    manager = RejectSymbolRiskManager("AAPL", "blocked_symbol")
+    order = {"symbol": "AAPL", "side": "buy", "qty": 1.0}
+
+    result = _evaluate_cycle_order_risk(
+        order=order,
+        context=context,
+        risk_manager=manager,
+    )
+
+    assert result.approved_orders == ()
+    assert result.rejected_orders == ({**order, "rejection_reason": "blocked_symbol"},)
+    assert len(result.rejection_logs) == 1
+    assert result.rejection_logs[0].order == result.rejected_orders[0]
+    assert result.rejection_logs[0].manager_name == "RejectSymbolRiskManager"
+
+
+def test_broker_response_helpers_normalize_status_sync_and_processed_order() -> None:
+    order = {"symbol": "AAPL", "side": "buy", "qty": 1.0, "price": 100.0}
+    filled_response = {
+        "status": "filled",
+        "fill_qty": "0.5",
+        "fill_price": "101.25",
+    }
+
+    assert _resolve_broker_response_status({}) == "submitted"
+    assert _resolve_broker_response_status(filled_response) == "filled"
+    assert (
+        _should_sync_portfolio_for_broker_response(
+            status="filled",
+            sync_portfolio_on_fill=True,
+        )
+        is True
+    )
+    assert (
+        _should_sync_portfolio_for_broker_response(
+            status="submitted",
+            sync_portfolio_on_fill=True,
+        )
+        is False
+    )
+    assert _build_processed_order_from_broker_response(order, filled_response) == {
+        **order,
+        "qty": 0.5,
+        "price": 101.25,
+    }
+    assert (
+        _build_processed_order_from_broker_response(
+            order,
+            {"status": "rejected", "rejection_reason": "broker_reject"},
+        )
+        is None
     )
 
 
