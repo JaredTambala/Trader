@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from trader.backtest import BacktestAssumptions, BacktestRunner, BacktestSpec
-from trader.backtest.core import (
+from trader.backtest.runtime import (
     _build_backtest_runtime_config,
     _build_symbol_runtime_configs,
     _count_scheduled_symbol_runs,

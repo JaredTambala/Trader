@@ -21,11 +21,11 @@ from trader.backtest import (
     export_backtest_trades_csv,
     serialize_backtest_result,
 )
-from trader.backtest.core import (
-    _build_backtest_metrics_snapshot_payload,
+from trader.backtest.exports import (
     _build_equity_curve_csv_rows,
     _build_trade_csv_rows,
 )
+from trader.backtest.persistence import _build_backtest_metrics_snapshot_payload
 
 
 def test_serialize_backtest_result_is_json_friendly() -> None:
