@@ -7,19 +7,26 @@ from typing import Any, Iterator, Mapping, Sequence
 
 from .base import EventStore
 from .records import (
+    PostgresEventInsertPlan,
+    build_postgres_event_insert_plan,
+    cycle_finish_parameters,
+    cycle_start_parameters,
+    experiment_run_finish_parameters,
     experiment_run_row_to_record,
-    json_payload_or_empty,
-    json_payload_or_none,
-    postgres_text_array_or_empty,
-    postgres_text_array_or_none,
+    experiment_run_start_parameters,
+    list_experiment_runs_query_plan,
+    run_session_finish_parameters,
+    run_session_start_parameters,
+    trading_session_finish_parameters,
+    trading_session_start_parameters,
+    upsert_experiment_parameters,
 )
-from .schema import BAR_EVENT_TABLES, POSTGRES_EVENT_TABLES, POSTGRES_SCHEMA_STATEMENTS
+from .schema import POSTGRES_SCHEMA_STATEMENTS
 from .statements import (
     CYCLE_FINISH_SQL,
     CYCLE_START_SQL,
     EXPERIMENT_RUN_FINISH_SQL,
     EXPERIMENT_RUN_START_SQL,
-    LIST_EXPERIMENT_RUNS_SQL,
     RUN_SESSION_FINISH_SQL,
     RUN_SESSION_START_SQL,
     TRADING_SESSION_FINISH_SQL,
@@ -33,6 +40,20 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     psycopg = None
     sql = None
+
+
+def _event_insert_query(plan: PostgresEventInsertPlan) -> Any:
+    """Build a psycopg SQL insert object from a validated event insert plan."""
+    if sql is None:  # pragma: no cover - guarded by PostgresEventStore init
+        raise ImportError("psycopg is required to build Postgres event insert queries")
+    query = sql.SQL("INSERT INTO {table} ({fields}) VALUES ({values})").format(
+        table=sql.Identifier(plan.event_type),
+        fields=sql.SQL(", ").join(sql.Identifier(column) for column in plan.columns),
+        values=sql.SQL(", ").join(sql.Placeholder() for _ in plan.columns),
+    )
+    if plan.ignore_bar_conflicts:
+        query = query + sql.SQL(" ON CONFLICT (symbol, timeframe, ts, source) DO NOTHING")
+    return query
 
 
 class PostgresEventStore(EventStore):
@@ -106,18 +127,8 @@ class PostgresEventStore(EventStore):
             ValueError: If `event_type` is not part of the event-store schema.
             Exception: If Postgres rejects the generated insert.
         """
-        if event_type not in POSTGRES_EVENT_TABLES:
-            raise ValueError(f"Unknown event type: {event_type}")
-
-        columns = list(payload.keys())
-        query = sql.SQL("INSERT INTO {table} ({fields}) VALUES ({values})").format(
-            table=sql.Identifier(event_type),
-            fields=sql.SQL(", ").join(sql.Identifier(col) for col in columns),
-            values=sql.SQL(", ").join(sql.Placeholder() for _ in columns),
-        )
-        if event_type in BAR_EVENT_TABLES:
-            query = query + sql.SQL(" ON CONFLICT (symbol, timeframe, ts, source) DO NOTHING")
-        self._connection.execute(query, list(payload.values()))
+        plan = build_postgres_event_insert_plan(event_type, payload)
+        self._connection.execute(_event_insert_query(plan), list(plan.values))
 
     def record_run_session_start(
         self,
@@ -140,39 +151,36 @@ class PostgresEventStore(EventStore):
         also get a `trading_sessions` row keyed by the same run ID so operator
         status queries can distinguish live service state.
         """
-        snapshot_json = json_payload_or_none(config_snapshot)
         self._connection.execute(
             RUN_SESSION_START_SQL,
-            [
-                run_id,
-                run_type,
-                started_at,
-                status,
-                None,
-                snapshot_json,
-                mode,
-                postgres_text_array_or_none(symbols),
-                timeframe,
-                start_ts,
-                end_ts,
-            ],
+            run_session_start_parameters(
+                run_id=run_id,
+                run_type=run_type,
+                started_at=started_at,
+                status=status,
+                config_snapshot=config_snapshot,
+                mode=mode,
+                symbols=symbols,
+                timeframe=timeframe,
+                start_ts=start_ts,
+                end_ts=end_ts,
+            ),
         )
         if run_type == "trading":
             self._connection.execute(
                 TRADING_SESSION_START_SQL,
-                [
-                    run_id,
-                    strategy_id,
-                    started_at,
-                    status,
-                    None,
-                    snapshot_json,
-                    mode,
-                    postgres_text_array_or_none(symbols),
-                    timeframe,
-                    start_ts,
-                    end_ts,
-                ],
+                trading_session_start_parameters(
+                    run_id=run_id,
+                    strategy_id=strategy_id,
+                    started_at=started_at,
+                    status=status,
+                    config_snapshot=config_snapshot,
+                    mode=mode,
+                    symbols=symbols,
+                    timeframe=timeframe,
+                    start_ts=start_ts,
+                    end_ts=end_ts,
+                ),
             )
 
     def record_run_session_finish(
@@ -198,41 +206,40 @@ class PostgresEventStore(EventStore):
         finish timestamps and errors to a start row created earlier by the same
         process or a buffered writer.
         """
-        snapshot_json = json_payload_or_none(config_snapshot)
         self._connection.execute(
             RUN_SESSION_FINISH_SQL,
-            [
-                run_id,
-                run_type,
-                started_at,
-                finished_at,
-                status,
-                error_message,
-                snapshot_json,
-                mode,
-                postgres_text_array_or_none(symbols),
-                timeframe,
-                start_ts,
-                end_ts,
-            ],
+            run_session_finish_parameters(
+                run_id=run_id,
+                run_type=run_type,
+                started_at=started_at,
+                finished_at=finished_at,
+                status=status,
+                error_message=error_message,
+                config_snapshot=config_snapshot,
+                mode=mode,
+                symbols=symbols,
+                timeframe=timeframe,
+                start_ts=start_ts,
+                end_ts=end_ts,
+            ),
         )
         if run_type == "trading":
             self._connection.execute(
                 TRADING_SESSION_FINISH_SQL,
-                [
-                    run_id,
-                    strategy_id,
-                    started_at,
-                    finished_at,
-                    status,
-                    error_message,
-                    snapshot_json,
-                    mode,
-                    postgres_text_array_or_none(symbols),
-                    timeframe,
-                    start_ts,
-                    end_ts,
-                ],
+                trading_session_finish_parameters(
+                    run_id=run_id,
+                    strategy_id=strategy_id,
+                    started_at=started_at,
+                    finished_at=finished_at,
+                    status=status,
+                    error_message=error_message,
+                    config_snapshot=config_snapshot,
+                    mode=mode,
+                    symbols=symbols,
+                    timeframe=timeframe,
+                    start_ts=start_ts,
+                    end_ts=end_ts,
+                ),
             )
 
     def record_cycle_start(
@@ -252,7 +259,14 @@ class PostgresEventStore(EventStore):
         """
         self._connection.execute(
             CYCLE_START_SQL,
-            [cycle_id, run_id, run_id, strategy_id, mode, decision_ts, started_at],
+            cycle_start_parameters(
+                run_id=run_id,
+                cycle_id=cycle_id,
+                strategy_id=strategy_id,
+                mode=mode,
+                decision_ts=decision_ts,
+                started_at=started_at,
+            ),
         )
 
     def record_cycle_finish(
@@ -275,18 +289,17 @@ class PostgresEventStore(EventStore):
         """
         self._connection.execute(
             CYCLE_FINISH_SQL,
-            [
-                cycle_id,
-                run_id,
-                run_id,
-                strategy_id,
-                mode,
-                decision_ts,
-                started_at,
-                finished_at,
-                status,
-                error_message,
-            ],
+            cycle_finish_parameters(
+                run_id=run_id,
+                cycle_id=cycle_id,
+                strategy_id=strategy_id,
+                mode=mode,
+                decision_ts=decision_ts,
+                started_at=started_at,
+                finished_at=finished_at,
+                status=status,
+                error_message=error_message,
+            ),
         )
 
     def upsert_experiment(
@@ -308,15 +321,15 @@ class PostgresEventStore(EventStore):
         """
         self._connection.execute(
             UPSERT_EXPERIMENT_SQL,
-            [
-                experiment_id,
-                name,
-                description,
-                postgres_text_array_or_empty(tags),
-                created_at,
-                updated_at,
-                json_payload_or_empty(metadata),
-            ],
+            upsert_experiment_parameters(
+                experiment_id=experiment_id,
+                name=name,
+                description=description,
+                tags=tags,
+                created_at=created_at,
+                updated_at=updated_at,
+                metadata=metadata,
+            ),
         )
 
     def record_experiment_run_start(
@@ -349,26 +362,26 @@ class PostgresEventStore(EventStore):
         """
         self._connection.execute(
             EXPERIMENT_RUN_START_SQL,
-            [
-                experiment_run_id,
-                experiment_id,
-                run_id,
-                status,
-                created_at,
-                strategy_id,
-                strategy_name,
-                strategy_version,
-                postgres_text_array_or_none(symbols),
-                asset_class,
-                timeframe,
-                start_ts,
-                end_ts,
-                json_payload_or_empty(parameters),
-                json_payload_or_empty(assumptions),
-                json_payload_or_empty(provenance),
-                json_payload_or_empty(data_quality),
-                artifact_dir,
-            ],
+            experiment_run_start_parameters(
+                experiment_run_id=experiment_run_id,
+                experiment_id=experiment_id,
+                run_id=run_id,
+                status=status,
+                created_at=created_at,
+                strategy_id=strategy_id,
+                strategy_name=strategy_name,
+                strategy_version=strategy_version,
+                symbols=symbols,
+                asset_class=asset_class,
+                timeframe=timeframe,
+                start_ts=start_ts,
+                end_ts=end_ts,
+                parameters=parameters,
+                assumptions=assumptions,
+                provenance=provenance,
+                data_quality=data_quality,
+                artifact_dir=artifact_dir,
+            ),
         )
 
     def record_experiment_run_finish(
@@ -394,19 +407,18 @@ class PostgresEventStore(EventStore):
         """
         self._connection.execute(
             EXPERIMENT_RUN_FINISH_SQL,
-            [
-                experiment_run_id,
-                experiment_id,
-                run_id,
-                status,
-                finished_at,
-                finished_at,
-                json_payload_or_empty(provenance),
-                json_payload_or_empty(data_quality),
-                json_payload_or_empty(result_summary),
-                artifact_dir,
-                error_message,
-            ],
+            experiment_run_finish_parameters(
+                experiment_run_id=experiment_run_id,
+                experiment_id=experiment_id,
+                run_id=run_id,
+                status=status,
+                finished_at=finished_at,
+                provenance=provenance,
+                data_quality=data_quality,
+                result_summary=result_summary,
+                artifact_dir=artifact_dir,
+                error_message=error_message,
+            ),
         )
 
     def list_experiment_runs(
@@ -425,13 +437,9 @@ class PostgresEventStore(EventStore):
             JSON-friendly mappings containing run metadata, result summaries,
             provenance, data-quality details, and artifact locations.
         """
-        query = LIST_EXPERIMENT_RUNS_SQL
-        params: list[object] = [experiment_id]
-        if limit is not None:
-            query += " LIMIT %s"
-            params.append(limit)
+        plan = list_experiment_runs_query_plan(experiment_id, limit=limit)
         with self._connection.cursor() as cursor:
-            cursor.execute(query, params)
+            cursor.execute(plan.query, list(plan.parameters))
             rows = cursor.fetchall()
         return [experiment_run_row_to_record(row) for row in rows]
 

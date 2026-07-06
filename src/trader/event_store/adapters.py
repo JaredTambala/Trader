@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from typing import Any, Iterator, Mapping, Sequence
 
 from .base import EventStore
+from .filtering import EventFilterPolicy, build_event_filter_policy
 
 
 class NoOpEventStore(EventStore):
@@ -46,7 +47,7 @@ class FilteredEventStore(EventStore):
             allowed_event_types: Event/table names that should be persisted.
         """
         self._inner = inner
-        self._allowed = set(allowed_event_types)
+        self._filter_policy: EventFilterPolicy = build_event_filter_policy(allowed_event_types)
 
     def record_event(self, event_type: str, payload: Mapping[str, object]) -> None:
         """Persist an event only when its type is enabled.
@@ -55,7 +56,7 @@ class FilteredEventStore(EventStore):
         driven by config flags for optional observability streams. Required
         lifecycle methods delegate directly and are not filtered here.
         """
-        if event_type not in self._allowed:
+        if not self._filter_policy.allows(event_type):
             return
         self._inner.record_event(event_type, payload)
 

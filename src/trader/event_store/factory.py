@@ -5,6 +5,7 @@ from __future__ import annotations
 from .adapters import NoOpEventStore
 from .base import EventStore
 from .buffered import BufferedEventStore
+from .factory_config import resolve_event_store_factory_config
 from .postgres import PostgresEventStore
 
 
@@ -27,34 +28,20 @@ def build_event_store(config: object) -> EventStore:
         ValueError: If `config.event_store` names an unsupported backend.
         ImportError: If Postgres is requested without the psycopg dependency.
     """
-    event_store = getattr(config, "event_store", "postgres").lower()
-    if event_store in {"noop", "none"}:
+    settings = resolve_event_store_factory_config(config)
+    if settings.backend in {"noop", "none"}:
         return NoOpEventStore()
-    if event_store == "postgres":
-        store = PostgresEventStore(
-            dsn=getattr(config, "pg_dsn", None) or None,
-            host=getattr(config, "pg_host", None) or None,
-            port=getattr(config, "pg_port", None) or None,
-            dbname=getattr(config, "pg_db", None) or None,
-            user=getattr(config, "pg_user", None) or None,
-            password=getattr(config, "pg_password", None) or None,
-        )
-        if getattr(config, "buffered_event_store", False):
-            write_store = PostgresEventStore(
-                dsn=getattr(config, "pg_dsn", None) or None,
-                host=getattr(config, "pg_host", None) or None,
-                port=getattr(config, "pg_port", None) or None,
-                dbname=getattr(config, "pg_db", None) or None,
-                user=getattr(config, "pg_user", None) or None,
-                password=getattr(config, "pg_password", None) or None,
-            )
+    if settings.backend == "postgres":
+        store = PostgresEventStore(**settings.postgres.kwargs())
+        if settings.buffer.enabled:
+            write_store = PostgresEventStore(**settings.postgres.kwargs())
             store = BufferedEventStore(
                 store,
                 write_store=write_store,
-                flush_interval_ms=getattr(config, "buffer_flush_interval_ms", 250),
-                max_batch_size=getattr(config, "buffer_max_batch_size", 500),
-                max_queue_size=getattr(config, "buffer_max_queue_size", 10000),
-                block_on_full=getattr(config, "buffer_block_on_full", True),
+                flush_interval_ms=settings.buffer.flush_interval_ms,
+                max_batch_size=settings.buffer.max_batch_size,
+                max_queue_size=settings.buffer.max_queue_size,
+                block_on_full=settings.buffer.block_on_full,
             )
         return store
-    raise ValueError(f"Unsupported event store: {event_store}")
+    raise ValueError(f"Unsupported event store: {settings.backend}")

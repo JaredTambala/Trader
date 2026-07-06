@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
 from queue import Empty, Full, Queue
@@ -9,6 +10,18 @@ from threading import Event, Lock, Thread
 from typing import Any, Iterator, Mapping, Sequence
 
 from .base import EventStore
+from .buffered_events import (
+    CYCLE_FINISH_EVENT,
+    CYCLE_START_EVENT,
+    RUN_SESSION_FINISH_EVENT,
+    RUN_SESSION_START_EVENT,
+    build_cycle_finish_payload,
+    build_cycle_start_payload,
+    build_run_session_finish_payload,
+    build_run_session_start_payload,
+    plan_buffered_event_write,
+    write_buffered_event,
+)
 
 
 @dataclass(frozen=True)
@@ -38,10 +51,10 @@ class BufferedEventStore(EventStore):
     against the configured write store.
     """
 
-    _RUN_SESSION_START_EVENT = "__run_session_start__"
-    _RUN_SESSION_FINISH_EVENT = "__run_session_finish__"
-    _CYCLE_START_EVENT = "__cycle_start__"
-    _CYCLE_FINISH_EVENT = "__cycle_finish__"
+    _RUN_SESSION_START_EVENT = RUN_SESSION_START_EVENT
+    _RUN_SESSION_FINISH_EVENT = RUN_SESSION_FINISH_EVENT
+    _CYCLE_START_EVENT = CYCLE_START_EVENT
+    _CYCLE_FINISH_EVENT = CYCLE_FINISH_EVENT
 
     def __init__(
         self,
@@ -129,21 +142,19 @@ class BufferedEventStore(EventStore):
         """
         self.record_event(
             self._RUN_SESSION_START_EVENT,
-            {
-                "run_id": run_id,
-                "run_type": run_type,
-                "started_at": started_at,
-                "finished_at": None,
-                "status": status,
-                "error_message": None,
-                "strategy_id": strategy_id,
-                "config_snapshot": config_snapshot,
-                "mode": mode,
-                "symbols": list(symbols) if symbols is not None else None,
-                "timeframe": timeframe,
-                "start_ts": start_ts,
-                "end_ts": end_ts,
-            },
+            build_run_session_start_payload(
+                run_id=run_id,
+                run_type=run_type,
+                started_at=started_at,
+                status=status,
+                strategy_id=strategy_id,
+                config_snapshot=config_snapshot,
+                mode=mode,
+                symbols=symbols,
+                timeframe=timeframe,
+                start_ts=start_ts,
+                end_ts=end_ts,
+            ),
         )
 
     def record_run_session_finish(
@@ -172,21 +183,21 @@ class BufferedEventStore(EventStore):
         """
         self.record_event(
             self._RUN_SESSION_FINISH_EVENT,
-            {
-                "run_id": run_id,
-                "run_type": run_type,
-                "started_at": started_at,
-                "finished_at": finished_at,
-                "status": status,
-                "error_message": error_message,
-                "strategy_id": strategy_id,
-                "config_snapshot": config_snapshot,
-                "mode": mode,
-                "symbols": list(symbols) if symbols is not None else None,
-                "timeframe": timeframe,
-                "start_ts": start_ts,
-                "end_ts": end_ts,
-            },
+            build_run_session_finish_payload(
+                run_id=run_id,
+                run_type=run_type,
+                started_at=started_at,
+                finished_at=finished_at,
+                status=status,
+                error_message=error_message,
+                strategy_id=strategy_id,
+                config_snapshot=config_snapshot,
+                mode=mode,
+                symbols=symbols,
+                timeframe=timeframe,
+                start_ts=start_ts,
+                end_ts=end_ts,
+            ),
         )
 
     def record_cycle_start(
@@ -205,18 +216,14 @@ class BufferedEventStore(EventStore):
         """
         self.record_event(
             self._CYCLE_START_EVENT,
-            {
-                "run_id": run_id,
-                "cycle_id": cycle_id,
-                "session_id": run_id,
-                "strategy_id": strategy_id,
-                "mode": mode,
-                "decision_ts": decision_ts,
-                "started_at": started_at,
-                "finished_at": None,
-                "status": "started",
-                "error_message": None,
-            },
+            build_cycle_start_payload(
+                run_id=run_id,
+                cycle_id=cycle_id,
+                strategy_id=strategy_id,
+                mode=mode,
+                decision_ts=decision_ts,
+                started_at=started_at,
+            ),
         )
 
     def record_cycle_finish(
@@ -239,18 +246,17 @@ class BufferedEventStore(EventStore):
         """
         self.record_event(
             self._CYCLE_FINISH_EVENT,
-            {
-                "run_id": run_id,
-                "cycle_id": cycle_id,
-                "session_id": run_id,
-                "strategy_id": strategy_id,
-                "mode": mode,
-                "decision_ts": decision_ts,
-                "started_at": started_at,
-                "finished_at": finished_at,
-                "status": status,
-                "error_message": error_message,
-            },
+            build_cycle_finish_payload(
+                run_id=run_id,
+                cycle_id=cycle_id,
+                strategy_id=strategy_id,
+                mode=mode,
+                decision_ts=decision_ts,
+                started_at=started_at,
+                finished_at=finished_at,
+                status=status,
+                error_message=error_message,
+            ),
         )
 
     def flush(self) -> None:
@@ -321,9 +327,8 @@ class BufferedEventStore(EventStore):
         queries, so this method drains asynchronous events and writes under the
         same lock used by the worker.
         """
-        self.flush()
-        with self._write_lock:
-            self._write_store.upsert_experiment(
+        self._write_synchronously(
+            lambda store: store.upsert_experiment(
                 experiment_id=experiment_id,
                 name=name,
                 description=description,
@@ -332,6 +337,7 @@ class BufferedEventStore(EventStore):
                 updated_at=updated_at,
                 metadata=metadata,
             )
+        )
 
     def record_experiment_run_start(
         self,
@@ -360,9 +366,8 @@ class BufferedEventStore(EventStore):
         Experiment-run rows participate in later comparison queries, so the write
         bypasses background buffering after pending events have been drained.
         """
-        self.flush()
-        with self._write_lock:
-            self._write_store.record_experiment_run_start(
+        self._write_synchronously(
+            lambda store: store.record_experiment_run_start(
                 experiment_run_id=experiment_run_id,
                 experiment_id=experiment_id,
                 run_id=run_id,
@@ -382,6 +387,7 @@ class BufferedEventStore(EventStore):
                 data_quality=data_quality,
                 artifact_dir=artifact_dir,
             )
+        )
 
     def record_experiment_run_finish(
         self,
@@ -403,9 +409,8 @@ class BufferedEventStore(EventStore):
         recommendation tools, so the write is serialized under the worker lock
         rather than being delayed in the background queue.
         """
-        self.flush()
-        with self._write_lock:
-            self._write_store.record_experiment_run_finish(
+        self._write_synchronously(
+            lambda store: store.record_experiment_run_finish(
                 experiment_run_id=experiment_run_id,
                 experiment_id=experiment_id,
                 run_id=run_id,
@@ -417,6 +422,7 @@ class BufferedEventStore(EventStore):
                 artifact_dir=artifact_dir,
                 error_message=error_message,
             )
+        )
 
     def list_experiment_runs(
         self,
@@ -450,6 +456,17 @@ class BufferedEventStore(EventStore):
                 for event_type, payload in batch:
                     self._flush_event(event_type, payload)
 
+    def _write_synchronously(self, write: Callable[[EventStore], None]) -> None:
+        """Flush pending events, then serialize one immediate write-store call.
+
+        Research metadata writes bypass background buffering because later reads
+        expect them to be durable immediately. The explicit flush keeps their
+        ordering relative to queued lifecycle events intact.
+        """
+        self.flush()
+        with self._write_lock:
+            write(self._write_store)
+
     def _flush_event(self, event_type: str, payload: Mapping[str, object]) -> None:
         """Dispatch a queued event to the matching concrete store method.
 
@@ -457,59 +474,5 @@ class BufferedEventStore(EventStore):
         calls. All other event types are written through as ordinary append-only
         events.
         """
-        if event_type == self._RUN_SESSION_START_EVENT:
-            self._write_store.record_run_session_start(
-                run_id=str(payload["run_id"]),
-                run_type=str(payload["run_type"]),
-                started_at=payload["started_at"],
-                status=str(payload["status"]),
-                strategy_id=payload.get("strategy_id"),
-                config_snapshot=payload.get("config_snapshot"),
-                mode=payload.get("mode"),
-                symbols=payload.get("symbols"),
-                timeframe=payload.get("timeframe"),
-                start_ts=payload.get("start_ts"),
-                end_ts=payload.get("end_ts"),
-            )
-            return
-        if event_type == self._RUN_SESSION_FINISH_EVENT:
-            self._write_store.record_run_session_finish(
-                run_id=str(payload["run_id"]),
-                run_type=str(payload["run_type"]),
-                started_at=payload["started_at"],
-                finished_at=payload["finished_at"],
-                status=str(payload["status"]),
-                error_message=payload.get("error_message"),
-                strategy_id=payload.get("strategy_id"),
-                config_snapshot=payload.get("config_snapshot"),
-                mode=payload.get("mode"),
-                symbols=payload.get("symbols"),
-                timeframe=payload.get("timeframe"),
-                start_ts=payload.get("start_ts"),
-                end_ts=payload.get("end_ts"),
-            )
-            return
-        if event_type == self._CYCLE_START_EVENT:
-            self._write_store.record_cycle_start(
-                run_id=str(payload["run_id"]),
-                cycle_id=str(payload["cycle_id"]),
-                strategy_id=str(payload["strategy_id"]),
-                mode=str(payload["mode"]),
-                decision_ts=payload["decision_ts"],
-                started_at=payload["started_at"],
-            )
-            return
-        if event_type == self._CYCLE_FINISH_EVENT:
-            self._write_store.record_cycle_finish(
-                run_id=str(payload["run_id"]),
-                cycle_id=str(payload["cycle_id"]),
-                strategy_id=str(payload["strategy_id"]),
-                mode=str(payload["mode"]),
-                decision_ts=payload["decision_ts"],
-                started_at=payload["started_at"],
-                finished_at=payload["finished_at"],
-                status=str(payload["status"]),
-                error_message=payload.get("error_message"),
-            )
-            return
-        self._write_store.record_event(event_type, payload)
+        write = plan_buffered_event_write(event_type, payload)
+        write_buffered_event(self._write_store, write)

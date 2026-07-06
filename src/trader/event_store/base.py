@@ -6,6 +6,16 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from typing import Iterator, Mapping, Sequence
 
+from .lifecycle import (
+    build_cycle_finish_record,
+    build_cycle_start_record,
+    build_experiment_record,
+    build_experiment_run_finish_record,
+    build_experiment_run_start_record,
+    build_run_session_finish_records,
+    build_run_session_start_records,
+)
+
 
 class EventStore(ABC):
     """Contract for append-only runtime, market-data, and research events.
@@ -60,41 +70,20 @@ class EventStore(ABC):
         Raises:
             Exception: Implementations may raise on insert errors.
         """
-        self.record_event(
-            "runs",
-            {
-                "run_id": run_id,
-                "run_type": run_type,
-                "started_at": started_at,
-                "finished_at": None,
-                "status": status,
-                "error_message": None,
-                "config_snapshot": config_snapshot,
-                "mode": mode,
-                "symbols": list(symbols) if symbols is not None else None,
-                "timeframe": timeframe,
-                "start_ts": start_ts,
-                "end_ts": end_ts,
-            },
-        )
-        if run_type == "trading":
-            self.record_event(
-                "trading_sessions",
-                {
-                    "session_id": run_id,
-                    "strategy_id": strategy_id,
-                    "started_at": started_at,
-                    "finished_at": None,
-                    "status": status,
-                    "error_message": None,
-                    "config_snapshot": config_snapshot,
-                    "mode": mode,
-                    "symbols": list(symbols) if symbols is not None else None,
-                    "timeframe": timeframe,
-                    "start_ts": start_ts,
-                    "end_ts": end_ts,
-                },
-            )
+        for record in build_run_session_start_records(
+            run_id=run_id,
+            run_type=run_type,
+            started_at=started_at,
+            status=status,
+            strategy_id=strategy_id,
+            config_snapshot=config_snapshot,
+            mode=mode,
+            symbols=symbols,
+            timeframe=timeframe,
+            start_ts=start_ts,
+            end_ts=end_ts,
+        ):
+            self.record_event(record.event_type, record.payload)
 
     def record_run_session_finish(
         self,
@@ -132,41 +121,22 @@ class EventStore(ABC):
         Raises:
             Exception: Implementations may raise on insert/update errors.
         """
-        self.record_event(
-            "runs",
-            {
-                "run_id": run_id,
-                "run_type": run_type,
-                "started_at": started_at,
-                "finished_at": finished_at,
-                "status": status,
-                "error_message": error_message,
-                "config_snapshot": config_snapshot,
-                "mode": mode,
-                "symbols": list(symbols) if symbols is not None else None,
-                "timeframe": timeframe,
-                "start_ts": start_ts,
-                "end_ts": end_ts,
-            },
-        )
-        if run_type == "trading":
-            self.record_event(
-                "trading_sessions",
-                {
-                    "session_id": run_id,
-                    "strategy_id": strategy_id,
-                    "started_at": started_at,
-                    "finished_at": finished_at,
-                    "status": status,
-                    "error_message": error_message,
-                    "config_snapshot": config_snapshot,
-                    "mode": mode,
-                    "symbols": list(symbols) if symbols is not None else None,
-                    "timeframe": timeframe,
-                    "start_ts": start_ts,
-                    "end_ts": end_ts,
-                },
-            )
+        for record in build_run_session_finish_records(
+            run_id=run_id,
+            run_type=run_type,
+            started_at=started_at,
+            finished_at=finished_at,
+            status=status,
+            error_message=error_message,
+            strategy_id=strategy_id,
+            config_snapshot=config_snapshot,
+            mode=mode,
+            symbols=symbols,
+            timeframe=timeframe,
+            start_ts=start_ts,
+            end_ts=end_ts,
+        ):
+            self.record_event(record.event_type, record.payload)
 
     def upsert_experiment(
         self,
@@ -185,18 +155,16 @@ class EventStore(ABC):
         stores can still preserve the payload, while database-backed stores can
         override this method to perform an actual upsert keyed by `experiment_id`.
         """
-        self.record_event(
-            "experiments",
-            {
-                "experiment_id": experiment_id,
-                "name": name,
-                "description": description,
-                "tags": list(tags or ()),
-                "created_at": created_at,
-                "updated_at": updated_at,
-                "metadata": dict(metadata or {}),
-            },
+        record = build_experiment_record(
+            experiment_id=experiment_id,
+            name=name,
+            description=description,
+            tags=tags,
+            created_at=created_at,
+            updated_at=updated_at,
+            metadata=metadata,
         )
+        self.record_event(record.event_type, record.payload)
 
     def record_experiment_run_start(
         self,
@@ -228,32 +196,27 @@ class EventStore(ABC):
         initialized to empty values for stores that model starts and finishes as
         append-only events.
         """
-        self.record_event(
-            "experiment_runs",
-            {
-                "experiment_run_id": experiment_run_id,
-                "experiment_id": experiment_id,
-                "run_id": run_id,
-                "status": status,
-                "created_at": created_at,
-                "finished_at": None,
-                "strategy_id": strategy_id,
-                "strategy_name": strategy_name,
-                "strategy_version": strategy_version,
-                "symbols": list(symbols) if symbols is not None else None,
-                "asset_class": asset_class,
-                "timeframe": timeframe,
-                "start_ts": start_ts,
-                "end_ts": end_ts,
-                "parameters": dict(parameters or {}),
-                "assumptions": dict(assumptions or {}),
-                "provenance": dict(provenance or {}),
-                "data_quality": dict(data_quality or {}),
-                "result_summary": None,
-                "artifact_dir": artifact_dir,
-                "error_message": None,
-            },
+        record = build_experiment_run_start_record(
+            experiment_run_id=experiment_run_id,
+            experiment_id=experiment_id,
+            run_id=run_id,
+            created_at=created_at,
+            status=status,
+            strategy_id=strategy_id,
+            strategy_name=strategy_name,
+            strategy_version=strategy_version,
+            symbols=symbols,
+            asset_class=asset_class,
+            timeframe=timeframe,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            parameters=parameters,
+            assumptions=assumptions,
+            provenance=provenance,
+            data_quality=data_quality,
+            artifact_dir=artifact_dir,
         )
+        self.record_event(record.event_type, record.payload)
 
     def record_experiment_run_finish(
         self,
@@ -276,32 +239,19 @@ class EventStore(ABC):
         data-quality context, artifact location, and optional error text. Concrete
         stores may merge this with the start row instead of appending.
         """
-        self.record_event(
-            "experiment_runs",
-            {
-                "experiment_run_id": experiment_run_id,
-                "experiment_id": experiment_id,
-                "run_id": run_id,
-                "status": status,
-                "created_at": finished_at,
-                "finished_at": finished_at,
-                "strategy_id": None,
-                "strategy_name": None,
-                "strategy_version": None,
-                "symbols": None,
-                "asset_class": None,
-                "timeframe": None,
-                "start_ts": None,
-                "end_ts": None,
-                "parameters": None,
-                "assumptions": None,
-                "provenance": dict(provenance or {}),
-                "data_quality": dict(data_quality or {}),
-                "result_summary": dict(result_summary or {}),
-                "artifact_dir": artifact_dir,
-                "error_message": error_message,
-            },
+        record = build_experiment_run_finish_record(
+            experiment_run_id=experiment_run_id,
+            experiment_id=experiment_id,
+            run_id=run_id,
+            status=status,
+            finished_at=finished_at,
+            result_summary=result_summary,
+            provenance=provenance,
+            data_quality=data_quality,
+            artifact_dir=artifact_dir,
+            error_message=error_message,
         )
+        self.record_event(record.event_type, record.payload)
 
     def list_experiment_runs(
         self,
@@ -333,21 +283,15 @@ class EventStore(ABC):
         tools can correlate later orders, fills, and finish records with the same
         cycle.
         """
-        self.record_event(
-            "run_events",
-            {
-                "cycle_id": cycle_id,
-                "run_id": run_id,
-                "session_id": run_id,
-                "strategy_id": strategy_id,
-                "mode": mode,
-                "decision_ts": decision_ts,
-                "started_at": started_at,
-                "finished_at": None,
-                "status": "started",
-                "error_message": None,
-            },
+        record = build_cycle_start_record(
+            run_id=run_id,
+            cycle_id=cycle_id,
+            strategy_id=strategy_id,
+            mode=mode,
+            decision_ts=decision_ts,
+            started_at=started_at,
         )
+        self.record_event(record.event_type, record.payload)
 
     def record_cycle_finish(
         self,
@@ -367,21 +311,18 @@ class EventStore(ABC):
         terminal status, and optional error text, allowing append-only stores and
         database stores to expose the same lifecycle semantics.
         """
-        self.record_event(
-            "run_events",
-            {
-                "cycle_id": cycle_id,
-                "run_id": run_id,
-                "session_id": run_id,
-                "strategy_id": strategy_id,
-                "mode": mode,
-                "decision_ts": decision_ts,
-                "started_at": started_at,
-                "finished_at": finished_at,
-                "status": status,
-                "error_message": error_message,
-            },
+        record = build_cycle_finish_record(
+            run_id=run_id,
+            cycle_id=cycle_id,
+            strategy_id=strategy_id,
+            mode=mode,
+            decision_ts=decision_ts,
+            started_at=started_at,
+            finished_at=finished_at,
+            status=status,
+            error_message=error_message,
         )
+        self.record_event(record.event_type, record.payload)
 
     def record_run_start(
         self,

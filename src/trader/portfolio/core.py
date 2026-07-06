@@ -8,6 +8,13 @@ import logging
 from typing import Iterable, Mapping, Sequence
 
 from ..event_store import EventStore
+from .order_inputs import normalize_portfolio_order_inputs
+from .order_math import cash_balance_after_order, compute_avg_price
+from .snapshots import (
+    build_position_snapshot_events,
+    latest_cash_query_plan,
+    latest_positions_query_plan,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -50,36 +57,15 @@ class PortfolioSnapshot:
         balance and correlation IDs. When no positions exist, a sentinel row is
         written so cash-only state is not lost.
         """
-        session_id = self.session_id or self.run_id
-        if not self.positions:
-            event_store.record_event(
-                "position_snapshots",
-                {
-                    "asof_ts": self.asof_ts,
-                    "symbol": None,
-                    "qty": 0.0,
-                    "avg_price": None,
-                    "cash_balance": self.cash_balance,
-                    "run_id": self.run_id,
-                    "cycle_id": self.cycle_id,
-                    "session_id": session_id,
-                },
-            )
-            return
-        for position in self.positions:
-            event_store.record_event(
-                "position_snapshots",
-                {
-                    "asof_ts": self.asof_ts,
-                    "symbol": position.symbol,
-                    "qty": position.qty,
-                    "avg_price": position.avg_price,
-                    "cash_balance": self.cash_balance,
-                    "run_id": self.run_id,
-                    "cycle_id": self.cycle_id,
-                    "session_id": session_id,
-                },
-            )
+        for event in build_position_snapshot_events(
+            asof_ts=self.asof_ts,
+            positions=self.positions,
+            cash_balance=self.cash_balance,
+            run_id=self.run_id,
+            cycle_id=self.cycle_id,
+            session_id=self.session_id,
+        ):
+            event_store.record_event(event.event_type, event.payload)
 
 
 @dataclass(frozen=True)
@@ -201,33 +187,23 @@ class Portfolio:
             logger.info("Portfolio apply skipped; no orders provided")
             return
         logger.info("Applying portfolio orders count=%s", len(orders_list))
-        for order in orders_list:
-            symbol = str(order.get("symbol", "")).strip()
-            side = str(order.get("side", "")).lower().strip()
-            qty = order.get("qty", 0.0)
-            logger.debug("Applying order symbol=%s side=%s qty=%s", symbol, side, qty)
-            if not symbol:
-                continue
-            try:
-                qty_float = float(qty)
-            except (TypeError, ValueError) as exc:
-                raise ValueError(f"Invalid qty for order: {order}") from exc
-            if qty_float <= 0:
-                continue
-            if side not in {"buy", "sell"}:
-                raise ValueError(f"Invalid side for order: {order}")
-            price = order.get("price")
-            if price is None:
-                price = price_lookup.get(symbol)
-            price_value = float(price) if price is not None else None
-            fee_amount = order.get("fee_amount")
-            fee_value = float(fee_amount) if fee_amount is not None else 0.0
+        portfolio_orders = normalize_portfolio_order_inputs(
+            tuple(orders_list),
+            price_lookup=price_lookup,
+        )
+        for order_input in portfolio_orders:
+            logger.debug(
+                "Applying order symbol=%s side=%s qty=%s",
+                order_input.symbol,
+                order_input.side,
+                order_input.qty,
+            )
             portfolio_order = PortfolioOrder(
-                symbol=symbol,
-                side=side,
-                qty=qty_float,
-                price=price_value,
-                fee_amount=fee_value,
+                symbol=order_input.symbol,
+                side=order_input.side,
+                qty=order_input.qty,
+                price=order_input.price,
+                fee_amount=order_input.fee_amount,
             )
             result = apply_portfolio_order(
                 PortfolioState(positions=self.positions, cash_balance=self.cash_balance),
@@ -285,40 +261,8 @@ def load_latest_positions(event_store: EventStore, *, asof_ts: datetime | None =
 
     if hasattr(connection, "cursor"):
         with connection.cursor() as cursor:
-            if asof_ts is None:
-                cursor.execute(
-                    """
-                    SELECT symbol, qty, avg_price
-                    FROM (
-                        SELECT
-                            symbol,
-                            qty,
-                            avg_price,
-                            ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY asof_ts DESC) AS rn
-                        FROM position_snapshots
-                        WHERE symbol IS NOT NULL AND symbol <> ''
-                    ) AS ranked
-                    WHERE rn = 1
-                    """
-                )
-            else:
-                placeholder = _param_placeholder(connection)
-                cursor.execute(
-                    f"""
-                    SELECT symbol, qty, avg_price
-                    FROM (
-                        SELECT
-                            symbol,
-                            qty,
-                            avg_price,
-                            ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY asof_ts DESC) AS rn
-                        FROM position_snapshots
-                        WHERE asof_ts <= {placeholder} AND symbol IS NOT NULL AND symbol <> ''
-                    ) AS ranked
-                    WHERE rn = 1
-                    """,
-                    [asof_ts],
-                )
+            plan = latest_positions_query_plan(connection, asof_ts=asof_ts)
+            _execute_query_plan(cursor, plan.query, plan.parameters)
             rows = cursor.fetchall()
             positions = [
                 Position(
@@ -351,27 +295,8 @@ def load_latest_cash(event_store: EventStore, *, asof_ts: datetime | None = None
 
     if hasattr(connection, "cursor"):
         with connection.cursor() as cursor:
-            if asof_ts is None:
-                cursor.execute(
-                    """
-                    SELECT cash_balance
-                    FROM position_snapshots
-                    ORDER BY asof_ts DESC
-                    LIMIT 1
-                    """
-                )
-            else:
-                placeholder = _param_placeholder(connection)
-                cursor.execute(
-                    f"""
-                    SELECT cash_balance
-                    FROM position_snapshots
-                    WHERE asof_ts <= {placeholder}
-                    ORDER BY asof_ts DESC
-                    LIMIT 1
-                    """,
-                    [asof_ts],
-                )
+            plan = latest_cash_query_plan(connection, asof_ts=asof_ts)
+            _execute_query_plan(cursor, plan.query, plan.parameters)
             row = cursor.fetchone()
             if row and row[0] is not None:
                 return float(row[0])
@@ -437,8 +362,20 @@ def apply_portfolio_order(
     current = positions.get(order.symbol, Position(symbol=order.symbol, qty=0.0, avg_price=None))
     delta = order.signed_qty_delta
     new_qty = current.qty + delta
-    new_avg = _compute_avg_price(current, delta, new_qty, order.price)
-    cash_balance = _cash_balance_after_order(state.cash_balance, order)
+    new_avg = compute_avg_price(
+        current_qty=current.qty,
+        current_avg_price=current.avg_price,
+        delta=delta,
+        new_qty=new_qty,
+        price=order.price,
+    )
+    cash_balance = cash_balance_after_order(
+        cash_balance=state.cash_balance,
+        side=order.side,
+        qty=order.qty,
+        price=order.price,
+        fee_amount=order.fee_amount,
+    )
 
     if abs(new_qty) < 1e-12:
         positions.pop(order.symbol, None)
@@ -452,50 +389,9 @@ def apply_portfolio_order(
     )
 
 
-def _compute_avg_price(
-    current: Position,
-    delta: float,
-    new_qty: float,
-    price: float | None,
-) -> float | None:
-    """Compute average entry price after a position quantity change.
-
-    Adding to an existing position recalculates weighted average cost. Reducing
-    without crossing zero preserves the prior cost basis, closing returns
-    `None`, and crossing sides starts the new position at the execution price.
-    """
-    if new_qty == 0:
-        return None
-    if price is None:
-        return current.avg_price
-    if current.qty == 0 or current.avg_price is None:
-        return price
-
-    adding_same_side = (current.qty > 0 and delta > 0) or (current.qty < 0 and delta < 0)
-    if adding_same_side:
-        return ((current.qty * current.avg_price) + (delta * price)) / new_qty
-
-    reducing = abs(delta) < abs(current.qty)
-    if reducing:
-        return current.avg_price
-
-    return price
-
-
-def _cash_balance_after_order(cash_balance: float, order: PortfolioOrder) -> float:
-    """Return cash balance after one order without mutating portfolio state."""
-    if order.price is None:
-        return cash_balance - order.fee_amount
-
-    notional = order.qty * order.price
-    if order.side == "buy":
-        return cash_balance - notional - order.fee_amount
-    return cash_balance + notional - order.fee_amount
-
-
-def _param_placeholder(connection: object) -> str:
-    """Return the SQL parameter placeholder for the active backend."""
-    module = connection.__class__.__module__
-    if module.startswith("duckdb"):
-        return "?"
-    return "%s"
+def _execute_query_plan(cursor: object, query: str, parameters: Sequence[object]) -> None:
+    """Execute a query plan with DB-API-compatible optional parameters."""
+    if parameters:
+        cursor.execute(query, list(parameters))
+        return
+    cursor.execute(query)
