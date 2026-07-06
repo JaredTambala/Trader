@@ -8,10 +8,12 @@ from pathlib import Path
 import pytest
 
 from trader.backtest import BacktestAssumptions, BacktestRunner, BacktestSpec
-from trader.backtest.runtime import (
+from trader.backtest.runtime_planning import (
     _build_backtest_runtime_config,
     _build_symbol_runtime_configs,
     _count_scheduled_symbol_runs,
+    _normalize_backtest_symbols,
+    _resolve_backtest_asset_class,
     _resolve_effective_replay_limit,
 )
 from trader.config import Config
@@ -175,6 +177,13 @@ def test_build_symbol_runtime_configs_scopes_each_config_to_one_symbol(tmp_path:
     assert configs["MSFT"].market_data_symbols == ("MSFT",)
     assert configs["AAPL"].mode == "backtest"
     assert source.market_data_symbols == ("AAPL", "MSFT")
+
+
+def test_backtest_runtime_planning_normalizes_symbols_and_asset_class() -> None:
+    assert _normalize_backtest_symbols((" aapl ", "", "msft"), config_symbols=("TSLA",)) == ("AAPL", "MSFT")
+    assert _normalize_backtest_symbols(None, config_symbols=(" btc/usd ", "ETH/USD")) == ("BTC/USD", "ETH/USD")
+    assert _resolve_backtest_asset_class("Crypto", config_asset_class="stocks") == "crypto"
+    assert _resolve_backtest_asset_class(None, config_asset_class="Stocks") == "stocks"
 
 
 def test_count_scheduled_symbol_runs_and_resolve_effective_limit() -> None:

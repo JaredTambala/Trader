@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import json
 from typing import Sequence
 
 from ..config import Config
 from ..event_store import EventStore, build_event_store
-from .data import _normalize_timestamp
-from .exports import serialize_backtest_result
 from .models import BacktestResult, EquityPoint, TradeStats as _TradeStats
+from .persistence_payloads import build_backtest_metrics_snapshot_payload
 from .trade_accounting import (
     _compute_trade_stats_from_events,
     _normalize_fill_accounting_events,
@@ -57,20 +55,7 @@ def _compute_trade_stats(
     )
 
 
-def _build_backtest_metrics_snapshot_payload(
-    *,
-    run_id: str,
-    result: BacktestResult,
-    ts: datetime,
-) -> dict[str, object]:
-    """Build the aggregate metrics-snapshot event payload for a backtest result."""
-    return {
-        "ts": _normalize_timestamp(ts),
-        "run_id": run_id,
-        "session_id": run_id,
-        "cycle_id": None,
-        "payload": json.dumps(serialize_backtest_result(result)),
-    }
+_build_backtest_metrics_snapshot_payload = build_backtest_metrics_snapshot_payload
 
 
 def persist_backtest_result(run_id: str, result: BacktestResult, config: Config) -> None:
@@ -84,7 +69,7 @@ def persist_backtest_result(run_id: str, result: BacktestResult, config: Config)
     try:
         event_store.record_event(
             "metrics_snapshots",
-            _build_backtest_metrics_snapshot_payload(
+            build_backtest_metrics_snapshot_payload(
                 run_id=run_id,
                 result=result,
                 ts=datetime.now(timezone.utc),

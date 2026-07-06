@@ -21,6 +21,7 @@ from .lifecycle import (
 )
 from .market_data import _build_price_lookup
 from .metrics import _resolve_metrics_price_lookup, build_metrics_snapshot_event
+from .portfolio_updates import build_internal_fill_portfolio_application
 from .stream import CycleStreamRuntime
 
 
@@ -198,31 +199,10 @@ def _apply_fill_to_portfolio(
     response: Mapping[str, object],
 ) -> None:
     """Apply one internal-broker fill to in-memory portfolio accounting."""
-    fill_qty = response.get("fill_qty", order.get("qty"))
-    fill_price = response.get("fill_price", order.get("price"))
-    symbol = str(order.get("symbol", "")).strip()
-    side = str(order.get("side", "")).lower().strip()
-    if not symbol or side not in {"buy", "sell"}:
+    application = build_internal_fill_portfolio_application(order=order, response=response)
+    if application is None:
         return
-    try:
-        qty = float(fill_qty) if fill_qty is not None else 0.0
-    except (TypeError, ValueError):
-        qty = 0.0
-    if qty <= 0:
-        return
-    price_lookup = {symbol: float(fill_price)} if fill_price is not None else {}
-    portfolio.apply_orders(
-        [
-            {
-                "symbol": symbol,
-                "side": side,
-                "qty": qty,
-                "price": fill_price,
-                "fee_amount": response.get("fee_amount"),
-            }
-        ],
-        price_lookup=price_lookup,
-    )
+    portfolio.apply_orders([application.order], price_lookup=application.price_lookup)
 
 
 def _load_portfolio_from_broker(

@@ -22,9 +22,9 @@ from ..risk import RiskManager
 from ..strategy_metadata import resolve_strategy_id
 from .data import (
     _build_data_sources,
-    _build_symbol_schedule,
     _load_bars,
 )
+from .data_queries import _build_symbol_schedule
 from .benchmark import (
     _build_buy_hold_baseline,
     _compute_equity,
@@ -49,21 +49,27 @@ from .portfolio_state import (
     _filter_positions,
     _seed_positions,
 )
-from .trade_accounting import _empty_trade_stats
-from .results import (
+from .result_builders import (
     _build_completed_backtest_result,
     _build_empty_backtest_result,
+)
+from .trade_accounting import _empty_trade_stats
+from .results import (
     _log_backtest_result,
+)
+from .runtime_planning import (
+    _build_backtest_runtime_config,
+    _build_symbol_runtime_configs,
+    _count_scheduled_symbol_runs,
+    _normalize_backtest_symbols,
+    _resolve_backtest_asset_class,
+    _resolve_effective_replay_limit,
+    _signal_lookback_window,
 )
 from .replay import _PriceState
 from .runtime import (
     _build_backtest_broker,
-    _build_backtest_runtime_config,
-    _build_symbol_runtime_configs,
-    _count_scheduled_symbol_runs,
     _cycle_log_suppression,
-    _resolve_effective_replay_limit,
-    _signal_lookback_window,
 )
 
 
@@ -119,9 +125,11 @@ class BacktestRunner:
             ValueError: If strategy or risk manager dependencies are missing.
         """
         self._spec = spec
-        raw_symbols = list(symbols) if symbols else list(config.market_data_symbols)
-        self._symbols = [symbol.strip().upper() for symbol in raw_symbols if str(symbol).strip()]
-        self._asset_class = (asset_class or config.market_data_asset_class).lower()
+        self._symbols = _normalize_backtest_symbols(symbols, config_symbols=config.market_data_symbols)
+        self._asset_class = _resolve_backtest_asset_class(
+            asset_class,
+            config_asset_class=config.market_data_asset_class,
+        )
         self._event_store = event_store or build_event_store(config)
         self._owns_event_store = event_store is None
         self._initial_positions = list(initial_positions) if initial_positions else []

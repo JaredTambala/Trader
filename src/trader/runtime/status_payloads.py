@@ -33,9 +33,8 @@ OPEN_ORDER_STATUSES = {"submitted", "accepted", "partially_filled", "error"}
 TRUE_VALUES = {"1", "true", "yes", "y", "on"}
 
 
-def utc(value: datetime | None) -> datetime:
-    """Return `value` as an aware UTC datetime, using current UTC time if absent."""
-    value = value or datetime.now(timezone.utc)
+def utc(value: datetime) -> datetime:
+    """Return `value` as an aware UTC datetime."""
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)

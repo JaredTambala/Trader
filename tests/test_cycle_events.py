@@ -57,6 +57,7 @@ from trader.cycle.order_state import (
     _latest_order_events_query,
 )
 from trader.cycle.orders import _attach_order_metadata
+from trader.cycle.portfolio_updates import build_internal_fill_portfolio_application
 from trader.cycle.risk import (
     _build_cycle_risk_context,
     _build_stream_risk_price_lookup,
@@ -1175,6 +1176,47 @@ def test_broker_response_helpers_normalize_status_sync_and_processed_order() -> 
         _build_processed_order_from_broker_response(
             order,
             {"status": "rejected", "rejection_reason": "broker_reject"},
+        )
+        is None
+    )
+
+
+def test_build_internal_fill_portfolio_application_normalizes_fill_response() -> None:
+    order = {"symbol": " AAPL ", "side": " BUY ", "qty": "2", "price": "99.0"}
+    response = {"fill_qty": "1.5", "fill_price": "101.25", "fee_amount": "0.25"}
+
+    application = build_internal_fill_portfolio_application(order=order, response=response)
+
+    assert application is not None
+    assert application.order == {
+        "symbol": "AAPL",
+        "side": "buy",
+        "qty": 1.5,
+        "price": "101.25",
+        "fee_amount": "0.25",
+    }
+    assert application.price_lookup == {"AAPL": 101.25}
+
+
+def test_build_internal_fill_portfolio_application_skips_invalid_fill_inputs() -> None:
+    assert (
+        build_internal_fill_portfolio_application(
+            order={"symbol": "", "side": "buy", "qty": 1.0},
+            response={},
+        )
+        is None
+    )
+    assert (
+        build_internal_fill_portfolio_application(
+            order={"symbol": "AAPL", "side": "hold", "qty": 1.0},
+            response={},
+        )
+        is None
+    )
+    assert (
+        build_internal_fill_portfolio_application(
+            order={"symbol": "AAPL", "side": "buy", "qty": "bad"},
+            response={},
         )
         is None
     )

@@ -8,7 +8,7 @@ code.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Sequence, cast
 
 from ..config import Config
@@ -50,7 +50,7 @@ def runtime_status(event_store: EventStore, config: Config, *, now: datetime | N
     portfolio state, open-order staleness, halt state, and a derived health
     classification into one JSON-serializable structure for CLI/API consumers.
     """
-    now = utc(now)
+    now = utc(now or datetime.now(timezone.utc))
     latest_run = latest_run_status(event_store)
     latest_session = latest_trading_session_status(event_store)
     latest_cycle = latest_cycle_status(event_store)
@@ -145,7 +145,7 @@ def latest_market_data_status(event_store: EventStore, config: Config, *, now: d
     latest timestamp per configured symbol/timeframe, and reports both missing
     symbols and symbols older than `market_data_max_age_seconds`.
     """
-    now = utc(now)
+    now = utc(now or datetime.now(timezone.utc))
     table = "crypto_bar_events" if config.market_data_asset_class.lower() in {"crypto", "cryptocurrency"} else "stock_bar_events"
     symbols = normalize_symbols(config.market_data_symbols)
     if not symbols:
@@ -227,7 +227,7 @@ def latest_open_orders(
     row per `client_order_id`, and then filters to statuses that still represent
     local open risk.
     """
-    now = utc(now)
+    now = utc(now or datetime.now(timezone.utc))
     rows = _fetch_all(
         event_store,
         """
@@ -250,7 +250,7 @@ def get_halt_state(event_store: EventStore) -> dict[str, Any]:
 
 def set_halt_state(event_store: EventStore, *, halted: bool, reason: str | None = None, now: datetime | None = None) -> dict[str, Any]:
     """Write global halt state to config_kv and return the new state."""
-    timestamp = utc(now).isoformat()
+    timestamp = utc(now or datetime.now(timezone.utc)).isoformat()
     _write_config_value(event_store, "halt", "true" if halted else "false")
     _write_config_value(event_store, "halt_reason", reason or "")
     _write_config_value(event_store, "halt_updated_at", timestamp)

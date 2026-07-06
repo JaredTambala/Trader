@@ -1,68 +1,30 @@
-"""Backtest runtime dependency and replay-planning helpers."""
+"""Backtest runtime dependency and logging adapters."""
 
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import replace
-from datetime import datetime
 import logging
-from typing import Iterator, Mapping, Sequence
+from typing import Iterator
 
 from ..broker import Broker, InternalPaperBroker
-from ..config import Config
-from ..strategies import Strategy
 from .models import BacktestAssumptions
+from .runtime_planning import (
+    _build_backtest_runtime_config,
+    _build_symbol_runtime_configs,
+    _count_scheduled_symbol_runs,
+    _resolve_effective_replay_limit,
+    _signal_lookback_window,
+)
 
-
-def _build_backtest_runtime_config(
-    config: Config,
-    *,
-    symbols: Sequence[str],
-    asset_class: str,
-    timeframe: str,
-) -> Config:
-    """Return the production config transformed for deterministic backtest execution."""
-    return replace(
-        config,
-        mode="backtest",
-        market_data_source="noop",
-        market_data_symbols=tuple(symbols),
-        market_data_asset_class=asset_class,
-        strategy_timeframe=timeframe,
-        broker_type="internal",
-    )
-
-
-def _build_symbol_runtime_configs(config: Config, symbols: Sequence[str]) -> dict[str, Config]:
-    """Return one runtime config per symbol for single-symbol cycle execution."""
-    return {symbol: replace(config, market_data_symbols=(symbol,)) for symbol in symbols}
-
-
-def _count_scheduled_symbol_runs(
-    symbol_schedule: Mapping[datetime, Sequence[str]],
-    timestamps: Sequence[datetime],
-) -> int:
-    """Count symbol-level cycle executions in a timestamp schedule."""
-    return sum(len(symbol_schedule[ts]) for ts in timestamps)
-
-
-def _resolve_effective_replay_limit(*, total_bars: int, max_runs: int | None) -> int:
-    """Resolve the progress denominator after applying an optional max-runs cap."""
-    if max_runs is None:
-        return total_bars
-    return min(total_bars, max_runs)
-
-
-def _signal_lookback_window(strategy: Strategy) -> int:
-    """Infer bar lookback needs from the injected strategy object."""
-    signal_generator = getattr(strategy, "signal_generator", None)
-    signals = getattr(signal_generator, "signals", ())
-    windows: list[int] = []
-    for signal in signals or ():
-        window = getattr(signal, "window", None)
-        if isinstance(window, int) and window > 0:
-            windows.append(window)
-    return max(windows, default=0)
+__all__ = [
+    "_build_backtest_broker",
+    "_build_backtest_runtime_config",
+    "_build_symbol_runtime_configs",
+    "_count_scheduled_symbol_runs",
+    "_cycle_log_suppression",
+    "_resolve_effective_replay_limit",
+    "_signal_lookback_window",
+]
 
 
 def _build_backtest_broker(assumptions: BacktestAssumptions) -> Broker:

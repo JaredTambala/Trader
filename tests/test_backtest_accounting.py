@@ -23,11 +23,11 @@ from trader.backtest.benchmark import (
     _compute_portfolio_state_equity,
     _first_price_from_bars,
 )
-from trader.backtest.results import (
+from trader.backtest.result_builders import (
     _build_completed_backtest_result,
     _build_empty_backtest_result,
 )
-from trader.backtest.data import (
+from trader.backtest.data_queries import (
     _bar_event_table_name,
     _build_symbol_schedule,
 )

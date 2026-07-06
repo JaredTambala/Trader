@@ -8,6 +8,7 @@ from pathlib import Path
 import duckdb
 
 from trader.market_data.alpaca import AlpacaMarketDataSource, AlpacaRequestSpec
+from trader.market_data.alpaca_payloads import build_alpaca_bar_event
 from trader.config import Config
 from trader.cycle import run_cycle
 from trader.event_store import EventStore
@@ -330,6 +331,37 @@ def test_alpaca_market_data_source_parses_bars() -> None:
     assert event.close == 150.5
     assert event.volume == 10.0
     assert event.timeframe == "1Min"
+
+
+def test_alpaca_payload_builder_normalizes_bar_mapping() -> None:
+    """Build a stock bar event from a provider-shaped mapping payload."""
+    ingested_at = datetime(2024, 1, 1, 0, 1, tzinfo=timezone.utc)
+
+    event = build_alpaca_bar_event(
+        asset_class="stocks",
+        symbol="AAPL",
+        bar={
+            "timestamp": "2024-01-01T00:00:00Z",
+            "open": "149.0",
+            "high": 151,
+            "low": 148.5,
+            "close": 150.5,
+            "volume": 10,
+            "trade_count": 4,
+            "vwap": "150.0",
+        },
+        ingested_at=ingested_at,
+        timeframe="1Min",
+    )
+
+    assert isinstance(event, StockBarEvent)
+    assert event.symbol == "AAPL"
+    assert event.ts == datetime(2024, 1, 1, tzinfo=timezone.utc)
+    assert event.ingested_at == ingested_at
+    assert event.open == 149.0
+    assert event.close == 150.5
+    assert event.trade_count == 4.0
+    assert event.vwap == 150.0
 
 
 def test_crypto_bar_event_persists(tmp_path: Path) -> None:
