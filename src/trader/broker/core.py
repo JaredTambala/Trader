@@ -23,7 +23,6 @@ except Exception:  # pragma: no cover - alpaca not installed in test env
     _LimitOrderRequest = None
 
 from ..event_store import EventStore
-from ..symbols import canonicalize_symbol, normalize_asset_class
 from .alpaca_domain import (
     ALREADY_SUBMITTED_STATUSES,
     OPEN_ORDER_STATUSES,
@@ -35,9 +34,12 @@ from .alpaca_domain import (
     build_alpaca_reconciliation_order_event,
     build_alpaca_submission_error_response,
     ensure_alpaca_client_order_id,
+    latest_alpaca_order_events_from_rows,
     map_alpaca_status,
+    normalize_alpaca_account,
     normalize_alpaca_order_response,
     normalize_alpaca_order_request_fields,
+    normalize_alpaca_positions,
 )
 from .contracts import (
     AccountBroker,
@@ -145,29 +147,7 @@ class AlpacaPaperBroker(Broker):
             portfolio code coerces them.
         """
         positions = cast(Sequence[object], self._with_retries(self._client.get_all_positions))
-        results: list[Mapping[str, object]] = []
-        for position in positions or []:
-            symbol = str(getattr(position, "symbol", "") or "").strip().upper()
-            raw_asset_class = str(getattr(position, "asset_class", "") or "").strip()
-            asset_class = normalize_asset_class(raw_asset_class)
-            symbol = canonicalize_symbol(symbol, asset_class=asset_class)
-            qty_raw = getattr(position, "qty", 0) or 0
-            avg_entry_price = getattr(position, "avg_entry_price", None)
-            side = getattr(position, "side", None)
-            try:
-                qty = float(qty_raw)
-            except (TypeError, ValueError):
-                qty = 0.0
-            results.append(
-                {
-                    "symbol": symbol,
-                    "asset_class": asset_class,
-                    "qty": qty,
-                    "avg_entry_price": float(avg_entry_price) if avg_entry_price is not None else None,
-                    "side": str(side) if side is not None else ("long" if qty >= 0 else "short"),
-                }
-            )
-        return results
+        return normalize_alpaca_positions(positions)
 
     def submit_orders(self, orders: Iterable[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
         """Submit canonical order payloads while preserving idempotency.
@@ -285,11 +265,7 @@ class AlpacaPaperBroker(Broker):
         if getter is None:
             raise AttributeError("Trading client does not support get_account")
         account = self._with_retries(getter)
-        return {
-            "cash": getattr(account, "cash", None),
-            "buying_power": getattr(account, "buying_power", None),
-            "equity": getattr(account, "equity", None),
-        }
+        return normalize_alpaca_account(account)
 
     def cancel_order(self, broker_order_id: str) -> None:
         """Request cancellation of a single Alpaca order.
@@ -565,25 +541,4 @@ class AlpacaPaperBroker(Broker):
         except Exception as exc:
             self._logger.warning("Order reconciliation query failed: %s", exc)
             return []
-        seen: set[str] = set()
-        latest: list[Mapping[str, object]] = []
-        for row in rows or []:
-            client_order_id = str(row[0]) if row[0] is not None else ""
-            if not client_order_id or client_order_id in seen:
-                continue
-            seen.add(client_order_id)
-            latest.append(
-                {
-                    "client_order_id": client_order_id,
-                    "run_id": row[1],
-                    "cycle_id": row[2],
-                    "symbol": row[3],
-                    "side": row[4],
-                    "qty": row[5],
-                    "order_type": row[6],
-                    "status": row[7],
-                    "broker_order_id": row[8],
-                    "created_at": row[9],
-                }
-            )
-        return latest
+        return latest_alpaca_order_events_from_rows(rows or [])

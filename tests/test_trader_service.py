@@ -100,7 +100,7 @@ def test_trader_service_loop_runs_expected_iterations(monkeypatch) -> None:
     recorder = CycleRecorder()
     broker = object()
     monkeypatch.setattr("trader.runtime.service.run_cycle", recorder)
-    monkeypatch.setattr("trader.runtime.service._build_runtime_broker", lambda config, event_store: broker)
+    monkeypatch.setattr("trader.runtime.service.build_runtime_broker", lambda config, event_store: broker)
 
     service = TraderService(
         _config(),
@@ -136,7 +136,7 @@ def test_trader_service_fails_closed_on_broker_position_mismatch(monkeypatch) ->
             "market_data_symbols": ("BTC/USD",),
         }
     )
-    monkeypatch.setattr("trader.runtime.service._build_runtime_broker", lambda config, event_store: broker)
+    monkeypatch.setattr("trader.runtime.service.build_runtime_broker", lambda config, event_store: broker)
     monkeypatch.setattr("trader.runtime.service.run_cycle", CycleRecorder())
 
     service = TraderService(
@@ -179,7 +179,7 @@ def test_trader_service_resets_local_portfolio_from_alpaca_before_mismatch_failu
             "market_data_symbols": ("BTC/USD",),
         }
     )
-    monkeypatch.setattr("trader.runtime.service._build_runtime_broker", lambda config, event_store: broker)
+    monkeypatch.setattr("trader.runtime.service.build_runtime_broker", lambda config, event_store: broker)
     monkeypatch.setattr("trader.runtime.service.run_cycle", CycleRecorder())
 
     service = TraderService(
@@ -212,7 +212,7 @@ def test_trader_service_periodic_reconcile_uses_broker_capability(monkeypatch) -
             "trader_service_order_reconciliation_interval_seconds": 60,
         }
     )
-    monkeypatch.setattr("trader.runtime.service._build_runtime_broker", lambda config, event_store: broker)
+    monkeypatch.setattr("trader.runtime.service.build_runtime_broker", lambda config, event_store: broker)
 
     service = TraderService(
         config,

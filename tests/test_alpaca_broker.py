@@ -12,7 +12,13 @@ from trader.broker.core import (
     ensure_alpaca_client_order_id,
     normalize_alpaca_order_request_fields,
 )
-from trader.broker.alpaca_domain import normalize_alpaca_order_response
+from trader.broker.alpaca_domain import (
+    latest_alpaca_order_events_from_rows,
+    normalize_alpaca_account,
+    normalize_alpaca_order_response,
+    normalize_alpaca_position,
+    normalize_alpaca_positions,
+)
 from trader.identifiers import deterministic_client_order_id
 from tests.support.duckdb_store import DuckDBEventStore
 
@@ -283,6 +289,98 @@ def test_normalize_alpaca_order_response_maps_provider_payload_without_mutation(
     assert normalized["qty"] == 0.25
     assert normalized["fill_price"] == 65000.50
     assert normalized["fill_ts"] == datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+
+
+def test_normalize_alpaca_position_maps_provider_object_and_mapping() -> None:
+    object_position = type(
+        "Position",
+        (),
+        {
+            "symbol": "BTCUSD",
+            "asset_class": "crypto",
+            "qty": "0.25",
+            "avg_entry_price": "65000.5",
+            "side": "long",
+        },
+    )()
+    mapping_position = {
+        "symbol": "AAPL",
+        "asset_class": "us_equity",
+        "qty": "-2",
+        "avg_entry_price": "190.0",
+    }
+
+    assert normalize_alpaca_position(object_position) == {
+        "symbol": "BTC/USD",
+        "asset_class": "crypto",
+        "qty": 0.25,
+        "avg_entry_price": 65000.5,
+        "side": "long",
+    }
+    assert normalize_alpaca_position(mapping_position) == {
+        "symbol": "AAPL",
+        "asset_class": "stocks",
+        "qty": -2.0,
+        "avg_entry_price": 190.0,
+        "side": "short",
+    }
+    assert normalize_alpaca_positions([object_position, mapping_position]) == [
+        normalize_alpaca_position(object_position),
+        normalize_alpaca_position(mapping_position),
+    ]
+
+
+def test_normalize_alpaca_account_maps_object_and_mapping() -> None:
+    account = type("Account", (), {"cash": "1000", "buying_power": "2000", "equity": "3000"})()
+
+    assert normalize_alpaca_account(account) == {
+        "cash": "1000",
+        "buying_power": "2000",
+        "equity": "3000",
+    }
+    assert normalize_alpaca_account({"cash": "1", "buying_power": "2", "equity": "3"}) == {
+        "cash": "1",
+        "buying_power": "2",
+        "equity": "3",
+    }
+
+
+def test_latest_alpaca_order_events_from_rows_deduplicates_newest_first_rows() -> None:
+    rows = [
+        ("cid_1", "run", "cycle", "AAPL", "buy", 1.0, "market", "filled", "broker_new", "new"),
+        ("cid_2", "run", "cycle", "MSFT", "sell", 2.0, "market", "submitted", "broker_2", "only"),
+        ("cid_1", "run", "cycle", "AAPL", "buy", 1.0, "market", "submitted", "broker_old", "old"),
+        (None, "run", "cycle", "TSLA", "buy", 1.0, "market", "submitted", "broker_missing", "missing"),
+    ]
+
+    latest = latest_alpaca_order_events_from_rows(rows)
+
+    assert latest == [
+        {
+            "client_order_id": "cid_1",
+            "run_id": "run",
+            "cycle_id": "cycle",
+            "symbol": "AAPL",
+            "side": "buy",
+            "qty": 1.0,
+            "order_type": "market",
+            "status": "filled",
+            "broker_order_id": "broker_new",
+            "created_at": "new",
+        },
+        {
+            "client_order_id": "cid_2",
+            "run_id": "run",
+            "cycle_id": "cycle",
+            "symbol": "MSFT",
+            "side": "sell",
+            "qty": 2.0,
+            "order_type": "market",
+            "status": "submitted",
+            "broker_order_id": "broker_2",
+            "created_at": "only",
+        },
+    ]
 
 
 def test_alpaca_broker_idempotent_submission(tmp_path) -> None:

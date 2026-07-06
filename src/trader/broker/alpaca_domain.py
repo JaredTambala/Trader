@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Mapping
+from typing import Mapping, Sequence
 
 from ..identifiers import deterministic_client_order_id
 from ..symbols import canonicalize_symbol, normalize_asset_class
@@ -345,6 +345,65 @@ def normalize_alpaca_order_response(
     }
 
 
+def normalize_alpaca_position(position: object) -> Mapping[str, object]:
+    """Convert one Alpaca position object or mapping into canonical broker fields."""
+    raw_symbol = str(coerce_alpaca_value(position, "symbol") or "").strip().upper()
+    raw_asset_class = str(coerce_alpaca_value(position, "asset_class") or "").strip()
+    asset_class = normalize_asset_class(raw_asset_class)
+    symbol = canonicalize_symbol(raw_symbol, asset_class=asset_class)
+    qty_raw = coerce_alpaca_value(position, "qty") or 0
+    avg_entry_price = coerce_alpaca_value(position, "avg_entry_price")
+    side = coerce_alpaca_value(position, "side")
+    qty = _coerce_float(qty_raw, default=0.0)
+    return {
+        "symbol": symbol,
+        "asset_class": asset_class,
+        "qty": qty,
+        "avg_entry_price": _coerce_float(avg_entry_price) if avg_entry_price is not None else None,
+        "side": str(side) if side is not None else ("long" if qty >= 0 else "short"),
+    }
+
+
+def normalize_alpaca_positions(positions: Sequence[object] | None) -> list[Mapping[str, object]]:
+    """Convert provider positions into canonical broker position records."""
+    return [normalize_alpaca_position(position) for position in positions or ()]
+
+
+def normalize_alpaca_account(account: object) -> Mapping[str, object]:
+    """Convert an Alpaca account object or mapping into account-level balances."""
+    return {
+        "cash": coerce_alpaca_value(account, "cash"),
+        "buying_power": coerce_alpaca_value(account, "buying_power"),
+        "equity": coerce_alpaca_value(account, "equity"),
+    }
+
+
+def latest_alpaca_order_events_from_rows(rows: Sequence[Sequence[object]]) -> list[Mapping[str, object]]:
+    """Return newest local order events de-duplicated by client order id."""
+    seen: set[str] = set()
+    latest: list[Mapping[str, object]] = []
+    for row in rows or ():
+        client_order_id = str(row[0]) if row[0] is not None else ""
+        if not client_order_id or client_order_id in seen:
+            continue
+        seen.add(client_order_id)
+        latest.append(
+            {
+                "client_order_id": client_order_id,
+                "run_id": row[1],
+                "cycle_id": row[2],
+                "symbol": row[3],
+                "side": row[4],
+                "qty": row[5],
+                "order_type": row[6],
+                "status": row[7],
+                "broker_order_id": row[8],
+                "created_at": row[9],
+            }
+        )
+    return latest
+
+
 __all__ = [
     "ALPACA_STATUS_MAP",
     "ALREADY_SUBMITTED_STATUSES",
@@ -359,8 +418,12 @@ __all__ = [
     "coerce_alpaca_enumish",
     "coerce_alpaca_value",
     "ensure_alpaca_client_order_id",
+    "latest_alpaca_order_events_from_rows",
     "map_alpaca_status",
+    "normalize_alpaca_account",
     "normalize_alpaca_order_response",
     "normalize_alpaca_order_request_fields",
+    "normalize_alpaca_position",
+    "normalize_alpaca_positions",
     "parse_alpaca_timestamp",
 ]

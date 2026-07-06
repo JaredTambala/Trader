@@ -199,6 +199,21 @@ Representative runtime object:
 
 - `TraderService`
 
+The runtime package follows a functional-core/imperative-shell split. `TraderService` remains the orchestration shell:
+it owns network listeners, event-store reads and writes, broker calls, logging, metrics worker lifetimes, and cycle
+execution. Pure or mostly pure decisions are kept in focused runtime modules:
+
+- `runtime.service_config` normalizes service configuration, Postgres notification payloads, execution-mode choices,
+  reconciliation timing, metrics worker settings, and startup seed inputs.
+- `runtime.broker_factory` constructs the configured runtime broker so CLI tools and the service use the same broker
+  selection path without importing private service helpers.
+- `runtime.portfolio_sync` normalizes broker account and position payloads into startup snapshot and fail-closed
+  portfolio-mismatch decisions.
+- `runtime.order_recovery` shapes local and broker order-recovery values before the `runtime.orders` shell persists
+  repair events.
+- `runtime.status_payloads` and `runtime.health` convert status query rows into operator-facing payloads and health
+  assessments while `runtime.status` owns event-store queries and halt-state writes.
+
 ### 7. Portfolio, Metrics, and Sessions
 
 This subsystem turns event history and broker state into operational state and review artifacts.

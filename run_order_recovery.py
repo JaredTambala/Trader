@@ -10,8 +10,8 @@ from dotenv import load_dotenv
 
 from trader.config import build_config, load_yaml_config, resolve_log_level
 from trader.event_store import build_event_store
+from trader.runtime.broker_factory import build_runtime_broker
 from trader.runtime.orders import inspect_recovery_state, run_local_clean_start, run_startup_recovery
-from trader.runtime.service import _build_runtime_broker
 
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ def main() -> None:
     broker = None
 
     if args.command in {"report", "reconcile"}:
-        broker = _build_runtime_broker(config, event_store)
+        broker = build_runtime_broker(config, event_store)
 
     if args.command == "report":
         assert broker is not None

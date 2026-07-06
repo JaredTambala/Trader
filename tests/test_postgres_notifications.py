@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import pytest
 
 from trader.runtime.notifications import notify_market_data
-from trader.runtime.service import _parse_market_data_notify
+from trader.runtime.service_config import parse_market_data_notify
 
 
 pytestmark = pytest.mark.postgres
@@ -35,7 +35,7 @@ def test_notify_market_data_sends_expected_payload_and_parse_round_trips(
     raw_payload = json.loads(notifications[0].payload)
     assert raw_payload == payload
 
-    parsed = _parse_market_data_notify(notifications[0].payload)
+    parsed = parse_market_data_notify(notifications[0].payload)
     assert parsed is not None
     assert parsed["symbol"] == "AAPL"
     assert parsed["timeframe"] == "1Min"

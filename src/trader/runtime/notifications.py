@@ -9,15 +9,13 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from typing import Mapping
 
 from ..event_store import EventStore
+from .service_config import resolve_notify_channel
 
 
 logger = logging.getLogger(__name__)
-
-_CHANNEL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def notify_market_data(
@@ -39,21 +37,13 @@ def notify_market_data(
     if connection is None or not hasattr(connection, "execute") or not hasattr(connection, "notifies"):
         return False
 
-    channel = _resolve_channel(channel)
+    channel_resolution = resolve_notify_channel(channel)
+    if not channel_resolution.valid:
+        logger.warning("Invalid notify channel; falling back to market_data")
     message = json.dumps(payload, default=str)
     try:
-        connection.execute("SELECT pg_notify(%s, %s)", [channel, message])
+        connection.execute("SELECT pg_notify(%s, %s)", [channel_resolution.channel, message])
     except Exception as exc:  # pragma: no cover - relies on Postgres availability
         logger.warning("Market data notify failed: %s", exc)
         return False
     return True
-
-
-def _resolve_channel(channel: str | None) -> str:
-    """Return a valid Postgres NOTIFY channel, falling back on invalid input."""
-    if not channel:
-        channel = "market_data"
-    if not _CHANNEL_RE.match(channel):
-        logger.warning("Invalid notify channel; falling back to market_data")
-        return "market_data"
-    return channel
