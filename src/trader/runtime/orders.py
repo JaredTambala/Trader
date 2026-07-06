@@ -18,14 +18,18 @@ from ..event_store import EventStore
 from .order_recovery import (
     OPEN_STATUSES,
     FillEventPayload,
+    LocalOrderRecoveryPlan,
     OrderEventPayload,
     RecoveryReport,
     build_fill_event_payload,
+    build_latest_order_events_query,
     build_order_event_payload,
     latest_order_events_from_rows,
-    parse_timestamp,
     partition_broker_orders,
     partition_local_orders,
+    plan_broker_open_adoption,
+    plan_local_clean_start_close,
+    plan_local_open_order_recovery,
 )
 
 
@@ -33,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "FillEventPayload",
+    "LocalOrderRecoveryPlan",
     "OrderEventPayload",
     "RecoveryReport",
     "build_fill_event_payload",
@@ -122,36 +127,27 @@ def run_startup_recovery(
         broker_order = broker_by_client.get(client_order_id)
         if broker_order is None and event.get("broker_order_id"):
             broker_order = _get_broker_order_by_id(broker, str(event["broker_order_id"]))
-        if broker_order is None:
-            payload = _append_order_event(
-                event_store,
-                event,
-                status="canceled",
-                rejection_reason="reconciled_missing",
-                event_ts=datetime.now(timezone.utc),
-            )
-            report.local_closed_missing += 1
-            report.actions.append({"action": "close_missing_local_open", "client_order_id": client_order_id, "payload": payload})
+        plan = plan_local_open_order_recovery(
+            event,
+            broker_order,
+            fallback_ts=datetime.now(timezone.utc),
+        )
+        if plan is None:
             continue
-
-        broker_status = str(broker_order.get("status", "")).lower()
-        local_status = str(event.get("status", "")).lower()
-        if broker_status != local_status or (
-            not event.get("broker_order_id") and broker_order.get("broker_order_id")
-        ):
-            payload = _append_order_event(
-                event_store,
-                {**event, **broker_order},
-                status=broker_status,
-                rejection_reason=broker_order.get("rejection_reason"),
-                event_ts=parse_timestamp(broker_order.get("fill_ts"))
-                or parse_timestamp(broker_order.get("created_at"))
-                or datetime.now(timezone.utc),
-            )
+        payload = _append_order_event(
+            event_store,
+            plan.order,
+            status=plan.status,
+            rejection_reason=plan.rejection_reason,
+            event_ts=plan.event_ts,
+        )
+        if plan.action == "close_missing_local_open":
+            report.local_closed_missing += 1
+        elif plan.action == "update_local_from_broker":
             report.local_updated_from_broker += 1
-            report.actions.append({"action": "update_local_from_broker", "client_order_id": client_order_id, "payload": payload})
-            if broker_status in {"filled", "partially_filled"}:
-                _append_fill_event(event_store, {**event, **broker_order})
+        report.actions.append({"action": plan.action, "client_order_id": client_order_id, "payload": payload})
+        if plan.should_record_fill:
+            _append_fill_event(event_store, plan.order)
 
     if report.out_of_scope_broker_open:
         mismatch_text = ", ".join(
@@ -168,23 +164,29 @@ def run_startup_recovery(
         )
 
     for order in report.in_scope_broker_open:
-        client_order_id = str(order.get("client_order_id", ""))
-        if not client_order_id or client_order_id in local_by_client:
+        plan = plan_broker_open_adoption(
+            order,
+            known_local_client_order_ids=set(local_by_client),
+            run_id=run_id,
+            fallback_ts=datetime.now(timezone.utc),
+        )
+        if plan is None:
             continue
         payload = _append_order_event(
             event_store,
-            {
-                **order,
-                "run_id": run_id,
-                "session_id": run_id,
-                "cycle_id": None,
-            },
-            status=str(order.get("status", "submitted")).lower(),
-            rejection_reason="adopted_from_broker",
-            event_ts=parse_timestamp(order.get("created_at")) or datetime.now(timezone.utc),
+            plan.order,
+            status=plan.status,
+            rejection_reason=plan.rejection_reason,
+            event_ts=plan.event_ts,
         )
         report.adopted_broker_open += 1
-        report.actions.append({"action": "adopt_broker_open", "client_order_id": client_order_id, "payload": payload})
+        report.actions.append(
+            {
+                "action": plan.action,
+                "client_order_id": plan.order.get("client_order_id"),
+                "payload": payload,
+            }
+        )
 
     return report
 
@@ -219,23 +221,23 @@ def run_local_clean_start(
         out_of_scope_broker_open=[],
     )
     for event in in_scope:
+        plan = plan_local_clean_start_close(
+            event,
+            run_id=run_id,
+            event_ts=datetime.now(timezone.utc),
+        )
         payload = _append_order_event(
             event_store,
-            {
-                **event,
-                "run_id": run_id or event.get("run_id"),
-                "session_id": run_id or event.get("session_id") or event.get("run_id"),
-                "cycle_id": None,
-            },
-            status="canceled",
-            rejection_reason="local_clean_start",
-            event_ts=datetime.now(timezone.utc),
+            plan.order,
+            status=plan.status,
+            rejection_reason=plan.rejection_reason,
+            event_ts=plan.event_ts,
         )
         report.local_clean_start_closed += 1
         report.actions.append(
             {
-                "action": "local_clean_start_close",
-                "client_order_id": event.get("client_order_id"),
+                "action": plan.action,
+                "client_order_id": plan.order.get("client_order_id"),
                 "payload": payload,
             }
         )
@@ -254,7 +256,7 @@ def _append_order_event(
     order: Mapping[str, object],
     *,
     status: str,
-    rejection_reason: str | None,
+    rejection_reason: object | None,
     event_ts: datetime | None = None,
 ) -> Mapping[str, object]:
     """Append a normalized order event to the event store."""
@@ -282,17 +284,13 @@ def _load_latest_order_events(event_store: EventStore) -> list[Mapping[str, obje
     connection = getattr(event_store, "connection", lambda: None)()
     if connection is None:
         return []
-    query = (
-        "SELECT client_order_id, run_id, session_id, cycle_id, symbol, side, qty, order_type, "
-        "status, broker_order_id, rejection_reason, created_at "
-        "FROM order_events ORDER BY created_at DESC, order_event_id DESC"
-    )
+    query = build_latest_order_events_query()
     if hasattr(connection, "cursor"):
         with connection.cursor() as cursor:
-            cursor.execute(query)
+            cursor.execute(query.sql, query.params)
             rows = cursor.fetchall()
     else:
-        rows = connection.execute(query).fetchall()
+        rows = connection.execute(query.sql, query.params).fetchall()
     return latest_order_events_from_rows(rows or [])
 
 

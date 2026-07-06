@@ -181,6 +181,12 @@ Representative runtime objects:
 - `InternalPaperBroker`
 - `NoOpBroker`
 
+Broker adapters also follow the functional-core/imperative-shell boundary used by the runtime. `broker.core` and
+`broker.internal` own provider calls, clocks, UUIDs, sleeps, logging, and persistence handoff. Deterministic broker
+payload shaping lives in `broker.alpaca_domain` and `broker.internal_execution`: request-field normalization,
+reconciliation plans, lookup queries, fee math, slippage math, and canonical broker response payloads are pure value
+transforms before the adapter shells apply side effects.
+
 ### 6. Runtime Orchestration
 
 `TraderService` owns long-lived runtime behavior. It is responsible for starting a trading run, performing startup
@@ -213,6 +219,11 @@ execution. Pure or mostly pure decisions are kept in focused runtime modules:
   repair events.
 - `runtime.status_payloads` and `runtime.health` convert status query rows into operator-facing payloads and health
   assessments while `runtime.status` owns event-store queries and halt-state writes.
+
+The cycle package follows the same split. `cycle.pipeline`, `cycle.recording`, and `cycle.stream_pipeline` own
+event-store access, broker calls, queues, logging, and state mutation. `cycle.orders`, `cycle.broker_state`, and
+`cycle.stream` hold the focused decision helpers for recording broker responses, interpreting broker-response side
+effects, and planning per-event realtime stream processing.
 
 ### 7. Portfolio, Metrics, and Sessions
 

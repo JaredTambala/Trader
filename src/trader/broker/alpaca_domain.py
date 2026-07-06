@@ -124,6 +124,14 @@ class AlpacaSubmissionErrorResponse:
 
 
 @dataclass(frozen=True)
+class AlpacaReconciliationPlan:
+    """Planned append-only reconciliation events for one local order."""
+
+    order_event: AlpacaReconciliationOrderEvent | None
+    fill_event: AlpacaReconciliationFillEvent | None = None
+
+
+@dataclass(frozen=True)
 class AlpacaOrderRequestFields:
     """Provider-neutral fields needed to construct an Alpaca order request."""
 
@@ -146,6 +154,14 @@ class AlpacaOrderRequestFields:
             "client_order_id": self.client_order_id,
             "limit_price": self.limit_price,
         }
+
+
+@dataclass(frozen=True)
+class AlpacaOrderLookupQuery:
+    """SQL statement and parameters for local Alpaca order lookup."""
+
+    sql: str
+    params: tuple[object, ...] = ()
 
 
 def build_alpaca_reconciliation_order_event(
@@ -211,6 +227,59 @@ def build_alpaca_submission_error_response(
         client_order_id=client_order_id,
         rejection_reason=str(error),
     )
+
+
+def plan_alpaca_reconciliation_event(
+    local_event: Mapping[str, object],
+    broker_order: Mapping[str, object] | None,
+    *,
+    order_event_id: str,
+    fallback_ts: object,
+) -> AlpacaReconciliationPlan | None:
+    """Plan reconciliation records for one local open order.
+
+    Args:
+        local_event: Latest local lifecycle event for a client order.
+        broker_order: Normalized broker order state, or `None` when missing.
+        order_event_id: Explicit identifier for any planned order event.
+        fallback_ts: Timestamp used when broker evidence lacks a timestamp.
+
+    Returns:
+        A reconciliation plan, or `None` when no local append is needed.
+    """
+    if not broker_order:
+        return AlpacaReconciliationPlan(
+            order_event=build_alpaca_reconciliation_order_event(
+                local_event,
+                status="canceled",
+                order_event_id=order_event_id,
+                created_at=fallback_ts,
+                broker_order_id=local_event.get("broker_order_id"),
+                rejection_reason="reconciled_missing",
+            )
+        )
+
+    status = str(broker_order.get("status", ""))
+    if not status or status == local_event["status"]:
+        return None
+
+    event_ts = broker_order.get("fill_ts") or fallback_ts
+    order_event = build_alpaca_reconciliation_order_event(
+        local_event,
+        status=status,
+        order_event_id=order_event_id,
+        created_at=event_ts,
+        broker_order_id=broker_order.get("broker_order_id") or local_event.get("broker_order_id"),
+        rejection_reason=broker_order.get("rejection_reason"),
+    )
+    fill_event: AlpacaReconciliationFillEvent | None = None
+    if status in {"filled", "partially_filled"}:
+        fill_event = build_alpaca_reconciliation_fill_event(
+            local_event,
+            broker_order,
+            fill_ts=event_ts,
+        )
+    return AlpacaReconciliationPlan(order_event=order_event, fill_event=fill_event)
 
 
 def normalize_alpaca_order_request_fields(order: Mapping[str, object]) -> AlpacaOrderRequestFields:
@@ -378,6 +447,46 @@ def normalize_alpaca_account(account: object) -> Mapping[str, object]:
     }
 
 
+def build_alpaca_existing_order_lookup_query(
+    client_order_id: str,
+    *,
+    connection_module: str,
+) -> AlpacaOrderLookupQuery:
+    """Build the latest-order lookup query for submit idempotency."""
+    placeholder = "?" if "duckdb" in connection_module else "%s"
+    return AlpacaOrderLookupQuery(
+        sql=(
+            f"SELECT status, broker_order_id FROM order_events "
+            f"WHERE client_order_id = {placeholder} "
+            f"ORDER BY created_at DESC LIMIT 1"
+        ),
+        params=(client_order_id,),
+    )
+
+
+def normalize_alpaca_existing_order_row(
+    client_order_id: str,
+    row: Sequence[object] | None,
+) -> Mapping[str, object] | None:
+    """Normalize one latest local order row used for submit idempotency."""
+    if not row:
+        return None
+    return {
+        "client_order_id": client_order_id,
+        "status": row[0],
+        "broker_order_id": row[1],
+    }
+
+
+def build_latest_alpaca_order_events_query() -> str:
+    """Return the query that loads local order events newest first."""
+    return (
+        "SELECT client_order_id, run_id, cycle_id, symbol, side, qty, order_type, "
+        "status, broker_order_id, created_at "
+        "FROM order_events ORDER BY created_at DESC, order_event_id DESC"
+    )
+
+
 def latest_alpaca_order_events_from_rows(rows: Sequence[Sequence[object]]) -> list[Mapping[str, object]]:
     """Return newest local order events de-duplicated by client order id."""
     seen: set[str] = set()
@@ -409,9 +518,13 @@ __all__ = [
     "ALREADY_SUBMITTED_STATUSES",
     "OPEN_ORDER_STATUSES",
     "AlpacaOrderRequestFields",
+    "AlpacaOrderLookupQuery",
+    "AlpacaReconciliationPlan",
     "AlpacaReconciliationFillEvent",
     "AlpacaReconciliationOrderEvent",
     "AlpacaSubmissionErrorResponse",
+    "build_alpaca_existing_order_lookup_query",
+    "build_latest_alpaca_order_events_query",
     "build_alpaca_reconciliation_fill_event",
     "build_alpaca_reconciliation_order_event",
     "build_alpaca_submission_error_response",
@@ -420,10 +533,12 @@ __all__ = [
     "ensure_alpaca_client_order_id",
     "latest_alpaca_order_events_from_rows",
     "map_alpaca_status",
+    "normalize_alpaca_existing_order_row",
     "normalize_alpaca_account",
     "normalize_alpaca_order_response",
     "normalize_alpaca_order_request_fields",
     "normalize_alpaca_position",
     "normalize_alpaca_positions",
     "parse_alpaca_timestamp",
+    "plan_alpaca_reconciliation_event",
 ]

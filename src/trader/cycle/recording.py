@@ -16,7 +16,7 @@ from ..event_store import EventStore
 from .lifecycle import CycleRunSessionOutcome
 from .orders import (
     _normalize_event_ts,
-    build_broker_fill_event_payload,
+    build_broker_response_recording_plan,
     build_order_lifecycle_event_payload,
     resolve_order_lifecycle_event_timestamp,
     resolve_terminal_event_timestamp,
@@ -239,35 +239,25 @@ def _record_broker_responses(
         if order is None:
             logger.warning("Broker response missing order mapping client_order_id=%s", client_order_id)
             continue
-        status = str(response.get("status", "submitted"))
-        broker_order_id = response.get("broker_order_id")
-        rejection_reason = response.get("rejection_reason")
-        order_payload = order if rejection_reason is None else {**order, "rejection_reason": rejection_reason}
         resolved_fill_ts = _resolve_terminal_event_ts(
             event_store,
             client_order_id=str(client_order_id) if client_order_id is not None else None,
             proposed_ts=response.get("fill_ts"),
         )
-        _record_order_events(
-            event_store,
-            [order_payload],
-            status=status,
-            broker_order_id=broker_order_id,
-            event_ts=resolved_fill_ts,
+        plan = build_broker_response_recording_plan(
+            order,
+            response,
+            terminal_ts=resolved_fill_ts,
+            order_event_id=f"order_evt_{uuid.uuid4().hex}",
         )
-        if status in {"filled", "partially_filled"}:
-            fill_payload = build_broker_fill_event_payload(
-                order,
-                response,
-                fill_ts=resolved_fill_ts,
+        event_store.record_event("order_events", plan.order_event.to_record())
+        if plan.missing_fill_evidence:
+            logger.warning(
+                "Fill event missing price/qty client_order_id=%s",
+                client_order_id,
             )
-            if fill_payload is None:
-                logger.warning(
-                    "Fill event missing price/qty client_order_id=%s",
-                    client_order_id,
-                )
-                continue
-            event_store.record_event("fill_events", fill_payload.to_record())
+        if plan.fill_event is not None:
+            event_store.record_event("fill_events", plan.fill_event.to_record())
 
 
 def _resolve_terminal_event_ts(

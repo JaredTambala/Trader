@@ -13,6 +13,7 @@ from trader.cycle import (
     assess_market_data_readiness,
     build_enriched_cycle_order,
     build_broker_fill_event_payload,
+    build_broker_response_recording_plan,
     build_metrics_snapshot_event,
     build_metrics_snapshot_payload,
     build_order_lifecycle_event_payload,
@@ -22,6 +23,7 @@ from trader.cycle import (
     run_cycle,
 )
 from trader.cycle.broker_state import (
+    _build_cycle_broker_response_plan,
     _build_portfolio_from_broker_payload,
     _build_processed_order_from_broker_response,
     _broker_position_views_to_positions,
@@ -67,7 +69,7 @@ from trader.cycle.recording import (
     _record_owned_run_session_finish,
     _record_owned_run_session_start,
 )
-from trader.cycle.stream import _build_cycle_stream_state, _latest_stream_prices
+from trader.cycle.stream import _build_cycle_stream_state, _latest_stream_prices, _plan_cycle_stream_market_event
 from trader.cycle.startup import _mask_secret, _startup_config_log_values
 from trader.identifiers import deterministic_client_order_id, deterministic_run_session_id
 from trader.config import Config
@@ -549,6 +551,94 @@ def test_build_broker_fill_event_payload_returns_fill_record_or_none() -> None:
     )
 
 
+def test_build_broker_response_recording_plan_prepares_order_and_fill_records() -> None:
+    terminal_ts = datetime(2026, 1, 20, 12, 0, 3, tzinfo=timezone.utc)
+    order = {
+        "client_order_id": "cid_1",
+        "run_id": "run_1",
+        "cycle_id": "cycle_1",
+        "symbol": "AAPL",
+        "side": "buy",
+        "qty": 2.0,
+        "order_type": "market",
+        "price": 100.0,
+    }
+    response = {
+        "client_order_id": "cid_1",
+        "status": "filled",
+        "broker_order_id": "broker_1",
+        "fill_qty": 2.0,
+        "fill_price": 101.0,
+        "raw_fill_price": 100.0,
+        "slippage_amount": 2.0,
+        "fee_amount": 0.25,
+    }
+
+    plan = build_broker_response_recording_plan(
+        order,
+        response,
+        terminal_ts=terminal_ts,
+        order_event_id="order_evt_fixed",
+    )
+
+    assert plan.order_event.to_record() == {
+        "order_event_id": "order_evt_fixed",
+        "client_order_id": "cid_1",
+        "run_id": "run_1",
+        "session_id": "run_1",
+        "cycle_id": "cycle_1",
+        "symbol": "AAPL",
+        "side": "buy",
+        "qty": 2.0,
+        "order_type": "market",
+        "status": "filled",
+        "broker_order_id": "broker_1",
+        "rejection_reason": None,
+        "created_at": terminal_ts,
+    }
+    assert plan.fill_event is not None
+    assert plan.fill_event.to_record() == {
+        "client_order_id": "cid_1",
+        "run_id": "run_1",
+        "session_id": "run_1",
+        "cycle_id": "cycle_1",
+        "fill_ts": terminal_ts,
+        "fill_qty": 2.0,
+        "raw_fill_price": 100.0,
+        "fill_price": 101.0,
+        "slippage_amount": 2.0,
+        "fee_amount": 0.25,
+    }
+    assert plan.missing_fill_evidence is False
+
+
+def test_build_broker_response_recording_plan_flags_missing_fill_evidence() -> None:
+    terminal_ts = datetime(2026, 1, 20, 12, 0, 3, tzinfo=timezone.utc)
+
+    plan = build_broker_response_recording_plan(
+        {
+            "client_order_id": "cid_1",
+            "run_id": "run_1",
+            "cycle_id": "cycle_1",
+            "symbol": "AAPL",
+            "side": "buy",
+            "qty": 2.0,
+        },
+        {
+            "client_order_id": "cid_1",
+            "status": "filled",
+            "fill_qty": None,
+            "fill_price": None,
+        },
+        terminal_ts=terminal_ts,
+        order_event_id="order_evt_missing_fill",
+    )
+
+    assert plan.order_event.status == "filled"
+    assert plan.fill_event is None
+    assert plan.missing_fill_evidence is True
+
+
 def test_resolve_terminal_event_timestamp_preserves_later_broker_time() -> None:
     latest_ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
     proposed_ts = latest_ts + timedelta(seconds=1)
@@ -941,6 +1031,47 @@ def test_cycle_stream_state_starts_empty_and_exposes_latest_prices() -> None:
     assert _latest_stream_prices(state) == {"AAPL": 101.25, "MSFT": 250.5}
 
 
+def test_plan_cycle_stream_market_event_normalizes_fresh_event() -> None:
+    event_ts = datetime(2026, 1, 20, 12, 0)
+    event = _stock_event(ts=event_ts, close=101.25)
+
+    plan = _plan_cycle_stream_market_event(
+        event,
+        enforce_staleness=True,
+        now=datetime(2026, 1, 20, 12, 0, 30, tzinfo=timezone.utc),
+        max_age_seconds=60,
+    )
+
+    assert plan.symbol == "AAPL"
+    assert plan.decision_ts == event_ts.replace(tzinfo=timezone.utc)
+    assert plan.close_price == 101.25
+    assert plan.should_skip is False
+    assert plan.freshness.age_seconds == 30.0
+
+
+def test_plan_cycle_stream_market_event_skips_stale_event_only_when_enforced() -> None:
+    event = _stock_event(ts=datetime(2026, 1, 20, 11, 58, tzinfo=timezone.utc))
+    now = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+
+    enforced = _plan_cycle_stream_market_event(
+        event,
+        enforce_staleness=True,
+        now=now,
+        max_age_seconds=60,
+    )
+    unenforced = _plan_cycle_stream_market_event(
+        event,
+        enforce_staleness=False,
+        now=now,
+        max_age_seconds=60,
+    )
+
+    assert enforced.freshness.is_stale is True
+    assert enforced.should_skip is True
+    assert unenforced.freshness.is_stale is True
+    assert unenforced.should_skip is False
+
+
 def test_market_data_event_table_name_selects_asset_class_table() -> None:
     assert _market_data_event_table_name("stocks") == "stock_bar_events"
     assert _market_data_event_table_name("stock") == "stock_bar_events"
@@ -1145,6 +1276,7 @@ def test_evaluate_cycle_order_risk_returns_approved_and_manager_rejection_logs()
 
 def test_broker_response_helpers_normalize_status_sync_and_processed_order() -> None:
     order = {"symbol": "AAPL", "side": "buy", "qty": 1.0, "price": 100.0}
+    fallback_fill_ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
     filled_response = {
         "status": "filled",
         "fill_qty": "0.5",
@@ -1179,6 +1311,24 @@ def test_broker_response_helpers_normalize_status_sync_and_processed_order() -> 
         )
         is None
     )
+    plan = _build_cycle_broker_response_plan(
+        order,
+        filled_response,
+        sync_portfolio_on_fill=True,
+        fallback_fill_ts=fallback_fill_ts,
+    )
+    assert plan.status == "filled"
+    assert plan.processed_order == {**order, "qty": 0.5, "price": 101.25}
+    assert plan.should_sync_portfolio is True
+    assert plan.fill_ts == fallback_fill_ts
+    rejected_plan = _build_cycle_broker_response_plan(
+        order,
+        {"status": "rejected", "rejection_reason": "broker_reject"},
+        sync_portfolio_on_fill=True,
+        fallback_fill_ts=fallback_fill_ts,
+    )
+    assert rejected_plan.processed_order is None
+    assert rejected_plan.should_sync_portfolio is False
 
 
 def test_build_internal_fill_portfolio_application_normalizes_fill_response() -> None:

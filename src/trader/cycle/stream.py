@@ -9,9 +9,11 @@ from typing import Mapping
 from ..broker import Broker
 from ..config import Config
 from ..event_store import EventStore
+from ..market_data import MarketDataEvent
 from ..portfolio import Portfolio
 from ..risk import RiskManager
 from ..strategies import Strategy
+from .readiness import MarketDataEventFreshness, assess_market_data_event_freshness
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,17 @@ class CycleStreamState:
     counters: CycleStreamCounters
 
 
+@dataclass(frozen=True)
+class CycleStreamMarketEventPlan:
+    """Pure per-event plan consumed by the streaming order generator."""
+
+    symbol: str
+    decision_ts: datetime
+    close_price: float
+    should_skip: bool
+    freshness: MarketDataEventFreshness
+
+
 def _build_cycle_stream_state() -> CycleStreamState:
     """Create empty mutable state for one market-stream pipeline run."""
     return CycleStreamState(
@@ -68,8 +81,32 @@ def _latest_stream_prices(state: CycleStreamState) -> Mapping[str, float]:
     return {symbol: price for symbol, (_, price) in state.latest_prices.items()}
 
 
+def _plan_cycle_stream_market_event(
+    event: MarketDataEvent,
+    *,
+    enforce_staleness: bool,
+    now: datetime,
+    max_age_seconds: int,
+) -> CycleStreamMarketEventPlan:
+    """Plan stream event handling without logging, mutation, or queue effects."""
+    freshness = assess_market_data_event_freshness(
+        event,
+        now=now,
+        max_age_seconds=max_age_seconds,
+    )
+    return CycleStreamMarketEventPlan(
+        symbol=event.symbol,
+        decision_ts=freshness.ts,
+        close_price=float(event.close),
+        should_skip=enforce_staleness and freshness.is_stale,
+        freshness=freshness,
+    )
+
+
 __all__ = [
     "CycleStreamCounters",
+    "CycleStreamMarketEventPlan",
     "CycleStreamRuntime",
     "CycleStreamState",
+    "_plan_cycle_stream_market_event",
 ]

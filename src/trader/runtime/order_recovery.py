@@ -11,14 +11,20 @@ from ..symbols import canonicalize_symbol, configured_symbol_set, normalize_asse
 __all__ = [
     "OPEN_STATUSES",
     "FillEventPayload",
+    "LocalOrderRecoveryPlan",
     "OrderEventPayload",
+    "OrderRecoveryQuery",
     "RecoveryReport",
     "build_fill_event_payload",
+    "build_latest_order_events_query",
     "build_order_event_payload",
     "latest_order_events_from_rows",
     "parse_timestamp",
     "partition_broker_orders",
     "partition_local_orders",
+    "plan_broker_open_adoption",
+    "plan_local_clean_start_close",
+    "plan_local_open_order_recovery",
 ]
 
 OPEN_STATUSES = {"submitted", "accepted", "partially_filled", "error"}
@@ -108,6 +114,26 @@ class FillEventPayload:
             "fill_qty": self.fill_qty,
             "fill_price": self.fill_price,
         }
+
+
+@dataclass(frozen=True)
+class LocalOrderRecoveryPlan:
+    """Planned local recovery action for one open order."""
+
+    action: str
+    order: Mapping[str, object]
+    status: str
+    rejection_reason: object | None
+    event_ts: datetime
+    should_record_fill: bool = False
+
+
+@dataclass(frozen=True)
+class OrderRecoveryQuery:
+    """SQL statement and parameters for order-recovery shell reads."""
+
+    sql: str
+    params: tuple[object, ...] = ()
 
 
 def partition_broker_orders(
@@ -220,6 +246,123 @@ def build_fill_event_payload(
         fill_ts=order.get("fill_ts") or fallback_fill_ts,
         fill_qty=float(fill_qty),
         fill_price=float(fill_price),
+    )
+
+
+def plan_local_open_order_recovery(
+    local_event: Mapping[str, object],
+    broker_order: Mapping[str, object] | None,
+    *,
+    fallback_ts: datetime,
+) -> LocalOrderRecoveryPlan | None:
+    """Plan local recovery for one locally open order.
+
+    Args:
+        local_event: Latest local lifecycle event for the order.
+        broker_order: Matching broker state, or `None` when missing.
+        fallback_ts: Timestamp supplied by the shell when broker evidence does
+            not carry a parseable event timestamp.
+
+    Returns:
+        A recovery plan, or `None` when the local order already matches broker
+        state and no append-only event is needed.
+    """
+    if broker_order is None:
+        return LocalOrderRecoveryPlan(
+            action="close_missing_local_open",
+            order=local_event,
+            status="canceled",
+            rejection_reason="reconciled_missing",
+            event_ts=fallback_ts,
+        )
+
+    broker_status = str(broker_order.get("status", "")).lower()
+    local_status = str(local_event.get("status", "")).lower()
+    missing_broker_id = not local_event.get("broker_order_id") and bool(broker_order.get("broker_order_id"))
+    if broker_status == local_status and not missing_broker_id:
+        return None
+
+    event_ts = (
+        parse_timestamp(broker_order.get("fill_ts"))
+        or parse_timestamp(broker_order.get("created_at"))
+        or fallback_ts
+    )
+    return LocalOrderRecoveryPlan(
+        action="update_local_from_broker",
+        order={**local_event, **broker_order},
+        status=broker_status,
+        rejection_reason=broker_order.get("rejection_reason"),
+        event_ts=event_ts,
+        should_record_fill=broker_status in {"filled", "partially_filled"},
+    )
+
+
+def plan_broker_open_adoption(
+    broker_order: Mapping[str, object],
+    *,
+    known_local_client_order_ids: set[str],
+    run_id: str | None,
+    fallback_ts: datetime,
+) -> LocalOrderRecoveryPlan | None:
+    """Plan adoption of one in-scope broker-open order absent from local state.
+
+    Args:
+        broker_order: Normalized in-scope broker order.
+        known_local_client_order_ids: Client order IDs already present locally.
+        run_id: Recovery run/session ID to attach to adopted orders.
+        fallback_ts: Timestamp supplied by the shell when broker evidence lacks
+            a parseable creation timestamp.
+
+    Returns:
+        A local event plan, or `None` when the broker order cannot or should not
+        be adopted.
+    """
+    client_order_id = str(broker_order.get("client_order_id", ""))
+    if not client_order_id or client_order_id in known_local_client_order_ids:
+        return None
+    return LocalOrderRecoveryPlan(
+        action="adopt_broker_open",
+        order={
+            **broker_order,
+            "run_id": run_id,
+            "session_id": run_id,
+            "cycle_id": None,
+        },
+        status=str(broker_order.get("status", "submitted")).lower(),
+        rejection_reason="adopted_from_broker",
+        event_ts=parse_timestamp(broker_order.get("created_at")) or fallback_ts,
+    )
+
+
+def plan_local_clean_start_close(
+    local_event: Mapping[str, object],
+    *,
+    run_id: str | None,
+    event_ts: datetime,
+) -> LocalOrderRecoveryPlan:
+    """Plan a local-only clean-start cancellation for one scoped order."""
+    return LocalOrderRecoveryPlan(
+        action="local_clean_start_close",
+        order={
+            **local_event,
+            "run_id": run_id or local_event.get("run_id"),
+            "session_id": run_id or local_event.get("session_id") or local_event.get("run_id"),
+            "cycle_id": None,
+        },
+        status="canceled",
+        rejection_reason="local_clean_start",
+        event_ts=event_ts,
+    )
+
+
+def build_latest_order_events_query() -> OrderRecoveryQuery:
+    """Build the newest-first order-event query used by recovery shells."""
+    return OrderRecoveryQuery(
+        sql=(
+            "SELECT client_order_id, run_id, session_id, cycle_id, symbol, side, qty, order_type, "
+            "status, broker_order_id, rejection_reason, created_at "
+            "FROM order_events ORDER BY created_at DESC, order_event_id DESC"
+        )
     )
 
 

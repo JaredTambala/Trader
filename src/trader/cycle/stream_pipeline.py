@@ -15,17 +15,18 @@ from ..portfolio import Portfolio
 from ..risk import RiskManager
 from ..strategies import Strategy
 from . import state as cycle_state
-from .broker_state import (
-    _build_processed_order_from_broker_response,
-    _resolve_broker_response_status,
-    _should_sync_portfolio_for_broker_response,
-)
+from .broker_state import _build_cycle_broker_response_plan
 from .orders import _attach_order_metadata
 from .portfolio_state import _sync_portfolio_for_broker_response
-from .readiness import _is_event_stale, _normalize_timestamp
 from .recording import _record_broker_responses, _record_order_events
 from .risk import _build_cycle_risk_context, _evaluate_cycle_order_risk
-from .stream import CycleStreamRuntime, CycleStreamState, _build_cycle_stream_state, _latest_stream_prices
+from .stream import (
+    CycleStreamRuntime,
+    CycleStreamState,
+    _build_cycle_stream_state,
+    _latest_stream_prices,
+    _plan_cycle_stream_market_event,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -127,17 +128,18 @@ async def _generate_stream_orders(
         if event is None:
             await order_queue.put(None)
             break
-        now = datetime.now(timezone.utc)
-        if runtime.enforce_staleness and _is_event_stale(
+        plan = _plan_cycle_stream_market_event(
             event,
-            now,
-            runtime.max_age_seconds,
-        ):
+            enforce_staleness=runtime.enforce_staleness,
+            now=datetime.now(timezone.utc),
+            max_age_seconds=runtime.max_age_seconds,
+        )
+        if plan.should_skip:
             logger.warning("Skipping stale market data symbol=%s ts=%s", event.symbol, event.ts.isoformat())
             continue
-        symbol = event.symbol
-        decision_ts = _normalize_timestamp(event.ts)
-        state.latest_prices[symbol] = (decision_ts, float(event.close))
+        symbol = plan.symbol
+        decision_ts = plan.decision_ts
+        state.latest_prices[symbol] = (decision_ts, plan.close_price)
         async for order in runtime.strategy.order_stream_for_symbol(
             symbol,
             run_id=runtime.run_id,
@@ -151,7 +153,7 @@ async def _generate_stream_orders(
                 run_id=runtime.run_id,
                 cycle_id=runtime.cycle_id,
                 created_at=decision_ts,
-                price_lookup={symbol: float(event.close)},
+                price_lookup={symbol: plan.close_price},
                 asset_class=runtime.asset_class,
                 time_in_force=runtime.time_in_force,
             )[0]
@@ -243,28 +245,29 @@ async def _submit_stream_orders(
         processed_order = order
         if responses:
             response = responses[0]
-            status = _resolve_broker_response_status(response)
+            plan = _build_cycle_broker_response_plan(
+                order,
+                response,
+                sync_portfolio_on_fill=runtime.sync_portfolio_on_fill,
+                fallback_fill_ts=datetime.now(timezone.utc),
+            )
             _log_order_status(
-                f"broker_response status={status}",
+                f"broker_response status={plan.status}",
                 order,
                 run_id=runtime.run_id,
                 cycle_id=runtime.cycle_id,
                 extra="broker_order_id=%s reason=%s"
                 % (response.get("broker_order_id"), response.get("rejection_reason")),
             )
-            processed_order = _build_processed_order_from_broker_response(order, response)
-            if processed_order is None:
+            if plan.processed_order is None:
                 continue
-            if _should_sync_portfolio_for_broker_response(
-                status=status,
-                sync_portfolio_on_fill=runtime.sync_portfolio_on_fill,
-            ):
-                fill_ts = response.get("fill_ts") or datetime.now(timezone.utc)
+            processed_order = plan.processed_order
+            if plan.should_sync_portfolio:
                 _sync_portfolio_for_broker_response(
                     runtime=runtime,
                     order=order,
                     response=response,
-                    fill_ts=fill_ts,
+                    fill_ts=plan.fill_ts,
                 )
         state.processed_orders.append(processed_order)
 

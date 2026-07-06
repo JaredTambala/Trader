@@ -21,7 +21,7 @@ from .lifecycle import (
     _should_use_stream_ingestion,
 )
 from .market_data import CycleMarketDataPipelineResult
-from .readiness import assess_market_data_readiness
+from .readiness import MarketDataReadiness, assess_market_data_readiness
 from .stream_pipeline import (
     _event_stream_from_list,
     _event_stream_with_count,
@@ -204,12 +204,13 @@ def _run_market_data_events_pipeline(
         decision_ts=decision_ts,
         current_ts=datetime.now(timezone.utc),
     )
-    should_skip = _should_skip_trading(
+    readiness = assess_market_data_readiness(
         market_data_events,
-        freshness_ts,
-        config.market_data_max_age_seconds,
+        now=freshness_ts,
+        max_age_seconds=config.market_data_max_age_seconds,
     )
-    if should_skip:
+    _log_market_data_readiness(readiness)
+    if readiness.should_skip:
         logger.warning("Skipping trading due to missing or stale market data")
         return CycleMarketDataPipelineResult(
             processed_orders=(),
@@ -238,22 +239,13 @@ def _run_market_data_events_pipeline(
     )
 
 
-def _should_skip_trading(
-    market_data_events: Sequence[MarketDataEvent],
-    now: datetime,
-    max_age_seconds: int,
-) -> bool:
-    """Decide whether to skip trading based on market-data freshness."""
-    readiness = assess_market_data_readiness(
-        market_data_events,
-        now=now,
-        max_age_seconds=max_age_seconds,
-    )
+def _log_market_data_readiness(readiness: MarketDataReadiness) -> None:
+    """Log market-data readiness while keeping readiness assessment pure."""
     if readiness.reason == "missing_market_data":
         logger.warning("Skipping trading due to missing market data")
-        return readiness.should_skip
+        return
     if readiness.latest_ts is None or readiness.age_seconds is None:
-        return readiness.should_skip
+        return
     logger.info(
         "Market data freshness latest_ts=%s age_seconds=%.2f max_age_seconds=%s stale=%s",
         readiness.latest_ts.isoformat(),
@@ -261,7 +253,6 @@ def _should_skip_trading(
         readiness.max_age_seconds,
         readiness.is_stale,
     )
-    return readiness.should_skip
 
 
 __all__ = []

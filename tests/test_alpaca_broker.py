@@ -13,11 +13,15 @@ from trader.broker.core import (
     normalize_alpaca_order_request_fields,
 )
 from trader.broker.alpaca_domain import (
+    build_alpaca_existing_order_lookup_query,
+    build_latest_alpaca_order_events_query,
     latest_alpaca_order_events_from_rows,
     normalize_alpaca_account,
+    normalize_alpaca_existing_order_row,
     normalize_alpaca_order_response,
     normalize_alpaca_position,
     normalize_alpaca_positions,
+    plan_alpaca_reconciliation_event,
 )
 from trader.identifiers import deterministic_client_order_id
 from tests.support.duckdb_store import DuckDBEventStore
@@ -172,6 +176,91 @@ def test_build_alpaca_reconciliation_fill_event_requires_fill_evidence() -> None
     }
     assert build_alpaca_reconciliation_fill_event(local_event, {"fill_qty": 1.0}, fill_ts=fill_ts) is None
     assert build_alpaca_reconciliation_fill_event(local_event, {"fill_price": 100.0}, fill_ts=fill_ts) is None
+
+
+def test_plan_alpaca_reconciliation_event_builds_order_and_fill_updates() -> None:
+    fallback_ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    fill_ts = fallback_ts + timedelta(seconds=30)
+    local_event = {
+        "client_order_id": "cid_1",
+        "run_id": "run_1",
+        "cycle_id": "cycle_1",
+        "symbol": "AAPL",
+        "side": "buy",
+        "qty": 2.0,
+        "order_type": "market",
+        "status": "submitted",
+        "broker_order_id": "alpaca_1",
+    }
+    broker_order = {
+        "status": "filled",
+        "broker_order_id": "alpaca_1",
+        "fill_qty": "2.0",
+        "fill_price": "101.0",
+        "fill_ts": fill_ts,
+    }
+
+    plan = plan_alpaca_reconciliation_event(
+        local_event,
+        broker_order,
+        order_event_id="order_evt_fixed",
+        fallback_ts=fallback_ts,
+    )
+
+    assert plan is not None
+    assert plan.order_event is not None
+    assert plan.order_event.to_record()["status"] == "filled"
+    assert plan.order_event.to_record()["created_at"] == fill_ts
+    assert plan.fill_event is not None
+    assert plan.fill_event.to_record() == {
+        "client_order_id": "cid_1",
+        "run_id": "run_1",
+        "session_id": "run_1",
+        "cycle_id": "cycle_1",
+        "fill_ts": fill_ts,
+        "fill_qty": 2.0,
+        "raw_fill_price": 101.0,
+        "fill_price": 101.0,
+        "slippage_amount": None,
+        "fee_amount": None,
+    }
+
+
+def test_plan_alpaca_reconciliation_event_handles_missing_and_unchanged_orders() -> None:
+    fallback_ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    local_event = {
+        "client_order_id": "cid_missing",
+        "run_id": "run_1",
+        "cycle_id": "cycle_1",
+        "symbol": "AAPL",
+        "side": "buy",
+        "qty": 1.0,
+        "order_type": "market",
+        "status": "submitted",
+        "broker_order_id": "alpaca_missing",
+    }
+
+    missing_plan = plan_alpaca_reconciliation_event(
+        local_event,
+        None,
+        order_event_id="order_evt_missing",
+        fallback_ts=fallback_ts,
+    )
+
+    assert missing_plan is not None
+    assert missing_plan.order_event is not None
+    assert missing_plan.order_event.to_record()["status"] == "canceled"
+    assert missing_plan.order_event.to_record()["rejection_reason"] == "reconciled_missing"
+    assert missing_plan.fill_event is None
+
+    unchanged_plan = plan_alpaca_reconciliation_event(
+        local_event,
+        {"status": "submitted", "broker_order_id": "alpaca_missing"},
+        order_event_id="order_evt_unchanged",
+        fallback_ts=fallback_ts,
+    )
+
+    assert unchanged_plan is None
 
 
 def test_normalize_alpaca_order_request_fields_converts_crypto_order_for_trading_api() -> None:
@@ -381,6 +470,35 @@ def test_latest_alpaca_order_events_from_rows_deduplicates_newest_first_rows() -
             "created_at": "only",
         },
     ]
+
+
+def test_alpaca_order_lookup_query_and_row_normalization_are_pure() -> None:
+    duckdb_query = build_alpaca_existing_order_lookup_query(
+        "cid_1",
+        connection_module="duckdb.duckdb",
+    )
+    postgres_query = build_alpaca_existing_order_lookup_query(
+        "cid_1",
+        connection_module="psycopg.connection",
+    )
+
+    assert "client_order_id = ?" in duckdb_query.sql
+    assert "client_order_id = %s" in postgres_query.sql
+    assert duckdb_query.params == ("cid_1",)
+    assert normalize_alpaca_existing_order_row("cid_1", ("submitted", "broker_1")) == {
+        "client_order_id": "cid_1",
+        "status": "submitted",
+        "broker_order_id": "broker_1",
+    }
+    assert normalize_alpaca_existing_order_row("cid_1", None) is None
+
+
+def test_latest_alpaca_order_events_query_names_expected_projection() -> None:
+    query = build_latest_alpaca_order_events_query()
+
+    assert "SELECT client_order_id, run_id, cycle_id" in query
+    assert "FROM order_events" in query
+    assert "ORDER BY created_at DESC, order_event_id DESC" in query
 
 
 def test_alpaca_broker_idempotent_submission(tmp_path) -> None:

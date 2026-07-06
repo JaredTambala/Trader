@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Mapping, Sequence
 
 from ..config import Config
 from ..portfolio import Portfolio, Position
 from ..symbols import BrokerPositionView, find_unmatched_positions, normalize_broker_positions
+
+
+@dataclass(frozen=True)
+class CycleBrokerResponsePlan:
+    """Decision plan for one broker response inside a cycle pipeline."""
+
+    status: str
+    processed_order: Mapping[str, object] | None
+    should_sync_portfolio: bool
+    fill_ts: object | None
 
 
 def _resolve_broker_response_status(response: Mapping[str, object]) -> str:
@@ -39,6 +51,28 @@ def _build_processed_order_from_broker_response(
     if fill_price is not None:
         processed_order = {**processed_order, "price": float(fill_price)}
     return processed_order
+
+
+def _build_cycle_broker_response_plan(
+    order: Mapping[str, object],
+    response: Mapping[str, object],
+    *,
+    sync_portfolio_on_fill: bool,
+    fallback_fill_ts: datetime,
+) -> CycleBrokerResponsePlan:
+    """Build downstream cycle decisions for one broker response."""
+    status = _resolve_broker_response_status(response)
+    processed_order = _build_processed_order_from_broker_response(order, response)
+    should_sync = processed_order is not None and _should_sync_portfolio_for_broker_response(
+        status=status,
+        sync_portfolio_on_fill=sync_portfolio_on_fill,
+    )
+    return CycleBrokerResponsePlan(
+        status=status,
+        processed_order=processed_order,
+        should_sync_portfolio=should_sync,
+        fill_ts=response.get("fill_ts") or fallback_fill_ts,
+    )
 
 
 def _coerce_broker_cash(account: object) -> float:
@@ -106,6 +140,8 @@ def _build_portfolio_from_broker_payload(
 
 
 __all__ = [
+    "CycleBrokerResponsePlan",
+    "_build_cycle_broker_response_plan",
     "_build_portfolio_from_broker_payload",
     "_build_processed_order_from_broker_response",
     "_broker_position_views_to_positions",

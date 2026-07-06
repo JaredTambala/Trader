@@ -144,9 +144,12 @@ def test_portfolio_pure_modules_do_not_use_runtime_side_effects() -> None:
     assert offenders == []
 
 
-def test_runtime_metrics_core_does_not_use_runtime_side_effects() -> None:
-    """Keep runtime metrics calculations separate from the worker shell."""
-    text = (PROJECT_ROOT / "src/trader/runtime/metrics_core.py").read_text(encoding="utf-8")
+def test_runtime_pure_modules_do_not_use_runtime_side_effects() -> None:
+    """Keep runtime payload calculations separate from worker and I/O shells."""
+    pure_modules = [
+        PROJECT_ROOT / "src/trader/runtime/metrics_core.py",
+        PROJECT_ROOT / "src/trader/runtime/order_recovery.py",
+    ]
     forbidden_snippets = (
         "import logging",
         "datetime.now",
@@ -158,7 +161,12 @@ def test_runtime_metrics_core_does_not_use_runtime_side_effects() -> None:
         ".open(",
     )
 
-    offenders = [snippet for snippet in forbidden_snippets if snippet in text]
+    offenders: list[str] = []
+    for path in pure_modules:
+        text = path.read_text(encoding="utf-8")
+        for snippet in forbidden_snippets:
+            if snippet in text:
+                offenders.append(f"{path.relative_to(PROJECT_ROOT)} contains {snippet!r}")
 
     assert offenders == []
 
@@ -191,10 +199,39 @@ def test_cycle_pure_modules_do_not_use_runtime_side_effects() -> None:
         PROJECT_ROOT / "src/trader/cycle/orders.py",
         PROJECT_ROOT / "src/trader/cycle/portfolio_updates.py",
         PROJECT_ROOT / "src/trader/cycle/risk.py",
+        PROJECT_ROOT / "src/trader/cycle/stream.py",
     ]
     forbidden_snippets = (
         "import logging",
         "datetime.now",
+        "record_event(",
+        ".cursor(",
+        "connection(",
+        ".open(",
+    )
+
+    offenders: list[str] = []
+    for path in pure_modules:
+        text = path.read_text(encoding="utf-8")
+        for snippet in forbidden_snippets:
+            if snippet in text:
+                offenders.append(f"{path.relative_to(PROJECT_ROOT)} contains {snippet!r}")
+
+    assert offenders == []
+
+
+def test_broker_pure_modules_do_not_use_runtime_side_effects() -> None:
+    """Keep broker execution payload logic separate from broker adapters."""
+    pure_modules = [
+        PROJECT_ROOT / "src/trader/broker/alpaca_domain.py",
+        PROJECT_ROOT / "src/trader/broker/internal_execution.py",
+    ]
+    forbidden_snippets = (
+        "import logging",
+        "datetime.now",
+        "time.sleep",
+        "random.",
+        "uuid.",
         "record_event(",
         ".cursor(",
         "connection(",

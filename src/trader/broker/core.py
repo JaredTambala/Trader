@@ -30,6 +30,8 @@ from .alpaca_domain import (
     AlpacaReconciliationFillEvent,
     AlpacaReconciliationOrderEvent,
     AlpacaSubmissionErrorResponse,
+    build_alpaca_existing_order_lookup_query,
+    build_latest_alpaca_order_events_query,
     build_alpaca_reconciliation_fill_event,
     build_alpaca_reconciliation_order_event,
     build_alpaca_submission_error_response,
@@ -37,9 +39,11 @@ from .alpaca_domain import (
     latest_alpaca_order_events_from_rows,
     map_alpaca_status,
     normalize_alpaca_account,
+    normalize_alpaca_existing_order_row,
     normalize_alpaca_order_response,
     normalize_alpaca_order_request_fields,
     normalize_alpaca_positions,
+    plan_alpaca_reconciliation_event,
 )
 from .contracts import (
     AccountBroker,
@@ -69,7 +73,11 @@ __all__ = [
     "OrderCancelBroker",
     "OrderLookupBroker",
     "OrderReconcileBroker",
+    "build_alpaca_reconciliation_fill_event",
+    "build_alpaca_reconciliation_order_event",
+    "build_alpaca_submission_error_response",
     "ensure_alpaca_client_order_id",
+    "normalize_alpaca_order_request_fields",
 ]
 
 
@@ -329,39 +337,19 @@ class AlpacaPaperBroker(Broker):
                         exc,
                     )
                     broker_order = None
-            if not broker_order:
-                payload = build_alpaca_reconciliation_order_event(
-                    event,
-                    status="canceled",
-                    order_event_id=f"order_evt_{uuid.uuid4().hex}",
-                    created_at=datetime.now(timezone.utc),
-                    broker_order_id=event.get("broker_order_id"),
-                    rejection_reason="reconciled_missing",
-                ).to_record()
-                self._event_store.record_event("order_events", payload)
-                updates.append(payload)
-                continue
-            status = str(broker_order.get("status", ""))
-            if not status or status == event["status"]:
-                continue
-            payload = build_alpaca_reconciliation_order_event(
+            plan = plan_alpaca_reconciliation_event(
                 event,
-                status=status,
+                broker_order,
                 order_event_id=f"order_evt_{uuid.uuid4().hex}",
-                created_at=broker_order.get("fill_ts") or datetime.now(timezone.utc),
-                broker_order_id=broker_order.get("broker_order_id") or event.get("broker_order_id"),
-                rejection_reason=broker_order.get("rejection_reason"),
-            ).to_record()
+                fallback_ts=datetime.now(timezone.utc),
+            )
+            if plan is None or plan.order_event is None:
+                continue
+            payload = plan.order_event.to_record()
             self._event_store.record_event("order_events", payload)
             updates.append(payload)
-            if status in {"filled", "partially_filled"}:
-                fill_payload = build_alpaca_reconciliation_fill_event(
-                    event,
-                    broker_order,
-                    fill_ts=broker_order.get("fill_ts") or datetime.now(timezone.utc),
-                )
-                if fill_payload is not None:
-                    self._event_store.record_event("fill_events", fill_payload.to_record())
+            if plan.fill_event is not None:
+                self._event_store.record_event("fill_events", plan.fill_event.to_record())
         return updates
 
     def _with_retries(
@@ -474,29 +462,21 @@ class AlpacaPaperBroker(Broker):
         if connection is None:
             return None
         module_name = connection.__class__.__module__
-        placeholder = "?" if "duckdb" in module_name else "%s"
-        query = (
-            f"SELECT status, broker_order_id FROM order_events "
-            f"WHERE client_order_id = {placeholder} "
-            f"ORDER BY created_at DESC LIMIT 1"
+        query = build_alpaca_existing_order_lookup_query(
+            client_order_id,
+            connection_module=module_name,
         )
         try:
             if hasattr(connection, "cursor"):
                 with connection.cursor() as cursor:
-                    cursor.execute(query, [client_order_id])
+                    cursor.execute(query.sql, query.params)
                     row = cursor.fetchone()
             else:
-                row = connection.execute(query, [client_order_id]).fetchone()
+                row = connection.execute(query.sql, query.params).fetchone()
         except Exception as exc:
             self._logger.warning("Order lookup failed: %s", exc)
             return None
-        if not row:
-            return None
-        return {
-            "client_order_id": client_order_id,
-            "status": row[0],
-            "broker_order_id": row[1],
-        }
+        return normalize_alpaca_existing_order_row(client_order_id, row)
 
     def _reconcile_existing_order(
         self,
@@ -526,11 +506,7 @@ class AlpacaPaperBroker(Broker):
         connection = getattr(self._event_store, "connection", lambda: None)()
         if connection is None:
             return []
-        query = (
-            "SELECT client_order_id, run_id, cycle_id, symbol, side, qty, order_type, "
-            "status, broker_order_id, created_at "
-            "FROM order_events ORDER BY created_at DESC, order_event_id DESC"
-        )
+        query = build_latest_alpaca_order_events_query()
         try:
             if hasattr(connection, "cursor"):
                 with connection.cursor() as cursor:

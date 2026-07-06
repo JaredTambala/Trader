@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from trader.broker import InternalPaperBroker
-from trader.broker.internal import (
+from trader.broker.internal_execution import (
     InternalFeeModel,
     build_internal_fill_response,
     build_internal_rejection_response,
