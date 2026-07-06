@@ -1,14 +1,21 @@
-"""Pure snapshot records and query plans for portfolio state."""
+"""Snapshot value objects, records, and query plans for portfolio state."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Mapping, Protocol, Sequence
+from typing import TYPE_CHECKING, Mapping, Protocol, Sequence
+
+if TYPE_CHECKING:
+    from ..event_store import EventStore
 
 __all__ = [
     "PortfolioQueryPlan",
+    "PortfolioSnapshot",
+    "PortfolioSnapshotState",
     "PositionSnapshotEvent",
+    "build_cash_neutral_snapshot",
+    "build_portfolio_snapshot",
     "build_position_snapshot_events",
     "latest_cash_query_plan",
     "latest_positions_query_plan",
@@ -21,6 +28,40 @@ class PositionSnapshotInput(Protocol):
     symbol: str
     qty: float
     avg_price: float | None
+
+
+@dataclass(frozen=True)
+class PortfolioSnapshot:
+    """Portfolio state persisted as one row per position at a timestamp.
+
+    An empty portfolio is represented by a single row with `symbol=None` so cash
+    can still be reconstructed from the event store.
+    """
+
+    asof_ts: datetime
+    positions: Sequence[PositionSnapshotInput]
+    cash_balance: float
+    run_id: str | None = None
+    cycle_id: str | None = None
+    session_id: str | None = None
+
+    def persist(self, event_store: EventStore) -> None:
+        """Append this snapshot to the event store.
+
+        Prefer `persist_portfolio_snapshot(snapshot, event_store)` in new code
+        so the side effect remains explicit at the shell boundary.
+        """
+        from .persistence import persist_portfolio_snapshot
+
+        persist_portfolio_snapshot(self, event_store)
+
+
+@dataclass(frozen=True)
+class PortfolioSnapshotState:
+    """Pure input state for constructing an ordered portfolio snapshot."""
+
+    positions: Mapping[str, PositionSnapshotInput]
+    cash_balance: float
 
 
 @dataclass(frozen=True)
@@ -37,6 +78,39 @@ class PortfolioQueryPlan:
 
     query: str
     parameters: tuple[object, ...] = ()
+
+
+def build_portfolio_snapshot(
+    *,
+    state: PortfolioSnapshotState,
+    asof_ts: datetime,
+    run_id: str | None = None,
+    cycle_id: str | None = None,
+    session_id: str | None = None,
+) -> PortfolioSnapshot:
+    """Return a deterministic snapshot from explicit portfolio state."""
+    positions = tuple(state.positions[symbol] for symbol in sorted(state.positions))
+    return PortfolioSnapshot(
+        asof_ts=asof_ts,
+        positions=positions,
+        cash_balance=state.cash_balance,
+        run_id=run_id,
+        cycle_id=cycle_id,
+        session_id=session_id or run_id,
+    )
+
+
+def build_cash_neutral_snapshot(
+    *,
+    positions: Sequence[PositionSnapshotInput],
+    asof_ts: datetime,
+) -> PortfolioSnapshot:
+    """Return a cash-neutral snapshot for explicit position inputs."""
+    return PortfolioSnapshot(
+        asof_ts=asof_ts,
+        positions=tuple(positions),
+        cash_balance=0.0,
+    )
 
 
 def build_position_snapshot_events(

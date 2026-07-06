@@ -14,6 +14,7 @@ from trader.portfolio import (
     apply_portfolio_order,
     apply_portfolio_orders,
     load_latest_cash,
+    load_latest_portfolio_state,
     load_latest_positions,
 )
 
@@ -109,3 +110,6 @@ def test_portfolio_snapshot_persists_latest_positions(tmp_path: Path) -> None:
     assert positions[0].qty == 4.0
     assert positions[0].avg_price == 255.0
     assert load_latest_cash(store) == 750.0
+    state = load_latest_portfolio_state(store)
+    assert state.positions == {"MSFT": Position("MSFT", 4.0, 255.0)}
+    assert state.cash_balance == 750.0

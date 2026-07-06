@@ -20,6 +20,7 @@ from trader.backtest import (
 from trader.backtest.benchmark import (
     _allocate_buy_hold_cash,
     _compute_equity,
+    _compute_portfolio_state_equity,
     _first_price_from_bars,
 )
 from trader.backtest.results import (
@@ -61,7 +62,7 @@ from trader.backtest.trade_accounting import (
     _compute_turnover,
     _summarize_realized_trade_pnls,
 )
-from trader.portfolio import Portfolio, Position
+from trader.portfolio import Portfolio, PortfolioState, Position
 from trader.signals import Bar
 
 
@@ -130,6 +131,23 @@ def test_compute_equity_leaves_invested_pct_empty_when_equity_is_zero() -> None:
     assert valuation.net_notional == pytest.approx(-100.0)
     assert valuation.gross_notional == pytest.approx(100.0)
     assert valuation.invested_pct is None
+
+
+def test_compute_portfolio_state_equity_uses_immutable_state() -> None:
+    state = PortfolioState(
+        positions={
+            "AAPL": Position(symbol="AAPL", qty=2.0, avg_price=90.0),
+            "MSFT": Position(symbol="MSFT", qty=-1.0, avg_price=210.0),
+        },
+        cash_balance=1000.0,
+    )
+
+    valuation = _compute_portfolio_state_equity(state, {"AAPL": 100.0, "MSFT": 200.0})
+
+    assert valuation.equity == pytest.approx(1000.0)
+    assert valuation.net_notional == pytest.approx(0.0)
+    assert valuation.gross_notional == pytest.approx(400.0)
+    assert valuation.invested_pct == pytest.approx(0.4)
 
 
 def test_allocate_buy_hold_cash_adds_equal_weight_quantities_to_existing_holdings() -> None:

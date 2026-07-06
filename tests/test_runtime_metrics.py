@@ -8,11 +8,15 @@ from datetime import datetime, timezone
 import pytest
 
 from trader.portfolio import Position
+from trader.portfolio.models import PortfolioState
 from trader.runtime import (
     MetricsSample,
     build_runtime_metrics_snapshot_record,
     compute_metrics_sample,
 )
+from trader.runtime.metrics import _positions_and_cash_from_portfolio_state
+from trader.runtime.metrics import _latest_price_lookup_from_rows, _latest_price_query_plan
+from trader.runtime.metrics_core import positions_and_cash_from_broker_payload
 
 
 def test_compute_metrics_sample_values_positions_without_mutation() -> None:
@@ -114,4 +118,80 @@ def test_build_runtime_metrics_snapshot_record_serializes_payload() -> None:
         "drawdown": -0.1,
         "asset_class": "stocks",
         "symbols": ["AAPL"],
+    }
+
+
+def test_positions_and_cash_from_portfolio_state_preserves_loaded_values() -> None:
+    state = PortfolioState(
+        positions={
+            "AAPL": Position(symbol="AAPL", qty=2.0, avg_price=90.0),
+            "MSFT": Position(symbol="MSFT", qty=-1.0, avg_price=200.0),
+        },
+        cash_balance=500.0,
+    )
+
+    positions, cash = _positions_and_cash_from_portfolio_state(state)
+
+    assert positions == (
+        Position(symbol="AAPL", qty=2.0, avg_price=90.0),
+        Position(symbol="MSFT", qty=-1.0, avg_price=200.0),
+    )
+    assert cash == 500.0
+
+
+def test_positions_and_cash_from_broker_payload_normalizes_provider_values() -> None:
+    positions, cash = positions_and_cash_from_broker_payload(
+        account={"cash": "1250.50"},
+        positions_raw=(
+            {
+                "symbol": "BTCUSD",
+                "asset_class": "crypto",
+                "qty": "2",
+                "avg_entry_price": "50000",
+                "side": "long",
+            },
+            {
+                "symbol": "AAPL",
+                "asset_class": "us_equity",
+                "qty": "3",
+                "avg_entry_price": "100",
+                "side": "short",
+            },
+            {
+                "symbol": "",
+                "asset_class": "us_equity",
+                "qty": "1",
+            },
+        ),
+    )
+
+    assert positions == (
+        Position(symbol="BTC/USD", qty=2.0, avg_price=50000.0),
+        Position(symbol="AAPL", qty=-3.0, avg_price=100.0),
+    )
+    assert cash == 1250.50
+
+
+def test_latest_price_query_plan_uses_bounded_asset_class_table() -> None:
+    stock_plan = _latest_price_query_plan(asset_class="stocks", symbols=(" aapl ", "MSFT"))
+    crypto_plan = _latest_price_query_plan(asset_class="cryptocurrency", symbols=("BTC/USD",))
+
+    assert stock_plan is not None
+    assert "FROM stock_bar_events" in stock_plan.query
+    assert "symbol IN (%s, %s)" in stock_plan.query
+    assert stock_plan.parameters == ("AAPL", "MSFT")
+
+    assert crypto_plan is not None
+    assert "FROM crypto_bar_events" in crypto_plan.query
+    assert crypto_plan.parameters == ("BTC/USD",)
+
+
+def test_latest_price_query_plan_skips_empty_symbol_universe() -> None:
+    assert _latest_price_query_plan(asset_class="stocks", symbols=("", " ")) is None
+
+
+def test_latest_price_lookup_from_rows_normalizes_prices() -> None:
+    assert _latest_price_lookup_from_rows((("AAPL", "101.25"), ("MSFT", 250))) == {
+        "AAPL": 101.25,
+        "MSFT": 250.0,
     }

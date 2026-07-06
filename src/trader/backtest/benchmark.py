@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Mapping, Sequence
 
-from ..portfolio import Portfolio, Position
+from ..portfolio import Portfolio, PortfolioState, Position
 from ..signals import Bar
 
 
@@ -86,16 +86,30 @@ def _compute_equity(
     Positions without a current price are excluded from notional exposure rather
     than valued with stale or invented prices.
     """
+    return _compute_portfolio_state_equity(
+        PortfolioState(
+            positions=portfolio.positions,
+            cash_balance=portfolio.cash_balance,
+        ),
+        prices,
+    )
+
+
+def _compute_portfolio_state_equity(
+    state: PortfolioState,
+    prices: Mapping[str, float],
+) -> _PortfolioValuation:
+    """Compute valuation metrics from immutable portfolio state."""
     net_notional = 0.0
     gross_notional = 0.0
-    for symbol, position in portfolio.positions.items():
+    for symbol, position in state.positions.items():
         price = prices.get(symbol)
         if price is None:
             continue
         notional = position.qty * price
         net_notional += notional
         gross_notional += abs(notional)
-    equity = portfolio.cash_balance + net_notional
+    equity = state.cash_balance + net_notional
     invested_pct = None
     if equity != 0:
         invested_pct = gross_notional / equity

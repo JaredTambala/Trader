@@ -19,7 +19,7 @@ from ..cycle import run_cycle
 from ..event_store import EventStore, build_event_store
 from ..identifiers import deterministic_run_session_id
 from ..market_data import NoOpMarketDataSource
-from ..portfolio import Portfolio
+from ..portfolio import Portfolio, persist_portfolio_snapshot
 from ..broker import Broker
 from ..strategies.base import Strategy
 from ..risk import RiskManager
@@ -533,7 +533,7 @@ def _maybe_seed_portfolio(
         run_id=run_id,
         session_id=run_id,
     )
-    snapshot.persist(event_store)
+    persist_portfolio_snapshot(snapshot, event_store)
     logger.info("Seeded initial portfolio positions=%s cash=%s", len(seed_decision.positions), seed_decision.cash)
 
 
@@ -587,7 +587,7 @@ def _maybe_sync_portfolio_from_alpaca(
             run_id=run_id,
             session_id=run_id,
         )
-        snapshot.persist(event_store)
+        persist_portfolio_snapshot(snapshot, event_store)
         logger.info(
             "Reset local portfolio snapshot from Alpaca positions=%s cash=%s",
             len(sync_snapshot.positions),

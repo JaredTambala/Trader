@@ -10,7 +10,7 @@ from ..broker import Broker
 from ..config import Config
 from ..event_store import EventStore
 from ..market_data import MarketDataEvent
-from ..portfolio import Portfolio
+from ..portfolio import Portfolio, persist_portfolio_snapshot
 from .broker_state import _build_portfolio_from_broker_payload
 from .lifecycle import (
     CycleExecutionPlan,
@@ -100,7 +100,7 @@ def _record_post_order_portfolio_snapshot(
             cycle_id=cycle_id,
             session_id=run_id,
         )
-        snapshot.persist(event_store)
+        persist_portfolio_snapshot(snapshot, event_store)
         logger.info("Portfolio snapshot recorded (broker fills) count=%s", len(snapshot.positions))
         return
 
@@ -187,7 +187,7 @@ def _record_portfolio_snapshot(
         cycle_id=cycle_id,
         session_id=run_id,
     )
-    snapshot.persist(event_store)
+    persist_portfolio_snapshot(snapshot, event_store)
     logger.info("Portfolio snapshot recorded count=%s", len(snapshot.positions))
 
 
@@ -260,7 +260,7 @@ def _load_portfolio_from_broker(
             cycle_id=cycle_id,
             session_id=run_id,
         )
-        snapshot.persist(event_store)
+        persist_portfolio_snapshot(snapshot, event_store)
         return portfolio
     except Exception as exc:  # pragma: no cover - external dependency
         logger.error("Broker portfolio load failed: %s", exc)
@@ -300,7 +300,7 @@ def _sync_portfolio_from_broker(
         cycle_id=cycle_id,
         session_id=run_id,
     )
-    snapshot.persist(event_store)
+    persist_portfolio_snapshot(snapshot, event_store)
     logger.info(
         "Portfolio synced from broker positions=%s cash=%s reason=post_fill_sync",
         len(portfolio.positions),
@@ -338,7 +338,7 @@ def _sync_portfolio_for_broker_response(
             cycle_id=runtime.cycle_id,
             session_id=runtime.run_id,
         )
-        snapshot.persist(runtime.event_store)
+        persist_portfolio_snapshot(snapshot, runtime.event_store)
         logger.info(
             "Portfolio snapshot recorded (internal fill) count=%s",
             len(snapshot.positions),

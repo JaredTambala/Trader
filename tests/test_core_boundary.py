@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 import trader
 import trader.cycle.state as cycle_state
@@ -8,10 +9,13 @@ from trader.config import Config
 from trader.cycle import run_cycle
 from trader.event_store import NoOpEventStore
 from trader.market_data import StaticMarketDataSource, StockBarEvent
-from trader.portfolio import Portfolio
+from trader.portfolio import Portfolio, PortfolioSnapshot, Position
 from trader.risk import RiskContext, RiskManager
 from trader.strategies import Strategy
 import trader_standard
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 class RecordingEventStore(NoOpEventStore):
@@ -86,6 +90,95 @@ def test_trader_core_exports_contracts_not_standard_implementations() -> None:
     assert hasattr(trader_standard, "ToggleUnitStrategy")
     assert hasattr(trader_standard, "NoOpRiskManager")
     assert hasattr(trader_standard, "build_trend_following_strategy")
+
+
+def test_trader_root_portfolio_exports_remain_stable() -> None:
+    """Keep root portfolio exports stable after internal module splits."""
+    assert trader.Portfolio is Portfolio
+    assert trader.PortfolioSnapshot is PortfolioSnapshot
+    assert trader.Position is Position
+
+
+def test_runtime_code_uses_explicit_portfolio_snapshot_persistence() -> None:
+    """Keep portfolio snapshot writes at an explicit persistence boundary."""
+    allowed = {
+        PROJECT_ROOT / "src/trader/portfolio/snapshots.py",
+    }
+    offenders: list[str] = []
+    for path in (PROJECT_ROOT / "src/trader").rglob("*.py"):
+        if path in allowed:
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "snapshot.persist(event_store)" in text or "snapshot.persist(runtime.event_store)" in text:
+            offenders.append(str(path.relative_to(PROJECT_ROOT)))
+
+    assert offenders == []
+
+
+def test_portfolio_pure_modules_do_not_use_runtime_side_effects() -> None:
+    """Keep portfolio calculations free of clocks, logging, and I/O."""
+    pure_modules = [
+        PROJECT_ROOT / "src/trader/portfolio/models.py",
+        PROJECT_ROOT / "src/trader/portfolio/order_inputs.py",
+        PROJECT_ROOT / "src/trader/portfolio/order_math.py",
+        PROJECT_ROOT / "src/trader/portfolio/reconstruction.py",
+        PROJECT_ROOT / "src/trader/portfolio/transitions.py",
+    ]
+    forbidden_snippets = (
+        "import logging",
+        "datetime.now",
+        "os.environ",
+        "record_event(",
+        ".cursor(",
+        "connection(",
+        ".open(",
+    )
+
+    offenders: list[str] = []
+    for path in pure_modules:
+        text = path.read_text(encoding="utf-8")
+        for snippet in forbidden_snippets:
+            if snippet in text:
+                offenders.append(f"{path.relative_to(PROJECT_ROOT)} contains {snippet!r}")
+
+    assert offenders == []
+
+
+def test_runtime_metrics_core_does_not_use_runtime_side_effects() -> None:
+    """Keep runtime metrics calculations separate from the worker shell."""
+    text = (PROJECT_ROOT / "src/trader/runtime/metrics_core.py").read_text(encoding="utf-8")
+    forbidden_snippets = (
+        "import logging",
+        "datetime.now",
+        "time.sleep",
+        "threading",
+        "record_event(",
+        ".cursor(",
+        "connection(",
+        ".open(",
+    )
+
+    offenders = [snippet for snippet in forbidden_snippets if snippet in text]
+
+    assert offenders == []
+
+
+def test_backtest_portfolio_core_does_not_use_runtime_side_effects() -> None:
+    """Keep backtest portfolio calculations separate from persistence and data fetches."""
+    text = (PROJECT_ROOT / "src/trader/backtest/portfolio_core.py").read_text(encoding="utf-8")
+    forbidden_snippets = (
+        "import logging",
+        "datetime.now",
+        "record_event(",
+        ".cursor(",
+        "connection(",
+        ".open(",
+        "_fetch_",
+    )
+
+    offenders = [snippet for snippet in forbidden_snippets if snippet in text]
+
+    assert offenders == []
 
 
 def test_run_cycle_does_not_apply_hidden_open_buy_order_guard(monkeypatch) -> None:
