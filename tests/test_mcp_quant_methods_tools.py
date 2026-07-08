@@ -6,13 +6,19 @@ from pathlib import Path
 import anyio
 
 from trader_mcp.constants import (
+    KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL,
     KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
+    KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL,
+    KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL,
+    KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL,
     KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL,
     KNOWLEDGE_INGEST_DOCUMENTS_TOOL,
     KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL,
     KNOWLEDGE_REGISTER_SOURCE_TOOL,
     KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL,
     KNOWLEDGE_VALIDATE_CITATIONS_TOOL,
+    KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE_TOOL,
+    KNOWLEDGE_UPDATE_METHOD_CARD_STATUS_TOOL,
     MATH_COMPILE_KERNEL_TOOL,
     MATH_GENERATE_CPP_KERNEL_TOOL,
     MATH_LIST_METHOD_CONTRACTS_TOOL,
@@ -26,11 +32,19 @@ from trader_mcp.constants import (
     MATH_VALIDATE_METHOD_CONTRACT_TOOL,
     MCP_CONFIG_TOOL,
     REGISTERED_TOOL_NAMES,
+    RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
+    RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL,
 )
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
 from trader_agents.llm_client import StaticJsonLlmClient
 from trader_research.artifact_store import InMemoryResearchArtifactStore
+from trader_research.domain import (
+    METHODOLOGY_CANDIDATE,
+    METHODOLOGY_CANDIDATE_VALIDATION_REPORT,
+    METHODOLOGY_EVIDENCE_PACKET,
+    METHODOLOGY_FIELD_EXTRACTION_REPORT,
+)
 from trader_research.knowledge.embeddings import DeterministicEmbeddingProvider
 from trader_research.knowledge.store import JsonKnowledgeStore
 from trader_research.methods.contracts import MethodRegistryEntry, ParameterSpec
@@ -188,8 +202,14 @@ def test_mcp_quant_methods_core_evidence_flow(tmp_path: Path) -> None:
         assert config_tools[KNOWLEDGE_REGISTER_SOURCE_TOOL]["agent_owner"] == "Quantitative Methods Agent"
         assert config_tools[KNOWLEDGE_REGISTER_SOURCE_TOOL]["side_effect"] == "local_mutating"
         assert config_tools[KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL]["side_effect"] == "read_only"
+        assert config_tools[KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL]["side_effect"] == "local_mutating"
+        assert config_tools[KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL]["side_effect"] == "local_mutating"
+        assert config_tools[KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL]["side_effect"] == "local_mutating"
+        assert config_tools[KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE_TOOL]["side_effect"] == "local_mutating"
         assert config_tools[KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL]["side_effect"] == "local_mutating"
+        assert config_tools[KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL]["side_effect"] == "local_mutating"
         assert config_tools[KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL]["side_effect"] == "local_mutating"
+        assert config_tools[KNOWLEDGE_UPDATE_METHOD_CARD_STATUS_TOOL]["side_effect"] == "local_mutating"
         assert config_tools[MATH_VALIDATE_METHOD_CONTRACT_TOOL]["side_effect"] == "read_only"
         assert config_tools[MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL]["side_effect"] == "local_mutating"
         assert config_tools[MATH_RUN_INDICATOR_FIXTURES_TOOL]["side_effect"] == "local_mutating"
@@ -223,6 +243,183 @@ def test_mcp_quant_methods_core_evidence_flow(tmp_path: Path) -> None:
         assert methods.structuredContent["data"]["method_count"] >= 5
         assert valid_contract.isError is False
         assert valid_contract.structuredContent["agent_owner"] == "Quantitative Methods Agent"
+
+    anyio.run(_run)
+
+
+def test_mcp_methodology_candidate_discovery_extraction_validation_flow(tmp_path: Path) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source_dir = artifact_root / "knowledge_sources"
+    source_dir.mkdir(parents=True)
+    source = source_dir / "pairs.md"
+    source.write_text(
+        (
+            "# Pairs Trading\n\n"
+            "Pairs trading forms a spread between two related assets. The method estimates a hedge ratio "
+            "with regression and tests for cointegration and stationarity.\n\n"
+            "The spread signal enters when the z-score crosses a threshold and exits when it mean reverts.\n"
+            "The primary limitation is structural break risk when the pair relationship changes.\n"
+        ),
+        encoding="utf-8",
+    )
+    environment = replace(load_local_environment("env.template"), artifact_root=artifact_root)
+    knowledge_store = JsonKnowledgeStore(artifact_root)
+    artifact_store = InMemoryResearchArtifactStore()
+    server = create_server(
+        environment,
+        knowledge_embedding_provider=DeterministicEmbeddingProvider(),
+        knowledge_store_provider=lambda: knowledge_store,
+        research_artifact_store_provider=lambda: artifact_store,
+    )
+
+    async def _run() -> None:
+        registered = await server.call_tool(
+            KNOWLEDGE_REGISTER_SOURCE_TOOL,
+            {
+                "path": str(source),
+                "title": "Pairs Trading Source",
+                "source_type": "method_textbook",
+                "topics": ["statistical arbitrage"],
+                "method_families": ["statistical_arbitrage"],
+            },
+        )
+        source_id = registered.structuredContent["data"]["knowledge_source_manifest"]["source_id"]
+        ingested = await server.call_tool(KNOWLEDGE_INGEST_DOCUMENTS_TOOL, {"source_ids": [source_id]})
+        discovered = await server.call_tool(
+            KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL,
+            {
+                "source_ids": [source_id],
+                "method_families": ["statistical_arbitrage"],
+                "neighbor_radius": 1,
+                "max_candidates": 2,
+            },
+        )
+        candidate_ref = discovered.structuredContent["artifacts"]["methodology_candidates"][0]
+        assembled = await server.call_tool(
+            KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL,
+            {"methodology_candidate_uri": candidate_ref["uri"], "readiness_goal": "strategy_template"},
+        )
+        evidence_packet_ref = assembled.structuredContent["artifacts"]["methodology_evidence_packet"]
+        extracted = await server.call_tool(
+            KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL,
+            {"evidence_packet_uri": evidence_packet_ref["uri"]},
+        )
+        extraction_ref = extracted.structuredContent["artifacts"]["methodology_field_extraction_report"]
+        validated = await server.call_tool(
+            KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE_TOOL,
+            {"extraction_report_uri": extraction_ref["uri"]},
+        )
+        validation_ref = validated.structuredContent["artifacts"]["methodology_candidate_validation_report"]
+        rich_draft = await server.call_tool(
+            KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL,
+            {
+                "methodology_candidate_validation_uri": validation_ref["uri"],
+                "method_id": "pairs_mean_reversion",
+                "title": "Pairs Mean Reversion",
+                "family": "statistical_arbitrage",
+            },
+        )
+        rich_draft_id = rich_draft.structuredContent["data"]["method_card_draft"]["method_card_id"]
+        published = await server.call_tool(
+            KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL,
+            {
+                "draft_method_card_id": rich_draft_id,
+                "approved_method_card_id": "method_card_pairs_mean_reversion_mcp_v1",
+                "approved_by": "test",
+                "approval_note": "validated methodology candidate reviewed",
+                "approve": True,
+            },
+        )
+        strategy = await server.call_tool(
+            RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
+            {
+                "template_family": "pairs_mean_reversion",
+                "method_package_refs": [],
+                "rich_method_card_id": "method_card_pairs_mean_reversion_mcp_v1",
+                "parameters": {"lookback_period": 20, "entry_zscore": 1.5, "exit_zscore": 0.5, "max_pairs": 1},
+            },
+        )
+        strategy_manifest = strategy.structuredContent["data"]["strategy_candidate_manifest"]
+        strategy_validation = await server.call_tool(
+            RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL,
+            {"strategy_candidate_manifest": strategy_manifest},
+        )
+
+        assert registered.isError is False
+        assert ingested.isError is False
+        assert discovered.isError is False
+        assert assembled.isError is False
+        packet = assembled.structuredContent["data"]["methodology_evidence_packet"]
+        assert packet["artifact_type"] == METHODOLOGY_EVIDENCE_PACKET
+        candidate = discovered.structuredContent["data"]["methodology_candidates"][0]
+        assert candidate["artifact_type"] == METHODOLOGY_CANDIDATE
+        assert candidate_ref["uri"] == f"research://postgres/methodology_candidate/{candidate['methodology_candidate_id']}"
+        assert extracted.isError is False
+        extracted_candidate = extracted.structuredContent["data"]["methodology_candidate"]
+        assert extracted_candidate["extension_fields"]["statistical_arbitrage"]["hedge_ratio_method"]["evidence_refs"]
+        assert validated.isError is False
+        report = validated.structuredContent["data"]["methodology_candidate_validation_report"]
+        assert report["artifact_type"] == METHODOLOGY_CANDIDATE_VALIDATION_REPORT
+        assert report["status"] == "passed"
+        assert rich_draft.isError is False
+        assert rich_draft.structuredContent["data"]["method_card_draft"]["card_format"] == "rich_method_card"
+        assert published.isError is False
+        assert published.structuredContent["data"]["method_card"]["status"] == "approved"
+        assert strategy.isError is False
+        assert strategy_manifest["template_family"] == "pairs_mean_reversion"
+        assert strategy_manifest["methodology_refs"][0]["artifact_id"] == "method_card_pairs_mean_reversion_mcp_v1"
+        assert strategy_validation.isError is False
+        assert strategy_validation.structuredContent["data"]["strategy_candidate_validation_report"]["status"] == "passed"
+        artifact_types = {record.artifact_type for record in artifact_store.list_artifacts()}
+        assert {
+            METHODOLOGY_CANDIDATE,
+            METHODOLOGY_EVIDENCE_PACKET,
+            METHODOLOGY_FIELD_EXTRACTION_REPORT,
+            METHODOLOGY_CANDIDATE_VALIDATION_REPORT,
+        }.issubset(artifact_types)
+
+    anyio.run(_run)
+
+
+def test_mcp_methodology_candidate_tools_fail_without_research_artifact_store(tmp_path: Path) -> None:
+    artifact_root = tmp_path / "artifacts"
+    environment = replace(load_local_environment("env.template"), artifact_root=artifact_root)
+    knowledge_store = JsonKnowledgeStore(artifact_root)
+    server = create_server(
+        environment,
+        knowledge_embedding_provider=DeterministicEmbeddingProvider(),
+        knowledge_store_provider=lambda: knowledge_store,
+        research_artifact_store_provider=lambda: None,
+    )
+
+    async def _run() -> None:
+        discovered = await server.call_tool(
+            KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL,
+            {"query": "pairs trading"},
+        )
+        assembled = await server.call_tool(
+            KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL,
+            {"methodology_candidate_id": "methodology_candidate_missing_store"},
+        )
+        rich_draft = await server.call_tool(
+            KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL,
+            {
+                "methodology_candidate_validation_report": {
+                    "artifact_type": METHODOLOGY_CANDIDATE_VALIDATION_REPORT,
+                    "validation_id": "methodology_candidate_validation_missing_store",
+                    "methodology_candidate_id": "methodology_candidate_missing_store",
+                    "status": "passed",
+                    "valid": True,
+                }
+            },
+        )
+
+        assert discovered.isError is True
+        assert discovered.structuredContent["errors"][0]["code"] == "research_artifact_store_unavailable"
+        assert assembled.isError is True
+        assert assembled.structuredContent["errors"][0]["code"] == "research_artifact_store_unavailable"
+        assert rich_draft.isError is True
+        assert rich_draft.structuredContent["errors"][0]["message"] == "research artifact store is required"
 
     anyio.run(_run)
 

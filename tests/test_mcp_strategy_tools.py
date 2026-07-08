@@ -71,7 +71,7 @@ def test_mcp_strategy_candidate_tools_list_create_and_validate(tmp_path: Path) -
         assert config.structuredContent["data"]["research_artifact_store_runtime"]["configured"] is True
 
         assert catalog.isError is False
-        assert catalog.structuredContent["data"]["template_count"] == 4
+        assert catalog.structuredContent["data"]["template_count"] == 5
         assert created.isError is False
         assert candidate["template_family"] == "bollinger_band"
         assert candidate["strategy_source"]["runtime_contract"] == "trader.strategies.Strategy"

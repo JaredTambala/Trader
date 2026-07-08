@@ -9,7 +9,11 @@ from mcp.types import CallToolResult
 
 from trader_mcp.adapters import envelope_to_mcp_result
 from trader_mcp.constants import (
+    KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL,
     KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
+    KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL,
+    KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL,
+    KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL,
     KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL,
     KNOWLEDGE_GET_INGESTION_STATUS_TOOL,
     KNOWLEDGE_INGEST_DOCUMENTS_TOOL,
@@ -19,7 +23,9 @@ from trader_mcp.constants import (
     KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL,
     KNOWLEDGE_SEARCH_METHODS_TOOL,
     KNOWLEDGE_TOOL_DESCRIPTIONS,
+    KNOWLEDGE_UPDATE_METHOD_CARD_STATUS_TOOL,
     KNOWLEDGE_VALIDATE_CITATIONS_TOOL,
+    KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE_TOOL,
     MATH_COMPILE_KERNEL_TOOL,
     MATH_GENERATE_CPP_KERNEL_TOOL,
     MATH_GENERATE_PYTHON_METHOD_TOOL,
@@ -45,7 +51,19 @@ from trader_research.knowledge.ingestion import (
 )
 from trader_research.knowledge.method_cards import (
     create_method_card_draft as create_method_card_draft_service,
+    create_rich_method_card_draft as create_rich_method_card_draft_service,
     publish_method_card as publish_method_card_service,
+    update_method_card_status as update_method_card_status_service,
+)
+from trader_research.knowledge.methodology_candidates import (
+    discover_methodology_candidates as discover_methodology_candidates_service,
+)
+from trader_research.knowledge.evidence_assembly import (
+    assemble_methodology_evidence as assemble_methodology_evidence_service,
+)
+from trader_research.knowledge.methodology_extraction import (
+    extract_methodology_fields as extract_methodology_fields_service,
+    validate_methodology_candidate as validate_methodology_candidate_service,
 )
 from trader_research.knowledge.retrieval import (
     get_evidence_chunks as get_evidence_chunks_service,
@@ -241,6 +259,136 @@ def register_quant_methods_tools(
         return CallToolResult(**envelope_to_mcp_result(envelope))
 
     @server.tool(
+        name=KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL,
+        description=KNOWLEDGE_TOOL_DESCRIPTIONS[KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL],
+    )
+    def knowledge_discover_methodology_candidates(
+        query: str | None = None,
+        source_ids: list[str] | None = None,
+        method_families: list[str] | None = None,
+        top_k: int = 25,
+        neighbor_radius: int = 1,
+        max_candidates: int = 10,
+        approved_only: bool = True,
+    ) -> CallToolResult:
+        envelope = discover_methodology_candidates_service(
+            artifact_root=environment.artifact_root,
+            query=query,
+            source_ids=source_ids,
+            method_families=method_families,
+            top_k=top_k,
+            neighbor_radius=neighbor_radius,
+            max_candidates=max_candidates,
+            approved_only=approved_only,
+            embedding_provider=resolved_embedding_provider,
+            knowledge_store=_knowledge_store(),
+            artifact_store=_artifact_store(),
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL,
+        description=KNOWLEDGE_TOOL_DESCRIPTIONS[KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL],
+    )
+    def knowledge_assemble_methodology_evidence(
+        methodology_candidate_id: str | None = None,
+        methodology_candidate_uri: str | None = None,
+        methodology_candidate: dict[str, Any] | None = None,
+        readiness_goal: str = "descriptive",
+        neighbor_radius: int = 1,
+        max_chunks_per_role: int = 6,
+    ) -> CallToolResult:
+        envelope = assemble_methodology_evidence_service(
+            artifact_root=environment.artifact_root,
+            methodology_candidate_id=methodology_candidate_id,
+            methodology_candidate_uri=methodology_candidate_uri,
+            methodology_candidate=methodology_candidate,
+            readiness_goal=readiness_goal,
+            neighbor_radius=neighbor_radius,
+            max_chunks_per_role=max_chunks_per_role,
+            knowledge_store=_knowledge_store(),
+            artifact_store=_artifact_store(),
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL,
+        description=KNOWLEDGE_TOOL_DESCRIPTIONS[KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL],
+    )
+    def knowledge_extract_methodology_fields(
+        methodology_candidate_id: str | None = None,
+        methodology_candidate_uri: str | None = None,
+        methodology_candidate: dict[str, Any] | None = None,
+        evidence_packet_id: str | None = None,
+        evidence_packet_uri: str | None = None,
+        evidence_packet: dict[str, Any] | None = None,
+        max_chars_per_chunk: int = 4000,
+    ) -> CallToolResult:
+        envelope = extract_methodology_fields_service(
+            artifact_root=environment.artifact_root,
+            methodology_candidate_id=methodology_candidate_id,
+            methodology_candidate_uri=methodology_candidate_uri,
+            methodology_candidate=methodology_candidate,
+            evidence_packet_id=evidence_packet_id,
+            evidence_packet_uri=evidence_packet_uri,
+            evidence_packet=evidence_packet,
+            max_chars_per_chunk=max_chars_per_chunk,
+            knowledge_store=_knowledge_store(),
+            artifact_store=_artifact_store(),
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE_TOOL,
+        description=KNOWLEDGE_TOOL_DESCRIPTIONS[KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE_TOOL],
+    )
+    def knowledge_validate_methodology_candidate(
+        methodology_candidate_id: str | None = None,
+        methodology_candidate_uri: str | None = None,
+        methodology_candidate: dict[str, Any] | None = None,
+        extraction_report_id: str | None = None,
+        extraction_report_uri: str | None = None,
+    ) -> CallToolResult:
+        envelope = validate_methodology_candidate_service(
+            artifact_root=environment.artifact_root,
+            methodology_candidate_id=methodology_candidate_id,
+            methodology_candidate_uri=methodology_candidate_uri,
+            methodology_candidate=methodology_candidate,
+            extraction_report_id=extraction_report_id,
+            extraction_report_uri=extraction_report_uri,
+            knowledge_store=_knowledge_store(),
+            artifact_store=_artifact_store(),
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL,
+        description=KNOWLEDGE_TOOL_DESCRIPTIONS[KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL],
+    )
+    def knowledge_create_rich_method_card_draft(
+        methodology_candidate_validation_id: str | None = None,
+        methodology_candidate_validation_uri: str | None = None,
+        methodology_candidate_validation_report: dict[str, Any] | None = None,
+        method_id: str | None = None,
+        title: str | None = None,
+        family: str | None = None,
+        version: int = 1,
+    ) -> CallToolResult:
+        envelope = create_rich_method_card_draft_service(
+            artifact_root=environment.artifact_root,
+            methodology_candidate_validation_id=methodology_candidate_validation_id,
+            methodology_candidate_validation_uri=methodology_candidate_validation_uri,
+            methodology_candidate_validation_report=methodology_candidate_validation_report,
+            method_id=method_id,
+            title=title,
+            family=family,
+            version=version,
+            knowledge_store=_knowledge_store(),
+            artifact_store=_artifact_store(),
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
         name=KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
         description=KNOWLEDGE_TOOL_DESCRIPTIONS[KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL],
     )
@@ -288,6 +436,28 @@ def register_quant_methods_tools(
             approved_by=approved_by,
             approval_note=approval_note,
             approve=approve,
+            knowledge_store=_knowledge_store(),
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=KNOWLEDGE_UPDATE_METHOD_CARD_STATUS_TOOL,
+        description=KNOWLEDGE_TOOL_DESCRIPTIONS[KNOWLEDGE_UPDATE_METHOD_CARD_STATUS_TOOL],
+    )
+    def knowledge_update_method_card_status(
+        method_card_id: str,
+        status: str,
+        updated_by: str,
+        note: str,
+        superseded_by_method_card_id: str | None = None,
+    ) -> CallToolResult:
+        envelope = update_method_card_status_service(
+            artifact_root=environment.artifact_root,
+            method_card_id=method_card_id,
+            status=status,
+            updated_by=updated_by,
+            note=note,
+            superseded_by_method_card_id=superseded_by_method_card_id,
             knowledge_store=_knowledge_store(),
         )
         return CallToolResult(**envelope_to_mcp_result(envelope))

@@ -9,7 +9,7 @@ source of truth is `src/trader_research/agents.py`; artifact ownership is regist
 | --- | --- | --- | --- |
 | Quant Research Supervisor Agent | Coordinate research workflows and synthesize specialist-owned evidence. | Experiment plans, research suites, strategy candidates, risk-manager candidates, strategy/risk stacks, baseline and portfolio backtest refs, comparison reports, recommendation reports. | Supervisor `research_*` tools plus planned synthesis/experiment tools. |
 | Data Agent | Produce trustworthy bounded market-data manifests and quality evidence. | Symbol discovery reports, dataset manifests, data-quality reports, load result envelopes. | `mcp_health`, `mcp_get_config`, `data_discover_symbols`, `data_get_inventory`, `data_summarize_quality`, `data_ensure_loaded`. |
-| Quantitative Methods Agent | Produce auditable deterministic methods, method evidence, diagnostics, and statistical inference artifacts. | Knowledge manifests, method cards, implementation manifests, validation reports, diagnostics, multiple-testing reports, method packages, optional kernel manifests. | `mcp_health`, `mcp_get_config`, `knowledge_*`, and current `math_*` tools. |
+| Quantitative Methods Agent | Produce auditable deterministic methods, method evidence, diagnostics, and statistical inference artifacts. | Knowledge manifests, methodology candidates, methodology evidence packets, methodology extraction/validation reports, legacy projections and canonical method cards, implementation manifests, validation reports, diagnostics, multiple-testing reports, method packages, optional kernel manifests. | `mcp_health`, `mcp_get_config`, `knowledge_*`, and current `math_*` tools. |
 | ML Agent | Produce versioned feature, model, prediction, and drift artifacts. | Feature dataset manifests, model cards, prediction artifacts, drift reports. | Planned ML tools only. |
 | Hypothesis Agent | Produce explicit falsifiable strategy hypothesis cards. | Hypothesis cards. | Planned `hypothesis_create_card`. |
 | Evaluation Agent | Produce skeptical critique and performance evidence from research artifacts. | Evaluation reports. | `evaluation_generate_performance_report` and planned broader critique tooling. |
@@ -23,11 +23,24 @@ source of truth is `src/trader_research/agents.py`; artifact ownership is regist
 - The supervisor must not rewrite specialist artifacts to make a strategy look better.
 - Promotion to paper trading remains a human-reviewed proposal, not an autonomous action.
 
+## Rich Methodology Ownership
+
+- The Quantitative Methods Agent owns source registration, full-document ingestion, retrieval, methodology candidate
+  discovery, family-role evidence assembly, rich field extraction, candidate validation, rich method-card drafts, and
+  method-card publishing.
+- The Quantitative Methods Agent does not create strategies, risk managers, portfolio backtests, or Evaluation reports.
+- The Quant Research Supervisor consumes approved rich method cards as provenance for bounded maintained strategy and
+  risk templates; it does not edit candidate fields or field-level evidence.
+- The Data Agent remains the only owner of dataset manifests and quality reports. Rich method cards must not carry
+  symbols, timeframes, date windows, source filters, or load decisions.
+- The Evaluation Agent consumes backtest and risk evidence after strategy/risk candidates are validated and executed; it
+  does not approve methods or repair missing rich-field citations.
+
 ## Current Versus Planned Status
 
-Current registered MCP surfaces include Data Agent tools, Quantitative Methods knowledge/math tools, Supervisor strategy,
-risk-manager, strategy/risk stack, baseline/portfolio backtest, and comparison tools, and the first Evaluation
-performance-report tool.
+Current registered MCP surfaces include Data Agent tools, Quantitative Methods knowledge/math tools including rich
+method-card draft creation, Supervisor strategy, risk-manager, strategy/risk stack, baseline/portfolio backtest, and
+comparison tools, and the first Evaluation performance-report tool.
 
 ML, Hypothesis, Adversarial, broader Evaluation critique, attribution, recommendation synthesis, experiment running,
 and supervisor autonomy remain planned unless the MCP tool catalog marks them registered.

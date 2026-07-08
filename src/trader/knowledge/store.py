@@ -532,14 +532,26 @@ class PostgresKnowledgeRecordStore:
 
     def save_method_card(self, payload: Mapping[str, Any]) -> None:
         """Insert or update one persisted method-card payload keyed by method-card ID."""
+        validation_refs = payload.get("validation_refs")
+        validation_refs_payload = (
+            list(validation_refs)
+            if isinstance(validation_refs, Sequence) and not isinstance(validation_refs, (str, bytes))
+            else []
+        )
         self._connection.execute(
             """
-            INSERT INTO knowledge_method_cards (method_card_id, method_id, family, status, created_at, payload)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO knowledge_method_cards (
+                method_card_id, method_id, family, status, card_format,
+                source_methodology_candidate_id, validation_refs, created_at, payload
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (method_card_id) DO UPDATE SET
                 method_id = EXCLUDED.method_id,
                 family = EXCLUDED.family,
                 status = EXCLUDED.status,
+                card_format = EXCLUDED.card_format,
+                source_methodology_candidate_id = EXCLUDED.source_methodology_candidate_id,
+                validation_refs = EXCLUDED.validation_refs,
                 payload = EXCLUDED.payload
             """,
             [
@@ -547,6 +559,9 @@ class PostgresKnowledgeRecordStore:
                 payload["method_id"],
                 payload["family"],
                 payload["status"],
+                payload.get("card_format") or "method_card",
+                payload.get("source_methodology_candidate_id"),
+                Jsonb(validation_refs_payload),
                 payload["created_at"],
                 Jsonb(dict(payload)),
             ],

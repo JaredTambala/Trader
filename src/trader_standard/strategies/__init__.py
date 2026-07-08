@@ -9,6 +9,7 @@ from .policy_driven import (
     CrossSectionalMomentumStrategy,
     LongFlatSignalStrategy,
     NoOpStopPolicy,
+    PairsMeanReversionStrategy,
     SignalThresholdEntryPolicy,
     SignalThresholdExitPolicy,
     StopPolicy,
@@ -17,6 +18,7 @@ from .policy_driven import (
     build_bollinger_band_strategy,
     build_cross_sectional_momentum_strategy,
     build_mean_reversion_strategy,
+    build_pairs_mean_reversion_strategy,
     build_trend_following_strategy,
 )
 from .random import RandomStrategy
@@ -35,6 +37,7 @@ __all__ = [
     "NoOpStopPolicy",
     "FixedStopLossPolicy",
     "CrossSectionalMomentumStrategy",
+    "PairsMeanReversionStrategy",
     "TrailingStopPolicy",
     "CompositeStopPolicy",
     "SignalThresholdEntryPolicy",
@@ -42,6 +45,7 @@ __all__ = [
     "LongFlatSignalStrategy",
     "build_trend_following_strategy",
     "build_mean_reversion_strategy",
+    "build_pairs_mean_reversion_strategy",
     "build_bollinger_band_strategy",
     "build_cross_sectional_momentum_strategy",
 ]

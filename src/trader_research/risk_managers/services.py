@@ -25,7 +25,9 @@ from trader_research.contracts import (
 )
 from trader_research.artifact_store import ResearchArtifactStore, source_hash
 from trader_research.domain import (
+    METHOD_CARD,
     METHOD_PACKAGE_MANIFEST,
+    QUANTITATIVE_METHODS_OWNER,
     RISK_MANAGER_CANDIDATE,
     RISK_MANAGER_IMPLEMENTATION,
     ResearchIssue,
@@ -34,6 +36,9 @@ from trader_research.domain import (
     StrategyCandidateArtifactLink,
     stable_research_id,
 )
+from trader_research.knowledge.domain import RICH_METHOD_CARD_FORMAT, RichMethodCard
+from trader_research.knowledge.method_cards import get_rich_method_card
+from trader_research.knowledge.store import KnowledgeStore, KnowledgeStoreError
 from trader_research.method_implementations.manifest import INDICATOR_RUNTIME_CONTRACT, SIGNAL_RUNTIME_CONTRACT
 from trader_research.methods.packages import MethodPackageManifest, method_package_path
 
@@ -204,7 +209,11 @@ def create_risk_manager_candidate(
     template_family: str,
     parameters: Mapping[str, Any] | None = None,
     method_package_refs: Sequence[Mapping[str, Any]] | None = None,
+    rich_method_card_id: str | None = None,
+    rich_method_card_uri: str | None = None,
+    rich_method_card: Mapping[str, Any] | None = None,
     execution_assumptions: Mapping[str, Any] | None = None,
+    knowledge_store: KnowledgeStore | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ToolEnvelope:
     """Build and persist one bounded source-backed risk-manager candidate.
@@ -217,6 +226,10 @@ def create_risk_manager_candidate(
             `method_package_manifest` artifacts for risk-measure inputs. Each ref
             must include `role` plus exactly one of `package_id`, `path`, or
             `package_manifest`.
+        rich_method_card_id: Optional approved rich method-card ID for sourced
+            risk methodology provenance.
+        rich_method_card_uri: Optional approved rich method-card URI.
+        rich_method_card: Optional inline approved rich method-card payload.
         execution_assumptions: Optional execution-boundary assumptions.
 
     Returns:
@@ -239,7 +252,26 @@ def create_risk_manager_candidate(
         "Risk-manager candidate source implements trader.risk.RiskManager, but policy validation and portfolio "
         "backtest use are deferred to later strategy/risk stack tasks."
     ]
-    normalized_parameters = _normalize_candidate_parameters(template=template, parameters=parameters, blockers=blockers)
+    rich_card = _resolve_rich_method_card(
+        artifact_root=artifact_root,
+        rich_method_card_id=rich_method_card_id,
+        rich_method_card_uri=rich_method_card_uri,
+        rich_method_card=rich_method_card,
+        knowledge_store=knowledge_store,
+        blockers=blockers,
+    )
+    blockers.extend(_rich_risk_methodology_blockers(template, rich_card))
+    parameters_with_methodology = _parameters_with_rich_defaults(
+        template=template,
+        parameters=parameters,
+        rich_card=rich_card,
+        blockers=blockers,
+    )
+    normalized_parameters = _normalize_candidate_parameters(
+        template=template,
+        parameters=parameters_with_methodology,
+        blockers=blockers,
+    )
     resolved_packages = _resolve_method_package_refs(
         artifact_root=artifact_root,
         refs=method_package_refs or (),
@@ -256,10 +288,16 @@ def create_risk_manager_candidate(
         return _risk_manager_candidate_error(blockers=blockers, warnings=warnings, template=template)
 
     method_package_links = tuple(_method_package_link(item) for item in ordered_packages)
+    methodology_refs = (
+        (_rich_methodology_link(rich_card, knowledge_store=knowledge_store),)
+        if rich_card is not None
+        else tuple()
+    )
     candidate_id = _candidate_id(
         template=template,
         parameters=normalized_parameters,
         method_packages=ordered_packages,
+        methodology_refs=methodology_refs,
         execution_assumptions=normalized_execution_assumptions,
     )
     risk_manager_source = _write_risk_manager_source(
@@ -268,12 +306,14 @@ def create_risk_manager_candidate(
         template=template,
         parameters=normalized_parameters,
         method_package_refs=method_package_links,
+        methodology_refs=methodology_refs,
         artifact_store=artifact_store,
     )
     manifest = RiskManagerCandidateManifest(
         candidate_id=candidate_id,
         template_family=template.template_family,
         method_package_refs=method_package_links,
+        methodology_refs=methodology_refs,
         risk_manager_source=risk_manager_source,
         parameters=normalized_parameters,
         policy_intent=template.policy_intent,
@@ -437,6 +477,67 @@ def _normalize_candidate_parameters(
     return normalized
 
 
+def _parameters_with_rich_defaults(
+    *,
+    template: RiskManagerTemplate,
+    parameters: Mapping[str, Any] | None,
+    rich_card: RichMethodCard | None,
+    blockers: list[str],
+) -> Mapping[str, Any] | None:
+    if rich_card is None or template.template_family != "var_cvar_limit":
+        return parameters
+    merged = dict(parameters or {})
+    limit_field = rich_card.extension_fields.get("risk_models", {}).get("limit_thresholds")
+    limit_value = limit_field.value if limit_field is not None else None
+    if "max_var_fraction" not in merged or "max_cvar_fraction" not in merged:
+        if not isinstance(limit_value, Mapping):
+            blockers.append(
+                "var_cvar_limit rich method card limit_thresholds must provide numeric "
+                "max_var_fraction and max_cvar_fraction"
+            )
+            return merged
+        var_threshold = _rich_threshold_value(
+            limit_value,
+            "max_var_fraction",
+            "var_fraction",
+            "var",
+            "value_at_risk",
+        )
+        cvar_threshold = _rich_threshold_value(
+            limit_value,
+            "max_cvar_fraction",
+            "cvar_fraction",
+            "cvar",
+            "conditional_value_at_risk",
+        )
+        if "max_var_fraction" not in merged:
+            if var_threshold is None:
+                blockers.append("var_cvar_limit rich method card missing numeric max_var_fraction threshold")
+            else:
+                merged["max_var_fraction"] = var_threshold
+        if "max_cvar_fraction" not in merged:
+            if cvar_threshold is None:
+                blockers.append("var_cvar_limit rich method card missing numeric max_cvar_fraction threshold")
+            else:
+                merged["max_cvar_fraction"] = cvar_threshold
+    confidence_field = rich_card.extension_fields.get("risk_models", {}).get("confidence_level")
+    confidence_value = confidence_field.value if confidence_field is not None else None
+    if "confidence_level" not in merged and (confidence := _numeric_value(confidence_value)) is not None:
+        merged["confidence_level"] = confidence
+    lookback_field = rich_card.extension_fields.get("risk_models", {}).get("lookback_window")
+    lookback_value = lookback_field.value if lookback_field is not None else None
+    if "lookback_period" not in merged and (lookback := _numeric_value(lookback_value)) is not None:
+        merged["lookback_period"] = int(lookback)
+    return merged
+
+
+def _rich_threshold_value(payload: Mapping[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        if key in payload:
+            return _numeric_value(payload[key])
+    return None
+
+
 def _candidate_parameter_value(
     *,
     parameter: RiskManagerTemplateParameter,
@@ -594,6 +695,111 @@ def _validate_method_package_roles(
     return tuple(packages_by_role[role] for role in role_by_name if role in packages_by_role)
 
 
+def _resolve_rich_method_card(
+    *,
+    artifact_root: str | Path,
+    rich_method_card_id: str | None,
+    rich_method_card_uri: str | None,
+    rich_method_card: Mapping[str, Any] | None,
+    knowledge_store: KnowledgeStore | None,
+    blockers: list[str],
+) -> RichMethodCard | None:
+    supplied = [bool(rich_method_card_id), bool(rich_method_card_uri), rich_method_card is not None]
+    if sum(supplied) > 1:
+        blockers.append("provide at most one rich method-card input")
+        return None
+    if not any(supplied):
+        return None
+    if rich_method_card is not None:
+        payload = rich_method_card
+        if payload.get("card_format") != RICH_METHOD_CARD_FORMAT:
+            blockers.append("rich_method_card must have card_format=rich_method_card")
+            return None
+        try:
+            card = RichMethodCard.from_dict(payload)
+        except ValueError as exc:
+            blockers.append(str(exc))
+            return None
+    else:
+        if knowledge_store is None:
+            blockers.append("knowledge_store is required to resolve rich method-card refs")
+            return None
+        card_id = str(rich_method_card_id or "").strip()
+        if rich_method_card_uri:
+            card_id = _method_card_id_from_uri(rich_method_card_uri)
+        try:
+            card = get_rich_method_card(
+                artifact_root,
+                card_id,
+                include_drafts=True,
+                knowledge_store=knowledge_store,
+            )
+        except KnowledgeStoreError as exc:
+            blockers.append(str(exc))
+            return None
+        if card is None:
+            blockers.append(f"unknown rich method_card_id: {card_id}")
+            return None
+    if card.status != "approved":
+        blockers.append(f"rich method card must be approved: {card.method_card_id}")
+    return card
+
+
+def _method_card_id_from_uri(uri: str) -> str:
+    parts = [part for part in str(uri).strip().split("/") if part]
+    return parts[-1] if parts else ""
+
+
+def _rich_risk_methodology_blockers(template: RiskManagerTemplate, card: RichMethodCard | None) -> list[str]:
+    if card is None:
+        return []
+    blockers: list[str] = []
+    if card.family not in {"risk_models", "portfolio_construction"}:
+        blockers.append("risk-manager rich method card family must be risk_models or portfolio_construction")
+        return blockers
+    blockers.extend(_rich_card_readiness_blockers(card, "risk_manager"))
+    if template.template_family == "var_cvar_limit":
+        if card.family != "risk_models":
+            blockers.append("var_cvar_limit rich method card family must be risk_models")
+        if not _has_rich_field(card, ("extension_fields", "risk_models", "risk_measure")):
+            blockers.append("var_cvar_limit rich method card missing risk_measure evidence")
+        if not _has_rich_field(card, ("extension_fields", "risk_models", "limit_thresholds")):
+            blockers.append("var_cvar_limit rich method card missing limit_thresholds evidence")
+        return blockers
+    if not _has_rich_field(
+        card,
+        ("core_fields", "risk_validation", "risk_controls"),
+        ("extension_fields", "risk_models", "limit_thresholds"),
+        ("extension_fields", "portfolio_construction", "constraints"),
+        ("extension_fields", "portfolio_construction", "risk_budget"),
+    ):
+        blockers.append("risk-manager rich method card missing risk control or constraint evidence")
+    return blockers
+
+
+def _rich_card_readiness_blockers(card: RichMethodCard, required_level: str) -> list[str]:
+    readiness = card.lineage.get("readiness_summary") if isinstance(card.lineage, Mapping) else None
+    if not isinstance(readiness, Mapping):
+        return [f"rich method card missing {required_level} readiness_summary"]
+    level = readiness.get(required_level)
+    if not isinstance(level, Mapping):
+        return [f"rich method card missing {required_level} readiness"]
+    if str(level.get("status") or "") == "passed":
+        return []
+    missing = ", ".join(str(role) for role in level.get("missing_roles", ()))
+    suffix = f"; missing roles: {missing}" if missing else ""
+    return [f"rich method card {required_level} readiness must be passed{suffix}"]
+
+
+def _has_rich_field(card: RichMethodCard, *paths: tuple[str, str, str]) -> bool:
+    for scope, group, field_name in paths:
+        groups = card.core_fields if scope == "core_fields" else card.extension_fields
+        field = groups.get(group, {}).get(field_name)
+        if field is not None and field.value is not None and field.evidence_refs:
+            return True
+    return False
+
+
 def _method_package_blockers(
     resolved_package: _ResolvedMethodPackage,
     role_spec: Mapping[str, Any],
@@ -656,6 +862,7 @@ def _candidate_id(
     template: RiskManagerTemplate,
     parameters: Mapping[str, Any],
     method_packages: Sequence[_ResolvedMethodPackage],
+    methodology_refs: Sequence[StrategyCandidateArtifactLink],
     execution_assumptions: Mapping[str, Any],
 ) -> str:
     return stable_research_id(
@@ -670,6 +877,7 @@ def _candidate_id(
                 }
                 for item in method_packages
             ],
+            "methodology_refs": [item.to_dict() for item in methodology_refs],
             "parameters": parameters,
             "template_family": template.template_family,
         },
@@ -697,6 +905,31 @@ def _method_package_link(resolved_package: _ResolvedMethodPackage) -> StrategyCa
     )
 
 
+def _rich_methodology_link(
+    card: RichMethodCard,
+    *,
+    knowledge_store: KnowledgeStore | None,
+) -> StrategyCandidateArtifactLink:
+    ref = knowledge_store.artifact_reference(METHOD_CARD, card.method_card_id) if knowledge_store is not None else None
+    return StrategyCandidateArtifactLink(
+        artifact_id=card.method_card_id,
+        artifact_type=METHOD_CARD,
+        role="methodology",
+        uri=ref.uri if ref is not None else None,
+        path=str(ref.path) if ref is not None and ref.path is not None else None,
+        agent_owner=QUANTITATIVE_METHODS_OWNER,
+        status=card.status,
+        metadata={
+            "card_format": RICH_METHOD_CARD_FORMAT,
+            "family": card.family,
+            "method_id": card.method_id,
+            "source_methodology_candidate_id": card.source_methodology_candidate_id,
+            "validation_refs": list(card.validation_refs),
+            "readiness_summary": card.lineage.get("readiness_summary") if isinstance(card.lineage, Mapping) else None,
+        },
+    )
+
+
 def _write_risk_manager_source(
     *,
     artifact_root: str | Path,
@@ -704,6 +937,7 @@ def _write_risk_manager_source(
     template: RiskManagerTemplate,
     parameters: Mapping[str, Any],
     method_package_refs: Sequence[StrategyCandidateArtifactLink],
+    methodology_refs: Sequence[StrategyCandidateArtifactLink],
     artifact_store: ResearchArtifactStore | None,
 ) -> RiskManagerCandidateSourceRef:
     class_name = _risk_manager_class_name(template.template_family)
@@ -729,6 +963,7 @@ def _write_risk_manager_source(
                 "metadata": {
                     "candidate_id": candidate_id,
                     "method_package_refs": [item.to_dict() for item in method_package_refs],
+                    "methodology_refs": [item.to_dict() for item in methodology_refs],
                     "template_family": template.template_family,
                 },
             },
@@ -745,6 +980,7 @@ def _write_risk_manager_source(
             metadata={
                 "candidate_id": candidate_id,
                 "method_package_refs": [item.to_dict() for item in method_package_refs],
+                "methodology_refs": [item.to_dict() for item in methodology_refs],
                 "template_family": template.template_family,
             },
         )
@@ -759,6 +995,7 @@ def _write_risk_manager_source(
         metadata={
             "candidate_id": candidate_id,
             "method_package_refs": [item.to_dict() for item in method_package_refs],
+            "methodology_refs": [item.to_dict() for item in methodology_refs],
             "template_family": template.template_family,
         },
     )

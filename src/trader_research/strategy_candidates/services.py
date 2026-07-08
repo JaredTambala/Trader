@@ -24,7 +24,9 @@ from trader_research.contracts import (
 )
 from trader_research.artifact_store import ResearchArtifactStore, source_hash
 from trader_research.domain import (
+    METHOD_CARD,
     METHOD_PACKAGE_MANIFEST,
+    QUANTITATIVE_METHODS_OWNER,
     STRATEGY_CANDIDATE,
     STRATEGY_IMPLEMENTATION,
     ResearchIssue,
@@ -35,14 +37,23 @@ from trader_research.domain import (
     StrategyCandidateSourceRef,
     stable_research_id,
 )
+from trader_research.knowledge.domain import RICH_METHOD_CARD_FORMAT, RichMethodCard
+from trader_research.knowledge.method_cards import get_rich_method_card
+from trader_research.knowledge.store import KnowledgeStore, KnowledgeStoreError
 from trader_research.method_implementations.manifest import SIGNAL_RUNTIME_CONTRACT
 from trader_research.methods.packages import MethodPackageManifest, method_package_path
 
 
 RESEARCH_LIST_STRATEGY_TEMPLATES = "research_list_strategy_templates"
 RESEARCH_CREATE_STRATEGY_CANDIDATE = "research_create_strategy_candidate"
-SUPPORTED_STRATEGY_FAMILIES = ("trend_following", "mean_reversion", "bollinger_band", "cross_sectional_momentum")
-SUPPORTED_PORTFOLIO_MODES = ("single_symbol", "per_symbol_independent", "cross_sectional")
+SUPPORTED_STRATEGY_FAMILIES = (
+    "trend_following",
+    "mean_reversion",
+    "bollinger_band",
+    "cross_sectional_momentum",
+    "pairs_mean_reversion",
+)
+SUPPORTED_PORTFOLIO_MODES = ("single_symbol", "per_symbol_independent", "cross_sectional", "pairs")
 STRATEGY_RUNTIME_CONTRACT = "trader.strategies.Strategy"
 FORBIDDEN_EXECUTION_TRUE_FLAGS = frozenset(
     {"arbitrary_strategy_code_allowed", "broker_mutation_allowed", "live_trading_allowed"}
@@ -223,11 +234,15 @@ def create_strategy_candidate(
     *,
     artifact_root: str | Path,
     template_family: str,
-    method_package_refs: Sequence[Mapping[str, Any]],
+    method_package_refs: Sequence[Mapping[str, Any]] | None = None,
+    rich_method_card_id: str | None = None,
+    rich_method_card_uri: str | None = None,
+    rich_method_card: Mapping[str, Any] | None = None,
     parameters: Mapping[str, Any] | None = None,
     sizing: Mapping[str, Any] | None = None,
     risk_assumptions: Mapping[str, Any] | None = None,
     execution_assumptions: Mapping[str, Any] | None = None,
+    knowledge_store: KnowledgeStore | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ToolEnvelope:
     """Build and persist one bounded source-backed strategy candidate.
@@ -238,6 +253,10 @@ def create_strategy_candidate(
         method_package_refs: Role-bound refs to validated `method_package_manifest`
             artifacts. Each ref must include `role` plus exactly one of
             `package_id`, `path`, or `package_manifest`.
+        rich_method_card_id: Optional approved rich method-card ID for
+            methodology-backed templates.
+        rich_method_card_uri: Optional approved rich method-card URI.
+        rich_method_card: Optional inline approved rich method-card payload.
         parameters: Optional scalar template parameter overrides.
         sizing: Optional fixed-quantity sizing assumptions.
         risk_assumptions: Optional JSON-safe risk assumption overrides.
@@ -260,9 +279,19 @@ def create_strategy_candidate(
 
     blockers: list[str] = []
     warnings: list[str] = []
+    rich_card = _resolve_rich_method_card(
+        artifact_root=artifact_root,
+        rich_method_card_id=rich_method_card_id,
+        rich_method_card_uri=rich_method_card_uri,
+        rich_method_card=rich_method_card,
+        knowledge_store=knowledge_store,
+        blockers=blockers,
+    )
+    blockers.extend(_rich_methodology_blockers(template, rich_card))
     resolved_packages = _resolve_method_package_refs(
         artifact_root=artifact_root,
-        refs=method_package_refs,
+        refs=method_package_refs or (),
+        allow_empty=not template.required_artifact_roles,
         blockers=blockers,
     )
     ordered_packages = _validate_method_package_roles(template, resolved_packages, blockers)
@@ -294,12 +323,18 @@ def create_strategy_candidate(
         return _strategy_candidate_error(blockers=blockers, warnings=warnings, template=template)
 
     method_package_links = tuple(_method_package_link(item) for item in ordered_packages)
+    methodology_refs = (
+        (_rich_methodology_link(rich_card, knowledge_store=knowledge_store),)
+        if rich_card is not None
+        else tuple()
+    )
     signal_refs = tuple(
         _signal_ref(item) for item in ordered_packages if item.manifest.runtime_contract == SIGNAL_RUNTIME_CONTRACT
     )
     candidate_id = _candidate_id(
         template=template,
         method_packages=ordered_packages,
+        methodology_refs=methodology_refs,
         parameters=normalized_parameters,
         sizing=normalized_sizing,
         risk_assumptions=normalized_risk_assumptions,
@@ -312,12 +347,14 @@ def create_strategy_candidate(
         parameters=normalized_parameters,
         sizing=normalized_sizing,
         method_package_refs=method_package_links,
+        methodology_refs=methodology_refs,
         artifact_store=artifact_store,
     )
     manifest = StrategyCandidateManifest(
         candidate_id=candidate_id,
         template_family=template.template_family,
         method_package_refs=method_package_links,
+        methodology_refs=methodology_refs,
         signal_refs=signal_refs,
         strategy_source=strategy_source,
         parameters=normalized_parameters,
@@ -445,12 +482,15 @@ def _resolve_method_package_refs(
     *,
     artifact_root: str | Path,
     refs: Sequence[Mapping[str, Any]],
+    allow_empty: bool = False,
     blockers: list[str],
 ) -> tuple[_ResolvedMethodPackage, ...]:
     if isinstance(refs, Mapping) or isinstance(refs, (str, bytes)):
         blockers.append("method_package_refs must be a sequence of role-bound refs")
         return ()
     if not refs:
+        if allow_empty:
+            return ()
         blockers.append("method_package_refs are required")
         return ()
 
@@ -538,6 +578,129 @@ def _validate_method_package_roles(
         if role not in packages_by_role:
             blockers.append(f"missing required method package role: {role}")
     return tuple(packages_by_role[role] for role in required_roles if role in packages_by_role)
+
+
+def _resolve_rich_method_card(
+    *,
+    artifact_root: str | Path,
+    rich_method_card_id: str | None,
+    rich_method_card_uri: str | None,
+    rich_method_card: Mapping[str, Any] | None,
+    knowledge_store: KnowledgeStore | None,
+    blockers: list[str],
+) -> RichMethodCard | None:
+    supplied = [bool(rich_method_card_id), bool(rich_method_card_uri), rich_method_card is not None]
+    if sum(supplied) > 1:
+        blockers.append("provide at most one rich method-card input")
+        return None
+    if not any(supplied):
+        return None
+    if rich_method_card is not None:
+        payload = rich_method_card
+        if payload.get("card_format") != RICH_METHOD_CARD_FORMAT:
+            blockers.append("rich_method_card must have card_format=rich_method_card")
+            return None
+        try:
+            card = RichMethodCard.from_dict(payload)
+        except ValueError as exc:
+            blockers.append(str(exc))
+            return None
+    else:
+        if knowledge_store is None:
+            blockers.append("knowledge_store is required to resolve rich method-card refs")
+            return None
+        card_id = str(rich_method_card_id or "").strip()
+        if rich_method_card_uri:
+            card_id = _method_card_id_from_uri(rich_method_card_uri)
+        try:
+            card = get_rich_method_card(
+                artifact_root,
+                card_id,
+                include_drafts=True,
+                knowledge_store=knowledge_store,
+            )
+        except KnowledgeStoreError as exc:
+            blockers.append(str(exc))
+            return None
+        if card is None:
+            blockers.append(f"unknown rich method_card_id: {card_id}")
+            return None
+    if card.status != "approved":
+        blockers.append(f"rich method card must be approved: {card.method_card_id}")
+    return card
+
+
+def _method_card_id_from_uri(uri: str) -> str:
+    parts = [part for part in str(uri).strip().split("/") if part]
+    return parts[-1] if parts else ""
+
+
+def _rich_methodology_blockers(template: StrategyTemplate, card: RichMethodCard | None) -> list[str]:
+    blockers: list[str] = []
+    if template.template_family == "pairs_mean_reversion" and card is None:
+        return ["pairs_mean_reversion requires an approved rich statistical-arbitrage method card"]
+    if card is None:
+        return blockers
+    if card.family != "statistical_arbitrage" and template.template_family == "pairs_mean_reversion":
+        blockers.append("pairs_mean_reversion rich method card family must be statistical_arbitrage")
+    if template.template_family != "pairs_mean_reversion":
+        return blockers
+    blockers.extend(_rich_card_readiness_blockers(card, "strategy_template"))
+    required_groups = {
+        "spread_or_legs": _has_rich_field(
+            card,
+            ("extension_fields", "statistical_arbitrage", "spread_definition"),
+            ("extension_fields", "statistical_arbitrage", "leg_universe"),
+        ),
+        "relationship": _has_rich_field(
+            card,
+            ("extension_fields", "statistical_arbitrage", "cointegration_test"),
+            ("extension_fields", "statistical_arbitrage", "stationarity_test"),
+            ("extension_fields", "statistical_arbitrage", "hedge_ratio_method"),
+        ),
+        "entry_logic": _has_rich_field(
+            card,
+            ("core_fields", "signal_decision_logic", "entry_rules"),
+            ("extension_fields", "statistical_arbitrage", "entry_zscore"),
+        ),
+        "exit_logic": _has_rich_field(
+            card,
+            ("core_fields", "signal_decision_logic", "exit_rules"),
+            ("extension_fields", "statistical_arbitrage", "exit_zscore"),
+        ),
+        "price_inputs": _has_rich_field(
+            card,
+            ("core_fields", "data_requirements", "required_inputs"),
+            ("core_fields", "data_requirements", "price_fields"),
+        ),
+    }
+    for name, present in required_groups.items():
+        if not present:
+            blockers.append(f"pairs_mean_reversion rich method card missing required {name} evidence")
+    return blockers
+
+
+def _rich_card_readiness_blockers(card: RichMethodCard, required_level: str) -> list[str]:
+    readiness = card.lineage.get("readiness_summary") if isinstance(card.lineage, Mapping) else None
+    if not isinstance(readiness, Mapping):
+        return [f"rich method card missing {required_level} readiness_summary"]
+    level = readiness.get(required_level)
+    if not isinstance(level, Mapping):
+        return [f"rich method card missing {required_level} readiness"]
+    if str(level.get("status") or "") == "passed":
+        return []
+    missing = ", ".join(str(role) for role in level.get("missing_roles", ()))
+    suffix = f"; missing roles: {missing}" if missing else ""
+    return [f"rich method card {required_level} readiness must be passed{suffix}"]
+
+
+def _has_rich_field(card: RichMethodCard, *paths: tuple[str, str, str]) -> bool:
+    for scope, group, field_name in paths:
+        groups = card.core_fields if scope == "core_fields" else card.extension_fields
+        field = groups.get(group, {}).get(field_name)
+        if field is not None and field.value is not None and field.evidence_refs:
+            return True
+    return False
 
 
 def _method_package_blockers(
@@ -781,6 +944,7 @@ def _candidate_id(
     *,
     template: StrategyTemplate,
     method_packages: Sequence[_ResolvedMethodPackage],
+    methodology_refs: Sequence[StrategyCandidateArtifactLink],
     parameters: Mapping[str, Any],
     sizing: StrategyCandidateSizing,
     risk_assumptions: Sequence[StrategyCandidateRiskAssumption],
@@ -798,6 +962,7 @@ def _candidate_id(
                 }
                 for item in method_packages
             ],
+            "methodology_refs": [item.to_dict() for item in methodology_refs],
             "parameters": parameters,
             "risk_assumptions": [item.to_dict() for item in risk_assumptions],
             "sizing": sizing.to_dict(),
@@ -847,6 +1012,31 @@ def _signal_ref(resolved_package: _ResolvedMethodPackage) -> StrategyCandidateAr
     )
 
 
+def _rich_methodology_link(
+    card: RichMethodCard,
+    *,
+    knowledge_store: KnowledgeStore | None,
+) -> StrategyCandidateArtifactLink:
+    ref = knowledge_store.artifact_reference(METHOD_CARD, card.method_card_id) if knowledge_store is not None else None
+    return StrategyCandidateArtifactLink(
+        artifact_id=card.method_card_id,
+        artifact_type=METHOD_CARD,
+        role="methodology",
+        uri=ref.uri if ref is not None else None,
+        path=str(ref.path) if ref is not None and ref.path is not None else None,
+        agent_owner=QUANTITATIVE_METHODS_OWNER,
+        status=card.status,
+        metadata={
+            "card_format": RICH_METHOD_CARD_FORMAT,
+            "family": card.family,
+            "method_id": card.method_id,
+            "source_methodology_candidate_id": card.source_methodology_candidate_id,
+            "validation_refs": list(card.validation_refs),
+            "readiness_summary": card.lineage.get("readiness_summary") if isinstance(card.lineage, Mapping) else None,
+        },
+    )
+
+
 def _write_strategy_source(
     *,
     artifact_root: str | Path,
@@ -855,6 +1045,7 @@ def _write_strategy_source(
     parameters: Mapping[str, Any],
     sizing: StrategyCandidateSizing,
     method_package_refs: Sequence[StrategyCandidateArtifactLink],
+    methodology_refs: Sequence[StrategyCandidateArtifactLink],
     artifact_store: ResearchArtifactStore | None,
 ) -> StrategyCandidateSourceRef:
     class_name = _strategy_class_name(template.template_family)
@@ -882,6 +1073,7 @@ def _write_strategy_source(
                     "candidate_id": candidate_id,
                     "allocation_bounds": template.allocation_bounds,
                     "method_package_refs": [item.to_dict() for item in method_package_refs],
+                    "methodology_refs": [item.to_dict() for item in methodology_refs],
                     "portfolio_mode": template.portfolio_mode,
                     "portfolio_state_requirements": template.portfolio_state_requirements,
                     "rebalance_cadence": template.rebalance_cadence,
@@ -903,6 +1095,7 @@ def _write_strategy_source(
                 "candidate_id": candidate_id,
                 "allocation_bounds": template.allocation_bounds,
                 "method_package_refs": [item.to_dict() for item in method_package_refs],
+                "methodology_refs": [item.to_dict() for item in methodology_refs],
                 "portfolio_mode": template.portfolio_mode,
                 "portfolio_state_requirements": template.portfolio_state_requirements,
                 "rebalance_cadence": template.rebalance_cadence,
@@ -922,6 +1115,7 @@ def _write_strategy_source(
             "candidate_id": candidate_id,
             "allocation_bounds": template.allocation_bounds,
             "method_package_refs": [item.to_dict() for item in method_package_refs],
+            "methodology_refs": [item.to_dict() for item in methodology_refs],
             "portfolio_mode": template.portfolio_mode,
             "portfolio_state_requirements": template.portfolio_state_requirements,
             "rebalance_cadence": template.rebalance_cadence,
@@ -1211,27 +1405,31 @@ def _required_artifact_roles(*roles: str) -> tuple[Mapping[str, Any], ...]:
     )
 
 
-def _template_constraints() -> dict[str, Any]:
+def _template_constraints(*, shorting_allowed: bool = False) -> dict[str, Any]:
     return {
         "arbitrary_strategy_code_allowed": False,
-        "shorting_allowed": False,
+        "shorting_allowed": shorting_allowed,
         "broker_mutation_allowed": False,
         "dynamic_stop_policy_configuration": False,
     }
 
 
-def _sizing_contract() -> dict[str, Any]:
+def _sizing_contract(*, allows_short: bool = False) -> dict[str, Any]:
     return {
         "model": "fixed_quantity",
         "parameter": "target_qty_when_long",
         "default_target_qty_when_long": 1.0,
-        "allows_short": False,
+        "allows_short": allows_short,
     }
 
 
-def _risk_assumptions(*, portfolio_model: str = "single_target_quantity_per_symbol") -> dict[str, Any]:
+def _risk_assumptions(
+    *,
+    portfolio_model: str = "single_target_quantity_per_symbol",
+    position_direction: str = "long_only",
+) -> dict[str, Any]:
     return {
-        "position_direction": "long_only",
+        "position_direction": position_direction,
         "stop_policy": "not_exposed_in_v1_catalog",
         "order_type": "market",
         "portfolio_model": portfolio_model,
@@ -1258,10 +1456,14 @@ def _rebalance_cadence(value: str = "every_bar") -> dict[str, Any]:
     }
 
 
-def _allocation_bounds(*, max_positions_parameter: str | None = None) -> dict[str, Any]:
+def _allocation_bounds(
+    *,
+    max_positions_parameter: str | None = None,
+    allows_short: bool = False,
+) -> dict[str, Any]:
     payload: dict[str, Any] = {
-        "allows_short": False,
-        "min_symbol_weight": 0.0,
+        "allows_short": allows_short,
+        "min_symbol_weight": -1.0 if allows_short else 0.0,
         "max_symbol_weight": 1.0,
         "target_quantity_parameter": "target_qty_when_long",
     }
@@ -1497,10 +1699,90 @@ CROSS_SECTIONAL_MOMENTUM_TEMPLATE = StrategyTemplate(
     constraints=_template_constraints(),
 )
 
+PAIRS_MEAN_REVERSION_TEMPLATE = StrategyTemplate(
+    template_family="pairs_mean_reversion",
+    display_name="Pairs Mean Reversion",
+    description="Long/short paired-asset spread strategy that enters on z-score divergence and exits on reversion.",
+    runtime_builder_path="trader_standard.strategies:build_pairs_mean_reversion_strategy",
+    runtime_strategy_id="pairs_mean_reversion",
+    parameters=_shared_parameters()
+    + (
+        StrategyTemplateParameter(
+            name="lookback_period",
+            value_type="integer",
+            description="Number of bars used to estimate spread mean and standard deviation.",
+            default=60,
+            constraints={"minimum": 2},
+        ),
+        StrategyTemplateParameter(
+            name="entry_zscore",
+            value_type="number",
+            description="Absolute spread z-score at which a pair trade is opened.",
+            default=2.0,
+            constraints={"minimum": 0.0},
+        ),
+        StrategyTemplateParameter(
+            name="exit_zscore",
+            value_type="number",
+            description="Absolute spread z-score at or below which an open pair trade is closed.",
+            default=0.5,
+            constraints={"minimum": 0.0},
+        ),
+        StrategyTemplateParameter(
+            name="hedge_ratio",
+            value_type="number",
+            description="Fixed hedge ratio applied to the second leg in each deterministic pair.",
+            default=1.0,
+            constraints={"minimum": 0.000001},
+        ),
+        StrategyTemplateParameter(
+            name="max_pairs",
+            value_type="integer",
+            description="Maximum number of disjoint sorted symbol pairs traded from the supplied universe.",
+            default=1,
+            constraints={"minimum": 1},
+        ),
+        StrategyTemplateParameter(
+            name="pair_mode",
+            value_type="string",
+            description="Deterministic symbol pairing mode.",
+            default="disjoint_sorted",
+            constraints={"allowed_values": ["disjoint_sorted"]},
+        ),
+    ),
+    required_artifact_types=(),
+    required_artifact_roles=(),
+    entry_semantics={
+        "position_model": "long_short_pairs",
+        "direction": "long_short",
+        "order_type": "market",
+        "spread_signal": "z_score",
+        "entry_condition": "abs_zscore_at_or_above_entry_zscore",
+        "pair_mode": "disjoint_sorted",
+    },
+    exit_semantics={
+        "position_model": "long_short_pairs",
+        "order_type": "market",
+        "condition": "abs_zscore_at_or_below_exit_zscore",
+    },
+    sizing=_sizing_contract(allows_short=True),
+    risk_assumptions=_risk_assumptions(
+        portfolio_model="long_short_disjoint_pairs_fixed_quantity",
+        position_direction="long_short",
+    ),
+    backtest_context_requirements=_backtest_context_requirements(portfolio_mode="pairs"),
+    portfolio_mode="pairs",
+    rebalance_cadence=_rebalance_cadence(),
+    allocation_bounds=_allocation_bounds(max_positions_parameter="max_pairs", allows_short=True),
+    portfolio_state_requirements=_portfolio_state_requirements("positions_by_symbol", "cash_balance"),
+    constraints=_template_constraints(shorting_allowed=True),
+)
+
 STRATEGY_TEMPLATE_CATALOG = (
     TREND_FOLLOWING_TEMPLATE,
     MEAN_REVERSION_TEMPLATE,
     BOLLINGER_BAND_TEMPLATE,
     CROSS_SECTIONAL_MOMENTUM_TEMPLATE,
+    PAIRS_MEAN_REVERSION_TEMPLATE,
 )
 _TEMPLATE_BY_FAMILY = {template.template_family: template for template in STRATEGY_TEMPLATE_CATALOG}

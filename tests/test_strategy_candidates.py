@@ -17,6 +17,7 @@ from trader_research.domain import (
     StrategyCandidateSizing,
     StrategyCandidateSourceRef,
 )
+from trader_research.knowledge.domain import EvidenceBackedField, EvidenceReference, RichMethodCard
 from trader_research.method_implementations.manifest import INDICATOR_RUNTIME_CONTRACT, SIGNAL_RUNTIME_CONTRACT
 from trader_research.methods.packages import MethodPackageManifest, method_package_path
 import trader_research.suites as suites
@@ -27,6 +28,7 @@ from trader_research.strategy_candidates import (
     create_strategy_candidate,
     list_strategy_templates,
     strategy_candidate_path,
+    validate_strategy_candidate,
 )
 
 
@@ -73,7 +75,7 @@ def test_strategy_template_catalog_returns_maintained_families() -> None:
     assert payload["command"] == "research_list_strategy_templates"
     assert payload["agent_owner"] == "Quant Research Supervisor Agent"
     assert payload["side_effect"] == SideEffect.READ_ONLY.value
-    assert payload["data"]["template_count"] == 4
+    assert payload["data"]["template_count"] == len(SUPPORTED_STRATEGY_FAMILIES)
     templates = payload["data"]["templates"]
 
     assert [template["template_family"] for template in templates] == list(SUPPORTED_STRATEGY_FAMILIES)
@@ -109,7 +111,7 @@ def test_strategy_template_catalog_returns_maintained_families() -> None:
     assert parameter_by_name["ema_fast_period"]["default"] == 12
     assert parameter_by_name["ema_slow_period"]["constraints"]["must_exceed"] == "ema_fast_period"
 
-    cross_sectional = templates[-1]
+    cross_sectional = templates[-2]
     assert cross_sectional["template_family"] == "cross_sectional_momentum"
     assert cross_sectional["portfolio_mode"] == "cross_sectional"
     assert cross_sectional["runtime_builder_path"] == (
@@ -118,6 +120,16 @@ def test_strategy_template_catalog_returns_maintained_families() -> None:
     assert cross_sectional["entry_semantics"]["selection_parameter"] == "top_n"
     assert cross_sectional["allocation_bounds"]["max_positions_parameter"] == "top_n"
     cross_parameters = {parameter["name"]: parameter for parameter in cross_sectional["parameters"]}
+    pairs = templates[-1]
+    assert pairs["template_family"] == "pairs_mean_reversion"
+    assert pairs["portfolio_mode"] == "pairs"
+    assert pairs["required_artifact_roles"] == []
+    assert pairs["constraints"]["shorting_allowed"] is True
+    assert pairs["allocation_bounds"]["allows_short"] is True
+    assert pairs["runtime_builder_path"] == "trader_standard.strategies:build_pairs_mean_reversion_strategy"
+    pair_parameters = {parameter["name"]: parameter for parameter in pairs["parameters"]}
+    assert pair_parameters["lookback_period"]["default"] == 60
+    assert pair_parameters["hedge_ratio"]["constraints"]["minimum"] > 0.0
     assert cross_parameters["rebalance_cadence"]["constraints"]["allowed_values"] == ["every_bar", "daily"]
 
 
@@ -294,6 +306,111 @@ def test_create_strategy_candidate_ids_are_deterministic_for_role_order(tmp_path
         "rsi_recovery_signal",
         "sma_stretch_signal",
     ]
+
+
+def test_create_pairs_mean_reversion_strategy_from_approved_rich_card(tmp_path: Path) -> None:
+    rich_card = _approved_pairs_rich_card()
+    created = create_strategy_candidate(
+        artifact_root=tmp_path,
+        template_family="pairs_mean_reversion",
+        method_package_refs=[],
+        rich_method_card=rich_card.to_dict(),
+        parameters={"lookback_period": 20, "entry_zscore": 1.5, "exit_zscore": 0.5, "max_pairs": 1},
+        sizing={"target_qty_when_long": 1.0, "max_position_qty": 5.0},
+    ).to_dict()
+    manifest = created["data"]["strategy_candidate_manifest"]
+    validated = validate_strategy_candidate(
+        artifact_root=tmp_path,
+        strategy_candidate_manifest=manifest,
+    ).to_dict()
+
+    assert created["ok"] is True
+    assert manifest["template_family"] == "pairs_mean_reversion"
+    assert manifest["method_package_refs"] == []
+    assert manifest["methodology_refs"][0]["artifact_id"] == rich_card.method_card_id
+    assert manifest["methodology_refs"][0]["metadata"]["family"] == "statistical_arbitrage"
+    assert "symbols" not in manifest
+    assert "timeframe" not in manifest
+    assert validated["ok"] is True
+    report = validated["data"]["strategy_candidate_validation_report"]
+    assert report["status"] == "passed"
+    assert report["runtime_builder_path"] == "trader_standard.strategies:build_pairs_mean_reversion_strategy"
+
+
+def test_pairs_mean_reversion_requires_approved_rich_stat_arb_card(tmp_path: Path) -> None:
+    missing = create_strategy_candidate(
+        artifact_root=tmp_path,
+        template_family="pairs_mean_reversion",
+        method_package_refs=[],
+    ).to_dict()
+    draft_card = _approved_pairs_rich_card(status="draft")
+    draft = create_strategy_candidate(
+        artifact_root=tmp_path,
+        template_family="pairs_mean_reversion",
+        method_package_refs=[],
+        rich_method_card=draft_card.to_dict(),
+    ).to_dict()
+
+    assert missing["ok"] is False
+    assert "requires an approved rich statistical-arbitrage method card" in "\n".join(
+        missing["data"]["blockers"]
+    )
+    assert draft["ok"] is False
+    assert "rich method card must be approved" in "\n".join(draft["data"]["blockers"])
+
+
+def _approved_pairs_rich_card(*, status: str = "approved") -> RichMethodCard:
+    ref = EvidenceReference(
+        source_id="knowledge_source_pairs",
+        chunk_id="knowledge_chunk_pairs_1",
+        locator={"heading": "Pairs Trading", "page": 1},
+        claim="source supports pairs methodology",
+    )
+    field = _evidenced_field(ref)
+    return RichMethodCard(
+        method_card_id="method_card_pairs_mean_reversion_v1",
+        method_id="pairs_mean_reversion",
+        title="Pairs Mean Reversion",
+        family="statistical_arbitrage",
+        status=status,
+        assumptions=("spread relationship is mean reverting after validation",),
+        inputs=("price series for paired assets",),
+        outputs=("spread z-score signal",),
+        failure_modes=("structural break in pair relationship",),
+        evidence_refs=(ref,),
+        core_fields={
+            "data_requirements": {"required_inputs": field(("price series",))},
+            "signal_decision_logic": {
+                "entry_rules": field("enter on spread z-score divergence"),
+                "exit_rules": field("exit when spread mean reverts"),
+            },
+        },
+        extension_fields={
+            "statistical_arbitrage": {
+                "spread_definition": field("spread between related assets"),
+                "hedge_ratio_method": field("regression hedge ratio"),
+                "cointegration_test": field("cointegration test evidence"),
+                "entry_zscore": field("entry threshold"),
+                "exit_zscore": field("exit threshold"),
+            }
+        },
+        source_methodology_candidate_id="methodology_candidate_pairs",
+        validation_refs=({"artifact_type": "methodology_candidate_validation_report", "status": "passed"},),
+        lineage={
+            "readiness_summary": {
+                "family": "statistical_arbitrage",
+                "evidence_packet_id": "methodology_evidence_packet_pairs",
+                "strategy_template": {"status": "passed", "required_roles": [], "missing_roles": []},
+            }
+        },
+    )
+
+
+def _evidenced_field(ref: EvidenceReference):
+    def _factory(value: object) -> EvidenceBackedField:
+        return EvidenceBackedField(value=value, evidence_refs=(ref,))
+
+    return _factory
 
 
 def test_create_strategy_candidate_rejects_unsupported_template(tmp_path) -> None:

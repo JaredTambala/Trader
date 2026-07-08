@@ -18,6 +18,9 @@ from trader_research.domain import (
     HYPOTHESIS_CARD,
     INDICATOR_METADATA,
     METHOD_CARD,
+    METHODOLOGY_CANDIDATE,
+    METHODOLOGY_CANDIDATE_VALIDATION_REPORT,
+    METHODOLOGY_FIELD_EXTRACTION_REPORT,
     METHOD_PACKAGE_MANIFEST,
     MODEL_CARD,
     MULTIPLE_TESTING_REPORT,
@@ -117,6 +120,9 @@ def test_domain_validation_rejects_missing_bounds_and_bad_handoffs() -> None:
 def test_planned_artifact_reference_types_are_json_safe() -> None:
     refs = [
         artifact_report_ref(HYPOTHESIS_CARD, "hypothesis_demo"),
+        artifact_report_ref(METHODOLOGY_CANDIDATE, "methodology_candidate_demo"),
+        artifact_report_ref(METHODOLOGY_FIELD_EXTRACTION_REPORT, "methodology_field_extraction_demo"),
+        artifact_report_ref(METHODOLOGY_CANDIDATE_VALIDATION_REPORT, "methodology_validation_demo"),
         artifact_report_ref(METHOD_CARD, "method_card_demo"),
         artifact_report_ref(METHOD_PACKAGE_MANIFEST, "method_package_demo"),
         artifact_report_ref(EVIDENCE_RETRIEVAL_REPORT, "evidence_demo"),
@@ -144,30 +150,42 @@ def test_planned_artifact_reference_types_are_json_safe() -> None:
     ]
 
     payload = [ref.to_dict() for ref in refs]
+    owner_by_type = {item["artifact_type"]: item["agent_owner"] for item in payload}
 
-    assert payload[0]["agent_owner"] == "Hypothesis Agent"
-    assert payload[1]["agent_owner"] == "Quantitative Methods Agent"
-    assert payload[2]["agent_owner"] == "Quantitative Methods Agent"
-    assert payload[3]["agent_owner"] == "Quantitative Methods Agent"
-    assert payload[4]["agent_owner"] == "Quantitative Methods Agent"
-    assert payload[5]["agent_owner"] == "Quantitative Methods Agent"
-    assert payload[6]["agent_owner"] == "Quantitative Methods Agent"
-    assert payload[7]["agent_owner"] == "Quantitative Methods Agent"
-    assert payload[8]["agent_owner"] == "Quantitative Methods Agent"
-    assert payload[10]["agent_owner"] == "ML Agent"
-    assert payload[12]["agent_owner"] == "Quant Research Supervisor Agent"
-    assert payload[13]["agent_owner"] == "Quant Research Supervisor Agent"
-    assert payload[14]["agent_owner"] == "Quant Research Supervisor Agent"
-    assert payload[15]["agent_owner"] == "Quant Research Supervisor Agent"
-    assert payload[16]["agent_owner"] == "Quant Research Supervisor Agent"
-    assert payload[17]["agent_owner"] == "Quant Research Supervisor Agent"
-    assert payload[18]["agent_owner"] == "Quant Research Supervisor Agent"
-    assert payload[19]["agent_owner"] == "Quant Research Supervisor Agent"
-    assert payload[20]["agent_owner"] == "Quant Research Supervisor Agent"
-    assert payload[21]["agent_owner"] == "Quant Research Supervisor Agent"
-    assert payload[22]["agent_owner"] == "Quant Research Supervisor Agent"
-    assert payload[23]["agent_owner"] == "Evaluation Agent"
-    assert payload[24]["agent_owner"] == "Adversarial Agent"
+    assert owner_by_type[HYPOTHESIS_CARD] == "Hypothesis Agent"
+    for artifact_type in (
+        METHODOLOGY_CANDIDATE,
+        METHODOLOGY_FIELD_EXTRACTION_REPORT,
+        METHODOLOGY_CANDIDATE_VALIDATION_REPORT,
+        METHOD_CARD,
+        METHOD_PACKAGE_MANIFEST,
+        EVIDENCE_RETRIEVAL_REPORT,
+        CITATION_VALIDATION_REPORT,
+        SIGNAL_DIAGNOSTIC_REPORT,
+        MULTIPLE_TESTING_REPORT,
+        CXX_KERNEL_MANIFEST,
+        INDICATOR_METADATA,
+        STATISTICAL_TEST_REPORT,
+    ):
+        assert owner_by_type[artifact_type] == "Quantitative Methods Agent"
+    assert owner_by_type[FEATURE_MANIFEST] == "ML Agent"
+    assert owner_by_type[MODEL_CARD] == "ML Agent"
+    for artifact_type in (
+        STRATEGY_CANDIDATE,
+        STRATEGY_IMPLEMENTATION,
+        STRATEGY_CANDIDATE_VALIDATION_REPORT,
+        RISK_MANAGER_CANDIDATE,
+        RISK_MANAGER_IMPLEMENTATION,
+        RISK_MANAGER_CANDIDATE_VALIDATION_REPORT,
+        STRATEGY_RISK_STACK,
+        STRATEGY_RISK_STACK_VALIDATION_REPORT,
+        BACKTEST_RUN_REF,
+        PORTFOLIO_BACKTEST_RUN_REF,
+        COMPARISON_REPORT,
+    ):
+        assert owner_by_type[artifact_type] == "Quant Research Supervisor Agent"
+    assert owner_by_type[EVALUATION_REPORT] == "Evaluation Agent"
+    assert owner_by_type[ROBUSTNESS_REPORT] == "Adversarial Agent"
     json.dumps(payload)
 
 

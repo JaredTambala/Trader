@@ -118,8 +118,14 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | `knowledge_search_methods` | Quantitative Methods Agent | approved method-card search result |
 | `knowledge_retrieve_evidence` | Quantitative Methods Agent | `evidence_retrieval_report.json` with lexical/vector/combined rank diagnostics |
 | `knowledge_get_evidence_chunks` | Quantitative Methods Agent | `evidence_chunk_dereference_report.json` with bounded stored chunk text |
+| `knowledge_discover_methodology_candidates` | Quantitative Methods Agent | `research://postgres/methodology_candidate/...` refs |
+| `knowledge_assemble_methodology_evidence` | Quantitative Methods Agent | `research://postgres/methodology_evidence_packet/...` refs |
+| `knowledge_extract_methodology_fields` | Quantitative Methods Agent | `methodology_field_extraction_report` and updated `methodology_candidate` refs |
+| `knowledge_validate_methodology_candidate` | Quantitative Methods Agent | `methodology_candidate_validation_report` with readiness summary |
 | `knowledge_create_method_card_draft` | Quantitative Methods Agent | `method_card_draft.json` |
+| `knowledge_create_rich_method_card_draft` | Quantitative Methods Agent | rich `method_card_draft` payload with `card_format="rich_method_card"` |
 | `knowledge_publish_method_card` | Quantitative Methods Agent | approved `method_card.json` |
+| `knowledge_update_method_card_status` | Quantitative Methods Agent | retired `method_card.json` status update |
 | `knowledge_validate_citations` | Quantitative Methods Agent | `citation_validation_report.json` |
 | `math_list_method_contracts` | Quantitative Methods Agent | method contract catalog for indicators, transforms, statistical tests, diagnostics, and multiple-testing procedures |
 | `math_validate_method_contract` | Quantitative Methods Agent | method contract validation report |
@@ -194,8 +200,14 @@ The read-only success payload is:
 ```json
 {
   "templates": [],
-  "template_count": 3,
-  "supported_strategy_families": ["trend_following", "mean_reversion", "bollinger_band"]
+  "template_count": 5,
+  "supported_strategy_families": [
+    "trend_following",
+    "mean_reversion",
+    "bollinger_band",
+    "cross_sectional_momentum",
+    "pairs_mean_reversion"
+  ]
 }
 ```
 
@@ -203,14 +215,15 @@ Each template entry includes:
 
 - `template_family`, `display_name`, `description`, `runtime_builder_path`, and `runtime_strategy_id`.
 - `parameters` with names, JSON value types, required flags, defaults where available, and validation constraints.
-- `required_artifact_types` and `required_artifact_roles`, currently declarative `method_package_manifest` refs for
-  validated signal packages.
+- `required_artifact_types` and `required_artifact_roles`, declarative `method_package_manifest` refs for validated
+  signal packages where the maintained template requires packages.
 - `entry_semantics`, `exit_semantics`, `sizing`, `risk_assumptions`, `backtest_context_requirements`, and
   `constraints`.
 
-The public catalog exposes only maintained long/flat strategy families already backed by `trader_standard` builders:
-`trend_following`, `mean_reversion`, and `bollinger_band`. It does not dynamically import arbitrary strategy code,
-expose test helpers such as no-op strategies, or allow broker mutation.
+The public catalog exposes only maintained strategy families backed by `trader_standard` builders. Long/flat templates
+include `trend_following`, `mean_reversion`, and `bollinger_band`; multi-asset templates include
+`cross_sectional_momentum` and `pairs_mean_reversion`. It does not dynamically import arbitrary strategy code, expose
+test helpers such as no-op strategies, or allow broker mutation.
 
 `research_create_strategy_candidate` writes two coupled artifacts:
 
@@ -231,8 +244,8 @@ into the class name.
 
 The `strategy_candidate` manifest records:
 
-- `candidate_id`, `template_family`, `method_package_refs`, `signal_refs`, `strategy_source`, and template
-  `parameters`.
+- `candidate_id`, `template_family`, `method_package_refs`, optional `methodology_refs`, `signal_refs`,
+  `strategy_source`, and template `parameters`.
 - `strategy_source` with artifact type `strategy_implementation`, source path or URI, source hash, class name, factory name,
   runtime contract `trader.strategies.Strategy`, template/builder provenance, and portfolio-construction metadata.
 - Declarative `entry_semantics` and `exit_semantics`.
@@ -253,6 +266,8 @@ binds a validated strategy candidate to a data window.
 - `template_family`, which must be one of the maintained catalog families.
 - `method_package_refs`, where each item supplies a template `role` plus exactly one of `package_id`, `path`, or inline
   `package_manifest`.
+- Optional rich method-card input by exactly one of `rich_method_card_id`, `rich_method_card_uri`, or inline
+  `rich_method_card`.
 - Optional scalar `parameters`, fixed-quantity `sizing`, `risk_assumptions`, and `execution_assumptions`.
 
 Package IDs resolve from the research artifact store when configured, or from
@@ -266,6 +281,9 @@ Candidate construction fails closed before writing when:
 - A role does not reference a `method_package_manifest` with `status="validated"`, empty blockers, approved method-card
   refs, source hash, package ID, method ID, and the required runtime contract.
 - Raw `method_implementation_manifest` inputs are supplied instead of method packages.
+- A rich-card-backed template receives a draft, shallow, unapproved, missing, or family-incompatible rich method card.
+- `pairs_mean_reversion` is requested without an approved rich `statistical_arbitrage` method card carrying evidence
+  for spread or legs, relationship testing or hedge-ratio logic, entry logic, exit logic, and price/input requirements.
 - Parameter grids/lists, unknown parameters, invalid numeric bounds, or `must_exceed` violations are supplied.
 - Symbols, asset class, timeframe, start, or end are supplied as strategy parameters.
 - Fixed-quantity sizing is negative, uses an unsupported sizing model, or conflicts with `target_qty_when_long`.
@@ -337,6 +355,10 @@ Each template entry includes:
 - Optional scalar `parameters`.
 - Optional `method_package_refs`, where each item supplies a template `role` plus exactly one of `package_id`, `path`,
   or inline `package_manifest`.
+- Optional rich method-card input by exactly one of `rich_method_card_id`, `rich_method_card_uri`, or inline
+  `rich_method_card`. Approved `risk_models` or `portfolio_construction` rich cards add methodology provenance; the
+  `var_cvar_limit` template can map explicit numeric `limit_thresholds` into `max_var_fraction` and
+  `max_cvar_fraction`.
 - Optional `execution_assumptions`.
 
 Successful calls write two coupled artifacts:
@@ -356,7 +378,8 @@ the later risk-manager validation and strategy/risk stack tasks.
 
 `risk_manager_candidate_manifest.json` uses artifact type `risk_manager_candidate` and records:
 
-- `candidate_id`, `template_family`, optional `method_package_refs`, and template `parameters`.
+- `candidate_id`, `template_family`, optional `method_package_refs`, optional `methodology_refs`, and template
+  `parameters`.
 - `risk_manager_source` with artifact type `risk_manager_implementation`, source path or URI, source hash, class name,
   factory name, runtime contract `trader.risk.RiskManager`, and template provenance.
 - Declarative `policy_intent`, JSON-safe no-live-trading `execution_assumptions`, `validation_requirements`, `status`,
@@ -370,6 +393,10 @@ Candidate construction fails closed before writing when:
 - The template family is unsupported.
 - Required parameters are missing, unknown parameters are supplied, parameter grids/lists are supplied, or numeric
   bounds are violated.
+- A rich card is supplied but is a draft, shallow, unapproved, family-incompatible, or lacks the required risk-control or
+  threshold evidence for the selected template.
+- A `var_cvar_limit` rich card is expected to supply thresholds but `limit_thresholds` is prose-only or lacks numeric
+  `max_var_fraction` and `max_cvar_fraction` values.
 - A method-package role is unknown, duplicated, unresolved, or references raw `method_implementation_manifest` input
   instead of a `method_package_manifest`.
 - A method-package ref is not `status="validated"`, has blockers, lacks approved method-card refs, lacks source hash or
@@ -607,6 +634,80 @@ Knowledge-base rules:
 - Knowledge tools must not expose arbitrary filesystem access, execute code from documents, or reproduce large source
   passages in artifacts.
 
+Rich methodology schema:
+
+- `methodology_candidate` is a Quantitative Methods artifact for source-backed candidate structure before approval or
+  execution. It is not a method card, implementation, strategy, or risk manager.
+- `methodology_evidence_packet` is a Quantitative Methods artifact that records family-role evidence assembled from
+  candidate chunks before field extraction. It stores role IDs, found/missing roles, role chunk refs, source/chunk/text
+  hashes, readiness goal, and diagnostics. It is not a method card or approval.
+- Rich method cards keep the existing `method_card_draft` and `method_card` artifact types and add
+  `card_format="rich_method_card"` plus nullable rich fields, so shallow method-card search remains compatible.
+- Rich fields are grouped into common core groups: `identity`, `scope`, `data_requirements`, `method_specification`,
+  `signal_decision_logic`, `portfolio_execution`, `risk_validation`, and `implementation_notes`.
+- Domain extension blocks are nullable and closed: `technical_indicators`, `statistical_arbitrage`,
+  `options_derivatives`, `fundamental_valuation`, `sentiment_alternative_data`, `portfolio_construction`,
+  `risk_models`, and `execution_methods`.
+- Each populated field uses the same shape: `value`, `evidence_refs`, optional `confidence`, optional `quality`,
+  `warnings`, and `blockers`. Populated values require at least one field-level evidence ref. Null fields do not require
+  evidence.
+- Unsupported core groups, extension blocks, or field names fail closed at schema construction.
+- Source suitability matters. Internal notes can support operator-local context, but textbook or primary-source claims
+  for high-risk families need real textbook, paper, documentation, or comparable curated sources. The validator blocks
+  textbook/primary-source claims backed only by internal notes.
+- Rich-card fields are descriptive evidence, not executable code. They can provide provenance, defaults, and template
+  eligibility only where a maintained service explicitly supports the method family.
+
+Methodology candidate tool contracts:
+
+- `knowledge_discover_methodology_candidates` request: optional `query`, optional `source_ids`, optional
+  `method_families`, `top_k=25`, `neighbor_radius=1`, `max_candidates=10`, and `approved_only=true`. At least one of
+  `query`, `source_ids`, or `method_families` is required.
+- Discovery combines retrieval, direct source chunk scans, neighboring chunks, local text evidence, deterministic
+  grouping, and de-duplication. Source-level method families are scope hints, not automatic candidate labels. Success
+  writes `methodology_candidate` records and returns `research://postgres/...` refs. It does not create method cards,
+  implementations, strategies, or approvals.
+- `knowledge_assemble_methodology_evidence` request: exactly one of `methodology_candidate_id`,
+  `methodology_candidate_uri`, or inline `methodology_candidate`; optional `readiness_goal`, `neighbor_radius`, and
+  `max_chunks_per_role`.
+- Evidence assembly selects a family-level evidence profile, searches candidate/source chunks for role-specific
+  evidence, and writes `methodology_evidence_packet`. Role profiles are target-agnostic: they define evidence
+  categories such as definition, input data, formula, parameters, signal logic, risk controls, limitations, and
+  validation requirements, but they do not enumerate known method names. Missing required roles produce packet blockers.
+- `knowledge_extract_methodology_fields` request: exactly one candidate input or evidence-packet input
+  (`methodology_candidate_id`, `methodology_candidate_uri`, inline `methodology_candidate`, `evidence_packet_id`,
+  `evidence_packet_uri`, or inline `evidence_packet`); optional `max_chars_per_chunk`.
+- Extraction dereferences candidate chunks and, when a packet is supplied, populates only fields supported by
+  role-labeled evidence. Every populated field carries field-level source/chunk refs and role provenance in field
+  quality/claims; unrelated extension blocks remain absent/null. Success writes the updated `methodology_candidate` plus
+  `methodology_field_extraction_report`.
+- `knowledge_validate_methodology_candidate` request: exactly one candidate input or extraction-report ref
+  (`methodology_candidate_id`, `methodology_candidate_uri`, inline `methodology_candidate`, `extraction_report_id`, or
+  `extraction_report_uri`).
+- Validation checks source/chunk existence, chunk-source consistency, locator matches, closed field groups and names,
+  field-level refs, quote limits, family minimums, high-risk family evidence counts, internal-note-only textbook or
+  primary-source claims, and packet role consistency when packet lineage exists. It writes
+  `methodology_candidate_validation_report` with status `passed` or `blocked` and readiness summaries for descriptive,
+  implementation, signal, strategy-template, or risk-manager use where the family profile defines them.
+- `knowledge_create_rich_method_card_draft` request: exactly one of `methodology_candidate_validation_id`,
+  `methodology_candidate_validation_uri`, or inline `methodology_candidate_validation_report`; optional `method_id`,
+  `title`, `family`, and `version`.
+- Rich draft creation requires a packet-backed passed validation report with `valid=true`, empty blockers,
+  implementation readiness, and a loadable matching `methodology_candidate`. It revalidates source/chunk evidence,
+  derives summary fields from evidence-backed rich fields, and fails closed if assumptions, inputs, outputs, or failure
+  modes cannot be populated.
+  Success writes a rich `method_card_draft` with nullable field groups, field-level evidence refs, candidate lineage,
+  validation refs, source hashes, and chunk hashes while preserving shallow `MethodCard` projection compatibility.
+- `knowledge_publish_method_card` preserves rich payloads when publishing rich drafts. Approved rich cards remain visible
+  to existing shallow method-card search, citation validation, method contracts, implementation registration, and method
+  packaging through their shallow projection.
+- Approved rich cards can also become `methodology_refs` on strategy and risk-manager candidates. A maintained template
+  decides which readiness gate and rich fields are required and whether structured numeric values may be mapped into
+  parameters. Missing readiness, missing rich fields, draft cards, shallow cards, unapproved cards, incompatible
+  families, and prose-only numeric limits block candidate generation rather than being inferred.
+- These tools are DB-first `local_mutating` tools. MCP requires a configured research artifact store and fails closed
+  with `research_artifact_store_unavailable` when canonical DB persistence is unavailable.
+
 `knowledge_get_evidence_chunks` contract:
 
 - Request: `chunk_ids: list[str]` required, maximum 25; optional `source_id`; `include_text: bool = true`;
@@ -624,7 +725,8 @@ Knowledge-base rules:
   `evidence_refs`; optional `version`.
 - Evidence refs must include at least one source or chunk reference and pass citation validation with
   `require_approved_method_card=false`.
-- Success data contains `method_card_draft`; draft cards are persisted but excluded from default approved method search.
+- Success data contains a legacy/projection `method_card_draft`; draft cards are persisted but excluded from default
+  approved method search and are not sufficient for canonical rich-methodology readiness.
 
 `knowledge_publish_method_card` contract:
 
@@ -632,6 +734,16 @@ Knowledge-base rules:
 - Publishing preserves the draft and creates a separate approved `method_card` with approval provenance.
 - Re-publishing the same approved card is idempotent only when the persisted content matches; conflicting content fails
   closed.
+
+`knowledge_update_method_card_status` contract:
+
+- Request: `method_card_id`, `status`, `updated_by`, `note`, and optional `superseded_by_method_card_id`.
+- `status` is limited to `rejected` or `superseded`; the tool cannot approve cards or bypass
+  `knowledge_publish_method_card`.
+- `superseded_by_method_card_id` is required when `status="superseded"`.
+- The target must be a persisted method card. Seeded cards are not retired by this tool.
+- Success updates the stored method-card payload through the configured knowledge store, preserves lifecycle audit
+  metadata, and hides the retired card from normal method-card search and approved-card checks.
 
 `math_register_method_implementation` contract:
 

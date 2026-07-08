@@ -14,6 +14,10 @@ from trader_research.artifact_store import (
 from trader_research.domain import (
     BACKTEST_RUN_REF,
     EVALUATION_REPORT,
+    METHODOLOGY_CANDIDATE,
+    METHODOLOGY_CANDIDATE_VALIDATION_REPORT,
+    METHODOLOGY_EVIDENCE_PACKET,
+    METHODOLOGY_FIELD_EXTRACTION_REPORT,
     PORTFOLIO_BACKTEST_RUN_REF,
     RISK_MANAGER_CANDIDATE,
     RISK_MANAGER_CANDIDATE_VALIDATION_REPORT,
@@ -55,6 +59,46 @@ RESEARCH_ARTIFACT_SCHEMA_STATEMENTS: tuple[str, ...] = (
         template_family TEXT NOT NULL,
         status TEXT,
         source_hash TEXT,
+        payload JSONB NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS research_methodology_candidates (
+        candidate_id TEXT PRIMARY KEY,
+        status TEXT,
+        families TEXT[] NOT NULL DEFAULT '{}',
+        source_ids TEXT[] NOT NULL DEFAULT '{}',
+        chunk_ids TEXT[] NOT NULL DEFAULT '{}',
+        payload JSONB NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS research_methodology_field_extractions (
+        extraction_id TEXT PRIMARY KEY,
+        candidate_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        populated_field_count INTEGER NOT NULL DEFAULT 0,
+        payload JSONB NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS research_methodology_evidence_packets (
+        evidence_packet_id TEXT PRIMARY KEY,
+        candidate_id TEXT NOT NULL,
+        family TEXT NOT NULL,
+        readiness_goal TEXT NOT NULL,
+        status TEXT NOT NULL,
+        source_ids TEXT[] NOT NULL DEFAULT '{}',
+        chunk_ids TEXT[] NOT NULL DEFAULT '{}',
+        missing_roles TEXT[] NOT NULL DEFAULT '{}',
+        payload JSONB NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS research_methodology_validations (
+        validation_id TEXT PRIMARY KEY,
+        candidate_id TEXT NOT NULL,
+        status TEXT NOT NULL,
         payload JSONB NOT NULL
     )
     """,
@@ -131,6 +175,10 @@ RESEARCH_ARTIFACT_SCHEMA_STATEMENTS: tuple[str, ...] = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS research_artifacts_type_status_idx ON research_artifacts(artifact_type, status)",
+    (
+        "CREATE INDEX IF NOT EXISTS research_methodology_candidates_status_idx "
+        "ON research_methodology_candidates(status)"
+    ),
     "CREATE INDEX IF NOT EXISTS research_backtest_runs_kind_status_idx ON research_backtest_runs(backtest_kind, status)",
 )
 
@@ -312,7 +360,96 @@ class PostgresResearchArtifactStore:
     def _save_projection(self, record: ResearchArtifactRecord) -> None:
         payload = dict(record.payload)
         artifact_type = record.artifact_type
-        if artifact_type == STRATEGY_CANDIDATE:
+        if artifact_type == METHODOLOGY_CANDIDATE:
+            self._connection.execute(
+                """
+                INSERT INTO research_methodology_candidates (candidate_id, status, families, source_ids, chunk_ids, payload)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (candidate_id) DO UPDATE SET
+                    status = EXCLUDED.status,
+                    families = EXCLUDED.families,
+                    source_ids = EXCLUDED.source_ids,
+                    chunk_ids = EXCLUDED.chunk_ids,
+                    payload = EXCLUDED.payload
+                """,
+                [
+                    record.artifact_id,
+                    payload.get("status") or record.status,
+                    [str(item) for item in payload.get("families", [])],
+                    [str(item) for item in payload.get("source_ids", [])],
+                    [str(item) for item in payload.get("chunk_ids", [])],
+                    Jsonb(payload),
+                ],
+            )
+        elif artifact_type == METHODOLOGY_FIELD_EXTRACTION_REPORT:
+            self._connection.execute(
+                """
+                INSERT INTO research_methodology_field_extractions (
+                    extraction_id, candidate_id, status, populated_field_count, payload
+                )
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (extraction_id) DO UPDATE SET
+                    candidate_id = EXCLUDED.candidate_id,
+                    status = EXCLUDED.status,
+                    populated_field_count = EXCLUDED.populated_field_count,
+                    payload = EXCLUDED.payload
+                """,
+                [
+                    record.artifact_id,
+                    payload.get("methodology_candidate_id"),
+                    payload.get("status") or record.status,
+                    int(payload.get("populated_field_count") or 0),
+                    Jsonb(payload),
+                ],
+            )
+        elif artifact_type == METHODOLOGY_EVIDENCE_PACKET:
+            self._connection.execute(
+                """
+                INSERT INTO research_methodology_evidence_packets (
+                    evidence_packet_id, candidate_id, family, readiness_goal, status,
+                    source_ids, chunk_ids, missing_roles, payload
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (evidence_packet_id) DO UPDATE SET
+                    candidate_id = EXCLUDED.candidate_id,
+                    family = EXCLUDED.family,
+                    readiness_goal = EXCLUDED.readiness_goal,
+                    status = EXCLUDED.status,
+                    source_ids = EXCLUDED.source_ids,
+                    chunk_ids = EXCLUDED.chunk_ids,
+                    missing_roles = EXCLUDED.missing_roles,
+                    payload = EXCLUDED.payload
+                """,
+                [
+                    record.artifact_id,
+                    payload.get("methodology_candidate_id"),
+                    payload.get("family"),
+                    payload.get("readiness_goal"),
+                    payload.get("status") or record.status,
+                    [str(item) for item in payload.get("source_ids", [])],
+                    [str(item) for item in payload.get("chunk_ids", [])],
+                    [str(item) for item in payload.get("missing_roles", [])],
+                    Jsonb(payload),
+                ],
+            )
+        elif artifact_type == METHODOLOGY_CANDIDATE_VALIDATION_REPORT:
+            self._connection.execute(
+                """
+                INSERT INTO research_methodology_validations (validation_id, candidate_id, status, payload)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (validation_id) DO UPDATE SET
+                    candidate_id = EXCLUDED.candidate_id,
+                    status = EXCLUDED.status,
+                    payload = EXCLUDED.payload
+                """,
+                [
+                    record.artifact_id,
+                    payload.get("methodology_candidate_id"),
+                    payload.get("status") or record.status,
+                    Jsonb(payload),
+                ],
+            )
+        elif artifact_type == STRATEGY_CANDIDATE:
             self._connection.execute(
                 """
                 INSERT INTO research_strategy_candidates (candidate_id, template_family, status, source_hash, payload)

@@ -37,8 +37,35 @@ configuration. Runtime failures belong inside the affected tool envelope.
 Quantitative Methods knowledge tools expect a configured knowledge store for production use. Postgres-backed knowledge
 storage is the normal runtime path; tests may inject compatibility stores.
 
+`knowledge_assemble_methodology_evidence` and `knowledge_create_rich_method_card_draft` require both the knowledge store
+and the research artifact store. Evidence assembly loads a methodology candidate, applies the family evidence profile,
+and writes a role-labeled `methodology_evidence_packet` research artifact. Rich draft creation loads a passed
+methodology-candidate validation report from structured research artifacts, revalidates source/chunk evidence in the
+knowledge store, and writes the rich method-card draft back through the knowledge-store method-card path.
+
+## Rich Methodology Operating Checklist
+
+For source-to-method work, verify these conditions before expecting strategy evidence:
+
+- Registering a source is only a reference step. Run full-document ingestion and check ingestion status before using
+  retrieval or source-scoped methodology discovery.
+- Use source IDs for exhaustive discovery over a known book or paper, and use retrieval queries for semantic search
+  across the indexed knowledge base.
+- Dereference evidence chunks when reviewing a candidate. Chunk IDs, locators, and text hashes are the audit trail; do
+  not treat retrieval excerpts as the canonical source record.
+- Assemble role-labeled evidence before expecting rich extraction quality. The packet records found and missing family
+  roles and explains whether the source supports descriptive, implementation, signal, strategy, or risk readiness.
+- Treat null rich fields as expected when the source does not support them. Do not fill missing parameters, thresholds,
+  or assumptions from memory.
+- A blocked methodology validation report should be fixed at the source/evidence level: ingest the correct source,
+  discover a wider candidate span, or accept that the method is not sufficiently evidenced.
+- Publish rich drafts only after reviewer approval. Draft cards are review artifacts and should not be used as approved
+  method evidence.
+- For strategy/risk generation, prefer explicit rich-card IDs or refs over inline payloads in operator workflows so the
+  DB lineage remains visible in pgAdmin and downstream artifact refs.
+
 MCP research artifact persistence is DB-first. When `TRADER_MCP_TRADER_CONFIG_PATH` points at a Postgres-backed Trader
-config, mutating method, strategy, risk-manager, portfolio-backtest, and evaluation tools store canonical artifacts in
+config, mutating methodology, method, strategy, risk-manager, portfolio-backtest, and evaluation tools store canonical artifacts in
 the structured research artifact tables and return `research://postgres/{artifact_type}/{artifact_id}` refs. If no
 research artifact store is configured, those mutating MCP paths fail closed instead of silently creating canonical
 filesystem artifacts. The filesystem `artifact_root` remains available for legacy direct-service exports and backtest

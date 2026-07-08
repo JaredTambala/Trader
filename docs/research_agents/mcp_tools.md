@@ -48,8 +48,14 @@ MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded 
 | `knowledge_search_methods` | `read_only` | Approved method-card search results. |
 | `knowledge_retrieve_evidence` | `read_only` | Evidence retrieval report with lexical/vector metadata. |
 | `knowledge_get_evidence_chunks` | `read_only` | Bounded dereferenced evidence chunk text. |
+| `knowledge_discover_methodology_candidates` | `local_mutating` | DB-backed methodology candidate refs. |
+| `knowledge_assemble_methodology_evidence` | `local_mutating` | DB-backed role-labeled methodology evidence packet. |
+| `knowledge_extract_methodology_fields` | `local_mutating` | DB-backed methodology field-extraction report. |
+| `knowledge_validate_methodology_candidate` | `local_mutating` | DB-backed methodology candidate validation report. |
 | `knowledge_create_method_card_draft` | `local_mutating` | Draft method card. |
+| `knowledge_create_rich_method_card_draft` | `local_mutating` | DB-backed rich method-card draft preserving field-level methodology evidence. |
 | `knowledge_publish_method_card` | `local_mutating` | Approved method card. |
+| `knowledge_update_method_card_status` | `local_mutating` | Retired method-card status update. |
 | `knowledge_validate_citations` | `read_only` | Citation validation report. |
 | `math_list_method_contracts` | `read_only` | Maintained method contract catalog. |
 | `math_validate_method_contract` | `read_only` | Method contract validation result. |
@@ -65,19 +71,28 @@ MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded 
 
 Quantitative Methods tools do not fetch market data, create strategies, run backtests, or promote strategies.
 
+Rich methodology work uses the knowledge tool family as a staged review path: register a source reference, ingest and
+index the whole document, retrieve or scan source chunks, discover methodology candidates, assemble family-role evidence
+packets, extract nullable rich fields, validate field-level citations and readiness, create a rich draft card, and
+publish only after explicit approval. Candidate, evidence-packet, extraction, and validation artifacts are
+research-artifact-store records; rich method-card payloads are knowledge-store method-card records with shallow
+projections for existing method-card consumers. Persisted method cards can be marked `rejected` or `superseded` through
+the lifecycle status tool; retired records remain auditable in storage but are hidden from normal method search and
+approved-card checks.
+
 ## Quant Research Supervisor Tools
 
 | Tool | Side effect | Primary output | Notes |
 | --- | --- | --- | --- |
 | `research_list_strategy_templates` | `read_only` | Strategy template catalog. | Maintained template metadata only. |
-| `research_create_strategy_candidate` | `local_mutating` | Strategy candidate manifest and generated source refs. | Consumes validated signal method packages. |
+| `research_create_strategy_candidate` | `local_mutating` | Strategy candidate manifest and generated source refs. | Consumes validated signal method packages or, for bounded maintained templates such as `pairs_mean_reversion`, approved rich method cards. |
 | `research_validate_strategy_candidate` | `local_mutating` | Strategy candidate validation report. | Runs deterministic source/runtime smoke validation. |
 | `research_run_backtest` | `local_mutating` | Backtest run bundle and `backtest_run_ref`. | Execution requires `TRADER_MCP_ALLOW_BACKTESTS=true`. |
 | `research_run_portfolio_backtest` | `local_mutating` | Structured portfolio bundle and `portfolio_backtest_run_ref`. | Requires a passed strategy/risk stack validation report, configured research artifact store, and `TRADER_MCP_ALLOW_BACKTESTS=true`. |
 | `research_get_backtest_results` | `read_only` | Backtest result summary and artifact paths. | Reads persisted run bundles only. |
 | `research_compare_backtest_results` | `local_mutating` | `comparison_report`. | Compares explicit persisted run refs; does not execute backtests. |
 | `research_list_risk_manager_templates` | `read_only` | Risk-manager template catalog. | Generation targets for backtest-only risk managers. |
-| `research_create_risk_manager_candidate` | `local_mutating` | Risk-manager candidate manifest and generated source refs. | Backtest-only source artifact. |
+| `research_create_risk_manager_candidate` | `local_mutating` | Risk-manager candidate manifest and generated source refs. | Backtest-only source artifact; approved rich risk cards may supply explicit threshold provenance. |
 | `research_validate_risk_manager_candidate` | `local_mutating` | Risk-manager candidate validation report. | Runs deterministic source/runtime smoke validation. |
 | `research_create_strategy_risk_stack` | `local_mutating` | Strategy/risk stack manifest. | Requires passed strategy and risk-manager validation reports. |
 | `research_validate_strategy_risk_stack` | `local_mutating` | Strategy/risk stack validation report. | Runs deterministic multi-asset fixture validation before portfolio backtests. |

@@ -9,7 +9,14 @@ from typing import Any, Mapping, Protocol, Sequence
 from trader_research.contracts import ArtifactReference
 from trader_research.methods.contracts import MethodRegistryEntry
 
-from .domain import KnowledgeChunk, KnowledgeEmbeddingManifest, KnowledgeIngestionReport, KnowledgeSourceManifest, MethodCard
+from .domain import (
+    KnowledgeChunk,
+    KnowledgeEmbeddingManifest,
+    KnowledgeIngestionReport,
+    KnowledgeSourceManifest,
+    MethodCard,
+    RichMethodCard,
+)
 from .embeddings import TOKEN_PATTERN, cosine_similarity
 from .storage import KnowledgeRepository
 
@@ -144,6 +151,12 @@ class KnowledgeStore(Protocol):
 
     def list_persisted_method_cards(self) -> tuple[MethodCard, ...]:
         """List method cards persisted outside the seeded in-memory catalog for merging."""
+
+    def save_rich_method_card(self, method_card: RichMethodCard) -> None:
+        """Persist a rich method-card payload while preserving shallow method-card compatibility."""
+
+    def list_persisted_rich_method_cards(self) -> tuple[RichMethodCard, ...]:
+        """List persisted rich method cards with full nullable methodology fields."""
 
     def save_method_contract(self, method: MethodRegistryEntry) -> None:
         """Persist a method contract using its maintained method identifier for registry lookup."""
@@ -386,6 +399,14 @@ class JsonKnowledgeStore:
     def list_persisted_method_cards(self) -> tuple[MethodCard, ...]:
         """List method cards stored as local JSON artifacts for catalog merging."""
         return self.repository.list_persisted_method_cards()
+
+    def save_rich_method_card(self, method_card: RichMethodCard) -> None:
+        """Persist a rich method card through the local JSON repository backend."""
+        self.repository.save_rich_method_card(method_card)
+
+    def list_persisted_rich_method_cards(self) -> tuple[RichMethodCard, ...]:
+        """List rich method cards stored as local JSON artifacts."""
+        return self.repository.list_persisted_rich_method_cards()
 
     def save_method_contract(self, method: MethodRegistryEntry) -> None:
         """Persist a method contract through the local JSON repository backend for lookup."""

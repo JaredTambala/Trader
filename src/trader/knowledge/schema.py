@@ -88,10 +88,16 @@ KNOWLEDGE_SCHEMA_STATEMENTS = (
         method_id TEXT NOT NULL,
         family TEXT NOT NULL,
         status TEXT NOT NULL,
+        card_format TEXT NOT NULL DEFAULT 'method_card',
+        source_methodology_candidate_id TEXT,
+        validation_refs JSONB NOT NULL DEFAULT '[]'::jsonb,
         created_at TIMESTAMPTZ NOT NULL,
         payload JSONB NOT NULL
     )
     """,
+    "ALTER TABLE knowledge_method_cards ADD COLUMN IF NOT EXISTS card_format TEXT NOT NULL DEFAULT 'method_card'",
+    "ALTER TABLE knowledge_method_cards ADD COLUMN IF NOT EXISTS source_methodology_candidate_id TEXT",
+    "ALTER TABLE knowledge_method_cards ADD COLUMN IF NOT EXISTS validation_refs JSONB NOT NULL DEFAULT '[]'::jsonb",
     """
     CREATE TABLE IF NOT EXISTS knowledge_method_contracts (
         method_id TEXT PRIMARY KEY,
@@ -110,5 +116,7 @@ KNOWLEDGE_SCHEMA_STATEMENTS = (
     "CREATE INDEX IF NOT EXISTS knowledge_chunks_search_idx ON knowledge_chunks USING GIN(search_vector)",
     "CREATE INDEX IF NOT EXISTS knowledge_embeddings_lookup_idx ON knowledge_embeddings(provider, model, version, dimension)",
     "CREATE INDEX IF NOT EXISTS knowledge_ingestion_runs_source_ids_idx ON knowledge_ingestion_runs USING GIN(source_ids)",
+    "CREATE INDEX IF NOT EXISTS knowledge_method_cards_card_format_idx ON knowledge_method_cards(card_format)",
+    "CREATE INDEX IF NOT EXISTS knowledge_method_cards_source_methodology_idx ON knowledge_method_cards(source_methodology_candidate_id)",
     "CREATE INDEX IF NOT EXISTS knowledge_method_contracts_family_status_idx ON knowledge_method_contracts(family, status)",
 )

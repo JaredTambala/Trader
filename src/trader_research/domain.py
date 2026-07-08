@@ -28,6 +28,10 @@ KNOWLEDGE_SOURCE_MANIFEST = "knowledge_source_manifest"
 KNOWLEDGE_INGESTION_REPORT = "knowledge_ingestion_report"
 KNOWLEDGE_CHUNK_MANIFEST = "knowledge_chunk_manifest"
 KNOWLEDGE_EMBEDDING_MANIFEST = "knowledge_embedding_manifest"
+METHODOLOGY_CANDIDATE = "methodology_candidate"
+METHODOLOGY_EVIDENCE_PACKET = "methodology_evidence_packet"
+METHODOLOGY_FIELD_EXTRACTION_REPORT = "methodology_field_extraction_report"
+METHODOLOGY_CANDIDATE_VALIDATION_REPORT = "methodology_candidate_validation_report"
 METHOD_CARD_DRAFT = "method_card_draft"
 METHOD_CARD = "method_card"
 METHOD_IMPLEMENTATION_MANIFEST = "method_implementation_manifest"
@@ -71,6 +75,10 @@ SUPPORTED_ARTIFACT_TYPES = frozenset(
         KNOWLEDGE_INGESTION_REPORT,
         KNOWLEDGE_CHUNK_MANIFEST,
         KNOWLEDGE_EMBEDDING_MANIFEST,
+        METHODOLOGY_CANDIDATE,
+        METHODOLOGY_EVIDENCE_PACKET,
+        METHODOLOGY_FIELD_EXTRACTION_REPORT,
+        METHODOLOGY_CANDIDATE_VALIDATION_REPORT,
         METHOD_CARD_DRAFT,
         METHOD_CARD,
         METHOD_IMPLEMENTATION_MANIFEST,
@@ -115,6 +123,10 @@ OWNER_BY_ARTIFACT_TYPE = {
     KNOWLEDGE_INGESTION_REPORT: QUANTITATIVE_METHODS_OWNER,
     KNOWLEDGE_CHUNK_MANIFEST: QUANTITATIVE_METHODS_OWNER,
     KNOWLEDGE_EMBEDDING_MANIFEST: QUANTITATIVE_METHODS_OWNER,
+    METHODOLOGY_CANDIDATE: QUANTITATIVE_METHODS_OWNER,
+    METHODOLOGY_EVIDENCE_PACKET: QUANTITATIVE_METHODS_OWNER,
+    METHODOLOGY_FIELD_EXTRACTION_REPORT: QUANTITATIVE_METHODS_OWNER,
+    METHODOLOGY_CANDIDATE_VALIDATION_REPORT: QUANTITATIVE_METHODS_OWNER,
     METHOD_CARD_DRAFT: QUANTITATIVE_METHODS_OWNER,
     METHOD_CARD: QUANTITATIVE_METHODS_OWNER,
     METHOD_IMPLEMENTATION_MANIFEST: QUANTITATIVE_METHODS_OWNER,
@@ -783,6 +795,7 @@ class StrategyCandidateManifest:
         candidate_id: Stable strategy candidate identifier.
         template_family: Maintained strategy template family.
         method_package_refs: Declarative method package references.
+        methodology_refs: Optional approved rich method-card provenance refs.
         signal_refs: Declarative signal implementation or validation references.
         strategy_source: Importable Python strategy implementation source.
         parameters: JSON-compatible template parameter values.
@@ -798,6 +811,7 @@ class StrategyCandidateManifest:
     candidate_id: str
     template_family: str
     method_package_refs: tuple[StrategyCandidateArtifactLink, ...] = field(default_factory=tuple)
+    methodology_refs: tuple[StrategyCandidateArtifactLink, ...] = field(default_factory=tuple)
     signal_refs: tuple[StrategyCandidateArtifactLink, ...] = field(default_factory=tuple)
     strategy_source: StrategyCandidateSourceRef | None = None
     parameters: Mapping[str, Any] = field(default_factory=dict)
@@ -826,6 +840,7 @@ class StrategyCandidateManifest:
             "artifact_type": self.artifact_type,
             "template_family": self.template_family,
             "method_package_refs": [item.to_dict() for item in self.method_package_refs],
+            "methodology_refs": [item.to_dict() for item in self.methodology_refs],
             "signal_refs": [item.to_dict() for item in self.signal_refs],
             "strategy_source": self.strategy_source.to_dict() if self.strategy_source is not None else None,
             "parameters": _jsonable(self.parameters),
@@ -856,6 +871,10 @@ class StrategyCandidateManifest:
             method_package_refs=tuple(
                 StrategyCandidateArtifactLink.from_dict(item)
                 for item in _mapping_sequence(payload.get("method_package_refs"))
+            ),
+            methodology_refs=tuple(
+                StrategyCandidateArtifactLink.from_dict(item)
+                for item in _mapping_sequence(payload.get("methodology_refs"))
             ),
             signal_refs=tuple(
                 StrategyCandidateArtifactLink.from_dict(item) for item in _mapping_sequence(payload.get("signal_refs"))
@@ -964,6 +983,7 @@ class RiskManagerCandidateManifest:
         candidate_id: Stable risk-manager candidate identifier.
         template_family: Maintained risk-manager template family.
         method_package_refs: Optional validated method packages for sourced risk measures.
+        methodology_refs: Optional approved rich method-card provenance refs.
         risk_manager_source: Importable Python risk-manager source reference.
         parameters: JSON-compatible risk parameter values.
         policy_intent: Declarative policy semantics for later validation/backtests.
@@ -977,6 +997,7 @@ class RiskManagerCandidateManifest:
     candidate_id: str
     template_family: str
     method_package_refs: tuple[StrategyCandidateArtifactLink, ...] = field(default_factory=tuple)
+    methodology_refs: tuple[StrategyCandidateArtifactLink, ...] = field(default_factory=tuple)
     risk_manager_source: RiskManagerCandidateSourceRef | None = None
     parameters: Mapping[str, Any] = field(default_factory=dict)
     policy_intent: Mapping[str, Any] = field(default_factory=dict)
@@ -1007,6 +1028,7 @@ class RiskManagerCandidateManifest:
             "schema_version": self.schema_version,
             "template_family": self.template_family,
             "method_package_refs": [item.to_dict() for item in self.method_package_refs],
+            "methodology_refs": [item.to_dict() for item in self.methodology_refs],
             "risk_manager_source": (
                 self.risk_manager_source.to_dict() if self.risk_manager_source is not None else None
             ),
@@ -1030,6 +1052,10 @@ class RiskManagerCandidateManifest:
             method_package_refs=tuple(
                 StrategyCandidateArtifactLink.from_dict(item)
                 for item in _mapping_sequence(payload.get("method_package_refs"))
+            ),
+            methodology_refs=tuple(
+                StrategyCandidateArtifactLink.from_dict(item)
+                for item in _mapping_sequence(payload.get("methodology_refs"))
             ),
             risk_manager_source=(
                 RiskManagerCandidateSourceRef.from_dict(_mapping(payload.get("risk_manager_source")))

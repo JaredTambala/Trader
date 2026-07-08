@@ -29,6 +29,7 @@ from trader_research.artifact_store import (
     source_hash as source_text_hash,
 )
 from trader_research.domain import (
+    METHOD_CARD,
     METHOD_PACKAGE_MANIFEST,
     QUANT_RESEARCH_SUPERVISOR_OWNER,
     RISK_MANAGER_CANDIDATE_VALIDATION_REPORT,
@@ -38,6 +39,7 @@ from trader_research.domain import (
     StrategyCandidateArtifactLink,
     stable_research_id,
 )
+from trader_research.knowledge.domain import RICH_METHOD_CARD_FORMAT
 from trader_research.method_implementations.io import file_sha256
 
 from .services import get_risk_manager_template, risk_manager_candidate_path
@@ -195,6 +197,7 @@ def _build_validation_report(
 
     _record_check(checks, blockers, "manifest_integrity", _check_manifest_integrity(manifest))
     _record_check(checks, blockers, "method_package_refs", _check_method_package_refs(manifest.method_package_refs))
+    _record_check(checks, blockers, "methodology_refs", _check_methodology_refs(manifest.methodology_refs))
     _record_check(checks, blockers, "execution_assumptions", _check_execution_assumptions(manifest))
     _record_check(
         checks,
@@ -320,6 +323,24 @@ def _check_method_package_refs(refs: Sequence[StrategyCandidateArtifactLink]) ->
         validation_ref = _mapping(ref.metadata.get("validation_report_ref"))
         if validation_ref and str(validation_ref.get("status") or "") != "passed":
             blockers.append(f"{ref.role} package ref validation_report_ref.status must be passed")
+    return blockers
+
+
+def _check_methodology_refs(refs: Sequence[StrategyCandidateArtifactLink]) -> list[str]:
+    blockers: list[str] = []
+    seen_roles: set[str] = set()
+    for ref in refs:
+        if ref.role in seen_roles:
+            blockers.append(f"duplicate methodology role: {ref.role}")
+        seen_roles.add(ref.role)
+        if ref.artifact_type != METHOD_CARD:
+            blockers.append(f"{ref.role} methodology ref must reference artifact_type={METHOD_CARD}")
+        if ref.status != "approved":
+            blockers.append(f"{ref.role} methodology ref status must be approved")
+        if str(ref.metadata.get("card_format") or "") != RICH_METHOD_CARD_FORMAT:
+            blockers.append(f"{ref.role} methodology ref card_format must be rich_method_card")
+        if str(ref.metadata.get("method_id") or "").strip() == "":
+            blockers.append(f"{ref.role} methodology ref metadata.method_id is required")
     return blockers
 
 

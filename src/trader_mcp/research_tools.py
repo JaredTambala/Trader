@@ -36,6 +36,7 @@ from trader_research.backtests import (
 )
 from trader_research.artifact_store import ResearchArtifactStore, ResearchArtifactStoreError
 from trader_research.contracts import SideEffect, error_envelope
+from trader_research.knowledge.store import KnowledgeStore
 from trader_research.portfolio_stacks import (
     create_strategy_risk_stack as create_strategy_risk_stack_service,
     validate_strategy_risk_stack as validate_strategy_risk_stack_service,
@@ -55,6 +56,7 @@ from trader_research.strategy_candidates import validate_strategy_candidate as v
 EventStoreProvider = Callable[[], EventStore]
 ToolConfigProvider = Callable[[], Config]
 ResearchArtifactStoreProvider = Callable[[], ResearchArtifactStore]
+KnowledgeStoreProvider = Callable[[], KnowledgeStore]
 
 
 def register_research_tools(
@@ -64,11 +66,15 @@ def register_research_tools(
     event_store_provider: EventStoreProvider | None = None,
     backtest_config_provider: ToolConfigProvider | None = None,
     artifact_store_provider: ResearchArtifactStoreProvider | None = None,
+    knowledge_store_provider: KnowledgeStoreProvider | None = None,
 ) -> None:
     """Register Quant Research Supervisor research tools on an MCP server."""
 
     def _artifact_store() -> ResearchArtifactStore | None:
         return artifact_store_provider() if artifact_store_provider is not None else None
+
+    def _knowledge_store() -> KnowledgeStore | None:
+        return knowledge_store_provider() if knowledge_store_provider is not None else None
 
     def _artifact_store_error(command: str, error: ResearchArtifactStoreError) -> CallToolResult:
         envelope = error_envelope(
@@ -93,7 +99,10 @@ def register_research_tools(
     )
     def research_create_strategy_candidate(
         template_family: str,
-        method_package_refs: list[dict[str, Any]],
+        method_package_refs: list[dict[str, Any]] | None = None,
+        rich_method_card_id: str | None = None,
+        rich_method_card_uri: str | None = None,
+        rich_method_card: dict[str, Any] | None = None,
         parameters: dict[str, Any] | None = None,
         sizing: dict[str, Any] | None = None,
         risk_assumptions: dict[str, Any] | None = None,
@@ -104,10 +113,14 @@ def register_research_tools(
                 artifact_root=environment.artifact_root,
                 template_family=template_family,
                 method_package_refs=method_package_refs,
+                rich_method_card_id=rich_method_card_id,
+                rich_method_card_uri=rich_method_card_uri,
+                rich_method_card=rich_method_card,
                 parameters=parameters,
                 sizing=sizing,
                 risk_assumptions=risk_assumptions,
                 execution_assumptions=execution_assumptions,
+                knowledge_store=_knowledge_store(),
                 artifact_store=_artifact_store(),
             )
         except ResearchArtifactStoreError as exc:
@@ -338,6 +351,9 @@ def register_research_tools(
         template_family: str,
         parameters: dict[str, Any] | None = None,
         method_package_refs: list[dict[str, Any]] | None = None,
+        rich_method_card_id: str | None = None,
+        rich_method_card_uri: str | None = None,
+        rich_method_card: dict[str, Any] | None = None,
         execution_assumptions: dict[str, Any] | None = None,
     ) -> CallToolResult:
         """Create one source-backed risk-manager candidate artifact."""
@@ -347,7 +363,11 @@ def register_research_tools(
                 template_family=template_family,
                 parameters=parameters,
                 method_package_refs=method_package_refs,
+                rich_method_card_id=rich_method_card_id,
+                rich_method_card_uri=rich_method_card_uri,
+                rich_method_card=rich_method_card,
                 execution_assumptions=execution_assumptions,
+                knowledge_store=_knowledge_store(),
                 artifact_store=_artifact_store(),
             )
         except ResearchArtifactStoreError as exc:

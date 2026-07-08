@@ -11,6 +11,7 @@ import pytest
 
 from trader.risk import RiskContext, RiskManager
 from trader_research.domain import RISK_MANAGER_CANDIDATE, RISK_MANAGER_IMPLEMENTATION, RiskManagerCandidateManifest
+from trader_research.knowledge.domain import EvidenceBackedField, EvidenceReference, RichMethodCard
 from trader_research.method_implementations.manifest import INDICATOR_RUNTIME_CONTRACT
 from trader_research.methods.packages import MethodPackageManifest, method_package_path
 from trader_research.risk_managers import (
@@ -20,6 +21,7 @@ from trader_research.risk_managers import (
     create_risk_manager_candidate,
     list_risk_manager_templates,
     risk_manager_candidate_path,
+    validate_risk_manager_candidate,
 )
 
 
@@ -126,6 +128,94 @@ def test_create_risk_manager_candidate_uses_package_refs_and_deterministic_ids(t
     assert inline_manifest["candidate_id"] == id_manifest["candidate_id"]
     assert inline_manifest["method_package_refs"][0]["role"] == "risk_measure"
     assert id_manifest["method_package_refs"][0]["path"] == str(package_path)
+
+
+def test_create_risk_manager_candidate_maps_approved_rich_risk_card_thresholds(tmp_path: Path) -> None:
+    rich_card = _approved_var_rich_card()
+    created = create_risk_manager_candidate(
+        artifact_root=tmp_path,
+        template_family="var_cvar_limit",
+        rich_method_card=rich_card.to_dict(),
+    ).to_dict()
+    manifest = created["data"]["risk_manager_candidate_manifest"]
+    validated = validate_risk_manager_candidate(
+        artifact_root=tmp_path,
+        risk_manager_candidate_manifest=manifest,
+    ).to_dict()
+
+    assert created["ok"] is True
+    assert manifest["parameters"]["max_var_fraction"] == 0.05
+    assert manifest["parameters"]["max_cvar_fraction"] == 0.08
+    assert manifest["parameters"]["confidence_level"] == 0.99
+    assert manifest["parameters"]["lookback_period"] == 100
+    assert manifest["methodology_refs"][0]["artifact_id"] == rich_card.method_card_id
+    assert manifest["methodology_refs"][0]["metadata"]["family"] == "risk_models"
+    assert validated["ok"] is True
+    assert validated["data"]["risk_manager_candidate_validation_report"]["status"] == "passed"
+
+
+def test_risk_rich_card_mapping_fails_closed_without_numeric_thresholds(tmp_path: Path) -> None:
+    bad_card = _approved_var_rich_card(limit_thresholds="tight VaR and CVaR limits")
+    payload = create_risk_manager_candidate(
+        artifact_root=tmp_path,
+        template_family="var_cvar_limit",
+        rich_method_card=bad_card.to_dict(),
+    ).to_dict()
+
+    assert payload["ok"] is False
+    blockers = "\n".join(payload["data"]["blockers"])
+    assert "limit_thresholds must provide numeric max_var_fraction and max_cvar_fraction" in blockers
+
+
+def _approved_var_rich_card(*, limit_thresholds: object | None = None) -> RichMethodCard:
+    ref = EvidenceReference(
+        source_id="knowledge_source_risk",
+        chunk_id="knowledge_chunk_risk_1",
+        locator={"heading": "VaR Limits", "page": 4},
+        claim="source supports VaR and CVaR limit methodology",
+    )
+    field = _risk_evidenced_field(ref)
+    thresholds = (
+        {"max_var_fraction": 0.05, "max_cvar_fraction": 0.08}
+        if limit_thresholds is None
+        else limit_thresholds
+    )
+    return RichMethodCard(
+        method_card_id="method_card_var_cvar_limit_v1",
+        method_id="var_cvar_limit",
+        title="VaR/CVaR Limit",
+        family="risk_models",
+        status="approved",
+        assumptions=("portfolio tail risk estimates are monitored against explicit thresholds",),
+        inputs=("portfolio returns",),
+        outputs=("VaR and CVaR breach decisions",),
+        failure_modes=("tail estimate instability",),
+        evidence_refs=(ref,),
+        extension_fields={
+            "risk_models": {
+                "risk_measure": field("VaR and CVaR"),
+                "limit_thresholds": field(thresholds),
+                "confidence_level": field(0.99),
+                "lookback_window": field(100),
+            }
+        },
+        source_methodology_candidate_id="methodology_candidate_var",
+        validation_refs=({"artifact_type": "methodology_candidate_validation_report", "status": "passed"},),
+        lineage={
+            "readiness_summary": {
+                "family": "risk_models",
+                "evidence_packet_id": "methodology_evidence_packet_var",
+                "risk_manager": {"status": "passed", "required_roles": [], "missing_roles": []},
+            }
+        },
+    )
+
+
+def _risk_evidenced_field(ref: EvidenceReference):
+    def _factory(value: object) -> EvidenceBackedField:
+        return EvidenceBackedField(value=value, evidence_refs=(ref,))
+
+    return _factory
 
 
 def _indicator_package(package_id: str) -> dict[str, Any]:

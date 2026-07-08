@@ -15,6 +15,8 @@ from .domain import (
     KnowledgeIngestionReport,
     KnowledgeSourceManifest,
     MethodCard,
+    RICH_METHOD_CARD_FORMAT,
+    RichMethodCard,
 )
 
 
@@ -207,11 +209,27 @@ class KnowledgeRepository:
         self.ensure_dirs()
         return write_json_artifact(method_card.to_dict(), self.method_card_path(method_card.method_card_id))
 
+    def save_rich_method_card(self, method_card: RichMethodCard) -> Path:
+        """Persist a rich method-card payload without dropping nullable methodology fields."""
+        self.ensure_dirs()
+        return write_json_artifact(method_card.to_dict(), self.method_card_path(method_card.method_card_id))
+
     def list_persisted_method_cards(self) -> tuple[MethodCard, ...]:
         """Load persisted method cards from disk in deterministic filename order for merging."""
         if not self.method_card_dir.exists():
             return tuple()
         return tuple(MethodCard.from_dict(_read_json(path)) for path in sorted(self.method_card_dir.glob("*.json")))
+
+    def list_persisted_rich_method_cards(self) -> tuple[RichMethodCard, ...]:
+        """Load rich method-card payloads from disk while ignoring shallow cards."""
+        if not self.method_card_dir.exists():
+            return tuple()
+        cards = []
+        for path in sorted(self.method_card_dir.glob("*.json")):
+            payload = _read_json(path)
+            if payload.get("card_format") == RICH_METHOD_CARD_FORMAT:
+                cards.append(RichMethodCard.from_dict(payload))
+        return tuple(cards)
 
     def save_method_contract(self, method: MethodRegistryEntry) -> Path:
         """Persist a method-contract artifact and return its deterministic artifact path for callers."""

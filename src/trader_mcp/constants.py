@@ -50,11 +50,29 @@ KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL: Final = "knowledge_retrieve_evidence"
 KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL: Final = "knowledge_get_evidence_chunks"
 """Tool name for dereferencing citeable evidence chunks into stored text."""
 
+KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL: Final = "knowledge_discover_methodology_candidates"
+"""Tool name for discovering methodology candidates from ingested source chunks."""
+
+KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL: Final = "knowledge_assemble_methodology_evidence"
+"""Tool name for assembling role-labeled methodology evidence packets."""
+
+KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL: Final = "knowledge_extract_methodology_fields"
+"""Tool name for extracting rich methodology fields from a candidate."""
+
+KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE_TOOL: Final = "knowledge_validate_methodology_candidate"
+"""Tool name for validating extracted methodology candidates before draft-card creation."""
+
+KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL: Final = "knowledge_create_rich_method_card_draft"
+"""Tool name for promoting a validated methodology candidate into a rich method-card draft."""
+
 KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL: Final = "knowledge_create_method_card_draft"
 """Tool name for creating draft method cards from validated evidence."""
 
 KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL: Final = "knowledge_publish_method_card"
 """Tool name for publishing approved method cards from drafts."""
+
+KNOWLEDGE_UPDATE_METHOD_CARD_STATUS_TOOL: Final = "knowledge_update_method_card_status"
+"""Tool name for retiring persisted method cards without deleting audit records."""
 
 KNOWLEDGE_VALIDATE_CITATIONS_TOOL: Final = "knowledge_validate_citations"
 """Tool name for validating method evidence citations."""
@@ -150,8 +168,14 @@ KNOWLEDGE_TOOL_NAMES: Final = (
     KNOWLEDGE_SEARCH_METHODS_TOOL,
     KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL,
     KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL,
+    KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL,
+    KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL,
+    KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL,
+    KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE_TOOL,
+    KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL,
     KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
     KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL,
+    KNOWLEDGE_UPDATE_METHOD_CARD_STATUS_TOOL,
     KNOWLEDGE_VALIDATE_CITATIONS_TOOL,
 )
 """Quant Methods knowledge tool names exposed by the MCP server."""
@@ -222,8 +246,28 @@ KNOWLEDGE_TOOL_DESCRIPTIONS: Final = {
     KNOWLEDGE_SEARCH_METHODS_TOOL: "Search approved Quant Methods method-card metadata.",
     KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL: "Retrieve citeable Quant Methods evidence chunks.",
     KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL: "Dereference citeable Quant Methods evidence chunks into bounded stored text.",
-    KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL: "Create a draft Quant Methods method card from validated evidence.",
+    KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL: (
+        "Discover source-backed methodology candidates from ingested knowledge chunks."
+    ),
+    KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL: (
+        "Assemble role-labeled methodology evidence packets from discovered candidates."
+    ),
+    KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL: (
+        "Extract rich nullable methodology fields from a role-labeled evidence packet or source-backed candidate."
+    ),
+    KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE_TOOL: (
+        "Validate field-level evidence for a rich methodology candidate."
+    ),
+    KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL: (
+        "Create a rich method-card draft from a passed methodology-candidate validation report."
+    ),
+    KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL: (
+        "Create a legacy/projection draft method card; canonical methodology cards use rich validated drafts."
+    ),
     KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL: "Publish an approved Quant Methods method card from a draft with explicit approval.",
+    KNOWLEDGE_UPDATE_METHOD_CARD_STATUS_TOOL: (
+        "Mark a persisted Quant Methods method card rejected or superseded while preserving the stored audit record."
+    ),
     KNOWLEDGE_VALIDATE_CITATIONS_TOOL: "Validate source, chunk, locator, and method-card citations.",
 }
 """Descriptions for Quant Methods knowledge tools exposed by the MCP server."""
@@ -272,6 +316,7 @@ CAPABILITY_REGISTRATION_FLAGS: Final = {
     "symbol_discovery_tools_registered": True,
     "data_loading_tools_registered": True,
     "knowledge_tools_registered": True,
+    "methodology_candidate_tools_registered": True,
     "math_method_tools_registered": True,
     "strategy_candidate_tools_registered": True,
     "risk_manager_candidate_tools_registered": True,
@@ -287,6 +332,7 @@ UNREGISTERED_CAPABILITY_FLAGS: Final = {
     "raw_sql_tools_registered": False,
     "symbol_discovery_tools_registered": False,
     "data_loading_tools_registered": False,
+    "methodology_candidate_tools_registered": False,
     "strategy_candidate_tools_registered": False,
     "risk_manager_candidate_tools_registered": False,
     "risk_manager_validation_tools_registered": False,

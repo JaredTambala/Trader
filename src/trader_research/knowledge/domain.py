@@ -28,6 +28,230 @@ SOURCE_TYPE_LABELS = frozenset(
 DEFAULT_SOURCE_TYPE = "internal_note"
 """Default source-type label for local notes and operator-authored documents."""
 
+METHODOLOGY_CANDIDATE_STATUSES = frozenset({"discovered", "extracted", "validated", "blocked", "rejected"})
+"""Allowed lifecycle states for rich methodology candidates before card approval."""
+
+METHODOLOGY_EVIDENCE_PACKET_STATUSES = frozenset({"assembled", "blocked"})
+"""Allowed lifecycle states for assembled methodology evidence packets."""
+
+METHOD_CARD_STATUSES = frozenset({"approved", "draft", "planned", "rejected", "superseded"})
+"""Allowed lifecycle states for shallow and rich method-card records."""
+
+RICH_METHOD_CARD_FORMAT = "rich_method_card"
+"""Payload marker for method-card artifacts carrying rich methodology fields."""
+
+METHODOLOGY_CORE_FIELD_SCHEMA: Mapping[str, frozenset[str]] = {
+    "identity": frozenset(
+        {
+            "method_name",
+            "description",
+            "aliases",
+            "intended_use",
+            "source_context",
+            "limitations",
+        }
+    ),
+    "scope": frozenset(
+        {
+            "asset_classes",
+            "instruments",
+            "markets",
+            "timeframes",
+            "horizon",
+            "universe_definition",
+            "market_regime",
+            "geography",
+        }
+    ),
+    "data_requirements": frozenset(
+        {
+            "required_inputs",
+            "price_fields",
+            "fundamental_fields",
+            "alternative_data_fields",
+            "option_chain_fields",
+            "frequency",
+            "lookback_window",
+            "preprocessing",
+            "data_quality_requirements",
+        }
+    ),
+    "method_specification": frozenset(
+        {
+            "hypothesis",
+            "algorithm_steps",
+            "equations",
+            "parameters",
+            "estimation_method",
+            "statistical_tests",
+            "optimization_objective",
+            "calibration",
+        }
+    ),
+    "signal_decision_logic": frozenset(
+        {
+            "signal_definition",
+            "entry_rules",
+            "exit_rules",
+            "thresholds",
+            "ranking_rules",
+            "position_direction",
+            "rebalance_rules",
+        }
+    ),
+    "portfolio_execution": frozenset(
+        {
+            "sizing",
+            "portfolio_construction",
+            "constraints",
+            "rebalancing",
+            "execution_timing",
+            "order_types",
+            "transaction_cost_assumptions",
+            "liquidity_assumptions",
+        }
+    ),
+    "risk_validation": frozenset(
+        {
+            "risk_controls",
+            "validation_tests",
+            "benchmarks",
+            "performance_metrics",
+            "stress_tests",
+            "failure_modes",
+            "assumptions",
+            "known_limitations",
+        }
+    ),
+    "implementation_notes": frozenset(
+        {
+            "implementation_steps",
+            "libraries",
+            "numerical_stability",
+            "edge_cases",
+            "runtime_requirements",
+            "monitoring",
+        }
+    ),
+}
+"""Common nullable field groups shared by all methodology families."""
+
+METHODOLOGY_EXTENSION_FIELD_SCHEMA: Mapping[str, frozenset[str]] = {
+    "technical_indicators": frozenset(
+        {
+            "indicator_formula",
+            "input_series",
+            "lookback_period",
+            "smoothing_method",
+            "normalization",
+            "overbought_threshold",
+            "oversold_threshold",
+            "warmup_period",
+            "divergence_rules",
+            "parameter_defaults",
+        }
+    ),
+    "statistical_arbitrage": frozenset(
+        {
+            "spread_definition",
+            "hedge_ratio_method",
+            "cointegration_test",
+            "stationarity_test",
+            "entry_zscore",
+            "exit_zscore",
+            "stop_loss",
+            "formation_window",
+            "trading_window",
+            "rebalance_frequency",
+            "leg_universe",
+            "mean_reversion_assumption",
+        }
+    ),
+    "options_derivatives": frozenset(
+        {
+            "instrument_type",
+            "payoff_profile",
+            "legs",
+            "strike_selection",
+            "expiry_selection",
+            "volatility_assumption",
+            "greeks",
+            "delta_hedging",
+            "margin_assumptions",
+            "exercise_style",
+            "assignment_risk",
+            "scenario_analysis",
+        }
+    ),
+    "fundamental_valuation": frozenset(
+        {
+            "valuation_model",
+            "financial_statement_inputs",
+            "forecast_horizon",
+            "discount_rate",
+            "terminal_value",
+            "factor_exposures",
+            "quality_filters",
+            "revision_triggers",
+            "normalization",
+        }
+    ),
+    "sentiment_alternative_data": frozenset(
+        {
+            "source_type",
+            "raw_signal",
+            "entity_mapping",
+            "aggregation_window",
+            "scoring_model",
+            "lag_assumptions",
+            "coverage_requirements",
+            "bias_controls",
+            "noise_filters",
+            "commodity_mapping",
+        }
+    ),
+    "portfolio_construction": frozenset(
+        {
+            "objective",
+            "allocation_method",
+            "constraints",
+            "rebalance_cadence",
+            "turnover_limit",
+            "risk_budget",
+            "diversification_rule",
+            "optimization_inputs",
+            "cash_handling",
+        }
+    ),
+    "risk_models": frozenset(
+        {
+            "risk_measure",
+            "confidence_level",
+            "lookback_window",
+            "correlation_model",
+            "covariance_estimator",
+            "stress_scenarios",
+            "limit_thresholds",
+            "breach_actions",
+            "model_validation",
+        }
+    ),
+    "execution_methods": frozenset(
+        {
+            "execution_algorithm",
+            "order_slicing",
+            "participation_rate",
+            "schedule",
+            "venue_selection",
+            "slippage_model",
+            "latency_assumptions",
+            "market_impact_model",
+            "fill_assumptions",
+        }
+    ),
+}
+"""Nullable domain extension blocks for specific methodology families."""
+
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -358,6 +582,516 @@ class EvidenceReference:
 
 
 @dataclass(frozen=True)
+class EvidenceBackedField:
+    """Nullable methodology field value with field-level citation evidence.
+
+    Rich methodology artifacts can leave fields unset when a source does not
+    support them. When a value is populated, at least one evidence reference is
+    required so later extraction, validation, and strategy generation can explain
+    exactly which chunk or source backs the claim.
+    """
+
+    value: Any | None = None
+    evidence_refs: tuple[EvidenceReference, ...] = tuple()
+    confidence: float | None = None
+    quality: str | None = None
+    warnings: tuple[str, ...] = tuple()
+    blockers: tuple[str, ...] = tuple()
+
+    def __post_init__(self) -> None:
+        if _has_methodology_value(self.value) and not self.evidence_refs:
+            raise ValueError("populated methodology field requires evidence_refs")
+        if self.confidence is not None and not 0.0 <= self.confidence <= 1.0:
+            raise ValueError("field confidence must be between 0 and 1")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize a nullable field value, evidence refs, and quality metadata."""
+        return {
+            "value": _jsonable(self.value),
+            "evidence_refs": [ref.to_dict() for ref in self.evidence_refs],
+            "confidence": self.confidence,
+            "quality": self.quality,
+            "warnings": list(self.warnings),
+            "blockers": list(self.blockers),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "EvidenceBackedField":
+        """Parse one evidence-backed field from JSON-compatible payload data."""
+        return cls(
+            value=payload.get("value"),
+            evidence_refs=tuple(
+                EvidenceReference.from_dict(_mapping(item))
+                for item in _sequence(payload.get("evidence_refs"))
+            ),
+            confidence=float(payload["confidence"]) if payload.get("confidence") is not None else None,
+            quality=str(payload["quality"]) if payload.get("quality") is not None else None,
+            warnings=_string_tuple(payload.get("warnings")),
+            blockers=_string_tuple(payload.get("blockers")),
+        )
+
+
+@dataclass(frozen=True)
+class MethodologyCandidate:
+    """Source-backed methodology candidate before method-card approval.
+
+    Candidates describe what an ingested source appears to contain without making
+    it executable. They carry candidate spans plus nullable rich fields so later
+    extraction and validation can add evidence-backed structure before a draft
+    method card is created.
+    """
+
+    methodology_candidate_id: str
+    title: str
+    families: tuple[str, ...]
+    status: str = "discovered"
+    source_ids: tuple[str, ...] = tuple()
+    chunk_ids: tuple[str, ...] = tuple()
+    candidate_spans: tuple[Mapping[str, Any], ...] = tuple()
+    core_fields: Mapping[str, Mapping[str, EvidenceBackedField]] = field(default_factory=dict)
+    extension_fields: Mapping[str, Mapping[str, EvidenceBackedField]] = field(default_factory=dict)
+    lineage: Mapping[str, Any] = field(default_factory=dict)
+    warnings: tuple[str, ...] = tuple()
+    blockers: tuple[str, ...] = tuple()
+    created_at: datetime = field(default_factory=_utc_now)
+    schema_version: str = KNOWLEDGE_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if not self.methodology_candidate_id.strip():
+            raise ValueError("methodology_candidate_id is required")
+        if not self.title.strip():
+            raise ValueError("methodology candidate title is required")
+        if self.status not in METHODOLOGY_CANDIDATE_STATUSES:
+            allowed = ", ".join(sorted(METHODOLOGY_CANDIDATE_STATUSES))
+            raise ValueError(f"unsupported methodology candidate status: {self.status}; allowed values: {allowed}")
+        object.__setattr__(
+            self,
+            "core_fields",
+            _normalize_methodology_field_groups(
+                self.core_fields,
+                schema=METHODOLOGY_CORE_FIELD_SCHEMA,
+                scope="core_fields",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "extension_fields",
+            _normalize_methodology_field_groups(
+                self.extension_fields,
+                schema=METHODOLOGY_EXTENSION_FIELD_SCHEMA,
+                scope="extension_fields",
+            ),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the methodology candidate with candidate spans and rich fields."""
+        return {
+            "artifact_type": "methodology_candidate",
+            "schema_version": self.schema_version,
+            "methodology_candidate_id": self.methodology_candidate_id,
+            "title": self.title,
+            "families": list(self.families),
+            "status": self.status,
+            "source_ids": list(self.source_ids),
+            "chunk_ids": list(self.chunk_ids),
+            "candidate_spans": _jsonable(list(self.candidate_spans)),
+            "core_fields": _serialize_methodology_field_groups(self.core_fields),
+            "extension_fields": _serialize_methodology_field_groups(self.extension_fields),
+            "lineage": _jsonable(self.lineage),
+            "warnings": list(self.warnings),
+            "blockers": list(self.blockers),
+            "created_at": _jsonable(self.created_at),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "MethodologyCandidate":
+        """Parse a persisted methodology-candidate payload."""
+        return cls(
+            methodology_candidate_id=str(payload.get("methodology_candidate_id") or ""),
+            title=str(payload.get("title") or ""),
+            families=_string_tuple(payload.get("families")),
+            status=str(payload.get("status") or "discovered"),
+            source_ids=_string_tuple(payload.get("source_ids")),
+            chunk_ids=_string_tuple(payload.get("chunk_ids")),
+            candidate_spans=tuple(_mapping(item) for item in _sequence(payload.get("candidate_spans"))),
+            core_fields=_mapping(payload.get("core_fields")),
+            extension_fields=_mapping(payload.get("extension_fields")),
+            lineage=_mapping(payload.get("lineage")),
+            warnings=_string_tuple(payload.get("warnings")),
+            blockers=_string_tuple(payload.get("blockers")),
+            created_at=_parse_datetime(payload.get("created_at")),
+            schema_version=str(payload.get("schema_version") or KNOWLEDGE_SCHEMA_VERSION),
+        )
+
+
+@dataclass(frozen=True)
+class MethodologyEvidencePacket:
+    """Role-labeled evidence assembled before rich methodology field extraction.
+
+    The packet is the inspectable bridge between open-world methodology discovery
+    and closed-schema extraction. It records which family-level evidence roles
+    were found, which roles are missing for the requested readiness goal, and the
+    exact source/chunk/hash evidence available to field extractors.
+    """
+
+    evidence_packet_id: str
+    methodology_candidate_id: str
+    family: str
+    readiness_goal: str = "descriptive"
+    status: str = "assembled"
+    candidate_ref: Mapping[str, Any] = field(default_factory=dict)
+    source_ids: tuple[str, ...] = tuple()
+    chunk_ids: tuple[str, ...] = tuple()
+    profile_version: str = "1"
+    role_evidence: tuple[Mapping[str, Any], ...] = tuple()
+    missing_roles: tuple[str, ...] = tuple()
+    diagnostics: Mapping[str, Any] = field(default_factory=dict)
+    warnings: tuple[str, ...] = tuple()
+    blockers: tuple[str, ...] = tuple()
+    created_at: datetime = field(default_factory=_utc_now)
+    schema_version: str = KNOWLEDGE_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if not self.evidence_packet_id.strip():
+            raise ValueError("evidence_packet_id is required")
+        if not self.methodology_candidate_id.strip():
+            raise ValueError("methodology_candidate_id is required")
+        if not self.family.strip():
+            raise ValueError("methodology evidence packet family is required")
+        if self.status not in METHODOLOGY_EVIDENCE_PACKET_STATUSES:
+            allowed = ", ".join(sorted(METHODOLOGY_EVIDENCE_PACKET_STATUSES))
+            raise ValueError(f"unsupported evidence packet status: {self.status}; allowed values: {allowed}")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the role-labeled evidence packet for DB-backed persistence."""
+        return {
+            "artifact_type": "methodology_evidence_packet",
+            "schema_version": self.schema_version,
+            "evidence_packet_id": self.evidence_packet_id,
+            "methodology_candidate_id": self.methodology_candidate_id,
+            "family": self.family,
+            "readiness_goal": self.readiness_goal,
+            "status": self.status,
+            "candidate_ref": _jsonable(self.candidate_ref),
+            "source_ids": list(self.source_ids),
+            "chunk_ids": list(self.chunk_ids),
+            "profile_version": self.profile_version,
+            "role_evidence": _jsonable(list(self.role_evidence)),
+            "missing_roles": list(self.missing_roles),
+            "diagnostics": _jsonable(self.diagnostics),
+            "warnings": list(self.warnings),
+            "blockers": list(self.blockers),
+            "created_at": _jsonable(self.created_at),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "MethodologyEvidencePacket":
+        """Parse a persisted methodology evidence packet payload."""
+        return cls(
+            evidence_packet_id=str(payload.get("evidence_packet_id") or ""),
+            methodology_candidate_id=str(payload.get("methodology_candidate_id") or ""),
+            family=str(payload.get("family") or ""),
+            readiness_goal=str(payload.get("readiness_goal") or "descriptive"),
+            status=str(payload.get("status") or "assembled"),
+            candidate_ref=_mapping(payload.get("candidate_ref")),
+            source_ids=_string_tuple(payload.get("source_ids")),
+            chunk_ids=_string_tuple(payload.get("chunk_ids")),
+            profile_version=str(payload.get("profile_version") or "1"),
+            role_evidence=tuple(_mapping(item) for item in _sequence(payload.get("role_evidence"))),
+            missing_roles=_string_tuple(payload.get("missing_roles")),
+            diagnostics=_mapping(payload.get("diagnostics")),
+            warnings=_string_tuple(payload.get("warnings")),
+            blockers=_string_tuple(payload.get("blockers")),
+            created_at=_parse_datetime(payload.get("created_at")),
+            schema_version=str(payload.get("schema_version") or KNOWLEDGE_SCHEMA_VERSION),
+        )
+
+
+@dataclass(frozen=True)
+class RichMethodCard:
+    """Method-card artifact with rich, evidence-backed methodology fields.
+
+    Rich cards keep the existing method-card artifact types for compatibility:
+    drafts serialize as `method_card_draft`, while approved cards serialize as
+    `method_card`. The `card_format` marker tells richer tools that nullable core
+    fields and extension blocks are available.
+    """
+
+    method_card_id: str
+    method_id: str
+    title: str
+    family: str
+    status: str
+    assumptions: tuple[str, ...]
+    inputs: tuple[str, ...]
+    outputs: tuple[str, ...]
+    failure_modes: tuple[str, ...]
+    evidence_refs: tuple[EvidenceReference, ...] = tuple()
+    core_fields: Mapping[str, Mapping[str, EvidenceBackedField]] = field(default_factory=dict)
+    extension_fields: Mapping[str, Mapping[str, EvidenceBackedField]] = field(default_factory=dict)
+    source_methodology_candidate_id: str | None = None
+    validation_refs: tuple[Mapping[str, Any], ...] = tuple()
+    lineage: Mapping[str, Any] = field(default_factory=dict)
+    version: int = 1
+    source_method_card_id: str | None = None
+    approved_by: str | None = None
+    approval_note: str | None = None
+    created_at: datetime = field(default_factory=_utc_now)
+    schema_version: str = KNOWLEDGE_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if not self.method_card_id.strip():
+            raise ValueError("method_card_id is required")
+        if not self.method_id.strip():
+            raise ValueError("method_id is required")
+        if self.status not in METHOD_CARD_STATUSES:
+            raise ValueError(f"unsupported method-card status: {self.status}")
+        object.__setattr__(
+            self,
+            "core_fields",
+            _normalize_methodology_field_groups(
+                self.core_fields,
+                schema=METHODOLOGY_CORE_FIELD_SCHEMA,
+                scope="core_fields",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "extension_fields",
+            _normalize_methodology_field_groups(
+                self.extension_fields,
+                schema=METHODOLOGY_EXTENSION_FIELD_SCHEMA,
+                scope="extension_fields",
+            ),
+        )
+
+    @property
+    def approved(self) -> bool:
+        """Return whether this rich card is approved for implementation evidence citations."""
+        return self.status == "approved"
+
+    def to_method_card(self) -> "MethodCard":
+        """Return the shallow method-card projection used by legacy searches."""
+        return MethodCard(
+            method_card_id=self.method_card_id,
+            method_id=self.method_id,
+            title=self.title,
+            family=self.family,
+            status=self.status,
+            assumptions=self.assumptions,
+            inputs=self.inputs,
+            outputs=self.outputs,
+            failure_modes=self.failure_modes,
+            evidence_refs=self.evidence_refs,
+            version=self.version,
+            source_method_card_id=self.source_method_card_id,
+            approved_by=self.approved_by,
+            approval_note=self.approval_note,
+            created_at=self.created_at,
+            schema_version=self.schema_version,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the rich card while preserving method-card compatibility fields."""
+        return {
+            "artifact_type": "method_card_draft" if self.status == "draft" else "method_card",
+            "card_format": RICH_METHOD_CARD_FORMAT,
+            "schema_version": self.schema_version,
+            "method_card_id": self.method_card_id,
+            "method_id": self.method_id,
+            "title": self.title,
+            "family": self.family,
+            "status": self.status,
+            "version": self.version,
+            "assumptions": list(self.assumptions),
+            "inputs": list(self.inputs),
+            "outputs": list(self.outputs),
+            "failure_modes": list(self.failure_modes),
+            "evidence_refs": [ref.to_dict() for ref in self.evidence_refs],
+            "core_fields": _serialize_methodology_field_groups(self.core_fields),
+            "extension_fields": _serialize_methodology_field_groups(self.extension_fields),
+            "source_methodology_candidate_id": self.source_methodology_candidate_id,
+            "validation_refs": _jsonable(list(self.validation_refs)),
+            "lineage": _jsonable(self.lineage),
+            "source_method_card_id": self.source_method_card_id,
+            "approved_by": self.approved_by,
+            "approval_note": self.approval_note,
+            "created_at": _jsonable(self.created_at),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "RichMethodCard":
+        """Parse a rich method-card payload while normalizing field-level evidence."""
+        return cls(
+            method_card_id=str(payload.get("method_card_id") or ""),
+            method_id=str(payload.get("method_id") or ""),
+            title=str(payload.get("title") or ""),
+            family=str(payload.get("family") or ""),
+            status=str(payload.get("status") or "planned"),
+            assumptions=_string_tuple(payload.get("assumptions")),
+            inputs=_string_tuple(payload.get("inputs")),
+            outputs=_string_tuple(payload.get("outputs")),
+            failure_modes=_string_tuple(payload.get("failure_modes")),
+            evidence_refs=tuple(
+                EvidenceReference.from_dict(_mapping(item))
+                for item in _sequence(payload.get("evidence_refs"))
+            ),
+            core_fields=_mapping(payload.get("core_fields")),
+            extension_fields=_mapping(payload.get("extension_fields")),
+            source_methodology_candidate_id=str(payload["source_methodology_candidate_id"])
+            if payload.get("source_methodology_candidate_id") is not None
+            else None,
+            validation_refs=tuple(_mapping(item) for item in _sequence(payload.get("validation_refs"))),
+            lineage=_mapping(payload.get("lineage")),
+            version=int(payload.get("version") or 1),
+            source_method_card_id=str(payload["source_method_card_id"])
+            if payload.get("source_method_card_id") is not None
+            else None,
+            approved_by=str(payload["approved_by"]) if payload.get("approved_by") is not None else None,
+            approval_note=str(payload["approval_note"]) if payload.get("approval_note") is not None else None,
+            created_at=_parse_datetime(payload.get("created_at")),
+            schema_version=str(payload.get("schema_version") or KNOWLEDGE_SCHEMA_VERSION),
+        )
+
+
+@dataclass(frozen=True)
+class MethodologyFieldExtractionReport:
+    """Audit report for deterministic rich-field extraction from a candidate."""
+
+    extraction_id: str
+    methodology_candidate_id: str
+    status: str
+    evidence_packet_id: str | None = None
+    candidate_ref: Mapping[str, Any] = field(default_factory=dict)
+    source_ids: tuple[str, ...] = tuple()
+    chunk_ids: tuple[str, ...] = tuple()
+    extraction_engine: str = "deterministic_rules"
+    populated_field_count: int = 0
+    populated_fields: tuple[str, ...] = tuple()
+    warnings: tuple[str, ...] = tuple()
+    blockers: tuple[str, ...] = tuple()
+    created_at: datetime = field(default_factory=_utc_now)
+    schema_version: str = KNOWLEDGE_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if not self.extraction_id.strip():
+            raise ValueError("extraction_id is required")
+        if not self.methodology_candidate_id.strip():
+            raise ValueError("methodology_candidate_id is required")
+        if self.status not in {"extracted", "blocked"}:
+            raise ValueError(f"unsupported methodology extraction status: {self.status}")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize extraction status and populated-field evidence summary."""
+        return {
+            "artifact_type": "methodology_field_extraction_report",
+            "schema_version": self.schema_version,
+            "extraction_id": self.extraction_id,
+            "methodology_candidate_id": self.methodology_candidate_id,
+            "status": self.status,
+            "evidence_packet_id": self.evidence_packet_id,
+            "candidate_ref": _jsonable(self.candidate_ref),
+            "source_ids": list(self.source_ids),
+            "chunk_ids": list(self.chunk_ids),
+            "extraction_engine": self.extraction_engine,
+            "populated_field_count": self.populated_field_count,
+            "populated_fields": list(self.populated_fields),
+            "warnings": list(self.warnings),
+            "blockers": list(self.blockers),
+            "created_at": _jsonable(self.created_at),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "MethodologyFieldExtractionReport":
+        """Parse a stored methodology field-extraction report."""
+        return cls(
+            extraction_id=str(payload.get("extraction_id") or ""),
+            methodology_candidate_id=str(payload.get("methodology_candidate_id") or ""),
+            status=str(payload.get("status") or ""),
+            evidence_packet_id=str(payload["evidence_packet_id"])
+            if payload.get("evidence_packet_id") is not None
+            else None,
+            candidate_ref=_mapping(payload.get("candidate_ref")),
+            source_ids=_string_tuple(payload.get("source_ids")),
+            chunk_ids=_string_tuple(payload.get("chunk_ids")),
+            extraction_engine=str(payload.get("extraction_engine") or "deterministic_rules"),
+            populated_field_count=int(payload.get("populated_field_count") or 0),
+            populated_fields=_string_tuple(payload.get("populated_fields")),
+            warnings=_string_tuple(payload.get("warnings")),
+            blockers=_string_tuple(payload.get("blockers")),
+            created_at=_parse_datetime(payload.get("created_at")),
+            schema_version=str(payload.get("schema_version") or KNOWLEDGE_SCHEMA_VERSION),
+        )
+
+
+@dataclass(frozen=True)
+class MethodologyCandidateValidationReport:
+    """Validation report for a rich methodology candidate before draft-card creation."""
+
+    validation_id: str
+    methodology_candidate_id: str
+    status: str
+    valid: bool
+    candidate_ref: Mapping[str, Any] = field(default_factory=dict)
+    checked_refs: tuple[Mapping[str, Any], ...] = tuple()
+    field_summary: Mapping[str, Any] = field(default_factory=dict)
+    source_summary: Mapping[str, Any] = field(default_factory=dict)
+    readiness_summary: Mapping[str, Any] = field(default_factory=dict)
+    warnings: tuple[str, ...] = tuple()
+    blockers: tuple[str, ...] = tuple()
+    created_at: datetime = field(default_factory=_utc_now)
+    schema_version: str = KNOWLEDGE_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if not self.validation_id.strip():
+            raise ValueError("validation_id is required")
+        if not self.methodology_candidate_id.strip():
+            raise ValueError("methodology_candidate_id is required")
+        if self.status not in {"passed", "blocked"}:
+            raise ValueError(f"unsupported methodology validation status: {self.status}")
+        if self.valid != (self.status == "passed"):
+            raise ValueError("methodology validation valid flag must match status")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize validation status, checked refs, warnings, and blockers."""
+        return {
+            "artifact_type": "methodology_candidate_validation_report",
+            "schema_version": self.schema_version,
+            "validation_id": self.validation_id,
+            "methodology_candidate_id": self.methodology_candidate_id,
+            "status": self.status,
+            "valid": self.valid,
+            "candidate_ref": _jsonable(self.candidate_ref),
+            "checked_refs": _jsonable(list(self.checked_refs)),
+            "field_summary": _jsonable(self.field_summary),
+            "source_summary": _jsonable(self.source_summary),
+            "readiness_summary": _jsonable(self.readiness_summary),
+            "warnings": list(self.warnings),
+            "blockers": list(self.blockers),
+            "created_at": _jsonable(self.created_at),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "MethodologyCandidateValidationReport":
+        """Parse a stored methodology-candidate validation report."""
+        return cls(
+            validation_id=str(payload.get("validation_id") or ""),
+            methodology_candidate_id=str(payload.get("methodology_candidate_id") or ""),
+            status=str(payload.get("status") or ""),
+            valid=bool(payload.get("valid")),
+            candidate_ref=_mapping(payload.get("candidate_ref")),
+            checked_refs=tuple(_mapping(item) for item in _sequence(payload.get("checked_refs"))),
+            field_summary=_mapping(payload.get("field_summary")),
+            source_summary=_mapping(payload.get("source_summary")),
+            readiness_summary=_mapping(payload.get("readiness_summary")),
+            warnings=_string_tuple(payload.get("warnings")),
+            blockers=_string_tuple(payload.get("blockers")),
+            created_at=_parse_datetime(payload.get("created_at")),
+            schema_version=str(payload.get("schema_version") or KNOWLEDGE_SCHEMA_VERSION),
+        )
+
+
+@dataclass(frozen=True)
 class MethodCard:
     """Curated contract for a quantitative method and its evidence base.
 
@@ -390,7 +1124,7 @@ class MethodCard:
             raise ValueError("method_card_id is required")
         if not self.method_id.strip():
             raise ValueError("method_id is required")
-        if self.status not in {"approved", "draft", "planned"}:
+        if self.status not in METHOD_CARD_STATUSES:
             raise ValueError(f"unsupported method-card status: {self.status}")
 
     @property
@@ -564,6 +1298,59 @@ class CitationValidationReport:
             "blockers": list(self.blockers),
             "created_at": _jsonable(self.created_at),
         }
+
+
+def _normalize_methodology_field_groups(
+    groups: Mapping[str, Mapping[str, Any]],
+    *,
+    schema: Mapping[str, frozenset[str]],
+    scope: str,
+) -> dict[str, dict[str, EvidenceBackedField]]:
+    normalized: dict[str, dict[str, EvidenceBackedField]] = {}
+    for group_name, raw_fields in groups.items():
+        group = str(group_name)
+        if group not in schema:
+            allowed = ", ".join(sorted(schema))
+            raise ValueError(f"unsupported {scope} group: {group}; allowed values: {allowed}")
+        fields = _mapping(raw_fields)
+        normalized_fields: dict[str, EvidenceBackedField] = {}
+        for field_name, raw_field in fields.items():
+            name = str(field_name)
+            if name not in schema[group]:
+                allowed = ", ".join(sorted(schema[group]))
+                raise ValueError(f"unsupported {scope} field for {group}: {name}; allowed values: {allowed}")
+            normalized_fields[name] = _coerce_evidence_backed_field(raw_field)
+        normalized[group] = normalized_fields
+    return normalized
+
+
+def _coerce_evidence_backed_field(value: Any) -> EvidenceBackedField:
+    if isinstance(value, EvidenceBackedField):
+        return value
+    if isinstance(value, Mapping):
+        return EvidenceBackedField.from_dict(value)
+    return EvidenceBackedField(value=value)
+
+
+def _serialize_methodology_field_groups(
+    groups: Mapping[str, Mapping[str, EvidenceBackedField]],
+) -> dict[str, dict[str, Any]]:
+    return {
+        group: {name: field.to_dict() for name, field in fields.items()}
+        for group, fields in groups.items()
+    }
+
+
+def _has_methodology_value(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, Mapping):
+        return bool(value)
+    if isinstance(value, Sequence) and not isinstance(value, bytes):
+        return bool(value)
+    return True
 
 
 def _parse_datetime(value: Any) -> datetime:

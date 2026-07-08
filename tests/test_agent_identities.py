@@ -84,6 +84,11 @@ def test_quantitative_methods_tool_owner_and_identity_use_method_contract_tools(
     assert identity.display_name == "Quantitative Methods Agent"
     assert "knowledge_search_methods" in identity.tool_allowlist
     assert "knowledge_get_evidence_chunks" in identity.tool_allowlist
+    assert "knowledge_discover_methodology_candidates" in identity.tool_allowlist
+    assert "knowledge_extract_methodology_fields" in identity.tool_allowlist
+    assert "knowledge_validate_methodology_candidate" in identity.tool_allowlist
+    assert "knowledge_create_rich_method_card_draft" in identity.tool_allowlist
+    assert "knowledge_update_method_card_status" in identity.tool_allowlist
     assert "knowledge_validate_citations" in identity.tool_allowlist
     assert "math_list_method_contracts" in identity.tool_allowlist
     assert "math_validate_method_contract" in identity.tool_allowlist
@@ -94,6 +99,11 @@ def test_quantitative_methods_tool_owner_and_identity_use_method_contract_tools(
     assert "math_package_method_artifact" in identity.tool_allowlist
     assert agent_owner_for_tool("knowledge_retrieve_evidence") == "Quantitative Methods Agent"
     assert agent_owner_for_tool("knowledge_get_evidence_chunks") == "Quantitative Methods Agent"
+    assert agent_owner_for_tool("knowledge_discover_methodology_candidates") == "Quantitative Methods Agent"
+    assert agent_owner_for_tool("knowledge_extract_methodology_fields") == "Quantitative Methods Agent"
+    assert agent_owner_for_tool("knowledge_validate_methodology_candidate") == "Quantitative Methods Agent"
+    assert agent_owner_for_tool("knowledge_create_rich_method_card_draft") == "Quantitative Methods Agent"
+    assert agent_owner_for_tool("knowledge_update_method_card_status") == "Quantitative Methods Agent"
     assert agent_owner_for_tool("math_list_method_contracts") == "Quantitative Methods Agent"
     assert agent_owner_for_tool("math_run_signal_diagnostics") == "Quantitative Methods Agent"
     assert agent_owner_for_tool("math_run_multiple_testing_report") == "Quantitative Methods Agent"

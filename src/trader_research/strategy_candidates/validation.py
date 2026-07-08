@@ -32,6 +32,7 @@ from trader_research.artifact_store import (
     source_hash as source_text_hash,
 )
 from trader_research.domain import (
+    METHOD_CARD,
     METHOD_PACKAGE_MANIFEST,
     STRATEGY_IMPLEMENTATION,
     STRATEGY_CANDIDATE_VALIDATION_REPORT,
@@ -41,6 +42,7 @@ from trader_research.domain import (
     StrategyCandidateSourceRef,
     stable_research_id,
 )
+from trader_research.knowledge.domain import RICH_METHOD_CARD_FORMAT
 from trader_research.method_implementations.io import file_sha256
 from trader_research.method_implementations.manifest import SIGNAL_RUNTIME_CONTRACT
 from .services import get_strategy_template, strategy_candidate_path
@@ -287,6 +289,7 @@ def _build_validation_report(
             "method_package_refs",
             _check_method_package_refs(manifest, template.required_artifact_roles),
         )
+        _record_check(checks, blockers, "methodology_refs", _check_methodology_refs(manifest, template.template_family))
         _record_check(checks, blockers, "parameters", _check_parameters(manifest, template.parameters))
         _record_check(checks, blockers, "sizing", _check_sizing(manifest))
         _record_check(checks, blockers, "execution_assumptions", _check_execution_assumptions(manifest))
@@ -437,6 +440,28 @@ def _check_method_package_refs(
     for role in expected_roles:
         if role not in refs_by_role:
             blockers.append(f"missing required method package role: {role}")
+    return blockers
+
+
+def _check_methodology_refs(
+    manifest: StrategyCandidateManifest,
+    template_family: str,
+) -> list[str]:
+    blockers: list[str] = []
+    refs = manifest.methodology_refs
+    if template_family == "pairs_mean_reversion" and not refs:
+        blockers.append("pairs_mean_reversion requires approved rich method-card methodology_refs")
+    for ref in refs:
+        if ref.artifact_type != METHOD_CARD:
+            blockers.append(f"{ref.role} methodology ref must reference artifact_type={METHOD_CARD}")
+        if ref.status != "approved":
+            blockers.append(f"{ref.role} methodology ref status must be approved")
+        if str(ref.metadata.get("card_format") or "") != RICH_METHOD_CARD_FORMAT:
+            blockers.append(f"{ref.role} methodology ref card_format must be rich_method_card")
+        if template_family == "pairs_mean_reversion" and str(ref.metadata.get("family") or "") != "statistical_arbitrage":
+            blockers.append("pairs_mean_reversion methodology ref family must be statistical_arbitrage")
+        if str(ref.metadata.get("method_id") or "").strip() == "":
+            blockers.append(f"{ref.role} methodology ref metadata.method_id is required")
     return blockers
 
 

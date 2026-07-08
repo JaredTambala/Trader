@@ -38,6 +38,7 @@ from .strategies import (
     LongFlatSignalStrategy,
     NoOpStopPolicy,
     NoOpStrategy,
+    PairsMeanReversionStrategy,
     RandomStrategy,
     SignalThresholdEntryPolicy,
     SignalThresholdExitPolicy,
@@ -48,6 +49,7 @@ from .strategies import (
     TrailingStopPolicy,
     build_bollinger_band_strategy,
     build_mean_reversion_strategy,
+    build_pairs_mean_reversion_strategy,
     build_trend_following_strategy,
 )
 
@@ -86,6 +88,7 @@ __all__ = [
     "ExitPolicy",
     "StopPolicy",
     "NoOpStopPolicy",
+    "PairsMeanReversionStrategy",
     "FixedStopLossPolicy",
     "TrailingStopPolicy",
     "CompositeStopPolicy",
@@ -94,5 +97,6 @@ __all__ = [
     "LongFlatSignalStrategy",
     "build_trend_following_strategy",
     "build_mean_reversion_strategy",
+    "build_pairs_mean_reversion_strategy",
     "build_bollinger_band_strategy",
 ]

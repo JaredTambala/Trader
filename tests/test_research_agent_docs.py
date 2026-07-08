@@ -57,6 +57,29 @@ def test_current_research_agent_docs_do_not_carry_stale_tool_claims() -> None:
             assert stale_claim not in content, f"{stale_claim!r} found in {path.relative_to(REPO_ROOT)}"
 
 
+def test_rich_methodology_operator_guide_covers_required_workflows() -> None:
+    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
+    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
+    contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
+    combined = "\n".join((workflows, operations, contracts)).lower()
+
+    required_phrases = (
+        "registration and ingestion are deliberately separate",
+        "full-document ingestion",
+        "field-level source/chunk refs",
+        "draft cards are still review artifacts",
+        "source suitability matters",
+        "pairs trading or cointegration",
+        "options straddle",
+        "technical indicator",
+        "commodity sentiment indicator",
+        "data agent scope",
+    )
+
+    for phrase in required_phrases:
+        assert phrase in combined
+
+
 def test_canonical_readme_links_resolve() -> None:
     readme_path = DOC_ROOT / "README.md"
     readme = readme_path.read_text(encoding="utf-8")
