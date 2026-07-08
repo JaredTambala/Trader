@@ -696,7 +696,8 @@ class StrategyCandidateSourceRef:
 
     Attributes:
         artifact_id: Stable implementation identifier, usually the candidate ID.
-        path: Local Python source path.
+        path: Optional legacy local Python source path.
+        uri: Optional DB-backed research artifact URI.
         source_hash: SHA-256 of the source file.
         class_name: Concrete class expected to implement `trader.strategies.Strategy`.
         factory_name: Module-level factory used to instantiate the strategy.
@@ -706,9 +707,10 @@ class StrategyCandidateSourceRef:
     """
 
     artifact_id: str
-    path: str
+    path: str | None
     source_hash: str
     class_name: str
+    uri: str | None = None
     factory_name: str = "build_strategy"
     runtime_contract: str = "trader.strategies.Strategy"
     artifact_type: str = STRATEGY_IMPLEMENTATION
@@ -720,8 +722,8 @@ class StrategyCandidateSourceRef:
             raise ValueError("strategy source artifact_id is required")
         if self.artifact_type != STRATEGY_IMPLEMENTATION:
             raise ValueError(f"strategy source artifact_type must be {STRATEGY_IMPLEMENTATION}")
-        if not self.path.strip():
-            raise ValueError("strategy source path is required")
+        if not (self.path and self.path.strip()) and not (self.uri and self.uri.strip()):
+            raise ValueError("strategy source path or uri is required")
         if not self.source_hash.strip():
             raise ValueError("strategy source_hash is required")
         if not self.class_name.strip():
@@ -737,6 +739,7 @@ class StrategyCandidateSourceRef:
             "artifact_id": self.artifact_id,
             "artifact_type": self.artifact_type,
             "path": self.path,
+            "uri": self.uri,
             "source_hash": self.source_hash,
             "class_name": self.class_name,
             "factory_name": self.factory_name,
@@ -757,7 +760,8 @@ class StrategyCandidateSourceRef:
         return cls(
             artifact_id=str(payload.get("artifact_id") or ""),
             artifact_type=str(payload.get("artifact_type") or STRATEGY_IMPLEMENTATION),
-            path=str(payload.get("path") or ""),
+            path=str(payload["path"]) if payload.get("path") is not None else None,
+            uri=str(payload["uri"]) if payload.get("uri") is not None else None,
             source_hash=str(payload.get("source_hash") or ""),
             class_name=str(payload.get("class_name") or ""),
             factory_name=str(payload.get("factory_name") or "build_strategy"),
@@ -881,7 +885,8 @@ class RiskManagerCandidateSourceRef:
 
     Attributes:
         artifact_id: Stable implementation identifier, usually the candidate ID.
-        path: Local Python source path.
+        path: Optional legacy local Python source path.
+        uri: Optional DB-backed research artifact URI.
         source_hash: SHA-256 of the source file.
         class_name: Concrete class expected to implement `trader.risk.RiskManager`.
         factory_name: Module-level factory used to instantiate the risk manager.
@@ -891,9 +896,10 @@ class RiskManagerCandidateSourceRef:
     """
 
     artifact_id: str
-    path: str
+    path: str | None
     source_hash: str
     class_name: str
+    uri: str | None = None
     factory_name: str = "build_risk_manager"
     runtime_contract: str = "trader.risk.RiskManager"
     artifact_type: str = RISK_MANAGER_IMPLEMENTATION
@@ -905,8 +911,8 @@ class RiskManagerCandidateSourceRef:
             raise ValueError("risk manager source artifact_id is required")
         if self.artifact_type != RISK_MANAGER_IMPLEMENTATION:
             raise ValueError(f"risk manager source artifact_type must be {RISK_MANAGER_IMPLEMENTATION}")
-        if not self.path.strip():
-            raise ValueError("risk manager source path is required")
+        if not (self.path and self.path.strip()) and not (self.uri and self.uri.strip()):
+            raise ValueError("risk manager source path or uri is required")
         if not self.source_hash.strip():
             raise ValueError("risk manager source_hash is required")
         if not self.class_name.strip():
@@ -922,6 +928,7 @@ class RiskManagerCandidateSourceRef:
             "artifact_id": self.artifact_id,
             "artifact_type": self.artifact_type,
             "path": self.path,
+            "uri": self.uri,
             "source_hash": self.source_hash,
             "class_name": self.class_name,
             "factory_name": self.factory_name,
@@ -935,7 +942,8 @@ class RiskManagerCandidateSourceRef:
         return cls(
             artifact_id=str(payload.get("artifact_id") or ""),
             artifact_type=str(payload.get("artifact_type") or RISK_MANAGER_IMPLEMENTATION),
-            path=str(payload.get("path") or ""),
+            path=str(payload["path"]) if payload.get("path") is not None else None,
+            uri=str(payload["uri"]) if payload.get("uri") is not None else None,
             source_hash=str(payload.get("source_hash") or ""),
             class_name=str(payload.get("class_name") or ""),
             factory_name=str(payload.get("factory_name") or "build_risk_manager"),

@@ -45,10 +45,14 @@ from trader_mcp.constants import (
     REGISTERED_TOOL_NAMES,
     RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL,
     RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL,
+    RESEARCH_CREATE_STRATEGY_RISK_STACK_TOOL,
     RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
     RESEARCH_RUN_BACKTEST_TOOL,
+    RESEARCH_RUN_PORTFOLIO_BACKTEST_TOOL,
     RESEARCH_TOOL_DESCRIPTIONS,
     RESEARCH_TOOL_NAMES,
+    RESEARCH_VALIDATE_RISK_MANAGER_CANDIDATE_TOOL,
+    RESEARCH_VALIDATE_STRATEGY_RISK_STACK_TOOL,
     RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL,
     SERVER_NAME,
     SUPPORT_TOOL_DESCRIPTIONS,
@@ -58,6 +62,7 @@ from trader_mcp.evaluation_tools import register_evaluation_tools
 from trader_mcp.knowledge_tools import register_quant_methods_tools
 from trader_mcp.research_tools import register_research_tools
 from trader_research.agents import agent_owner_for_tool
+from trader_research.artifact_store import ResearchArtifactStore, UnavailableResearchArtifactStore
 from trader_research.contracts import SCHEMA_VERSION, SideEffect, ToolEnvelope, error_envelope, success_envelope
 from trader_research.data import (
     DataEnsureLoadedPolicy,
@@ -75,6 +80,7 @@ from trader_research.knowledge.embeddings import EmbeddingProvider, embedding_ru
 from trader_research.knowledge.postgres_store import PostgresKnowledgeStore
 from trader_research.knowledge.store import KnowledgeStore, UnavailableKnowledgeStore
 from trader_research.methods.registry import save_bootstrap_method_contracts
+from trader_research.postgres_artifact_store import PostgresResearchArtifactStore
 from trader_research.providers import AlpacaSymbolCatalogProvider
 
 
@@ -86,6 +92,9 @@ ToolConfigProvider = Callable[[], Config]
 
 KnowledgeStoreProvider = Callable[[], KnowledgeStore]
 """Callable that returns the store used by Quant Methods knowledge tools."""
+
+ResearchArtifactStoreProvider = Callable[[], ResearchArtifactStore]
+"""Callable that returns the DB-first research artifact store."""
 
 SymbolDiscoveryPolicyProvider = Callable[[], DataSymbolDiscoveryPolicy]
 """Callable that returns the symbol-discovery policy for Data Agent tools."""
@@ -102,6 +111,7 @@ def create_server(
     symbol_discovery_policy: DataSymbolDiscoveryPolicy | None = None,
     knowledge_embedding_provider: EmbeddingProvider | None = None,
     knowledge_store_provider: KnowledgeStoreProvider | None = None,
+    research_artifact_store_provider: ResearchArtifactStoreProvider | None = None,
     method_generation_llm_client: Any | None = None,
     backtest_config_provider: ToolConfigProvider | None = None,
 ) -> FastMCP:
@@ -120,6 +130,9 @@ def create_server(
     data_event_store_provider = event_store_provider or build_event_store_provider(local_env)
     resolved_backtest_config_provider = backtest_config_provider or (lambda: _load_tool_config(local_env))
     resolved_knowledge_store_provider = knowledge_store_provider or build_knowledge_store_provider(local_env)
+    resolved_research_artifact_store_provider = research_artifact_store_provider or build_research_artifact_store_provider(
+        local_env
+    )
     resolved_data_loading_policy = data_loading_policy or DataEnsureLoadedPolicy(
         allow_data_loading=local_env.allow_data_loading,
         backfill_config_path=local_env.trader_config_path,
@@ -152,6 +165,7 @@ def create_server(
                 build_config_envelope(
                     local_env,
                     knowledge_store_provider_configured=knowledge_store_provider is not None,
+                    research_artifact_store_provider_configured=research_artifact_store_provider is not None,
                 )
             )
         )
@@ -337,6 +351,7 @@ def create_server(
         local_env,
         embedding_provider=knowledge_embedding_provider,
         knowledge_store_provider=resolved_knowledge_store_provider,
+        artifact_store_provider=resolved_research_artifact_store_provider,
         method_generation_llm_client=method_generation_llm_client,
     )
     register_research_tools(
@@ -344,8 +359,9 @@ def create_server(
         local_env,
         event_store_provider=data_event_store_provider,
         backtest_config_provider=resolved_backtest_config_provider,
+        artifact_store_provider=resolved_research_artifact_store_provider,
     )
-    register_evaluation_tools(server, local_env)
+    register_evaluation_tools(server, local_env, artifact_store_provider=resolved_research_artifact_store_provider)
 
     return server
 
@@ -404,6 +420,38 @@ def build_knowledge_store_provider(environment: McpEnvironment | None = None) ->
                 password=getattr(config, "pg_password", None) or None,
             )
             save_bootstrap_method_contracts(store)
+        return store
+
+    return _provider
+
+
+def build_research_artifact_store_provider(
+    environment: McpEnvironment | None = None,
+) -> ResearchArtifactStoreProvider:
+    """Build the lazy structured research-artifact store provider."""
+    local_env = environment or load_local_environment()
+    if local_env.trader_config_path is None:
+        return lambda: UnavailableResearchArtifactStore(
+            "Postgres research artifact store requires TRADER_MCP_TRADER_CONFIG_PATH"
+        )
+
+    store: ResearchArtifactStore | None = None
+
+    def _provider() -> ResearchArtifactStore:
+        nonlocal store
+        if store is None:
+            try:
+                config = _load_tool_config(local_env)
+            except ToolRuntimeConfigurationError as exc:
+                return UnavailableResearchArtifactStore(str(exc))
+            store = PostgresResearchArtifactStore(
+                dsn=getattr(config, "pg_dsn", None) or None,
+                host=getattr(config, "pg_host", None) or None,
+                port=getattr(config, "pg_port", None) or None,
+                dbname=getattr(config, "pg_db", None) or None,
+                user=getattr(config, "pg_user", None) or None,
+                password=getattr(config, "pg_password", None) or None,
+            )
         return store
 
     return _provider
@@ -473,6 +521,7 @@ def build_config_envelope(
     environment: McpEnvironment | None = None,
     *,
     knowledge_store_provider_configured: bool = False,
+    research_artifact_store_provider_configured: bool = False,
 ) -> ToolEnvelope:
     """Build the read-only MCP server configuration envelope.
 
@@ -570,8 +619,12 @@ def build_config_envelope(
                 RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
                 RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL,
                 RESEARCH_RUN_BACKTEST_TOOL,
+                RESEARCH_RUN_PORTFOLIO_BACKTEST_TOOL,
                 RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL,
                 RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL,
+                RESEARCH_VALIDATE_RISK_MANAGER_CANDIDATE_TOOL,
+                RESEARCH_CREATE_STRATEGY_RISK_STACK_TOOL,
+                RESEARCH_VALIDATE_STRATEGY_RISK_STACK_TOOL,
             }
             else SideEffect.READ_ONLY.value,
             "description": RESEARCH_TOOL_DESCRIPTIONS[tool_name],
@@ -614,6 +667,10 @@ def build_config_envelope(
                 local_env,
                 provider_injected=knowledge_store_provider_configured,
             ),
+            "research_artifact_store_runtime": research_artifact_store_runtime_summary(
+                local_env,
+                provider_injected=research_artifact_store_provider_configured,
+            ),
             "tool_count": len(tool_metadata),
             "tools": tool_metadata,
             "policy": local_env.policy_flags(),
@@ -636,6 +693,22 @@ def knowledge_store_runtime_summary(
         "provider": "injected" if provider_injected else "trader_config_path" if configured else "unconfigured",
         "trader_config_path": str(environment.trader_config_path) if environment.trader_config_path else None,
         "pgvector_available": "not_checked" if backend == "postgres" else None,
+    }
+
+
+def research_artifact_store_runtime_summary(
+    environment: McpEnvironment,
+    *,
+    provider_injected: bool = False,
+) -> Mapping[str, Any]:
+    """Return non-secret research-artifact store metadata without opening the DB."""
+    configured = provider_injected or environment.trader_config_path is not None
+    return {
+        "backend": "postgres",
+        "configured": configured,
+        "provider": "injected" if provider_injected else "trader_config_path" if configured else "unconfigured",
+        "trader_config_path": str(environment.trader_config_path) if environment.trader_config_path else None,
+        "canonical_uri_scheme": "research://postgres/{artifact_type}/{artifact_id}",
     }
 
 

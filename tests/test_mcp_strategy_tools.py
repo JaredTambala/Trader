@@ -17,13 +17,15 @@ from trader_mcp.constants import (
 )
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
+from trader_research.artifact_store import InMemoryResearchArtifactStore
 from trader_research.method_implementations.manifest import SIGNAL_RUNTIME_CONTRACT
 from trader_research.methods.packages import MethodPackageManifest
 
 
 def test_mcp_strategy_candidate_tools_list_create_and_validate(tmp_path: Path) -> None:
     environment = replace(load_local_environment("env.template"), artifact_root=tmp_path / "artifacts")
-    server = create_server(environment)
+    artifact_store = InMemoryResearchArtifactStore()
+    server = create_server(environment, research_artifact_store_provider=lambda: artifact_store)
 
     async def _run() -> None:
         tools = await server.list_tools()
@@ -66,13 +68,15 @@ def test_mcp_strategy_candidate_tools_list_create_and_validate(tmp_path: Path) -
         assert config.structuredContent["data"]["safety"]["strategy_candidate_tools_registered"] is True
         assert config.structuredContent["data"]["safety"]["backtest_tools_registered"] is True
         assert config.structuredContent["data"]["safety"]["backtest_execution_allowed"] is False
+        assert config.structuredContent["data"]["research_artifact_store_runtime"]["configured"] is True
 
         assert catalog.isError is False
-        assert catalog.structuredContent["data"]["template_count"] == 3
+        assert catalog.structuredContent["data"]["template_count"] == 4
         assert created.isError is False
         assert candidate["template_family"] == "bollinger_band"
         assert candidate["strategy_source"]["runtime_contract"] == "trader.strategies.Strategy"
-        assert Path(candidate["strategy_source"]["path"]).exists()
+        assert candidate["strategy_source"]["path"] is None
+        assert candidate["strategy_source"]["uri"].startswith("research://postgres/strategy_implementation/")
         assert validated.isError is False
         report = validated.structuredContent["data"]["strategy_candidate_validation_report"]
         assert report["status"] == "passed"

@@ -23,6 +23,7 @@ from trader_research.contracts import (
     success_envelope,
     write_json_artifact,
 )
+from trader_research.artifact_store import ResearchArtifactStore, source_hash
 from trader_research.domain import (
     METHOD_PACKAGE_MANIFEST,
     RISK_MANAGER_CANDIDATE,
@@ -33,7 +34,6 @@ from trader_research.domain import (
     StrategyCandidateArtifactLink,
     stable_research_id,
 )
-from trader_research.method_implementations.io import file_sha256
 from trader_research.method_implementations.manifest import INDICATOR_RUNTIME_CONTRACT, SIGNAL_RUNTIME_CONTRACT
 from trader_research.methods.packages import MethodPackageManifest, method_package_path
 
@@ -205,6 +205,7 @@ def create_risk_manager_candidate(
     parameters: Mapping[str, Any] | None = None,
     method_package_refs: Sequence[Mapping[str, Any]] | None = None,
     execution_assumptions: Mapping[str, Any] | None = None,
+    artifact_store: ResearchArtifactStore | None = None,
 ) -> ToolEnvelope:
     """Build and persist one bounded source-backed risk-manager candidate.
 
@@ -267,6 +268,7 @@ def create_risk_manager_candidate(
         template=template,
         parameters=normalized_parameters,
         method_package_refs=method_package_links,
+        artifact_store=artifact_store,
     )
     manifest = RiskManagerCandidateManifest(
         candidate_id=candidate_id,
@@ -279,28 +281,57 @@ def create_risk_manager_candidate(
         validation_requirements=template.validation_requirements,
         warnings=tuple(ResearchIssue(code="risk_manager_candidate_warning", message=message) for message in warnings),
     )
-    manifest_path = write_json_artifact(manifest.to_dict(), risk_manager_candidate_path(artifact_root, candidate_id))
+    manifest_payload = manifest.to_dict()
+    if artifact_store is not None:
+        manifest_record = artifact_store.save_artifact(
+            artifact_type=RISK_MANAGER_CANDIDATE,
+            artifact_id=manifest.candidate_id,
+            payload=manifest_payload,
+            status=manifest.status,
+            source_hash=risk_manager_source.source_hash,
+            metadata={"template_family": manifest.template_family},
+        )
+        manifest_ref = ArtifactReference(
+            artifact_type=RISK_MANAGER_CANDIDATE,
+            uri=manifest_record.uri,
+            metadata={"id": manifest.candidate_id},
+        ).to_dict()
+        source_ref = ArtifactReference(
+            artifact_type=RISK_MANAGER_IMPLEMENTATION,
+            uri=risk_manager_source.uri,
+            metadata={
+                "class_name": risk_manager_source.class_name,
+                "factory_name": risk_manager_source.factory_name,
+                "id": risk_manager_source.artifact_id,
+                "runtime_contract": risk_manager_source.runtime_contract,
+                "sha256": risk_manager_source.source_hash,
+            },
+        ).to_dict()
+    else:
+        manifest_path = write_json_artifact(manifest_payload, risk_manager_candidate_path(artifact_root, candidate_id))
+        manifest_ref = ArtifactReference(
+            artifact_type=RISK_MANAGER_CANDIDATE,
+            path=manifest_path,
+            metadata={"id": manifest.candidate_id},
+        ).to_dict()
+        source_ref = ArtifactReference(
+            artifact_type=RISK_MANAGER_IMPLEMENTATION,
+            path=risk_manager_source.path,
+            metadata={
+                "class_name": risk_manager_source.class_name,
+                "factory_name": risk_manager_source.factory_name,
+                "id": risk_manager_source.artifact_id,
+                "runtime_contract": risk_manager_source.runtime_contract,
+                "sha256": risk_manager_source.source_hash,
+            },
+        ).to_dict()
     return success_envelope(
         command=RESEARCH_CREATE_RISK_MANAGER_CANDIDATE,
         side_effect=SideEffect.LOCAL_MUTATING,
-        data={"risk_manager_candidate_manifest": manifest.to_dict()},
+        data={"risk_manager_candidate_manifest": manifest_payload},
         artifacts={
-            "risk_manager_candidate": ArtifactReference(
-                artifact_type=RISK_MANAGER_CANDIDATE,
-                path=manifest_path,
-                metadata={"id": manifest.candidate_id},
-            ).to_dict(),
-            "risk_manager_source": ArtifactReference(
-                artifact_type=RISK_MANAGER_IMPLEMENTATION,
-                path=risk_manager_source.path,
-                metadata={
-                    "class_name": risk_manager_source.class_name,
-                    "factory_name": risk_manager_source.factory_name,
-                    "id": risk_manager_source.artifact_id,
-                    "runtime_contract": risk_manager_source.runtime_contract,
-                    "sha256": risk_manager_source.source_hash,
-                },
-            ).to_dict(),
+            "risk_manager_candidate": manifest_ref,
+            "risk_manager_source": source_ref,
         },
         warnings=tuple(warnings),
     )
@@ -673,24 +704,57 @@ def _write_risk_manager_source(
     template: RiskManagerTemplate,
     parameters: Mapping[str, Any],
     method_package_refs: Sequence[StrategyCandidateArtifactLink],
+    artifact_store: ResearchArtifactStore | None,
 ) -> RiskManagerCandidateSourceRef:
+    class_name = _risk_manager_class_name(template.template_family)
+    source_code = _render_risk_manager_source(
+        candidate_id=candidate_id,
+        class_name=class_name,
+        template=template,
+        parameters=parameters,
+    )
+    generated_hash = source_hash(source_code)
+    if artifact_store is not None:
+        record = artifact_store.save_artifact(
+            artifact_type=RISK_MANAGER_IMPLEMENTATION,
+            artifact_id=candidate_id,
+            payload={
+                "artifact_type": RISK_MANAGER_IMPLEMENTATION,
+                "artifact_id": candidate_id,
+                "class_name": class_name,
+                "factory_name": "build_risk_manager",
+                "runtime_contract": RISK_MANAGER_RUNTIME_CONTRACT,
+                "source_code": source_code,
+                "source_hash": generated_hash,
+                "metadata": {
+                    "candidate_id": candidate_id,
+                    "method_package_refs": [item.to_dict() for item in method_package_refs],
+                    "template_family": template.template_family,
+                },
+            },
+            status="generated",
+            source_hash=generated_hash,
+            metadata={"candidate_id": candidate_id, "template_family": template.template_family},
+        )
+        return RiskManagerCandidateSourceRef(
+            artifact_id=candidate_id,
+            path=None,
+            uri=record.uri,
+            source_hash=generated_hash,
+            class_name=class_name,
+            metadata={
+                "candidate_id": candidate_id,
+                "method_package_refs": [item.to_dict() for item in method_package_refs],
+                "template_family": template.template_family,
+            },
+        )
     source_path = risk_manager_candidate_source_path(artifact_root, candidate_id)
     source_path.parent.mkdir(parents=True, exist_ok=True)
-    class_name = _risk_manager_class_name(template.template_family)
-    source_path.write_text(
-        _render_risk_manager_source(
-            candidate_id=candidate_id,
-            class_name=class_name,
-            template=template,
-            parameters=parameters,
-        ),
-        encoding="utf-8",
-    )
-    source_hash = file_sha256(source_path)
+    source_path.write_text(source_code, encoding="utf-8")
     return RiskManagerCandidateSourceRef(
         artifact_id=candidate_id,
         path=str(source_path),
-        source_hash=source_hash,
+        source_hash=generated_hash,
         class_name=class_name,
         metadata={
             "candidate_id": candidate_id,

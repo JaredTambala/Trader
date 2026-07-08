@@ -15,8 +15,9 @@ from typing import Any, Mapping, Sequence
 from trader.indicators import Indicator
 from trader.signals import Signal
 
+from trader_research.artifact_store import ResearchArtifactStore
 from trader_research.contracts import ArtifactReference, SideEffect, ToolEnvelope, error_envelope, success_envelope
-from trader_research.domain import stable_research_id
+from trader_research.domain import METHOD_IMPLEMENTATION_MANIFEST, stable_research_id
 from trader_research.knowledge.method_cards import has_approved_method_card
 from trader_research.knowledge.store import KnowledgeStore, KnowledgeStoreError
 from trader_research.methods.registry import get_method
@@ -47,6 +48,7 @@ def register_method_implementation(
     dependency_allowlist: Sequence[str] | None = None,
     expected_source_hash: str | None = None,
     knowledge_store: KnowledgeStore | None = None,
+    artifact_store: ResearchArtifactStore | None = None,
 ) -> ToolEnvelope:
     """Validate evidence, source safety, runtime contract, and persist a manifest.
 
@@ -171,17 +173,34 @@ def register_method_implementation(
         runtime_contract=runtime_contract,
         dependency_allowlist=dependency_allowlist,
     )
-    manifest_path = save_manifest(artifact_root, manifest)
+    manifest_payload = manifest.to_dict()
+    if artifact_store is not None:
+        manifest_record = artifact_store.save_artifact(
+            artifact_type=METHOD_IMPLEMENTATION_MANIFEST,
+            artifact_id=manifest.implementation_id,
+            payload=manifest_payload,
+            status=manifest.status,
+            source_hash=manifest.source_hash,
+            metadata={"method_id": manifest.method_id, "runtime_contract": manifest.runtime_contract},
+        )
+        manifest_ref = ArtifactReference(
+            artifact_type=METHOD_IMPLEMENTATION_MANIFEST,
+            uri=manifest_record.uri,
+            metadata={"id": manifest.implementation_id},
+        ).to_dict()
+    else:
+        manifest_path = save_manifest(artifact_root, manifest)
+        manifest_ref = ArtifactReference(
+            artifact_type=METHOD_IMPLEMENTATION_MANIFEST,
+            path=manifest_path,
+            metadata={"id": manifest.implementation_id},
+        ).to_dict()
     return success_envelope(
         command=MATH_REGISTER_METHOD_IMPLEMENTATION,
         side_effect=SideEffect.LOCAL_MUTATING,
-        data={"method_implementation_manifest": manifest.to_dict()},
+        data={"method_implementation_manifest": manifest_payload},
         artifacts={
-            "method_implementation_manifest": ArtifactReference(
-                artifact_type="method_implementation_manifest",
-                path=manifest_path,
-                metadata={"id": manifest.implementation_id},
-            ).to_dict(),
+            "method_implementation_manifest": manifest_ref,
         },
         warnings=warnings,
     )

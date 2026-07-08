@@ -23,6 +23,7 @@ from trader_mcp.constants import (
 )
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
+from trader_research.artifact_store import InMemoryResearchArtifactStore
 from trader_research.knowledge.domain import MethodCard
 from trader_research.knowledge.store import JsonKnowledgeStore
 from trader_research.methods.contracts import MethodRegistryEntry, ParameterSpec
@@ -37,6 +38,7 @@ def test_mcp_research_toolchain_runs_from_method_package_to_performance_report(t
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
     _load_bollinger_reentry_bars(store)
     knowledge_store = _knowledge_store_with_bollinger_signal(artifact_root)
+    artifact_store = InMemoryResearchArtifactStore()
     environment = replace(
         load_local_environment("env.template"),
         artifact_root=artifact_root,
@@ -46,6 +48,7 @@ def test_mcp_research_toolchain_runs_from_method_package_to_performance_report(t
         environment,
         event_store_provider=lambda: store,
         knowledge_store_provider=lambda: knowledge_store,
+        research_artifact_store_provider=lambda: artifact_store,
         backtest_config_provider=lambda: _config(tmp_path),
     )
 
@@ -136,16 +139,23 @@ def test_mcp_research_toolchain_runs_from_method_package_to_performance_report(t
         assert package_manifest["artifact_type"] == "method_package_manifest"
         assert package_manifest["status"] == "validated"
         assert package_manifest["runtime_contract"] == "trader.signals.Signal"
-        assert Path(method_package.structuredContent["artifacts"]["method_package_manifest"]["path"]).exists()
+        assert method_package.structuredContent["artifacts"]["method_package_manifest"]["path"] is None
+        assert method_package.structuredContent["artifacts"]["method_package_manifest"]["uri"].startswith(
+            "research://postgres/method_package_manifest/"
+        )
 
         assert strategy_candidate["artifact_type"] == "strategy_candidate"
         assert strategy_candidate["method_package_refs"][0]["metadata"]["package_id"] == package_manifest["package_id"]
         assert strategy_candidate["strategy_source"]["runtime_contract"] == "trader.strategies.Strategy"
-        assert Path(strategy_candidate["strategy_source"]["path"]).exists()
+        assert strategy_candidate["strategy_source"]["path"] is None
+        assert strategy_candidate["strategy_source"]["uri"].startswith("research://postgres/strategy_implementation/")
 
         assert validation_report["status"] == "passed"
         assert validation_report["candidate_id"] == strategy_candidate["candidate_id"]
-        assert Path(validated_strategy.structuredContent["artifacts"]["strategy_candidate_validation_report"]["path"]).exists()
+        assert validated_strategy.structuredContent["artifacts"]["strategy_candidate_validation_report"]["path"] is None
+        assert validated_strategy.structuredContent["artifacts"]["strategy_candidate_validation_report"]["uri"].startswith(
+            "research://postgres/strategy_candidate_validation_report/"
+        )
 
         run_ref = backtest.structuredContent["data"]["backtest_run_ref"]
         assert run_ref["candidate_id"] == strategy_candidate["candidate_id"]
@@ -163,7 +173,10 @@ def test_mcp_research_toolchain_runs_from_method_package_to_performance_report(t
         assert report["validation_id"] == validation_report["validation_id"]
         assert report["dataset_id"] == run_ref["dataset_id"]
         assert report["trade_stats"]["trade_count"] >= 1
-        assert Path(performance.structuredContent["artifacts"]["evaluation_report"]["path"]).exists()
+        assert performance.structuredContent["artifacts"]["evaluation_report"]["path"] is None
+        assert performance.structuredContent["artifacts"]["evaluation_report"]["uri"].startswith(
+            "research://postgres/evaluation_report/"
+        )
 
     anyio.run(_run)
 
@@ -195,6 +208,7 @@ def test_mcp_research_toolchain_rejects_unvalidated_strategy_candidates(tmp_path
     artifact_root = tmp_path / "artifacts"
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
     _load_bollinger_reentry_bars(store)
+    artifact_store = InMemoryResearchArtifactStore()
     environment = replace(
         load_local_environment("env.template"),
         artifact_root=artifact_root,
@@ -203,6 +217,7 @@ def test_mcp_research_toolchain_rejects_unvalidated_strategy_candidates(tmp_path
     server = create_server(
         environment,
         event_store_provider=lambda: store,
+        research_artifact_store_provider=lambda: artifact_store,
         backtest_config_provider=lambda: _config(tmp_path),
     )
 

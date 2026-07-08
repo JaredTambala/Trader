@@ -114,6 +114,9 @@ def test_quant_research_supervisor_owns_strategy_candidate_creation() -> None:
     assert "research_compare_backtest_results" in identity.tool_allowlist
     assert "research_list_risk_manager_templates" in identity.tool_allowlist
     assert "research_create_risk_manager_candidate" in identity.tool_allowlist
+    assert "research_validate_risk_manager_candidate" in identity.tool_allowlist
+    assert "research_create_strategy_risk_stack" in identity.tool_allowlist
+    assert "research_validate_strategy_risk_stack" in identity.tool_allowlist
     assert "strategy_implementation.py" in identity.output_artifacts
     assert "strategy_candidate_manifest.json" in identity.output_artifacts
     assert "strategy_candidate_validation_report.json" in identity.output_artifacts
@@ -131,6 +134,9 @@ def test_quant_research_supervisor_owns_strategy_candidate_creation() -> None:
     assert agent_owner_for_tool("research_compare_backtest_results") == "Quant Research Supervisor Agent"
     assert agent_owner_for_tool("research_list_risk_manager_templates") == "Quant Research Supervisor Agent"
     assert agent_owner_for_tool("research_create_risk_manager_candidate") == "Quant Research Supervisor Agent"
+    assert agent_owner_for_tool("research_validate_risk_manager_candidate") == "Quant Research Supervisor Agent"
+    assert agent_owner_for_tool("research_create_strategy_risk_stack") == "Quant Research Supervisor Agent"
+    assert agent_owner_for_tool("research_validate_strategy_risk_stack") == "Quant Research Supervisor Agent"
 
 
 def test_evaluation_agent_owns_performance_report_tool() -> None:

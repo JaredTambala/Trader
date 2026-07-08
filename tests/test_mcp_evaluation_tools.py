@@ -9,6 +9,7 @@ from tests.test_performance_reports import _run_with_trade_evidence
 from trader_mcp.constants import EVALUATION_GENERATE_PERFORMANCE_REPORT_TOOL, MCP_CONFIG_TOOL, REGISTERED_TOOL_NAMES
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
+from trader_research.artifact_store import InMemoryResearchArtifactStore
 
 
 def test_mcp_evaluation_tool_is_registered_and_not_backtest_gated(tmp_path: Path) -> None:
@@ -45,7 +46,8 @@ def test_mcp_generate_performance_report_flow_succeeds(tmp_path: Path) -> None:
         artifact_root=artifact_root,
         allow_backtests=False,
     )
-    server = create_server(environment)
+    artifact_store = InMemoryResearchArtifactStore()
+    server = create_server(environment, research_artifact_store_provider=lambda: artifact_store)
 
     async def _run() -> None:
         result = await server.call_tool(
@@ -62,6 +64,9 @@ def test_mcp_generate_performance_report_flow_succeeds(tmp_path: Path) -> None:
         report = result.structuredContent["data"]["evaluation_report"]
         assert report["status"] == "passed"
         assert report["run_id"] == run_ref["run_id"]
-        assert Path(result.structuredContent["artifacts"]["evaluation_report"]["path"]).exists()
+        assert result.structuredContent["artifacts"]["evaluation_report"]["path"] is None
+        assert result.structuredContent["artifacts"]["evaluation_report"]["uri"].startswith(
+            "research://postgres/evaluation_report/"
+        )
 
     anyio.run(_run)

@@ -26,16 +26,23 @@ configuration. Runtime failures belong inside the affected tool envelope.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `TRADER_MCP_TRANSPORT` | `stdio` | MCP transport. Only stdio is supported. |
-| `TRADER_MCP_ARTIFACT_ROOT` | `artifacts/research` | Root for local research artifacts. |
-| `TRADER_MCP_TRADER_CONFIG_PATH` | empty | Optional trader YAML for execution-plane dependencies. |
+| `TRADER_MCP_ARTIFACT_ROOT` | `artifacts/research` | Fallback/export root for local filesystem artifacts. |
+| `TRADER_MCP_TRADER_CONFIG_PATH` | empty | Optional trader YAML for execution-plane dependencies and the Postgres research artifact store. |
 | `TRADER_MCP_TOOL_ENV_PATH` | `.env` | Optional dotenv file loaded lazily for trader YAML expansion. |
 | `TRADER_MCP_ALLOW_DATA_LOADING` | `false` | Enables explicit sample/backfill mutation. |
-| `TRADER_MCP_ALLOW_BACKTESTS` | `false` | Enables `research_run_backtest` execution. |
+| `TRADER_MCP_ALLOW_BACKTESTS` | `false` | Enables `research_run_backtest` and `research_run_portfolio_backtest` execution. |
 | `TRADER_MCP_ALLOW_BROKER_MUTATION` | `false` | Must remain false for research MCP tools. |
 | `TRADER_MCP_ALLOW_RAW_SQL` | `false` | Must remain false for research MCP tools. |
 
 Quantitative Methods knowledge tools expect a configured knowledge store for production use. Postgres-backed knowledge
 storage is the normal runtime path; tests may inject compatibility stores.
+
+MCP research artifact persistence is DB-first. When `TRADER_MCP_TRADER_CONFIG_PATH` points at a Postgres-backed Trader
+config, mutating method, strategy, risk-manager, portfolio-backtest, and evaluation tools store canonical artifacts in
+the structured research artifact tables and return `research://postgres/{artifact_type}/{artifact_id}` refs. If no
+research artifact store is configured, those mutating MCP paths fail closed instead of silently creating canonical
+filesystem artifacts. The filesystem `artifact_root` remains available for legacy direct-service exports and backtest
+result files that have not yet moved into the research artifact store.
 
 ## Typical Local Checks
 
@@ -61,4 +68,5 @@ uv run pytest tests/test_mcp_tools.py tests/test_mcp_data_workflow.py tests/test
 - Keep `TRADER_MCP_ALLOW_BACKTESTS=false` unless intentionally running local backtests.
 - Keep `TRADER_MCP_ALLOW_DATA_LOADING=false` unless intentionally loading sample or backfilled data.
 - Do not expose raw SQL or broker-mutating operations through research MCP.
-- Treat artifacts under `artifacts/research/` as research evidence, not as live trading controls.
+- Treat structured research artifact rows and any fallback files under `artifacts/research/` as research evidence, not as
+  live trading controls.

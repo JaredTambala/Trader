@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping as MappingABC, Sequence as SequenceABC
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from importlib import util as importlib_util
 import json
 import math
 from pathlib import Path
@@ -24,6 +23,13 @@ from trader_research.contracts import (
     error_envelope,
     success_envelope,
     write_json_artifact,
+)
+from trader_research.artifact_store import (
+    ResearchArtifactStore,
+    ResearchArtifactStoreError,
+    load_artifact_ref,
+    load_module_from_source,
+    source_hash as source_text_hash,
 )
 from trader_research.domain import (
     METHOD_PACKAGE_MANIFEST,
@@ -44,6 +50,7 @@ RESEARCH_VALIDATE_STRATEGY_CANDIDATE = "research_validate_strategy_candidate"
 STRATEGY_VALIDATION_FIXTURE_ID = "strategy_candidate_smoke_v1"
 SYNTHETIC_BAR_COUNT = 160
 FIXTURE_SYMBOL = "SYNTH"
+FIXTURE_SYMBOLS = ("SYNTH_A", "SYNTH_B", "SYNTH_C")
 FIXTURE_ASSET_CLASS = "stocks"
 FIXTURE_TIMEFRAME = "1Min"
 
@@ -142,6 +149,7 @@ def validate_strategy_candidate(
     candidate_id: str | None = None,
     path: str | Path | None = None,
     strategy_candidate_manifest: Mapping[str, Any] | None = None,
+    artifact_store: ResearchArtifactStore | None = None,
 ) -> ToolEnvelope:
     """Validate one strategy candidate before any backtest can consume it.
 
@@ -161,6 +169,7 @@ def validate_strategy_candidate(
             candidate_id=candidate_id,
             path=path,
             strategy_candidate_manifest=strategy_candidate_manifest,
+            artifact_store=artifact_store,
         )
     except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
         return error_envelope(
@@ -170,19 +179,18 @@ def validate_strategy_candidate(
             message=str(exc),
         )
 
-    report, report_path = _build_validation_report(artifact_root=artifact_root, candidate=candidate)
+    report, report_path = _build_validation_report(
+        artifact_root=artifact_root,
+        candidate=candidate,
+        artifact_store=artifact_store,
+    )
+    report_ref = _validation_report_ref(report, report_path, artifact_store)
     if report["status"] == "passed":
         return success_envelope(
             command=RESEARCH_VALIDATE_STRATEGY_CANDIDATE,
             side_effect=SideEffect.LOCAL_MUTATING,
             data={"strategy_candidate_validation_report": report},
-            artifacts={
-                "strategy_candidate_validation_report": ArtifactReference(
-                    artifact_type=STRATEGY_CANDIDATE_VALIDATION_REPORT,
-                    path=report_path,
-                    metadata={"id": report["validation_id"], "candidate_id": report["candidate_id"]},
-                ).to_dict()
-            },
+            artifacts={"strategy_candidate_validation_report": report_ref},
             warnings=tuple(str(item) for item in report["warnings"]),
         )
     return ToolEnvelope(
@@ -191,13 +199,7 @@ def validate_strategy_candidate(
         agent_owner=QUANT_RESEARCH_SUPERVISOR_OWNER,
         side_effect=SideEffect.LOCAL_MUTATING,
         data={"strategy_candidate_validation_report": report},
-        artifacts={
-            "strategy_candidate_validation_report": ArtifactReference(
-                artifact_type=STRATEGY_CANDIDATE_VALIDATION_REPORT,
-                path=report_path,
-                metadata={"id": report["validation_id"], "candidate_id": report["candidate_id"]},
-            ).to_dict()
-        },
+        artifacts={"strategy_candidate_validation_report": report_ref},
         warnings=tuple(str(item) for item in report["warnings"]),
         errors=(
             {
@@ -219,6 +221,7 @@ def _resolve_candidate(
     candidate_id: str | None,
     path: str | Path | None,
     strategy_candidate_manifest: Mapping[str, Any] | None,
+    artifact_store: ResearchArtifactStore | None,
 ) -> _ResolvedCandidate:
     sources = [
         candidate_id is not None and str(candidate_id).strip() != "",
@@ -230,6 +233,13 @@ def _resolve_candidate(
     if strategy_candidate_manifest is not None:
         return _ResolvedCandidate(StrategyCandidateManifest.from_dict(strategy_candidate_manifest), None)
     if candidate_id is not None and str(candidate_id).strip():
+        if artifact_store is not None:
+            return _ResolvedCandidate(
+                StrategyCandidateManifest.from_dict(
+                    load_artifact_ref(artifact_store, "strategy_candidate", str(candidate_id).strip())
+                ),
+                None,
+            )
         candidate_path = strategy_candidate_path(artifact_root, str(candidate_id).strip())
         return _ResolvedCandidate(_candidate_from_path(candidate_path), candidate_path)
     candidate_path = Path(str(path))
@@ -242,7 +252,12 @@ def _candidate_from_path(path: Path) -> StrategyCandidateManifest:
     return StrategyCandidateManifest.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
-def _build_validation_report(*, artifact_root: str | Path, candidate: _ResolvedCandidate) -> tuple[dict[str, Any], Path]:
+def _build_validation_report(
+    *,
+    artifact_root: str | Path,
+    candidate: _ResolvedCandidate,
+    artifact_store: ResearchArtifactStore | None,
+) -> tuple[dict[str, Any], Path | None]:
     manifest = candidate.manifest
     warnings = [issue.message for issue in manifest.warnings]
     blockers: list[str] = []
@@ -279,10 +294,10 @@ def _build_validation_report(*, artifact_root: str | Path, candidate: _ResolvedC
             checks,
             blockers,
             "strategy_source",
-            _check_strategy_source(manifest.strategy_source, template.runtime_builder_path),
+            _check_strategy_source(manifest.strategy_source, template.runtime_builder_path, artifact_store),
         )
         if not blockers:
-            strategy, source_blockers = _instantiate_strategy(manifest)
+            strategy, source_blockers = _instantiate_strategy(manifest, artifact_store)
             _record_check(checks, blockers, "strategy_source_instantiation", source_blockers)
             if strategy is not None and not source_blockers:
                 strategy_info = strategy.strategy_info.to_dict()
@@ -314,9 +329,39 @@ def _build_validation_report(*, artifact_root: str | Path, candidate: _ResolvedC
         "warnings": warnings,
         "blockers": blockers,
     }
+    if artifact_store is not None:
+        artifact_store.save_artifact(
+            artifact_type=STRATEGY_CANDIDATE_VALIDATION_REPORT,
+            artifact_id=validation_id,
+            payload=report,
+            status=status,
+            source_hash=strategy_info.get("source_hash"),
+            metadata={"candidate_id": manifest.candidate_id},
+        )
+        return report, None
     report_path = strategy_candidate_validation_report_path(artifact_root, validation_id)
     write_json_artifact(report, report_path)
     return report, report_path
+
+
+def _validation_report_ref(
+    report: Mapping[str, Any],
+    report_path: Path | None,
+    artifact_store: ResearchArtifactStore | None,
+) -> dict[str, Any]:
+    validation_id = str(report["validation_id"])
+    metadata = {"id": validation_id, "candidate_id": report["candidate_id"]}
+    if artifact_store is not None:
+        return ArtifactReference(
+            artifact_type=STRATEGY_CANDIDATE_VALIDATION_REPORT,
+            uri=f"research://postgres/{STRATEGY_CANDIDATE_VALIDATION_REPORT}/{validation_id}",
+            metadata=metadata,
+        ).to_dict()
+    return ArtifactReference(
+        artifact_type=STRATEGY_CANDIDATE_VALIDATION_REPORT,
+        path=report_path,
+        metadata=metadata,
+    ).to_dict()
 
 
 def _check_manifest_integrity(manifest: StrategyCandidateManifest) -> list[str]:
@@ -331,6 +376,7 @@ def _check_manifest_integrity(manifest: StrategyCandidateManifest) -> list[str]:
 def _check_strategy_source(
     source_ref: StrategyCandidateSourceRef | None,
     expected_builder_path: str,
+    artifact_store: ResearchArtifactStore | None,
 ) -> list[str]:
     if source_ref is None:
         return ["candidate strategy_source is required"]
@@ -339,8 +385,8 @@ def _check_strategy_source(
         blockers.append(f"strategy_source artifact_type must be {STRATEGY_IMPLEMENTATION}")
     if source_ref.runtime_contract != "trader.strategies.Strategy":
         blockers.append("strategy_source runtime_contract must be trader.strategies.Strategy")
-    if not source_ref.path:
-        blockers.append("strategy_source path is required")
+    if not source_ref.path and not source_ref.uri:
+        blockers.append("strategy_source path or uri is required")
     if not source_ref.source_hash:
         blockers.append("strategy_source source_hash is required")
     if not source_ref.factory_name:
@@ -349,7 +395,20 @@ def _check_strategy_source(
         blockers.append("strategy_source class_name is required")
     if str(source_ref.metadata.get("runtime_builder_path") or "") != expected_builder_path:
         blockers.append("strategy_source metadata.runtime_builder_path does not match template")
-    if source_ref.path:
+    if source_ref.uri:
+        if artifact_store is None:
+            blockers.append("strategy_source uri requires a configured research artifact store")
+        else:
+            try:
+                payload = load_artifact_ref(artifact_store, STRATEGY_IMPLEMENTATION, source_ref.uri)
+                source_code = str(payload.get("source_code") or "")
+                if not source_code:
+                    blockers.append("strategy_source DB artifact source_code is required")
+                elif source_ref.source_hash and source_text_hash(source_code) != source_ref.source_hash:
+                    blockers.append("strategy_source source_hash does not match DB source artifact")
+            except ResearchArtifactStoreError as exc:
+                blockers.append(f"strategy_source DB artifact could not be loaded: {exc}")
+    elif source_ref.path:
         source_path = Path(source_ref.path)
         if not source_path.exists():
             blockers.append(f"strategy_source file not found: {source_path}")
@@ -503,19 +562,21 @@ def _check_execution_assumptions(manifest: StrategyCandidateManifest) -> list[st
     return blockers
 
 
-def _instantiate_strategy(manifest: StrategyCandidateManifest) -> tuple[Strategy | None, list[str]]:
+def _instantiate_strategy(
+    manifest: StrategyCandidateManifest,
+    artifact_store: ResearchArtifactStore | None,
+) -> tuple[Strategy | None, list[str]]:
     blockers: list[str] = []
     source_ref = manifest.strategy_source
     if source_ref is None:
         return None, ["candidate strategy_source is required"]
-    source_path = Path(source_ref.path)
     try:
-        module = _load_strategy_source_module(source_path, manifest.candidate_id)
+        module = _load_strategy_source_module(source_ref, manifest.candidate_id, artifact_store)
         if not hasattr(module, source_ref.class_name):
             raise ValueError(f"strategy source class not found: {source_ref.class_name}")
         factory = getattr(module, source_ref.factory_name)
         strategy = factory(
-            symbols=[FIXTURE_SYMBOL],
+            symbols=list(FIXTURE_SYMBOLS),
             asset_class=FIXTURE_ASSET_CLASS,
             timeframe=FIXTURE_TIMEFRAME,
         )
@@ -528,8 +589,25 @@ def _instantiate_strategy(manifest: StrategyCandidateManifest) -> tuple[Strategy
     return strategy, blockers
 
 
-def _load_strategy_source_module(source_path: Path, candidate_id: str) -> object:
+def _load_strategy_source_module(
+    source_ref: StrategyCandidateSourceRef,
+    candidate_id: str,
+    artifact_store: ResearchArtifactStore | None,
+) -> object:
     module_name = f"_trader_strategy_candidate_{_module_suffix(candidate_id)}"
+    if source_ref.uri:
+        if artifact_store is None:
+            raise ValueError("strategy source uri requires a configured research artifact store")
+        payload = load_artifact_ref(artifact_store, STRATEGY_IMPLEMENTATION, source_ref.uri)
+        source_code = str(payload.get("source_code") or "")
+        if not source_code:
+            raise ValueError("strategy source DB artifact source_code is required")
+        return load_module_from_source(module_name, source_code, filename=source_ref.uri)
+    if not source_ref.path:
+        raise ValueError("strategy source path or uri is required")
+    source_path = Path(source_ref.path)
+    from importlib import util as importlib_util
+
     spec = importlib_util.spec_from_file_location(module_name, source_path)
     if spec is None or spec.loader is None:
         raise ValueError(f"could not load strategy source module: {source_path}")
@@ -548,8 +626,8 @@ def _run_fixture_smoke(
     manifest: StrategyCandidateManifest,
 ) -> tuple[dict[str, Any], list[str]]:
     blockers: list[str] = []
-    symbols = (FIXTURE_SYMBOL,)
-    bars_by_symbol = {symbol: _synthetic_bars() for symbol in symbols}
+    symbols = FIXTURE_SYMBOLS
+    bars_by_symbol = {symbol: _synthetic_bars(symbol_index=index) for index, symbol in enumerate(symbols)}
     store = _FixtureEventStore(bars_by_symbol, FIXTURE_TIMEFRAME)
     decision_ts = max(bar.ts for bars in bars_by_symbol.values() for bar in bars)
     try:
@@ -620,11 +698,13 @@ def _order_blockers(
     return blockers
 
 
-def _synthetic_bars() -> tuple[Bar, ...]:
+def _synthetic_bars(*, symbol_index: int = 0) -> tuple[Bar, ...]:
     base_ts = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
     ascending: list[Bar] = []
+    drift = 0.03 + symbol_index * 0.02
+    base_price = 95.0 + symbol_index * 5.0
     for index in range(SYNTHETIC_BAR_COUNT):
-        close = 100.0 + index * 0.05 + ((index % 7) - 3) * 0.02
+        close = base_price + index * drift + ((index % 7) - 3) * 0.02
         ts = base_ts + timedelta(minutes=index)
         ascending.append(
             Bar(

@@ -22,6 +22,7 @@ from trader_research.contracts import (
     success_envelope,
     write_json_artifact,
 )
+from trader_research.artifact_store import ResearchArtifactStore, source_hash
 from trader_research.domain import (
     METHOD_PACKAGE_MANIFEST,
     STRATEGY_CANDIDATE,
@@ -34,14 +35,14 @@ from trader_research.domain import (
     StrategyCandidateSourceRef,
     stable_research_id,
 )
-from trader_research.method_implementations.io import file_sha256
 from trader_research.method_implementations.manifest import SIGNAL_RUNTIME_CONTRACT
 from trader_research.methods.packages import MethodPackageManifest, method_package_path
 
 
 RESEARCH_LIST_STRATEGY_TEMPLATES = "research_list_strategy_templates"
 RESEARCH_CREATE_STRATEGY_CANDIDATE = "research_create_strategy_candidate"
-SUPPORTED_STRATEGY_FAMILIES = ("trend_following", "mean_reversion", "bollinger_band")
+SUPPORTED_STRATEGY_FAMILIES = ("trend_following", "mean_reversion", "bollinger_band", "cross_sectional_momentum")
+SUPPORTED_PORTFOLIO_MODES = ("single_symbol", "per_symbol_independent", "cross_sectional")
 STRATEGY_RUNTIME_CONTRACT = "trader.strategies.Strategy"
 FORBIDDEN_EXECUTION_TRUE_FLAGS = frozenset(
     {"arbitrary_strategy_code_allowed", "broker_mutation_allowed", "live_trading_allowed"}
@@ -110,6 +111,11 @@ class StrategyTemplate:
         risk_assumptions: Risk and execution assumptions for v1 candidates.
         backtest_context_requirements: Declarative context that later backtest
             tooling must supply when binding the strategy to market data.
+        portfolio_mode: Whether the template is single-symbol, independent per
+            symbol, or cross-sectional across a supplied universe.
+        rebalance_cadence: Declarative rebalance cadence metadata.
+        allocation_bounds: Declarative allocation and position bounds.
+        portfolio_state_requirements: Portfolio facts needed by the strategy.
         constraints: Additional validation hints for later candidate tools.
     """
 
@@ -126,12 +132,18 @@ class StrategyTemplate:
     sizing: Mapping[str, Any]
     risk_assumptions: Mapping[str, Any]
     backtest_context_requirements: Mapping[str, Any]
+    portfolio_mode: str = "per_symbol_independent"
+    rebalance_cadence: Mapping[str, Any] = field(default_factory=dict)
+    allocation_bounds: Mapping[str, Any] = field(default_factory=dict)
+    portfolio_state_requirements: Mapping[str, Any] = field(default_factory=dict)
     constraints: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Validate stable template identifiers and catalog parameter uniqueness."""
         if self.template_family not in SUPPORTED_STRATEGY_FAMILIES:
             raise ValueError(f"unsupported strategy template family: {self.template_family}")
+        if self.portfolio_mode not in SUPPORTED_PORTFOLIO_MODES:
+            raise ValueError(f"unsupported strategy portfolio mode: {self.portfolio_mode}")
         if not self.display_name.strip():
             raise ValueError("strategy template display_name is required")
         if not self.runtime_builder_path.strip():
@@ -156,6 +168,10 @@ class StrategyTemplate:
             "sizing": _jsonable(self.sizing),
             "risk_assumptions": _jsonable(self.risk_assumptions),
             "backtest_context_requirements": _jsonable(self.backtest_context_requirements),
+            "portfolio_mode": self.portfolio_mode,
+            "rebalance_cadence": _jsonable(self.rebalance_cadence),
+            "allocation_bounds": _jsonable(self.allocation_bounds),
+            "portfolio_state_requirements": _jsonable(self.portfolio_state_requirements),
             "constraints": _jsonable(self.constraints),
         }
 
@@ -212,6 +228,7 @@ def create_strategy_candidate(
     sizing: Mapping[str, Any] | None = None,
     risk_assumptions: Mapping[str, Any] | None = None,
     execution_assumptions: Mapping[str, Any] | None = None,
+    artifact_store: ResearchArtifactStore | None = None,
 ) -> ToolEnvelope:
     """Build and persist one bounded source-backed strategy candidate.
 
@@ -295,6 +312,7 @@ def create_strategy_candidate(
         parameters=normalized_parameters,
         sizing=normalized_sizing,
         method_package_refs=method_package_links,
+        artifact_store=artifact_store,
     )
     manifest = StrategyCandidateManifest(
         candidate_id=candidate_id,
@@ -310,28 +328,57 @@ def create_strategy_candidate(
         execution_assumptions=normalized_execution_assumptions,
         warnings=tuple(ResearchIssue(code="strategy_candidate_warning", message=message) for message in warnings),
     )
-    manifest_path = write_json_artifact(manifest.to_dict(), strategy_candidate_path(artifact_root, manifest.candidate_id))
+    manifest_payload = manifest.to_dict()
+    if artifact_store is not None:
+        manifest_record = artifact_store.save_artifact(
+            artifact_type=STRATEGY_CANDIDATE,
+            artifact_id=manifest.candidate_id,
+            payload=manifest_payload,
+            status="candidate",
+            source_hash=strategy_source.source_hash,
+            metadata={"template_family": manifest.template_family},
+        )
+        manifest_ref = ArtifactReference(
+            artifact_type=STRATEGY_CANDIDATE,
+            uri=manifest_record.uri,
+            metadata={"id": manifest.candidate_id},
+        ).to_dict()
+        source_ref = ArtifactReference(
+            artifact_type=STRATEGY_IMPLEMENTATION,
+            uri=strategy_source.uri,
+            metadata={
+                "class_name": strategy_source.class_name,
+                "factory_name": strategy_source.factory_name,
+                "id": strategy_source.artifact_id,
+                "runtime_contract": strategy_source.runtime_contract,
+                "sha256": strategy_source.source_hash,
+            },
+        ).to_dict()
+    else:
+        manifest_path = write_json_artifact(manifest_payload, strategy_candidate_path(artifact_root, manifest.candidate_id))
+        manifest_ref = ArtifactReference(
+            artifact_type=STRATEGY_CANDIDATE,
+            path=manifest_path,
+            metadata={"id": manifest.candidate_id},
+        ).to_dict()
+        source_ref = ArtifactReference(
+            artifact_type=STRATEGY_IMPLEMENTATION,
+            path=strategy_source.path,
+            metadata={
+                "class_name": strategy_source.class_name,
+                "factory_name": strategy_source.factory_name,
+                "id": strategy_source.artifact_id,
+                "runtime_contract": strategy_source.runtime_contract,
+                "sha256": strategy_source.source_hash,
+            },
+        ).to_dict()
     return success_envelope(
         command=RESEARCH_CREATE_STRATEGY_CANDIDATE,
         side_effect=SideEffect.LOCAL_MUTATING,
-        data={"strategy_candidate_manifest": manifest.to_dict()},
+        data={"strategy_candidate_manifest": manifest_payload},
         artifacts={
-            "strategy_candidate": ArtifactReference(
-                artifact_type=STRATEGY_CANDIDATE,
-                path=manifest_path,
-                metadata={"id": manifest.candidate_id},
-            ).to_dict(),
-            "strategy_source": ArtifactReference(
-                artifact_type=STRATEGY_IMPLEMENTATION,
-                path=strategy_source.path,
-                metadata={
-                    "class_name": strategy_source.class_name,
-                    "factory_name": strategy_source.factory_name,
-                    "id": strategy_source.artifact_id,
-                    "runtime_contract": strategy_source.runtime_contract,
-                    "sha256": strategy_source.source_hash,
-                },
-            ).to_dict()
+            "strategy_candidate": manifest_ref,
+            "strategy_source": source_ref,
         },
         warnings=tuple(warnings),
     )
@@ -808,29 +855,76 @@ def _write_strategy_source(
     parameters: Mapping[str, Any],
     sizing: StrategyCandidateSizing,
     method_package_refs: Sequence[StrategyCandidateArtifactLink],
+    artifact_store: ResearchArtifactStore | None,
 ) -> StrategyCandidateSourceRef:
+    class_name = _strategy_class_name(template.template_family)
+    source_code = _render_strategy_source(
+        candidate_id=candidate_id,
+        class_name=class_name,
+        template=template,
+        parameters=parameters,
+        sizing=sizing,
+    )
+    generated_hash = source_hash(source_code)
+    if artifact_store is not None:
+        record = artifact_store.save_artifact(
+            artifact_type=STRATEGY_IMPLEMENTATION,
+            artifact_id=candidate_id,
+            payload={
+                "artifact_type": STRATEGY_IMPLEMENTATION,
+                "artifact_id": candidate_id,
+                "class_name": class_name,
+                "factory_name": "build_strategy",
+                "runtime_contract": STRATEGY_RUNTIME_CONTRACT,
+                "source_code": source_code,
+                "source_hash": generated_hash,
+                "metadata": {
+                    "candidate_id": candidate_id,
+                    "allocation_bounds": template.allocation_bounds,
+                    "method_package_refs": [item.to_dict() for item in method_package_refs],
+                    "portfolio_mode": template.portfolio_mode,
+                    "portfolio_state_requirements": template.portfolio_state_requirements,
+                    "rebalance_cadence": template.rebalance_cadence,
+                    "runtime_builder_path": template.runtime_builder_path,
+                    "template_family": template.template_family,
+                },
+            },
+            status="generated",
+            source_hash=generated_hash,
+            metadata={"candidate_id": candidate_id, "template_family": template.template_family},
+        )
+        return StrategyCandidateSourceRef(
+            artifact_id=candidate_id,
+            path=None,
+            uri=record.uri,
+            source_hash=generated_hash,
+            class_name=class_name,
+            metadata={
+                "candidate_id": candidate_id,
+                "allocation_bounds": template.allocation_bounds,
+                "method_package_refs": [item.to_dict() for item in method_package_refs],
+                "portfolio_mode": template.portfolio_mode,
+                "portfolio_state_requirements": template.portfolio_state_requirements,
+                "rebalance_cadence": template.rebalance_cadence,
+                "runtime_builder_path": template.runtime_builder_path,
+                "template_family": template.template_family,
+            },
+        )
     source_path = strategy_candidate_source_path(artifact_root, candidate_id)
     source_path.parent.mkdir(parents=True, exist_ok=True)
-    class_name = _strategy_class_name(template.template_family)
-    source_path.write_text(
-        _render_strategy_source(
-            candidate_id=candidate_id,
-            class_name=class_name,
-            template=template,
-            parameters=parameters,
-            sizing=sizing,
-        ),
-        encoding="utf-8",
-    )
-    source_hash = file_sha256(source_path)
+    source_path.write_text(source_code, encoding="utf-8")
     return StrategyCandidateSourceRef(
         artifact_id=candidate_id,
         path=str(source_path),
-        source_hash=source_hash,
+        source_hash=generated_hash,
         class_name=class_name,
         metadata={
             "candidate_id": candidate_id,
+            "allocation_bounds": template.allocation_bounds,
             "method_package_refs": [item.to_dict() for item in method_package_refs],
+            "portfolio_mode": template.portfolio_mode,
+            "portfolio_state_requirements": template.portfolio_state_requirements,
+            "rebalance_cadence": template.rebalance_cadence,
             "runtime_builder_path": template.runtime_builder_path,
             "template_family": template.template_family,
         },
@@ -920,6 +1014,7 @@ def _render_strategy_source(
                 inner_info = resolve_strategy_info(self._inner, fallback_id=TEMPLATE_FAMILY)
                 parameters = dict(inner_info.parameters)
                 parameters.update(_STRATEGY_PARAMETERS)
+                parameters["portfolio_mode"] = "{template.portfolio_mode}"
                 parameters["candidate_id"] = CANDIDATE_ID
                 parameters["runtime_builder_path"] = RUNTIME_BUILDER_PATH
                 return StrategyInfo(
@@ -1134,22 +1229,51 @@ def _sizing_contract() -> dict[str, Any]:
     }
 
 
-def _risk_assumptions() -> dict[str, Any]:
+def _risk_assumptions(*, portfolio_model: str = "single_target_quantity_per_symbol") -> dict[str, Any]:
     return {
         "position_direction": "long_only",
         "stop_policy": "not_exposed_in_v1_catalog",
         "order_type": "market",
-        "portfolio_model": "single_target_quantity_per_symbol",
+        "portfolio_model": portfolio_model,
     }
 
 
-def _backtest_context_requirements() -> dict[str, Any]:
+def _backtest_context_requirements(*, portfolio_mode: str = "per_symbol_independent") -> dict[str, Any]:
     return {
         "market_data": "event_store_bars",
         "required_backtest_fields": ["symbols", "asset_class", "timeframe", "start", "end"],
         "candidate_fields": [],
         "bar_order": "latest_first",
         "warmup": "max_signal_window",
+        "symbol_universe_source": "data_agent_dataset_manifest",
+        "portfolio_mode": portfolio_mode,
+    }
+
+
+def _rebalance_cadence(value: str = "every_bar") -> dict[str, Any]:
+    return {
+        "cadence": value,
+        "clock_source": "backtest_data_scope",
+        "dates_bound_by_candidate": False,
+    }
+
+
+def _allocation_bounds(*, max_positions_parameter: str | None = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "allows_short": False,
+        "min_symbol_weight": 0.0,
+        "max_symbol_weight": 1.0,
+        "target_quantity_parameter": "target_qty_when_long",
+    }
+    if max_positions_parameter is not None:
+        payload["max_positions_parameter"] = max_positions_parameter
+    return payload
+
+
+def _portfolio_state_requirements(*requirements: str) -> dict[str, Any]:
+    return {
+        "required_state": list(requirements or ("positions_by_symbol",)),
+        "state_source": "runtime_portfolio_snapshot",
     }
 
 
@@ -1212,6 +1336,10 @@ TREND_FOLLOWING_TEMPLATE = StrategyTemplate(
     sizing=_sizing_contract(),
     risk_assumptions=_risk_assumptions(),
     backtest_context_requirements=_backtest_context_requirements(),
+    portfolio_mode="per_symbol_independent",
+    rebalance_cadence=_rebalance_cadence(),
+    allocation_bounds=_allocation_bounds(),
+    portfolio_state_requirements=_portfolio_state_requirements("positions_by_symbol"),
     constraints=_template_constraints(),
 )
 
@@ -1270,6 +1398,10 @@ MEAN_REVERSION_TEMPLATE = StrategyTemplate(
     sizing=_sizing_contract(),
     risk_assumptions=_risk_assumptions(),
     backtest_context_requirements=_backtest_context_requirements(),
+    portfolio_mode="per_symbol_independent",
+    rebalance_cadence=_rebalance_cadence(),
+    allocation_bounds=_allocation_bounds(),
+    portfolio_state_requirements=_portfolio_state_requirements("positions_by_symbol"),
     constraints=_template_constraints(),
 )
 
@@ -1303,6 +1435,65 @@ BOLLINGER_BAND_TEMPLATE = StrategyTemplate(
     sizing=_sizing_contract(),
     risk_assumptions=_risk_assumptions(),
     backtest_context_requirements=_backtest_context_requirements(),
+    portfolio_mode="per_symbol_independent",
+    rebalance_cadence=_rebalance_cadence(),
+    allocation_bounds=_allocation_bounds(),
+    portfolio_state_requirements=_portfolio_state_requirements("positions_by_symbol"),
+    constraints=_template_constraints(),
+)
+
+CROSS_SECTIONAL_MOMENTUM_TEMPLATE = StrategyTemplate(
+    template_family="cross_sectional_momentum",
+    display_name="Cross-Sectional Momentum",
+    description="Ranks the supplied symbol universe by lookback return and allocates long exposure to top symbols.",
+    runtime_builder_path="trader_standard.strategies:build_cross_sectional_momentum_strategy",
+    runtime_strategy_id="cross_sectional_momentum",
+    parameters=_shared_parameters()
+    + (
+        StrategyTemplateParameter(
+            name="lookback_period",
+            value_type="integer",
+            description="Number of bars used to compute simple lookback return ranks.",
+            default=20,
+            constraints={"minimum": 1},
+        ),
+        StrategyTemplateParameter(
+            name="top_n",
+            value_type="integer",
+            description="Maximum number of top-ranked symbols to hold long.",
+            default=2,
+            constraints={"minimum": 1},
+        ),
+        StrategyTemplateParameter(
+            name="rebalance_cadence",
+            value_type="string",
+            description="Declarative cadence used by portfolio backtests to interpret rebalance timing.",
+            default="every_bar",
+            constraints={"allowed_values": ["every_bar", "daily"]},
+        ),
+    ),
+    required_artifact_types=(METHOD_PACKAGE_MANIFEST,),
+    required_artifact_roles=_required_artifact_roles("ranking_signal"),
+    entry_semantics={
+        "position_model": "long_only_top_n",
+        "direction": "long_only",
+        "order_type": "market",
+        "ranking_role": "ranking_signal",
+        "rank_order": "descending",
+        "selection_parameter": "top_n",
+    },
+    exit_semantics={
+        "position_model": "long_only_top_n",
+        "order_type": "market",
+        "condition": "drop_out_of_top_n",
+    },
+    sizing=_sizing_contract(),
+    risk_assumptions=_risk_assumptions(portfolio_model="cross_sectional_top_n_equal_quantity"),
+    backtest_context_requirements=_backtest_context_requirements(portfolio_mode="cross_sectional"),
+    portfolio_mode="cross_sectional",
+    rebalance_cadence=_rebalance_cadence(),
+    allocation_bounds=_allocation_bounds(max_positions_parameter="top_n"),
+    portfolio_state_requirements=_portfolio_state_requirements("positions_by_symbol", "cash_balance"),
     constraints=_template_constraints(),
 )
 
@@ -1310,5 +1501,6 @@ STRATEGY_TEMPLATE_CATALOG = (
     TREND_FOLLOWING_TEMPLATE,
     MEAN_REVERSION_TEMPLATE,
     BOLLINGER_BAND_TEMPLATE,
+    CROSS_SECTIONAL_MOMENTUM_TEMPLATE,
 )
 _TEMPLATE_BY_FAMILY = {template.template_family: template for template in STRATEGY_TEMPLATE_CATALOG}

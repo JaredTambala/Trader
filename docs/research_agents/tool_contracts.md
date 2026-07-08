@@ -81,6 +81,10 @@ Fields:
 - `warnings`: non-fatal issues.
 - `errors`: structured fatal errors when `ok=false`.
 
+Canonical MCP research artifact refs use `research://postgres/{artifact_type}/{artifact_id}` when the structured
+research artifact store is configured. `ArtifactReference.path` remains for fallback direct-service exports and legacy
+baseline bundles; MCP clients should prefer `uri` when present.
+
 ## Side Effects
 
 | Class | Meaning | Allowed examples |
@@ -137,10 +141,14 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | `research_create_strategy_candidate` | Quant Research Supervisor Agent | `strategy_candidate_manifest.json` and strategy source |
 | `research_validate_strategy_candidate` | Quant Research Supervisor Agent | strategy candidate validation report |
 | `research_run_backtest` | Quant Research Supervisor Agent | `backtest_run_ref.json` plus backtest artifact bundle |
+| `research_run_portfolio_backtest` | Quant Research Supervisor Agent | `portfolio_backtest_run_ref.json` plus risk-scoped portfolio backtest bundle |
 | `research_get_backtest_results` | Quant Research Supervisor Agent | result summary and artifact paths |
 | `research_compare_backtest_results` | Quant Research Supervisor Agent | `comparison_report.json` over explicit backtest refs |
 | `research_list_risk_manager_templates` | Quant Research Supervisor Agent | risk-manager template catalog |
 | `research_create_risk_manager_candidate` | Quant Research Supervisor Agent | `risk_manager_candidate_manifest.json` and risk-manager source |
+| `research_validate_risk_manager_candidate` | Quant Research Supervisor Agent | `risk_manager_candidate_validation_report.json` |
+| `research_create_strategy_risk_stack` | Quant Research Supervisor Agent | `strategy_risk_stack_manifest.json` |
+| `research_validate_strategy_risk_stack` | Quant Research Supervisor Agent | `strategy_risk_stack_validation_report.json` |
 | `evaluation_generate_performance_report` | Evaluation Agent | first practical `evaluation_report.json` from backtest/data-quality artifacts |
 | `evaluation_generate_report` | Evaluation Agent | later skeptical critique report |
 | `adversarial_run_robustness` | Adversarial Agent | `robustness_report.json` |
@@ -206,9 +214,13 @@ expose test helpers such as no-op strategies, or allow broker mutation.
 
 `research_create_strategy_candidate` writes two coupled artifacts:
 
-- `strategy_candidate_manifest.json`, the provenance and validation contract.
-- A deterministic Python strategy source file under
-  `artifact_root / "strategy_candidates" / "source" / f"{candidate_id}.py"`.
+- `strategy_candidate`, the provenance and validation contract.
+- `strategy_implementation`, a deterministic Python strategy source artifact.
+
+Under MCP, these artifacts are stored in the configured research artifact store and returned with
+`research://postgres/strategy_candidate/{candidate_id}` and
+`research://postgres/strategy_implementation/{candidate_id}` refs. Direct services without an artifact store retain
+the legacy filesystem export paths under `artifact_root / "strategy_candidates" / ...`.
 
 The generated Python source is the strategy implementation. It must expose a `build_strategy(...)` factory that returns
 an object implementing `trader.strategies.Strategy`. The source binds the maintained strategy family and strategy
@@ -217,12 +229,12 @@ The generated class name is semantic and template-derived, such as `BollingerBan
 `candidate_id` remains in `CANDIDATE_ID`, manifest metadata, `strategy_id`, and `strategy_info` rather than being baked
 into the class name.
 
-`strategy_candidate_manifest.json` uses artifact type `strategy_candidate` and records:
+The `strategy_candidate` manifest records:
 
 - `candidate_id`, `template_family`, `method_package_refs`, `signal_refs`, `strategy_source`, and template
   `parameters`.
-- `strategy_source` with artifact type `strategy_implementation`, source path, source hash, class name, factory name,
-  runtime contract `trader.strategies.Strategy`, and template/builder provenance.
+- `strategy_source` with artifact type `strategy_implementation`, source path or URI, source hash, class name, factory name,
+  runtime contract `trader.strategies.Strategy`, template/builder provenance, and portfolio-construction metadata.
 - Declarative `entry_semantics` and `exit_semantics`.
 - `sizing` assumptions for fixed-quantity long/flat templates.
 - Named `risk_assumptions`.
@@ -230,8 +242,10 @@ into the class name.
   flags.
 - Structured `warnings` and `blockers`.
 
-Strategy candidates deliberately do not record symbols, asset class, timeframe, start, or end. Those fields belong to
-the later backtest or experiment request that binds a validated strategy candidate to a data window.
+Maintained templates declare `portfolio_mode` (`single_symbol`, `per_symbol_independent`, or `cross_sectional`),
+rebalance cadence, allocation bounds, and portfolio-state requirements. Strategy candidates deliberately do not record
+symbols, asset class, timeframe, start, or end. Those fields belong to the later backtest or experiment request that
+binds a validated strategy candidate to a data window.
 
 `research_create_strategy_candidate` is a local-mutating direct service. It accepts:
 
@@ -241,10 +255,9 @@ the later backtest or experiment request that binds a validated strategy candida
   `package_manifest`.
 - Optional scalar `parameters`, fixed-quantity `sizing`, `risk_assumptions`, and `execution_assumptions`.
 
-Package IDs resolve from `artifact_root / "method_packages" / "manifests" / f"{package_id}.json"`. Successful calls
-write the strategy source file, write
-`artifact_root / "strategy_candidates" / "manifests" / f"{candidate_id}.json"`, and return
-`data["strategy_candidate_manifest"]` plus `strategy_candidate` and `strategy_source` artifact references.
+Package IDs resolve from the research artifact store when configured, or from
+`artifact_root / "method_packages" / "manifests" / f"{package_id}.json"` for legacy direct-service calls. Successful
+calls return `data["strategy_candidate_manifest"]` plus `strategy_candidate` and `strategy_source` artifact references.
 
 Candidate construction fails closed before writing when:
 
@@ -279,11 +292,11 @@ and return an error envelope containing that report.
 
 Validation proves maintained-template runtime compatibility only. It verifies the strategy source ref, checks the
 current source SHA-256, imports the generated strategy module, calls its `build_strategy(...)` factory with an internal
-synthetic fixture context, runs a deterministic synthetic-bar smoke fixture, and verifies any emitted orders are bounded
-market buy/sell intents for the fixture symbols. It does not dynamically load arbitrary package entrypoints, read market
-data, touch brokers, mutate SQL, run backtests, or clear runtime/risk state. Task 28 owns baseline backtest execution
-after candidate validation passes. Strategy candidates remain data-free; the backtest data scope is supplied only by a
-Data Agent `dataset_manifest`.
+multi-symbol synthetic fixture context, runs a deterministic synthetic-bar smoke fixture, and verifies any emitted orders
+are bounded market buy/sell intents for the fixture symbols. It does not dynamically load arbitrary package entrypoints,
+read market data, touch brokers, mutate SQL, run backtests, or clear runtime/risk state. Task 28 owns baseline backtest
+execution after candidate validation passes. Strategy candidates remain data-free; the backtest data scope is supplied
+only by a Data Agent `dataset_manifest`.
 
 ## Risk Manager Candidate Catalog And Builder
 
@@ -328,10 +341,13 @@ Each template entry includes:
 
 Successful calls write two coupled artifacts:
 
-- `risk_manager_candidate_manifest.json` under
-  `artifact_root / "risk_managers" / "manifests" / f"{candidate_id}.json"`.
-- A deterministic Python risk-manager source file under
-  `artifact_root / "risk_managers" / "source" / f"{candidate_id}.py"`.
+- `risk_manager_candidate` manifest.
+- `risk_manager_implementation` deterministic Python source artifact.
+
+Under MCP, these artifacts are stored in the configured research artifact store and returned with
+`research://postgres/risk_manager_candidate/{candidate_id}` and
+`research://postgres/risk_manager_implementation/{candidate_id}` refs. Direct services without an artifact store retain
+the legacy filesystem export paths under `artifact_root / "risk_managers" / ...`.
 
 The generated Python source is a backtest-only research candidate. It exposes `build_risk_manager(...)` and returns an
 object implementing `trader.risk.RiskManager`; it records the template family and bounded parameters but does not
@@ -341,7 +357,7 @@ the later risk-manager validation and strategy/risk stack tasks.
 `risk_manager_candidate_manifest.json` uses artifact type `risk_manager_candidate` and records:
 
 - `candidate_id`, `template_family`, optional `method_package_refs`, and template `parameters`.
-- `risk_manager_source` with artifact type `risk_manager_implementation`, source path, source hash, class name,
+- `risk_manager_source` with artifact type `risk_manager_implementation`, source path or URI, source hash, class name,
   factory name, runtime contract `trader.risk.RiskManager`, and template provenance.
 - Declarative `policy_intent`, JSON-safe no-live-trading `execution_assumptions`, `validation_requirements`, `status`,
   structured `warnings`, and `blockers`.
@@ -360,9 +376,45 @@ Candidate construction fails closed before writing when:
   IDs, or declares an unsupported runtime contract.
 - Execution assumptions attempt live trading, broker mutation, raw SQL access, or disable the backtest-only boundary.
 
-Task 33B registers `research_list_risk_manager_templates` and `research_create_risk_manager_candidate` through MCP.
-It does not register `research_validate_risk_manager_candidate`, compose strategy/risk stacks, run portfolio backtests,
-or generate portfolio/risk evaluation reports; those are later task-33 slices.
+`research_validate_risk_manager_candidate` is a local-mutating MCP/direct service. It accepts exactly one of:
+
+- `candidate_id`, resolved from `artifact_root / "risk_managers" / "manifests" / f"{candidate_id}.json"`.
+- `path` to a `risk_manager_candidate_manifest.json`.
+- Inline `risk_manager_candidate_manifest`.
+
+Validation writes `risk_manager_candidate_validation_report.json` under
+`artifact_root / "risk_managers" / "validation_reports" / f"{validation_id}.json"` and returns
+`data["risk_manager_candidate_validation_report"]`. The report contains the candidate ID, template family, runtime
+contract, source ref, checks, fixture summary, policy intent, required telemetry, warnings, blockers, and schema version.
+Validation checks the manifest, source hash, source safety markers, no-live-trading execution assumptions, validation
+requirements, runtime instantiation as `trader.risk.RiskManager`, and a deterministic risk-context fixture. It does not
+run a backtest, touch brokers, mutate SQL, or enforce live risk policy.
+
+`research_create_strategy_risk_stack` is a local-mutating MCP/direct service. It accepts:
+
+- One passed strategy validation report by `strategy_validation_id`, `strategy_validation_report_path`, or inline
+  `strategy_candidate_validation_report`.
+- One or more ordered passed risk-manager validation refs, each by `validation_id`, `path`, or inline
+  `risk_manager_candidate_validation_report`.
+- Optional stack `execution_assumptions`, which must keep the backtest-only, no-broker-mutation, no-live-trading, and
+  no-raw-SQL boundaries.
+
+Successful calls write `strategy_risk_stack_manifest.json` under
+`artifact_root / "portfolio_stacks" / "manifests" / f"{stack_id}.json"`. The manifest records the validated strategy
+candidate ref, strategy validation report ref, ordered risk-manager refs with priority and validation-report provenance,
+and stack execution assumptions. Creation fails closed when any validation report is missing, failed, blocked,
+duplicated, or mismatched with its candidate.
+
+`research_validate_strategy_risk_stack` is a local-mutating MCP/direct service. It accepts exactly one of `stack_id`,
+`path`, or inline `strategy_risk_stack_manifest`. Validation writes `strategy_risk_stack_validation_report.json` under
+`artifact_root / "portfolio_stacks" / "validation_reports" / f"{validation_id}.json"`. It verifies stack manifest
+integrity, risk-manager ordering, passed validation refs, source hashes, runtime contracts, no-live-trading execution
+assumptions, risk telemetry hooks, and a deterministic multi-symbol fixture that instantiates the strategy, instantiates
+the ordered risk managers, and runs candidate orders through `trader.risk.RiskPipeline`.
+
+Task 33D registers `research_validate_risk_manager_candidate`, `research_create_strategy_risk_stack`, and
+`research_validate_strategy_risk_stack` through MCP. It does not run portfolio backtests or generate portfolio/risk
+evaluation reports; those remain later task-33 slices.
 
 ## Data-Scoped Baseline Backtests
 
@@ -442,36 +494,86 @@ touching the event store or runtime config. `research_get_backtest_results` is r
 `research_compare_backtest_results` is not gated by `TRADER_MCP_ALLOW_BACKTESTS` because it compares persisted bundles
 only.
 
+## Risk-Scoped Portfolio Backtests
+
+`research_run_portfolio_backtest` is a Quant Research Supervisor local-mutating tool and direct service. It runs one
+portfolio backtest through the platform `BacktestRunner` with a strategy and ordered risk managers from a passed
+`strategy_risk_stack_validation_report`.
+
+Required request inputs:
+
+- Exactly one passed strategy/risk stack validation report ref:
+  `strategy_risk_stack_validation_id`, `strategy_risk_stack_validation_report_path`, or inline
+  `strategy_risk_stack_validation_report`.
+- Exactly one Data Agent dataset manifest input: inline `dataset_manifest`, `dataset_manifest_path`, or
+  `dataset_manifest_ref`.
+
+Optional request inputs are `data_quality_report` or `data_quality_report_path`, `assumptions`, `initial_cash`,
+`initial_positions`, `max_runs`, and `log_cycle_details`. Loose backtest scope fields are rejected; symbols, asset
+class, timeframe, date window, and source filter must come from the Data Agent manifest. Non-null source filters still
+fail closed until the platform replay loader can enforce source-filtered bars.
+
+The service resolves the persisted stack manifest by `stack_id`, requires passed stack validation with no blockers,
+rechecks strategy and risk-manager source hashes and no-live-trading assumptions, then runs the existing
+`BacktestRunner` through a research-only recording risk pipeline. The recording pipeline preserves the normal
+`RiskManager` approval/rejection contract and writes decision telemetry only as research artifacts.
+
+When a research artifact store is configured, the service writes one structured `portfolio_backtest_run_ref` record with
+the run ref plus the standard result, metrics, provenance, equity/trade/position payloads, and portfolio risk sidecars
+embedded in a DB payload. The run ref returns `artifact_dir=null`, empty `artifact_paths`, and
+`artifact_uris["portfolio_backtest_run_ref"]`. Direct services without an artifact store retain the legacy filesystem
+bundle under `artifact_root / "portfolio_backtests" / "runs" / run_id /`:
+
+- `portfolio_backtest_run_ref.json`
+- `result.json`, `metrics.json`, `provenance.json`, `equity_curve.csv`, `benchmark_curve.csv`, `positions.csv`, and
+  `trades.csv` when trades exist
+- `symbol_metrics.json`, `exposure_summary.json`, `risk_decisions.json`, `risk_limit_breaches.json`, and
+  `risk_measure_summary.json`
+
+Success data contains `portfolio_backtest_run_ref`, summary metrics, normalized data scope, sidecar summaries, and
+artifact refs. The run ref records stack IDs, dataset ID, data scope, status, symbol metrics, exposure summary,
+risk-measure summary, warnings, blockers, and paths or URIs. Missing VaR/CVaR or other required risk telemetry is recorded as
+portfolio backtest warning evidence; Evaluation decides whether the omission blocks the report.
+
+MCP exposes `research_run_portfolio_backtest` with `agent_owner="Quant Research Supervisor Agent"` and
+`side_effect="local_mutating"`. It is gated by `TRADER_MCP_ALLOW_BACKTESTS=true`, like `research_run_backtest`.
+
 ## Evaluation Performance Reports
 
 `evaluation_generate_performance_report` is an Evaluation Agent local-mutating tool and direct service. It reads one
-persisted task-28 backtest bundle and writes a descriptive `evaluation_report.json`; it does not run backtests, query
-SQL/event-store tables, create strategies, scan arbitrary directories, or recompute core metrics from raw curves.
+persisted baseline or portfolio backtest bundle and writes a descriptive `evaluation_report`; it does not run
+backtests, query SQL/event-store tables, create strategies, scan arbitrary directories, or recompute core metrics from
+raw curves.
 
 Required request input:
 
-- Exactly one backtest ref: `run_id`, `artifact_dir`, or inline `backtest_run_ref`.
+- Exactly one backtest ref: `run_id`, `artifact_dir`, inline `backtest_run_ref`, or inline
+  `portfolio_backtest_run_ref`.
 
 Optional request input:
 
 - One data-quality evidence input: inline `data_quality_report`, `data_quality_report_path`, or
   `data_quality_report_ref`.
 
-The service reads only `backtest_run_ref.json`, `metrics.json`, `result.json`, `provenance.json`, optional `trades.csv`,
-and artifact paths in the resolved bundle. Reports are written under
+With a configured research artifact store, the service resolves `portfolio_backtest_run_ref` records by URI or run ID
+and writes `evaluation_report` rows back to the store. Baseline filesystem refs still resolve from the legacy bundle
+when no matching DB run record exists. Direct services without an artifact store write reports under
 `artifact_root / "evaluation" / "performance_reports" / f"{report_id}.json"`.
 
 The report uses `artifact_type="evaluation_report"` and `report_kind="performance_report"`. It contains `report_id`,
-`status`, `run_id`, candidate/validation/dataset refs, normalized data scope, core metrics, trade stats, cost
-assumptions and realized costs, benchmark and relative metrics, data-quality summary, artifact paths, caveats,
-warnings, blockers, and schema version. Core metrics include total return, Sharpe, max drawdown, turnover, trade count,
-hit rate when available, fees, slippage, failed runs, warning count, alpha, beta, tracking error, and information ratio.
+`status`, `backtest_kind`, `run_id`, candidate/validation/dataset refs, optional strategy/risk stack refs, normalized
+data scope, core metrics, trade stats, cost assumptions and realized costs, benchmark and relative metrics, portfolio
+symbol metrics, exposure summary, risk decisions, risk-limit breaches, risk-measure summary, data-quality summary,
+artifact paths, caveats, warnings, blockers, and schema version. Core metrics include total return, Sharpe, max
+drawdown, turnover, trade count, hit rate when available, fees, slippage, failed runs, warning count, alpha, beta,
+tracking error, and information ratio.
 
 Resolved backtest bundles always produce a report. The report has `status="blocked"` when blockers exist and
 `status="passed"` otherwise. Missing or incomplete data-quality evidence, data-quality scope mismatches, failed runs,
-run blockers, and zero-trade backtests are blocking. Missing optional benchmark fields, missing hit-rate/trade stats,
-runtime warnings, and zero fee/slippage assumptions are caveats or warnings. Unresolved refs, corrupt JSON, invalid
-artifact type, missing `metrics.json`, or missing `result.json` fail closed before writing a report.
+run blockers, zero-trade backtests, missing portfolio risk sidecars, or missing required portfolio risk telemetry are
+blocking. Missing optional benchmark fields, missing hit-rate/trade stats, runtime warnings, and zero fee/slippage
+assumptions are caveats or warnings. Unresolved refs, corrupt JSON, invalid artifact type, ambiguous run IDs, missing
+`metrics.json`, or missing `result.json` fail closed before writing a report.
 
 MCP exposes `evaluation_generate_performance_report` with `agent_owner="Evaluation Agent"` and
 `side_effect="local_mutating"`. It is not gated by `TRADER_MCP_ALLOW_BACKTESTS` because it only reads persisted bundles

@@ -146,7 +146,10 @@ def test_generate_performance_report_blocks_for_backtest_evidence_issues(
 @pytest.mark.parametrize(
     ("mutator", "expected_message"),
     [
-        (lambda _run_ref: None, "exactly one of run_id, artifact_dir, or backtest_run_ref is required"),
+        (
+            lambda _run_ref: None,
+            "exactly one of run_id, artifact_dir, backtest_run_ref, or portfolio_backtest_run_ref is required",
+        ),
         (lambda run_ref: Path(run_ref["artifact_paths"]["metrics"]).unlink(), "metrics.json not found"),
         (lambda run_ref: Path(run_ref["artifact_paths"]["result"]).unlink(), "result.json not found"),
         (lambda run_ref: _update_run_ref(run_ref, artifact_type="wrong_type"), "artifact_type must be backtest_run_ref"),

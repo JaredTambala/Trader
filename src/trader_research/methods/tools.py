@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping
 
+from trader_research.artifact_store import ResearchArtifactStore
 from trader_research.contracts import SideEffect, ToolEnvelope, error_envelope, success_envelope
 from trader_research.methods.kernels import compile_cpp_kernel, generate_cpp_kernel
 from trader_research.knowledge.citation_validation import validate_citations
@@ -212,6 +213,7 @@ def math_register_method_implementation(
     dependency_allowlist: list[str] | None = None,
     expected_source_hash: str | None = None,
     knowledge_store: KnowledgeStore | None = None,
+    artifact_store: ResearchArtifactStore | None = None,
 ) -> ToolEnvelope:
     """Delegate registration of a concrete Python method implementation manifest.
 
@@ -233,6 +235,7 @@ def math_register_method_implementation(
         dependency_allowlist=dependency_allowlist,
         expected_source_hash=expected_source_hash,
         knowledge_store=knowledge_store,
+        artifact_store=artifact_store,
     )
 
 
@@ -243,6 +246,7 @@ def math_run_indicator_fixtures(
     implementation_manifest: Mapping[str, Any] | None = None,
     fixtures: list[dict[str, Any]] | None = None,
     knowledge_store: KnowledgeStore | None = None,
+    artifact_store: ResearchArtifactStore | None = None,
 ) -> ToolEnvelope:
     """Run indicator fixture validation through the method-implementation service.
 
@@ -256,6 +260,7 @@ def math_run_indicator_fixtures(
         implementation_manifest=implementation_manifest,
         fixtures=fixtures,
         knowledge_store=knowledge_store,
+        artifact_store=artifact_store,
     )
 
 
@@ -266,6 +271,7 @@ def math_run_signal_fixtures(
     implementation_manifest: Mapping[str, Any] | None = None,
     fixtures: list[dict[str, Any]] | None = None,
     knowledge_store: KnowledgeStore | None = None,
+    artifact_store: ResearchArtifactStore | None = None,
 ) -> ToolEnvelope:
     """Run signal fixture validation through the method-implementation service.
 
@@ -279,6 +285,7 @@ def math_run_signal_fixtures(
         implementation_manifest=implementation_manifest,
         fixtures=fixtures,
         knowledge_store=knowledge_store,
+        artifact_store=artifact_store,
     )
 
 
@@ -391,6 +398,7 @@ def math_package_method_artifact(
     validation_report: Mapping[str, Any] | None = None,
     cxx_kernel_id: str | None = None,
     cxx_kernel_manifest: Mapping[str, Any] | None = None,
+    artifact_store: ResearchArtifactStore | None = None,
 ) -> ToolEnvelope:
     """Package a validated Python method implementation for strategy handoff."""
     return package_method_artifact(
@@ -401,6 +409,7 @@ def math_package_method_artifact(
         validation_report=validation_report,
         cxx_kernel_id=cxx_kernel_id,
         cxx_kernel_manifest=cxx_kernel_manifest,
+        artifact_store=artifact_store,
     )
 
 

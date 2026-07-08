@@ -9,8 +9,12 @@ from typing import Any, Mapping, Sequence
 from trader.indicators import Indicator
 from trader.signals import Signal
 
+from trader_research.artifact_store import ResearchArtifactStore, load_artifact_ref
 from trader_research.contracts import ArtifactReference, SideEffect, ToolEnvelope, error_envelope, success_envelope, write_json_artifact
-from trader_research.domain import stable_research_id
+from trader_research.domain import (
+    METHOD_IMPLEMENTATION_MANIFEST,
+    stable_research_id,
+)
 from trader_research.knowledge.store import KnowledgeStore
 from trader_research.method_implementations.fixture_defaults import default_indicator_fixtures, default_signal_fixtures
 from trader_research.method_implementations.fixture_helpers import run_indicator_fixture, run_signal_fixture
@@ -38,6 +42,7 @@ def run_indicator_fixtures(
     implementation_manifest: Mapping[str, Any] | None = None,
     fixtures: Sequence[Mapping[str, Any]] | None = None,
     knowledge_store: KnowledgeStore | None = None,
+    artifact_store: ResearchArtifactStore | None = None,
 ) -> ToolEnvelope:
     """Validate an indicator implementation manifest against deterministic fixtures.
 
@@ -52,6 +57,7 @@ def run_indicator_fixtures(
             artifact_root=artifact_root,
             implementation_id=implementation_id,
             implementation_manifest=implementation_manifest,
+            artifact_store=artifact_store,
         )
     except (FileNotFoundError, ValueError) as exc:
         return local_mutating_error(MATH_RUN_INDICATOR_FIXTURES, "method_implementation_not_found", str(exc))
@@ -61,6 +67,7 @@ def run_indicator_fixtures(
         artifact_root=artifact_root,
         manifest=manifest,
         knowledge_store=knowledge_store,
+        artifact_store=artifact_store,
     )
     if not register_check.ok:
         return register_check
@@ -99,6 +106,7 @@ def run_indicator_fixtures(
         results=results,
         warnings=warnings,
         blockers=blockers,
+        artifact_store=artifact_store,
     )
 
 
@@ -109,6 +117,7 @@ def run_signal_fixtures(
     implementation_manifest: Mapping[str, Any] | None = None,
     fixtures: Sequence[Mapping[str, Any]] | None = None,
     knowledge_store: KnowledgeStore | None = None,
+    artifact_store: ResearchArtifactStore | None = None,
 ) -> ToolEnvelope:
     """Validate a signal implementation manifest against deterministic fixtures.
 
@@ -122,6 +131,7 @@ def run_signal_fixtures(
             artifact_root=artifact_root,
             implementation_id=implementation_id,
             implementation_manifest=implementation_manifest,
+            artifact_store=artifact_store,
         )
     except (FileNotFoundError, ValueError) as exc:
         return local_mutating_error(MATH_RUN_SIGNAL_FIXTURES, "method_implementation_not_found", str(exc))
@@ -131,6 +141,7 @@ def run_signal_fixtures(
         artifact_root=artifact_root,
         manifest=manifest,
         knowledge_store=knowledge_store,
+        artifact_store=artifact_store,
     )
     if not register_check.ok:
         return register_check
@@ -169,6 +180,7 @@ def run_signal_fixtures(
         results=results,
         warnings=warnings,
         blockers=blockers,
+        artifact_store=artifact_store,
     )
 
 
@@ -177,9 +189,14 @@ def _resolve_manifest(
     artifact_root: str | Path,
     implementation_id: str | None,
     implementation_manifest: Mapping[str, Any] | None,
+    artifact_store: ResearchArtifactStore | None,
 ) -> MethodImplementationManifest:
     if implementation_manifest is not None:
         return MethodImplementationManifest.from_dict(implementation_manifest)
+    if artifact_store is not None:
+        return MethodImplementationManifest.from_dict(
+            load_artifact_ref(artifact_store, METHOD_IMPLEMENTATION_MANIFEST, str(implementation_id or ""))
+        )
     return load_manifest(artifact_root, str(implementation_id or ""))
 
 
@@ -189,6 +206,7 @@ def _revalidate_manifest(
     artifact_root: str | Path,
     manifest: MethodImplementationManifest,
     knowledge_store: KnowledgeStore | None,
+    artifact_store: ResearchArtifactStore | None,
 ) -> ToolEnvelope:
     register_check = register_method_implementation(
         artifact_root=artifact_root,
@@ -203,6 +221,7 @@ def _revalidate_manifest(
         dependency_allowlist=manifest.dependency_allowlist,
         expected_source_hash=manifest.source_hash,
         knowledge_store=knowledge_store,
+        artifact_store=artifact_store,
     )
     if register_check.ok:
         return register_check
@@ -253,6 +272,7 @@ def _finish_validation(
     results: list[Mapping[str, Any]],
     warnings: list[str],
     blockers: list[str],
+    artifact_store: ResearchArtifactStore | None,
 ) -> ToolEnvelope:
     status = "passed" if not blockers else "failed"
     validation_id = stable_research_id(
@@ -278,25 +298,55 @@ def _finish_validation(
         "warnings": warnings,
         "blockers": blockers,
     }
-    report_path = validation_report_path(artifact_root, validation_id)
-    write_json_artifact(report, report_path)
     updated_manifest = replace(manifest, status="validated" if not blockers else "blocked")
-    manifest_path = save_manifest(artifact_root, updated_manifest)
+    if artifact_store is not None:
+        report_record = artifact_store.save_artifact(
+            artifact_type=report_artifact_type,
+            artifact_id=validation_id,
+            payload=report,
+            status=status,
+            source_hash=manifest.source_hash,
+            metadata={"implementation_id": manifest.implementation_id, "method_id": manifest.method_id},
+        )
+        manifest_record = artifact_store.save_artifact(
+            artifact_type=METHOD_IMPLEMENTATION_MANIFEST,
+            artifact_id=updated_manifest.implementation_id,
+            payload=updated_manifest.to_dict(),
+            status=updated_manifest.status,
+            source_hash=updated_manifest.source_hash,
+            metadata={"method_id": updated_manifest.method_id, "runtime_contract": updated_manifest.runtime_contract},
+        )
+        manifest_ref = ArtifactReference(
+            artifact_type=METHOD_IMPLEMENTATION_MANIFEST,
+            uri=manifest_record.uri,
+            metadata={"id": updated_manifest.implementation_id},
+        ).to_dict()
+        report_ref = ArtifactReference(
+            artifact_type=report_artifact_type,
+            uri=report_record.uri,
+            metadata={"id": validation_id},
+        ).to_dict()
+    else:
+        report_path = validation_report_path(artifact_root, validation_id)
+        write_json_artifact(report, report_path)
+        manifest_path = save_manifest(artifact_root, updated_manifest)
+        manifest_ref = ArtifactReference(
+            artifact_type=METHOD_IMPLEMENTATION_MANIFEST,
+            path=manifest_path,
+            metadata={"id": updated_manifest.implementation_id},
+        ).to_dict()
+        report_ref = ArtifactReference(
+            artifact_type=report_artifact_type,
+            path=report_path,
+            metadata={"id": validation_id},
+        ).to_dict()
     data = {
         "method_implementation_manifest": updated_manifest.to_dict(),
         report_data_key: report,
     }
     artifacts = {
-        "method_implementation_manifest": ArtifactReference(
-            artifact_type="method_implementation_manifest",
-            path=manifest_path,
-            metadata={"id": updated_manifest.implementation_id},
-        ).to_dict(),
-        report_data_key: ArtifactReference(
-            artifact_type=report_artifact_type,
-            path=report_path,
-            metadata={"id": validation_id},
-        ).to_dict(),
+        "method_implementation_manifest": manifest_ref,
+        report_data_key: report_ref,
     }
     if blockers:
         return error_envelope(

@@ -73,7 +73,7 @@ def test_strategy_template_catalog_returns_maintained_families() -> None:
     assert payload["command"] == "research_list_strategy_templates"
     assert payload["agent_owner"] == "Quant Research Supervisor Agent"
     assert payload["side_effect"] == SideEffect.READ_ONLY.value
-    assert payload["data"]["template_count"] == 3
+    assert payload["data"]["template_count"] == 4
     templates = payload["data"]["templates"]
 
     assert [template["template_family"] for template in templates] == list(SUPPORTED_STRATEGY_FAMILIES)
@@ -89,6 +89,10 @@ def test_strategy_template_catalog_returns_maintained_families() -> None:
     assert trend["sizing"]["model"] == "fixed_quantity"
     assert trend["risk_assumptions"]["stop_policy"] == "not_exposed_in_v1_catalog"
     assert trend["backtest_context_requirements"]["market_data"] == "event_store_bars"
+    assert trend["portfolio_mode"] == "per_symbol_independent"
+    assert trend["rebalance_cadence"]["cadence"] == "every_bar"
+    assert trend["allocation_bounds"]["target_quantity_parameter"] == "target_qty_when_long"
+    assert trend["portfolio_state_requirements"]["required_state"] == ["positions_by_symbol"]
     assert trend["backtest_context_requirements"]["required_backtest_fields"] == [
         "symbols",
         "asset_class",
@@ -104,6 +108,17 @@ def test_strategy_template_catalog_returns_maintained_families() -> None:
     assert "timeframe" not in parameter_by_name
     assert parameter_by_name["ema_fast_period"]["default"] == 12
     assert parameter_by_name["ema_slow_period"]["constraints"]["must_exceed"] == "ema_fast_period"
+
+    cross_sectional = templates[-1]
+    assert cross_sectional["template_family"] == "cross_sectional_momentum"
+    assert cross_sectional["portfolio_mode"] == "cross_sectional"
+    assert cross_sectional["runtime_builder_path"] == (
+        "trader_standard.strategies:build_cross_sectional_momentum_strategy"
+    )
+    assert cross_sectional["entry_semantics"]["selection_parameter"] == "top_n"
+    assert cross_sectional["allocation_bounds"]["max_positions_parameter"] == "top_n"
+    cross_parameters = {parameter["name"]: parameter for parameter in cross_sectional["parameters"]}
+    assert cross_parameters["rebalance_cadence"]["constraints"]["allowed_values"] == ["every_bar", "daily"]
 
 
 def test_strategy_template_filter_normalizes_and_fails_closed() -> None:
@@ -179,6 +194,7 @@ def test_create_bollinger_strategy_candidate_from_inline_signal_package(tmp_path
     assert source_ref["class_name"] == "BollingerBandResearchStrategy"
     assert source_ref["factory_name"] == "build_strategy"
     assert source_ref["metadata"]["runtime_builder_path"] == "trader_standard.strategies:build_bollinger_band_strategy"
+    assert source_ref["metadata"]["portfolio_mode"] == "per_symbol_independent"
     assert source_path.exists()
     assert payload["artifacts"]["strategy_source"]["path"] == str(source_path)
     assert payload["artifacts"]["strategy_source"]["metadata"]["class_name"] == "BollingerBandResearchStrategy"
@@ -192,6 +208,31 @@ def test_create_bollinger_strategy_candidate_from_inline_signal_package(tmp_path
     assert {item["name"] for item in manifest["risk_assumptions"]} >= {"order_type", "review_note"}
     assert manifest["warnings"] == []
     assert manifest["blockers"] == []
+
+
+def test_create_cross_sectional_strategy_candidate_records_portfolio_metadata(tmp_path) -> None:
+    envelope = create_strategy_candidate(
+        artifact_root=tmp_path,
+        template_family="cross_sectional_momentum",
+        method_package_refs=[
+            {"role": "ranking_signal", "package_manifest": _signal_package("method_package_cross_sectional_rank")}
+        ],
+        parameters={"lookback_period": 10, "top_n": 2, "rebalance_cadence": "daily"},
+        sizing={"target_qty_when_long": 3.0},
+    )
+    payload = envelope.to_dict()
+
+    assert payload["ok"] is True
+    manifest = payload["data"]["strategy_candidate_manifest"]
+    assert manifest["template_family"] == "cross_sectional_momentum"
+    assert manifest["entry_semantics"]["position_model"] == "long_only_top_n"
+    assert manifest["entry_semantics"]["ranking_role"] == "ranking_signal"
+    assert manifest["parameters"]["top_n"] == 2
+    assert manifest["parameters"]["rebalance_cadence"] == "daily"
+    assert manifest["sizing"]["target_qty_when_long"] == 3.0
+    assert manifest["strategy_source"]["metadata"]["portfolio_mode"] == "cross_sectional"
+    assert manifest["strategy_source"]["metadata"]["allocation_bounds"]["max_positions_parameter"] == "top_n"
+    assert "symbols" not in manifest["parameters"]
 
 
 def test_create_strategy_candidate_resolves_package_ids_and_paths(tmp_path) -> None:

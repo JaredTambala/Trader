@@ -15,6 +15,7 @@ from trader_research.contracts import (
     success_envelope,
     write_json_artifact,
 )
+from trader_research.artifact_store import ResearchArtifactStore, ResearchArtifactStoreError, load_artifact_ref
 from trader_research.domain import (
     INDICATOR_VALIDATION_REPORT,
     METHOD_PACKAGE_MANIFEST,
@@ -149,6 +150,7 @@ def package_method_artifact(
     validation_report: Mapping[str, Any] | None = None,
     cxx_kernel_id: str | None = None,
     cxx_kernel_manifest: Mapping[str, Any] | None = None,
+    artifact_store: ResearchArtifactStore | None = None,
 ) -> ToolEnvelope:
     """Package a validated Python implementation for strategy-construction handoff.
 
@@ -172,6 +174,7 @@ def package_method_artifact(
             artifact_root=artifact_root,
             implementation_id=implementation_id,
             implementation_manifest=implementation_manifest,
+            artifact_store=artifact_store,
         )
     except (FileNotFoundError, ValueError) as exc:
         return _package_error([str(exc)], warnings)
@@ -181,6 +184,7 @@ def package_method_artifact(
             artifact_root=artifact_root,
             validation_report_id=validation_report_id,
             validation_report=validation_report,
+            artifact_store=artifact_store,
         )
     except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
         return _package_error([str(exc)], warnings)
@@ -219,17 +223,34 @@ def package_method_artifact(
         cxx_kernel_refs=tuple(cxx_refs),
         warnings=tuple(warnings),
     )
-    manifest_path = _save_package_manifest(artifact_root, manifest)
+    manifest_payload = manifest.to_dict()
+    if artifact_store is not None:
+        manifest_record = artifact_store.save_artifact(
+            artifact_type=METHOD_PACKAGE_MANIFEST,
+            artifact_id=manifest.package_id,
+            payload=manifest_payload,
+            status=manifest.status,
+            source_hash=manifest.source_hash,
+            metadata={"method_id": manifest.method_id, "runtime_contract": manifest.runtime_contract},
+        )
+        manifest_ref = ArtifactReference(
+            artifact_type=METHOD_PACKAGE_MANIFEST,
+            uri=manifest_record.uri,
+            metadata={"id": manifest.package_id},
+        ).to_dict()
+    else:
+        manifest_path = _save_package_manifest(artifact_root, manifest)
+        manifest_ref = ArtifactReference(
+            artifact_type=METHOD_PACKAGE_MANIFEST,
+            path=manifest_path,
+            metadata={"id": manifest.package_id},
+        ).to_dict()
     return success_envelope(
         command=MATH_PACKAGE_METHOD_ARTIFACT,
         side_effect=SideEffect.LOCAL_MUTATING,
-        data={"method_package_manifest": manifest.to_dict()},
+        data={"method_package_manifest": manifest_payload},
         artifacts={
-            "method_package_manifest": ArtifactReference(
-                artifact_type=METHOD_PACKAGE_MANIFEST,
-                path=manifest_path,
-                metadata={"id": manifest.package_id},
-            ).to_dict()
+            "method_package_manifest": manifest_ref,
         },
         warnings=tuple(warnings),
     )
@@ -245,9 +266,14 @@ def _resolve_implementation_manifest(
     artifact_root: str | Path,
     implementation_id: str | None,
     implementation_manifest: Mapping[str, Any] | None,
+    artifact_store: ResearchArtifactStore | None,
 ) -> MethodImplementationManifest:
     if implementation_manifest is not None:
         return MethodImplementationManifest.from_dict(implementation_manifest)
+    if artifact_store is not None:
+        return MethodImplementationManifest.from_dict(
+            load_artifact_ref(artifact_store, "method_implementation_manifest", str(implementation_id or ""))
+        )
     return load_manifest(artifact_root, str(implementation_id or ""))
 
 
@@ -256,12 +282,20 @@ def _resolve_validation_report(
     artifact_root: str | Path,
     validation_report_id: str | None,
     validation_report: Mapping[str, Any] | None,
+    artifact_store: ResearchArtifactStore | None,
 ) -> tuple[Mapping[str, Any], Path | None]:
     if validation_report is not None:
         return dict(validation_report), None
     report_id = str(validation_report_id or "").strip()
     if not report_id:
         raise ValueError("validation_report_id or validation_report is required")
+    if artifact_store is not None:
+        for artifact_type in (SIGNAL_IMPLEMENTATION_VALIDATION_REPORT, INDICATOR_VALIDATION_REPORT):
+            try:
+                return load_artifact_ref(artifact_store, artifact_type, report_id), None
+            except ResearchArtifactStoreError:
+                continue
+        raise FileNotFoundError(f"unknown validation_report_id: {report_id}")
     path = validation_report_path(artifact_root, report_id)
     if not path.exists():
         raise FileNotFoundError(f"unknown validation_report_id: {report_id}")
@@ -491,4 +525,3 @@ def _sequence(value: Any) -> Sequence[Any]:
     if isinstance(value, Sequence):
         return value
     return (value,)
-

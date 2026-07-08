@@ -48,7 +48,7 @@ backtest_run_ref
 Comparison reports warn when runs are not like-for-like. Evaluation reports are descriptive and skeptical; missing or
 incomplete data-quality evidence blocks the report status.
 
-## Risk-Manager And Portfolio Roadmap
+## Portfolio Risk Toolchain
 
 ```text
 method packages
@@ -60,8 +60,9 @@ method packages
 ```
 
 The first risk-manager tools list generation targets and create backtest-only source-backed candidates. Risk-manager
-validation, stack composition, portfolio backtests, exposure telemetry, VaR/CVaR summaries, and portfolio/risk
-Evaluation reports are planned follow-on slices.
+validation, stack composition, risk-scoped portfolio backtests, exposure telemetry, and portfolio/risk Evaluation
+reports are now deterministic MCP surfaces. VaR/CVaR values are pass-through evidence in this slice; Evaluation blocks
+when a portfolio backtest omits required risk telemetry.
 
 ## Handoff And Blockers
 

@@ -12,6 +12,7 @@ from trader_mcp.constants import (
     RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL,
     RESEARCH_GET_BACKTEST_RESULTS_TOOL,
     RESEARCH_RUN_BACKTEST_TOOL,
+    RESEARCH_RUN_PORTFOLIO_BACKTEST_TOOL,
 )
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
@@ -29,21 +30,26 @@ def test_mcp_backtest_tools_are_registered_and_run_tool_is_gated(tmp_path: Path)
         tools = await server.list_tools()
         config = await server.call_tool(MCP_CONFIG_TOOL, {})
         result = await server.call_tool(RESEARCH_RUN_BACKTEST_TOOL, {})
+        portfolio_result = await server.call_tool(RESEARCH_RUN_PORTFOLIO_BACKTEST_TOOL, {})
 
         tool_names = {tool.name for tool in tools}
         assert tool_names == set(REGISTERED_TOOL_NAMES)
         assert RESEARCH_RUN_BACKTEST_TOOL in tool_names
+        assert RESEARCH_RUN_PORTFOLIO_BACKTEST_TOOL in tool_names
         assert RESEARCH_GET_BACKTEST_RESULTS_TOOL in tool_names
         assert RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL in tool_names
         config_tools = {tool["name"]: tool for tool in config.structuredContent["data"]["tools"]}
         assert config_tools[RESEARCH_RUN_BACKTEST_TOOL]["agent_owner"] == "Quant Research Supervisor Agent"
         assert config_tools[RESEARCH_RUN_BACKTEST_TOOL]["side_effect"] == "local_mutating"
+        assert config_tools[RESEARCH_RUN_PORTFOLIO_BACKTEST_TOOL]["side_effect"] == "local_mutating"
         assert config_tools[RESEARCH_GET_BACKTEST_RESULTS_TOOL]["side_effect"] == "read_only"
         assert config_tools[RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL]["side_effect"] == "local_mutating"
         assert config.structuredContent["data"]["safety"]["backtest_tools_registered"] is True
         assert config.structuredContent["data"]["safety"]["backtest_execution_allowed"] is False
         assert result.isError is True
         assert result.structuredContent["errors"][0]["code"] == "backtests_not_allowed"
+        assert portfolio_result.isError is True
+        assert portfolio_result.structuredContent["errors"][0]["code"] == "backtests_not_allowed"
 
     anyio.run(_run)
 

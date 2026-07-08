@@ -48,10 +48,11 @@ def test_valid_strategy_candidate_validates_and_writes_report(tmp_path: Path) ->
     assert report["fixture_summary"]["status"] == "passed"
     assert report["fixture_summary"]["fixture_context"] == {
         "asset_class": "stocks",
-        "symbols": ["SYNTH"],
+        "symbols": ["SYNTH_A", "SYNTH_B", "SYNTH_C"],
         "timeframe": "1Min",
     }
     assert report["fixture_summary"]["bar_count_per_symbol"] == 160
+    assert report["fixture_summary"]["symbol_count"] == 3
     assert {check["name"] for check in report["checks"]} >= {
         "manifest_integrity",
         "method_package_refs",

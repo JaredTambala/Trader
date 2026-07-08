@@ -23,8 +23,16 @@ from trader_research.domain import (
     BACKTEST_RUN_REF,
     DATA_QUALITY_REPORT,
     EVALUATION_REPORT,
+    PORTFOLIO_BACKTEST_RUN_REF,
     ResearchIssue,
     stable_research_id,
+)
+from trader_research.artifact_store import (
+    ResearchArtifactNotFound,
+    ResearchArtifactStore,
+    ResearchArtifactStoreError,
+    ResearchArtifactRecord,
+    parse_research_artifact_uri,
 )
 
 
@@ -38,17 +46,20 @@ def generate_performance_report(
     run_id: str | None = None,
     artifact_dir: str | Path | None = None,
     backtest_run_ref: Mapping[str, Any] | None = None,
+    portfolio_backtest_run_ref: Mapping[str, Any] | None = None,
     data_quality_report: Mapping[str, Any] | None = None,
     data_quality_report_path: str | Path | None = None,
     data_quality_report_ref: Mapping[str, Any] | None = None,
+    artifact_store: ResearchArtifactStore | None = None,
 ) -> ToolEnvelope:
     """Write an Evaluation-owned performance report for one backtest bundle.
 
     Args:
-        artifact_root: Root directory for research artifacts.
+        artifact_root: Fallback root directory for filesystem research artifacts.
         run_id: Optional persisted backtest run ID.
-        artifact_dir: Optional task-28 run artifact directory.
+        artifact_dir: Optional baseline or portfolio run artifact directory.
         backtest_run_ref: Optional inline `backtest_run_ref` payload.
+        portfolio_backtest_run_ref: Optional inline `portfolio_backtest_run_ref` payload.
         data_quality_report: Optional inline Data Agent quality report.
         data_quality_report_path: Optional path to a quality report.
         data_quality_report_ref: Optional artifact reference containing a path
@@ -59,19 +70,20 @@ def generate_performance_report(
         bundles produce a report even when report-level blockers are present.
     """
     try:
-        bundle_dir = _resolve_bundle_dir(
+        bundle = _resolve_bundle(
             artifact_root=artifact_root,
             run_id=run_id,
             artifact_dir=artifact_dir,
             backtest_run_ref=backtest_run_ref,
+            portfolio_backtest_run_ref=portfolio_backtest_run_ref,
+            artifact_store=artifact_store,
         )
-        bundle = _load_bundle(bundle_dir)
         quality_report, quality_source = _resolve_quality_report(
             data_quality_report=data_quality_report,
             data_quality_report_path=data_quality_report_path,
             data_quality_report_ref=data_quality_report_ref,
         )
-    except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
+    except (FileNotFoundError, ValueError, json.JSONDecodeError, ResearchArtifactStoreError) as exc:
         return error_envelope(
             command=EVALUATION_GENERATE_PERFORMANCE_REPORT,
             side_effect=SideEffect.LOCAL_MUTATING,
@@ -82,6 +94,7 @@ def generate_performance_report(
     blockers = _bundle_blockers(bundle)
     warnings = _bundle_warnings(bundle)
     caveats = _bundle_caveats(bundle)
+    blockers.extend(_portfolio_risk_evidence_blockers(bundle))
     quality_summary, quality_blockers, quality_warnings = _quality_evaluation(
         quality_report=quality_report,
         quality_source=quality_source,
@@ -97,11 +110,14 @@ def generate_performance_report(
     costs = _cost_summary(bundle.metrics, bundle.result)
     caveats.extend(_metric_caveats(core_metrics, trade_stats, costs, benchmark))
     blockers.extend(_metric_blockers(bundle.metrics, trade_stats))
+    candidate_id = _first(bundle.run_ref.get("candidate_id"), bundle.provenance.get("candidate_id"))
+    validation_id = _first(bundle.run_ref.get("validation_id"), bundle.provenance.get("validation_id"))
 
     report_id = stable_research_id(
         "evaluation_performance_report",
         {
             "run_id": bundle.run_id,
+            "backtest_kind": bundle.backtest_kind,
             "metrics": bundle.metrics,
             "result_summary": {
                 "total_runs": bundle.result.get("total_runs"),
@@ -118,6 +134,13 @@ def generate_performance_report(
             },
             "data_scope": bundle.run_ref.get("data_scope"),
             "data_quality": _quality_identity(quality_summary),
+            "portfolio_risk": {
+                "symbol_metrics": bundle.symbol_metrics,
+                "exposure_summary": bundle.exposure_summary,
+                "risk_decisions": _risk_decision_identity(bundle.risk_decisions),
+                "risk_limit_breaches": bundle.risk_limit_breaches,
+                "risk_measure_summary": bundle.risk_measure_summary,
+            },
         },
     )
     report = {
@@ -126,36 +149,61 @@ def generate_performance_report(
         "schema_version": SCHEMA_VERSION,
         "report_id": report_id,
         "status": "blocked" if blockers else "passed",
+        "backtest_kind": bundle.backtest_kind,
         "run_id": bundle.run_id,
-        "candidate_id": bundle.run_ref.get("candidate_id"),
-        "validation_id": bundle.run_ref.get("validation_id"),
+        "candidate_id": candidate_id,
+        "validation_id": validation_id,
+        "strategy_risk_stack_id": bundle.run_ref.get("strategy_risk_stack_id"),
+        "strategy_risk_stack_validation_id": bundle.run_ref.get("strategy_risk_stack_validation_id"),
         "dataset_id": bundle.run_ref.get("dataset_id"),
         "data_scope": _jsonable(bundle.run_ref.get("data_scope")),
         "core_metrics": core_metrics,
         "trade_stats": trade_stats,
         "costs": costs,
         "benchmark": benchmark,
+        "symbol_metrics": _jsonable(bundle.symbol_metrics),
+        "exposure_summary": _jsonable(bundle.exposure_summary),
+        "risk_decisions": _jsonable(bundle.risk_decisions),
+        "risk_limit_breaches": _jsonable(bundle.risk_limit_breaches),
+        "risk_measure_summary": _jsonable(bundle.risk_measure_summary),
         "data_quality": quality_summary,
         "artifact_paths": bundle.artifact_paths,
         "caveats": _dedupe_text(caveats),
         "warnings": [issue.to_dict() for issue in _dedupe_issues(warnings)],
         "blockers": [issue.to_dict() for issue in _dedupe_issues(blockers)],
     }
-    report_path = write_json_artifact(
-        report,
-        Path(artifact_root) / "evaluation" / "performance_reports" / f"{report_id}.json",
-    )
+    if artifact_store is None:
+        report_path = write_json_artifact(
+            report,
+            Path(artifact_root) / "evaluation" / "performance_reports" / f"{report_id}.json",
+        )
+        report_artifact = ArtifactReference(
+            artifact_type=EVALUATION_REPORT,
+            path=report_path,
+            metadata={"id": report_id, "run_id": bundle.run_id, "status": report["status"]},
+        )
+    else:
+        try:
+            record = artifact_store.save_artifact(
+                artifact_type=EVALUATION_REPORT,
+                artifact_id=report_id,
+                payload=report,
+                status=str(report["status"]),
+                metadata={"run_id": bundle.run_id, "backtest_kind": bundle.backtest_kind},
+            )
+        except ResearchArtifactStoreError as exc:
+            return error_envelope(
+                command=EVALUATION_GENERATE_PERFORMANCE_REPORT,
+                side_effect=SideEffect.LOCAL_MUTATING,
+                code="performance_report_failed",
+                message=str(exc),
+            )
+        report_artifact = record.reference()
     return success_envelope(
         command=EVALUATION_GENERATE_PERFORMANCE_REPORT,
         side_effect=SideEffect.LOCAL_MUTATING,
         data={"evaluation_report": report},
-        artifacts={
-            "evaluation_report": ArtifactReference(
-                artifact_type=EVALUATION_REPORT,
-                path=report_path,
-                metadata={"id": report_id, "run_id": bundle.run_id, "status": report["status"]},
-            ).to_dict()
-        },
+        artifacts={"evaluation_report": report_artifact.to_dict()},
         warnings=tuple(issue["message"] for issue in report["warnings"]),
     )
 
@@ -165,6 +213,7 @@ class _BacktestBundle:
     """Loaded task-28 artifact bundle used by performance reports."""
 
     bundle_dir: Path
+    backtest_kind: str
     run_ref: Mapping[str, Any]
     metrics: Mapping[str, Any]
     result: Mapping[str, Any]
@@ -172,6 +221,172 @@ class _BacktestBundle:
     artifact_paths: Mapping[str, Any]
     trades_path: Path | None
     run_id: str
+    symbol_metrics: Mapping[str, Any] | None = None
+    exposure_summary: Mapping[str, Any] | None = None
+    risk_decisions: Mapping[str, Any] | None = None
+    risk_limit_breaches: Mapping[str, Any] | None = None
+    risk_measure_summary: Mapping[str, Any] | None = None
+
+
+def _resolve_bundle(
+    *,
+    artifact_root: str | Path,
+    run_id: str | None,
+    artifact_dir: str | Path | None,
+    backtest_run_ref: Mapping[str, Any] | None,
+    portfolio_backtest_run_ref: Mapping[str, Any] | None,
+    artifact_store: ResearchArtifactStore | None,
+) -> _BacktestBundle:
+    _validate_single_bundle_source(
+        run_id=run_id,
+        artifact_dir=artifact_dir,
+        backtest_run_ref=backtest_run_ref,
+        portfolio_backtest_run_ref=portfolio_backtest_run_ref,
+    )
+    if artifact_store is not None:
+        db_bundle = _resolve_db_bundle(
+            run_id=run_id,
+            backtest_run_ref=backtest_run_ref,
+            portfolio_backtest_run_ref=portfolio_backtest_run_ref,
+            artifact_store=artifact_store,
+        )
+        if db_bundle is not None:
+            return db_bundle
+    bundle_dir = _resolve_bundle_dir(
+        artifact_root=artifact_root,
+        run_id=run_id,
+        artifact_dir=artifact_dir,
+        backtest_run_ref=backtest_run_ref,
+        portfolio_backtest_run_ref=portfolio_backtest_run_ref,
+    )
+    return _load_bundle(bundle_dir)
+
+
+def _validate_single_bundle_source(
+    *,
+    run_id: str | None,
+    artifact_dir: str | Path | None,
+    backtest_run_ref: Mapping[str, Any] | None,
+    portfolio_backtest_run_ref: Mapping[str, Any] | None,
+) -> None:
+    sources = [
+        bool(run_id and run_id.strip()),
+        artifact_dir is not None and str(artifact_dir).strip() != "",
+        backtest_run_ref is not None,
+        portfolio_backtest_run_ref is not None,
+    ]
+    if sum(1 for selected in sources if selected) != 1:
+        raise ValueError(
+            "exactly one of run_id, artifact_dir, backtest_run_ref, or portfolio_backtest_run_ref is required"
+        )
+
+
+def _resolve_db_bundle(
+    *,
+    run_id: str | None,
+    backtest_run_ref: Mapping[str, Any] | None,
+    portfolio_backtest_run_ref: Mapping[str, Any] | None,
+    artifact_store: ResearchArtifactStore,
+) -> _BacktestBundle | None:
+    if run_id and run_id.strip():
+        run = run_id.strip()
+        baseline = _load_optional_artifact_record(artifact_store, BACKTEST_RUN_REF, run)
+        portfolio = _load_optional_artifact_record(artifact_store, PORTFOLIO_BACKTEST_RUN_REF, run)
+        matches = [record for record in (baseline, portfolio) if record is not None]
+        if len(matches) > 1:
+            raise ValueError(f"ambiguous run_id resolves to baseline and portfolio bundles: {run}")
+        return _load_db_bundle(matches[0]) if matches else None
+    if backtest_run_ref is not None:
+        record = _record_from_run_ref(artifact_store, BACKTEST_RUN_REF, backtest_run_ref)
+        return _load_db_bundle(record) if record is not None else None
+    if portfolio_backtest_run_ref is not None:
+        record = _record_from_run_ref(artifact_store, PORTFOLIO_BACKTEST_RUN_REF, portfolio_backtest_run_ref)
+        return _load_db_bundle(record) if record is not None else None
+    return None
+
+
+def _load_optional_artifact_record(
+    artifact_store: ResearchArtifactStore,
+    artifact_type: str,
+    artifact_id: str,
+) -> ResearchArtifactRecord | None:
+    try:
+        return artifact_store.load_artifact_record(artifact_type, artifact_id)
+    except ResearchArtifactNotFound:
+        return None
+
+
+def _record_from_run_ref(
+    artifact_store: ResearchArtifactStore,
+    expected_type: str,
+    run_ref: Mapping[str, Any],
+) -> ResearchArtifactRecord | None:
+    if not isinstance(run_ref, MappingABC):
+        raise ValueError("run ref must be a mapping")
+    uri = str(run_ref.get("uri") or "").strip()
+    if uri:
+        artifact_type, artifact_id = parse_research_artifact_uri(uri)
+        if artifact_type != expected_type:
+            raise ValueError(f"run ref URI artifact_type must be {expected_type}")
+        return artifact_store.load_artifact_record(artifact_type, artifact_id)
+    run_id = str(run_ref.get("run_id") or _mapping(run_ref.get("metadata")).get("id") or "").strip()
+    if not run_id:
+        if isinstance(run_ref.get("bundle"), MappingABC):
+            return None
+        raise ValueError("run ref requires uri or run_id")
+    try:
+        return artifact_store.load_artifact_record(expected_type, run_id)
+    except ResearchArtifactNotFound:
+        return None
+
+
+def _load_db_bundle(record: ResearchArtifactRecord | None) -> _BacktestBundle | None:
+    if record is None:
+        return None
+    payload = dict(record.payload)
+    bundle = payload.get("bundle")
+    if not isinstance(bundle, MappingABC):
+        return None
+    backtest_kind = str(bundle.get("backtest_kind") or "").strip().lower()
+    if not backtest_kind:
+        backtest_kind = "portfolio" if record.artifact_type == PORTFOLIO_BACKTEST_RUN_REF else "baseline"
+    if backtest_kind == "portfolio":
+        run_ref = _mapping(bundle.get("portfolio_backtest_run_ref")) or payload
+        expected_artifact_type = PORTFOLIO_BACKTEST_RUN_REF
+        ref_key = "portfolio_backtest_run_ref"
+    else:
+        run_ref = _mapping(bundle.get("backtest_run_ref")) or payload
+        expected_artifact_type = BACKTEST_RUN_REF
+        ref_key = "backtest_run_ref"
+    if record.artifact_type != expected_artifact_type:
+        raise ValueError(f"stored bundle artifact_type must be {expected_artifact_type}")
+    if run_ref.get("artifact_type") != expected_artifact_type:
+        raise ValueError(f"run ref artifact_type must be {expected_artifact_type}")
+    metrics = _mapping(bundle.get("metrics"))
+    result = _mapping(bundle.get("result"))
+    run_id = str(run_ref.get("run_id") or metrics.get("run_id") or result.get("run_id") or record.artifact_id).strip()
+    if not run_id:
+        raise ValueError("backtest run ref run_id is required")
+    artifact_paths = dict(_mapping(run_ref.get("artifact_paths")))
+    artifact_uris = dict(_mapping(run_ref.get("artifact_uris")))
+    artifact_uris.setdefault(ref_key, record.uri)
+    artifact_paths["artifact_uris"] = artifact_uris
+    return _BacktestBundle(
+        bundle_dir=Path("research_artifact_store") / backtest_kind / run_id,
+        backtest_kind=backtest_kind,
+        run_ref=run_ref,
+        metrics=metrics,
+        result=result,
+        provenance=_mapping(bundle.get("provenance")),
+        artifact_paths=artifact_paths,
+        trades_path=None,
+        run_id=run_id,
+        symbol_metrics=_mapping_or_none(bundle.get("symbol_metrics")),
+        exposure_summary=_mapping_or_none(bundle.get("exposure_summary")),
+        risk_decisions=_mapping_or_none(bundle.get("risk_decisions")),
+        risk_limit_breaches=_mapping_or_none(bundle.get("risk_limit_breaches")),
+        risk_measure_summary=_mapping_or_none(bundle.get("risk_measure_summary")),
+    )
 
 
 def _resolve_bundle_dir(
@@ -180,51 +395,74 @@ def _resolve_bundle_dir(
     run_id: str | None,
     artifact_dir: str | Path | None,
     backtest_run_ref: Mapping[str, Any] | None,
+    portfolio_backtest_run_ref: Mapping[str, Any] | None,
 ) -> Path:
-    sources = [
-        bool(run_id and run_id.strip()),
-        artifact_dir is not None and str(artifact_dir).strip() != "",
-        backtest_run_ref is not None,
-    ]
-    if sum(1 for selected in sources if selected) != 1:
-        raise ValueError("exactly one of run_id, artifact_dir, or backtest_run_ref is required")
+    _validate_single_bundle_source(
+        run_id=run_id,
+        artifact_dir=artifact_dir,
+        backtest_run_ref=backtest_run_ref,
+        portfolio_backtest_run_ref=portfolio_backtest_run_ref,
+    )
     if run_id:
-        return Path(artifact_root) / "backtests" / "runs" / run_id.strip()
+        run = run_id.strip()
+        baseline_dir = Path(artifact_root) / "backtests" / "runs" / run
+        portfolio_dir = Path(artifact_root) / "portfolio_backtests" / "runs" / run
+        existing = [path for path in (baseline_dir, portfolio_dir) if path.exists()]
+        if len(existing) > 1:
+            raise ValueError(f"ambiguous run_id resolves to baseline and portfolio bundles: {run}")
+        return existing[0] if existing else baseline_dir
     if artifact_dir is not None:
         return Path(str(artifact_dir))
     if not isinstance(backtest_run_ref, MappingABC):
-        raise ValueError("backtest_run_ref must be a mapping")
-    ref_dir = backtest_run_ref.get("artifact_dir")
+        if portfolio_backtest_run_ref is None:
+            raise ValueError("backtest_run_ref must be a mapping")
+    ref_payload = backtest_run_ref if backtest_run_ref is not None else portfolio_backtest_run_ref
+    if not isinstance(ref_payload, MappingABC):
+        raise ValueError("portfolio_backtest_run_ref must be a mapping")
+    ref_dir = ref_payload.get("artifact_dir")
     if ref_dir is None or str(ref_dir).strip() == "":
-        raise ValueError("backtest_run_ref.artifact_dir is required")
+        raise ValueError("run ref artifact_dir is required")
     return Path(str(ref_dir))
 
 
 def _load_bundle(bundle_dir: Path) -> _BacktestBundle:
-    run_ref_path = bundle_dir / "backtest_run_ref.json"
+    baseline_ref_path = bundle_dir / "backtest_run_ref.json"
+    portfolio_ref_path = bundle_dir / "portfolio_backtest_run_ref.json"
     metrics_path = bundle_dir / "metrics.json"
     result_path = bundle_dir / "result.json"
     provenance_path = bundle_dir / "provenance.json"
+    if baseline_ref_path.exists() and portfolio_ref_path.exists():
+        raise ValueError(f"bundle contains both baseline and portfolio run refs: {bundle_dir}")
+    if portfolio_ref_path.exists():
+        run_ref_path = portfolio_ref_path
+        backtest_kind = "portfolio"
+        expected_artifact_type = PORTFOLIO_BACKTEST_RUN_REF
+    else:
+        run_ref_path = baseline_ref_path
+        backtest_kind = "baseline"
+        expected_artifact_type = BACKTEST_RUN_REF
     if not run_ref_path.exists():
-        raise FileNotFoundError(f"backtest_run_ref.json not found: {run_ref_path}")
+        raise FileNotFoundError(f"backtest run ref not found: {run_ref_path}")
     if not metrics_path.exists():
         raise FileNotFoundError(f"metrics.json not found: {metrics_path}")
     if not result_path.exists():
         raise FileNotFoundError(f"result.json not found: {result_path}")
     run_ref = _read_json(run_ref_path)
-    if run_ref.get("artifact_type") != BACKTEST_RUN_REF:
-        raise ValueError("backtest_run_ref artifact_type must be backtest_run_ref")
+    if run_ref.get("artifact_type") != expected_artifact_type:
+        raise ValueError(f"run ref artifact_type must be {expected_artifact_type}")
     metrics = _read_json(metrics_path)
     result = _read_json(result_path)
     provenance = _read_json(provenance_path) if provenance_path.exists() else {}
     run_id = str(run_ref.get("run_id") or "").strip()
     if not run_id:
         raise ValueError("backtest_run_ref.run_id is required")
-    artifact_paths = _bundle_paths(bundle_dir)
-    artifact_paths["backtest_run_ref"] = str(run_ref_path)
+    artifact_paths = _bundle_paths(bundle_dir, backtest_kind=backtest_kind)
+    ref_key = "portfolio_backtest_run_ref" if backtest_kind == "portfolio" else "backtest_run_ref"
+    artifact_paths[ref_key] = str(run_ref_path)
     trades_path = bundle_dir / "trades.csv"
     return _BacktestBundle(
         bundle_dir=bundle_dir,
+        backtest_kind=backtest_kind,
         run_ref=run_ref,
         metrics=metrics,
         result=result,
@@ -232,6 +470,11 @@ def _load_bundle(bundle_dir: Path) -> _BacktestBundle:
         artifact_paths=artifact_paths,
         trades_path=trades_path if trades_path.exists() else None,
         run_id=str(run_ref.get("run_id") or metrics.get("run_id") or result.get("run_id") or "").strip(),
+        symbol_metrics=_load_optional_json(bundle_dir / "symbol_metrics.json"),
+        exposure_summary=_load_optional_json(bundle_dir / "exposure_summary.json"),
+        risk_decisions=_load_optional_json(bundle_dir / "risk_decisions.json"),
+        risk_limit_breaches=_load_optional_json(bundle_dir / "risk_limit_breaches.json"),
+        risk_measure_summary=_load_optional_json(bundle_dir / "risk_measure_summary.json"),
     )
 
 
@@ -288,6 +531,40 @@ def _bundle_blockers(bundle: _BacktestBundle) -> list[ResearchIssue]:
     failed_runs = _optional_float(bundle.metrics.get("failed_runs"))
     if failed_runs is not None and failed_runs > 0:
         blockers.append(_issue("failed_backtest_runs", f"Backtest has {int(failed_runs)} failed runs."))
+    return blockers
+
+
+def _portfolio_risk_evidence_blockers(bundle: _BacktestBundle) -> list[ResearchIssue]:
+    if bundle.backtest_kind != "portfolio":
+        return []
+    blockers: list[ResearchIssue] = []
+    if not str(bundle.run_ref.get("strategy_risk_stack_id") or "").strip():
+        blockers.append(_issue("missing_strategy_risk_stack_id", "Portfolio backtest ref is missing strategy_risk_stack_id."))
+    if not str(bundle.run_ref.get("strategy_risk_stack_validation_id") or "").strip():
+        blockers.append(
+            _issue(
+                "missing_strategy_risk_stack_validation_id",
+                "Portfolio backtest ref is missing strategy_risk_stack_validation_id.",
+            )
+        )
+    required = {
+        "symbol_metrics": bundle.symbol_metrics,
+        "exposure_summary": bundle.exposure_summary,
+        "risk_decisions": bundle.risk_decisions,
+        "risk_limit_breaches": bundle.risk_limit_breaches,
+        "risk_measure_summary": bundle.risk_measure_summary,
+    }
+    for name, payload in required.items():
+        if payload is None:
+            blockers.append(_issue("missing_portfolio_risk_evidence", f"Portfolio backtest bundle is missing {name}."))
+    risk_measure_summary = _mapping(bundle.risk_measure_summary)
+    for telemetry in _sequence(risk_measure_summary.get("missing_required_telemetry")):
+        blockers.append(
+            _issue(
+                "missing_required_risk_telemetry",
+                f"Portfolio backtest is missing required risk telemetry: {telemetry}.",
+            )
+        )
     return blockers
 
 
@@ -374,6 +651,16 @@ def _quality_caveats(summary: Mapping[str, Any]) -> list[str]:
 def _quality_identity(summary: Mapping[str, Any]) -> dict[str, Any]:
     """Return transport-independent quality evidence for stable report IDs."""
     return {key: value for key, value in summary.items() if key != "source"}
+
+
+def _risk_decision_identity(summary: Mapping[str, Any] | None) -> dict[str, Any]:
+    payload = _mapping(summary)
+    return {
+        "manager_count": payload.get("manager_count"),
+        "decision_count": payload.get("decision_count"),
+        "rejected_order_count": payload.get("rejected_order_count"),
+        "managers": payload.get("managers"),
+    }
 
 
 def _core_metrics(metrics: Mapping[str, Any], result: Mapping[str, Any]) -> dict[str, Any]:
@@ -469,10 +756,9 @@ def _metric_caveats(
     return caveats
 
 
-def _bundle_paths(bundle_dir: Path) -> dict[str, Any]:
+def _bundle_paths(bundle_dir: Path, *, backtest_kind: str = "baseline") -> dict[str, Any]:
     paths = {
         "artifact_dir": str(bundle_dir),
-        "backtest_run_ref": str(bundle_dir / "backtest_run_ref.json"),
         "result": str(bundle_dir / "result.json"),
         "metrics": str(bundle_dir / "metrics.json"),
         "provenance": str(bundle_dir / "provenance.json"),
@@ -483,7 +769,26 @@ def _bundle_paths(bundle_dir: Path) -> dict[str, Any]:
     trades_path = bundle_dir / "trades.csv"
     if trades_path.exists():
         paths["trades"] = str(trades_path)
+    if backtest_kind == "portfolio":
+        paths.update(
+            {
+                "portfolio_backtest_run_ref": str(bundle_dir / "portfolio_backtest_run_ref.json"),
+                "symbol_metrics": str(bundle_dir / "symbol_metrics.json"),
+                "exposure_summary": str(bundle_dir / "exposure_summary.json"),
+                "risk_decisions": str(bundle_dir / "risk_decisions.json"),
+                "risk_limit_breaches": str(bundle_dir / "risk_limit_breaches.json"),
+                "risk_measure_summary": str(bundle_dir / "risk_measure_summary.json"),
+            }
+        )
+    else:
+        paths["backtest_run_ref"] = str(bundle_dir / "backtest_run_ref.json")
     return paths
+
+
+def _load_optional_json(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    return _read_json(path)
 
 
 def _read_trade_rows(path: Path | None) -> list[dict[str, Any]] | None:
@@ -544,6 +849,10 @@ def _sequence(value: Any) -> list[Any]:
 
 def _mapping(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, MappingABC) else {}
+
+
+def _mapping_or_none(value: Any) -> dict[str, Any] | None:
+    return dict(value) if isinstance(value, MappingABC) else None
 
 
 def _window_payload(payload: Mapping[str, Any]) -> Mapping[str, Any]:

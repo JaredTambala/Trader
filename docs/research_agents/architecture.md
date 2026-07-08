@@ -45,6 +45,11 @@ must not prevent MCP server startup.
 MCP is the deterministic tool boundary. MCP tools accept bounded JSON-compatible inputs, call deterministic services,
 and return stable envelopes plus artifact refs.
 
+MCP research artifact persistence is DB-first. Mutating method, strategy, risk-manager, portfolio-backtest, and
+evaluation tools store canonical records in the configured Postgres research artifact store and return
+`research://postgres/{artifact_type}/{artifact_id}` refs. Filesystem exports remain only for legacy direct-service
+fallbacks and backtest result artifacts that have not yet moved into structured storage.
+
 LangGraph is the agent identity and orchestration layer. Agent graphs decide which MCP tools are allowed, how state is
 retained, how specialist handoffs are routed, and which artifact must be produced. Agent code should call MCP tools
 rather than core platform internals when a tool exists.

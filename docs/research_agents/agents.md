@@ -7,7 +7,7 @@ source of truth is `src/trader_research/agents.py`; artifact ownership is regist
 
 | Agent | Mission | Current owned artifacts | Current MCP/tool access |
 | --- | --- | --- | --- |
-| Quant Research Supervisor Agent | Coordinate research workflows and synthesize specialist-owned evidence. | Experiment plans, research suites, strategy candidates, risk-manager candidates, strategy/risk stacks, baseline and future portfolio backtest refs, comparison reports, recommendation reports. | Supervisor `research_*` tools plus planned synthesis/experiment tools. |
+| Quant Research Supervisor Agent | Coordinate research workflows and synthesize specialist-owned evidence. | Experiment plans, research suites, strategy candidates, risk-manager candidates, strategy/risk stacks, baseline and portfolio backtest refs, comparison reports, recommendation reports. | Supervisor `research_*` tools plus planned synthesis/experiment tools. |
 | Data Agent | Produce trustworthy bounded market-data manifests and quality evidence. | Symbol discovery reports, dataset manifests, data-quality reports, load result envelopes. | `mcp_health`, `mcp_get_config`, `data_discover_symbols`, `data_get_inventory`, `data_summarize_quality`, `data_ensure_loaded`. |
 | Quantitative Methods Agent | Produce auditable deterministic methods, method evidence, diagnostics, and statistical inference artifacts. | Knowledge manifests, method cards, implementation manifests, validation reports, diagnostics, multiple-testing reports, method packages, optional kernel manifests. | `mcp_health`, `mcp_get_config`, `knowledge_*`, and current `math_*` tools. |
 | ML Agent | Produce versioned feature, model, prediction, and drift artifacts. | Feature dataset manifests, model cards, prediction artifacts, drift reports. | Planned ML tools only. |
@@ -26,11 +26,11 @@ source of truth is `src/trader_research/agents.py`; artifact ownership is regist
 ## Current Versus Planned Status
 
 Current registered MCP surfaces include Data Agent tools, Quantitative Methods knowledge/math tools, Supervisor strategy,
-risk-manager, backtest, and comparison tools, and the first Evaluation performance-report tool.
+risk-manager, strategy/risk stack, baseline/portfolio backtest, and comparison tools, and the first Evaluation
+performance-report tool.
 
 ML, Hypothesis, Adversarial, broader Evaluation critique, attribution, recommendation synthesis, experiment running,
-risk-manager validation, strategy/risk stack validation, and portfolio/risk backtests remain planned unless the MCP tool
-catalog marks them registered.
+and supervisor autonomy remain planned unless the MCP tool catalog marks them registered.
 
 ## Identity Checks
 

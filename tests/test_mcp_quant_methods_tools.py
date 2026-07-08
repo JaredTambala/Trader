@@ -30,6 +30,7 @@ from trader_mcp.constants import (
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
 from trader_agents.llm_client import StaticJsonLlmClient
+from trader_research.artifact_store import InMemoryResearchArtifactStore
 from trader_research.knowledge.embeddings import DeterministicEmbeddingProvider
 from trader_research.knowledge.store import JsonKnowledgeStore
 from trader_research.methods.contracts import MethodRegistryEntry, ParameterSpec
@@ -43,10 +44,12 @@ def test_mcp_quant_methods_core_evidence_flow(tmp_path: Path) -> None:
     source.write_text(Path("tests/fixtures/knowledge/sma_method.md").read_text(encoding="utf-8"), encoding="utf-8")
     environment = replace(load_local_environment("env.template"), artifact_root=artifact_root)
     knowledge_store = JsonKnowledgeStore(artifact_root)
+    artifact_store = InMemoryResearchArtifactStore()
     server = create_server(
         environment,
         knowledge_embedding_provider=DeterministicEmbeddingProvider(),
         knowledge_store_provider=lambda: knowledge_store,
+        research_artifact_store_provider=lambda: artifact_store,
         method_generation_llm_client=StaticJsonLlmClient(
             [
                 {
@@ -347,10 +350,12 @@ def test_mcp_quant_methods_signal_evidence_flow(tmp_path: Path) -> None:
             runtime_contract="trader.signals.Signal",
         )
     )
+    artifact_store = InMemoryResearchArtifactStore()
     server = create_server(
         environment,
         knowledge_embedding_provider=DeterministicEmbeddingProvider(),
         knowledge_store_provider=lambda: knowledge_store,
+        research_artifact_store_provider=lambda: artifact_store,
     )
 
     async def _run() -> None:

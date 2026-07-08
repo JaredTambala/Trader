@@ -104,6 +104,9 @@ RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL: Final = "research_validate_strategy_c
 RESEARCH_RUN_BACKTEST_TOOL: Final = "research_run_backtest"
 """Tool name for running a data-scoped baseline research backtest."""
 
+RESEARCH_RUN_PORTFOLIO_BACKTEST_TOOL: Final = "research_run_portfolio_backtest"
+"""Tool name for running a risk-scoped portfolio research backtest."""
+
 RESEARCH_GET_BACKTEST_RESULTS_TOOL: Final = "research_get_backtest_results"
 """Tool name for reading a persisted baseline backtest result bundle."""
 
@@ -115,6 +118,15 @@ RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL: Final = "research_list_risk_manager_t
 
 RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL: Final = "research_create_risk_manager_candidate"
 """Tool name for creating source-backed risk-manager candidate manifests."""
+
+RESEARCH_VALIDATE_RISK_MANAGER_CANDIDATE_TOOL: Final = "research_validate_risk_manager_candidate"
+"""Tool name for validating source-backed risk-manager candidates."""
+
+RESEARCH_CREATE_STRATEGY_RISK_STACK_TOOL: Final = "research_create_strategy_risk_stack"
+"""Tool name for composing validated strategies and risk managers into a stack."""
+
+RESEARCH_VALIDATE_STRATEGY_RISK_STACK_TOOL: Final = "research_validate_strategy_risk_stack"
+"""Tool name for validating strategy/risk stacks before portfolio backtests."""
 
 EVALUATION_GENERATE_PERFORMANCE_REPORT_TOOL: Final = "evaluation_generate_performance_report"
 """Tool name for generating Evaluation-owned backtest performance reports."""
@@ -164,10 +176,14 @@ RESEARCH_TOOL_NAMES: Final = (
     RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
     RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL,
     RESEARCH_RUN_BACKTEST_TOOL,
+    RESEARCH_RUN_PORTFOLIO_BACKTEST_TOOL,
     RESEARCH_GET_BACKTEST_RESULTS_TOOL,
     RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL,
     RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL,
     RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL,
+    RESEARCH_VALIDATE_RISK_MANAGER_CANDIDATE_TOOL,
+    RESEARCH_CREATE_STRATEGY_RISK_STACK_TOOL,
+    RESEARCH_VALIDATE_STRATEGY_RISK_STACK_TOOL,
 )
 """Quant Research Supervisor tool names exposed by the MCP server."""
 
@@ -232,10 +248,14 @@ RESEARCH_TOOL_DESCRIPTIONS: Final = {
     RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL: "Create a bounded source-backed strategy candidate manifest.",
     RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL: "Validate a strategy candidate with maintained runtime builders.",
     RESEARCH_RUN_BACKTEST_TOOL: "Run a baseline backtest over a Data Agent dataset manifest.",
+    RESEARCH_RUN_PORTFOLIO_BACKTEST_TOOL: "Run a risk-scoped portfolio backtest from a validated strategy/risk stack.",
     RESEARCH_GET_BACKTEST_RESULTS_TOOL: "Read a persisted baseline backtest artifact bundle.",
     RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL: "Compare persisted baseline backtest bundles and write a comparison report.",
     RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL: "List source-generatable risk-manager templates.",
     RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL: "Create a source-backed risk-manager candidate manifest.",
+    RESEARCH_VALIDATE_RISK_MANAGER_CANDIDATE_TOOL: "Validate a source-backed risk-manager candidate.",
+    RESEARCH_CREATE_STRATEGY_RISK_STACK_TOOL: "Compose a validated strategy candidate with validated risk managers.",
+    RESEARCH_VALIDATE_STRATEGY_RISK_STACK_TOOL: "Validate a strategy/risk stack with a deterministic fixture.",
 }
 """Descriptions for Quant Research Supervisor tools exposed by the MCP server."""
 
@@ -255,6 +275,8 @@ CAPABILITY_REGISTRATION_FLAGS: Final = {
     "math_method_tools_registered": True,
     "strategy_candidate_tools_registered": True,
     "risk_manager_candidate_tools_registered": True,
+    "risk_manager_validation_tools_registered": True,
+    "strategy_risk_stack_tools_registered": True,
     "backtest_tools_registered": True,
     "evaluation_tools_registered": True,
 }
@@ -267,6 +289,8 @@ UNREGISTERED_CAPABILITY_FLAGS: Final = {
     "data_loading_tools_registered": False,
     "strategy_candidate_tools_registered": False,
     "risk_manager_candidate_tools_registered": False,
+    "risk_manager_validation_tools_registered": False,
+    "strategy_risk_stack_tools_registered": False,
     "backtest_tools_registered": False,
     "evaluation_tools_registered": False,
 }

@@ -26,7 +26,7 @@ MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded 
 | Tool | Owner | Side effect | Purpose |
 | --- | --- | --- | --- |
 | `mcp_health` | MCP Server | `read_only` | Return MCP server health and registered tool names. |
-| `mcp_get_config` | MCP Server | `read_only` | Return server policy, capability flags, artifact root, and tool metadata. |
+| `mcp_get_config` | MCP Server | `read_only` | Return server policy, capability flags, artifact root, research artifact store runtime, and tool metadata. |
 
 ## Data Agent Tools
 
@@ -53,7 +53,7 @@ MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded 
 | `knowledge_validate_citations` | `read_only` | Citation validation report. |
 | `math_list_method_contracts` | `read_only` | Maintained method contract catalog. |
 | `math_validate_method_contract` | `read_only` | Method contract validation result. |
-| `math_register_method_implementation` | `local_mutating` | `method_implementation_manifest`. |
+| `math_register_method_implementation` | `local_mutating` | `method_implementation_manifest` or `research://postgres/...` ref. |
 | `math_run_indicator_fixtures` | `local_mutating` | Indicator validation report. |
 | `math_run_signal_fixtures` | `local_mutating` | Signal validation report. |
 | `math_generate_python_method` | `local_mutating` | Quarantined generated source plus registration/validation artifacts. |
@@ -61,7 +61,7 @@ MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded 
 | `math_run_multiple_testing_report` | `local_mutating` | Multiple-testing report. |
 | `math_generate_cpp_kernel` | `local_mutating` | C++ kernel manifest. |
 | `math_compile_kernel` | `local_mutating` | Compile/build evidence. |
-| `math_package_method_artifact` | `local_mutating` | Validated `method_package_manifest`. |
+| `math_package_method_artifact` | `local_mutating` | Validated `method_package_manifest` or `research://postgres/...` ref. |
 
 Quantitative Methods tools do not fetch market data, create strategies, run backtests, or promote strategies.
 
@@ -70,16 +70,20 @@ Quantitative Methods tools do not fetch market data, create strategies, run back
 | Tool | Side effect | Primary output | Notes |
 | --- | --- | --- | --- |
 | `research_list_strategy_templates` | `read_only` | Strategy template catalog. | Maintained template metadata only. |
-| `research_create_strategy_candidate` | `local_mutating` | Strategy candidate manifest and generated source. | Consumes validated signal method packages. |
+| `research_create_strategy_candidate` | `local_mutating` | Strategy candidate manifest and generated source refs. | Consumes validated signal method packages. |
 | `research_validate_strategy_candidate` | `local_mutating` | Strategy candidate validation report. | Runs deterministic source/runtime smoke validation. |
 | `research_run_backtest` | `local_mutating` | Backtest run bundle and `backtest_run_ref`. | Execution requires `TRADER_MCP_ALLOW_BACKTESTS=true`. |
+| `research_run_portfolio_backtest` | `local_mutating` | Structured portfolio bundle and `portfolio_backtest_run_ref`. | Requires a passed strategy/risk stack validation report, configured research artifact store, and `TRADER_MCP_ALLOW_BACKTESTS=true`. |
 | `research_get_backtest_results` | `read_only` | Backtest result summary and artifact paths. | Reads persisted run bundles only. |
 | `research_compare_backtest_results` | `local_mutating` | `comparison_report`. | Compares explicit persisted run refs; does not execute backtests. |
 | `research_list_risk_manager_templates` | `read_only` | Risk-manager template catalog. | Generation targets for backtest-only risk managers. |
-| `research_create_risk_manager_candidate` | `local_mutating` | Risk-manager candidate manifest and generated source. | Validation and stack use are later tasks. |
+| `research_create_risk_manager_candidate` | `local_mutating` | Risk-manager candidate manifest and generated source refs. | Backtest-only source artifact. |
+| `research_validate_risk_manager_candidate` | `local_mutating` | Risk-manager candidate validation report. | Runs deterministic source/runtime smoke validation. |
+| `research_create_strategy_risk_stack` | `local_mutating` | Strategy/risk stack manifest. | Requires passed strategy and risk-manager validation reports. |
+| `research_validate_strategy_risk_stack` | `local_mutating` | Strategy/risk stack validation report. | Runs deterministic multi-asset fixture validation before portfolio backtests. |
 
-Supervisor tools consume specialist-owned artifacts but must not forge them. Portfolio/risk stack validation and
-risk-scoped portfolio backtests are planned follow-ons.
+Supervisor tools consume specialist-owned artifacts but must not forge them. Portfolio backtests remain deterministic
+research artifacts and do not control brokers or live trading.
 
 ## Evaluation Tools
 
@@ -92,14 +96,17 @@ risk-scoped portfolio backtests are planned follow-ons.
 The config envelope reports static registration flags plus runtime policy:
 
 - Broker-mutating and raw SQL tools are not registered.
-- Data, knowledge, math, strategy, risk-manager, backtest, and evaluation tool families are registered.
+- Data, knowledge, math, strategy, risk-manager, strategy/risk stack, backtest, and evaluation tool families are
+  registered.
 - Backtest execution is separately gated by `TRADER_MCP_ALLOW_BACKTESTS`.
 - Data loading mutation is separately gated by `TRADER_MCP_ALLOW_DATA_LOADING`.
 - Provider-catalog symbol discovery is separately gated by symbol-provider discovery policy.
+- Mutating method/strategy/risk/portfolio/evaluation MCP flows require a configured or injected research artifact store.
+  Production refs use `research://postgres/{artifact_type}/{artifact_id}`.
 
 ## Planned Tool Ownership
 
 The agent registry contains planned allowlist entries that are not all registered MCP tools yet, including hypothesis,
-ML, adversarial, attribution, recommendation, experiment-runner, broader evaluation critique, risk-manager validation,
-strategy/risk stack validation, and portfolio/risk backtest surfaces. Treat this file's registered catalog as the
+ML, adversarial, attribution, recommendation, experiment-runner, broader evaluation critique, and portfolio/risk backtest
+surfaces. Treat this file's registered catalog as the
 current MCP availability source.

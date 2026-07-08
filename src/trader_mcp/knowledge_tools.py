@@ -68,6 +68,7 @@ from trader_research.methods import (
     math_validate_method_contract as validate_method_contract_service,
 )
 from trader_research.method_implementations import generation_messages, generation_response_schema
+from trader_research.artifact_store import ResearchArtifactStore, ResearchArtifactStoreError
 
 
 def register_quant_methods_tools(
@@ -76,6 +77,7 @@ def register_quant_methods_tools(
     *,
     embedding_provider: EmbeddingProvider | None = None,
     knowledge_store_provider: Any | None = None,
+    artifact_store_provider: Any | None = None,
     method_generation_llm_client: Any | None = None,
 ) -> None:
     """Register Slice 5 Quantitative Methods tools on an MCP server."""
@@ -84,6 +86,20 @@ def register_quant_methods_tools(
 
     def _knowledge_store() -> KnowledgeStore | None:
         return knowledge_store_provider() if knowledge_store_provider is not None else None
+
+    def _artifact_store() -> ResearchArtifactStore | None:
+        return artifact_store_provider() if artifact_store_provider is not None else None
+
+    def _artifact_store_error(command: str, error: ResearchArtifactStoreError) -> CallToolResult:
+        from trader_research.contracts import SideEffect, error_envelope
+
+        envelope = error_envelope(
+            command=command,
+            side_effect=SideEffect.LOCAL_MUTATING,
+            code="research_artifact_store_unavailable",
+            message=str(error),
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
 
     @server.tool(
         name=KNOWLEDGE_REGISTER_SOURCE_TOOL,
@@ -343,20 +359,24 @@ def register_quant_methods_tools(
         dependency_allowlist: list[str] | None = None,
         expected_source_hash: str | None = None,
     ) -> CallToolResult:
-        envelope = register_method_implementation_service(
-            artifact_root=environment.artifact_root,
-            method_id=method_id,
-            method_card_ids=method_card_ids,
-            method_contract=method_contract,
-            entrypoint=entrypoint,
-            source_path=source_path,
-            class_name=class_name,
-            constructor_kwargs=constructor_kwargs,
-            implementation_kind=implementation_kind,
-            dependency_allowlist=dependency_allowlist,
-            expected_source_hash=expected_source_hash,
-            knowledge_store=_knowledge_store(),
-        )
+        try:
+            envelope = register_method_implementation_service(
+                artifact_root=environment.artifact_root,
+                method_id=method_id,
+                method_card_ids=method_card_ids,
+                method_contract=method_contract,
+                entrypoint=entrypoint,
+                source_path=source_path,
+                class_name=class_name,
+                constructor_kwargs=constructor_kwargs,
+                implementation_kind=implementation_kind,
+                dependency_allowlist=dependency_allowlist,
+                expected_source_hash=expected_source_hash,
+                knowledge_store=_knowledge_store(),
+                artifact_store=_artifact_store(),
+            )
+        except ResearchArtifactStoreError as exc:
+            return _artifact_store_error(MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL, exc)
         return CallToolResult(**envelope_to_mcp_result(envelope))
 
     @server.tool(
@@ -368,13 +388,17 @@ def register_quant_methods_tools(
         implementation_manifest: dict[str, Any] | None = None,
         fixtures: list[dict[str, Any]] | None = None,
     ) -> CallToolResult:
-        envelope = run_indicator_fixtures_service(
-            artifact_root=environment.artifact_root,
-            implementation_id=implementation_id,
-            implementation_manifest=implementation_manifest,
-            fixtures=fixtures,
-            knowledge_store=_knowledge_store(),
-        )
+        try:
+            envelope = run_indicator_fixtures_service(
+                artifact_root=environment.artifact_root,
+                implementation_id=implementation_id,
+                implementation_manifest=implementation_manifest,
+                fixtures=fixtures,
+                knowledge_store=_knowledge_store(),
+                artifact_store=_artifact_store(),
+            )
+        except ResearchArtifactStoreError as exc:
+            return _artifact_store_error(MATH_RUN_INDICATOR_FIXTURES_TOOL, exc)
         return CallToolResult(**envelope_to_mcp_result(envelope))
 
     @server.tool(
@@ -386,13 +410,17 @@ def register_quant_methods_tools(
         implementation_manifest: dict[str, Any] | None = None,
         fixtures: list[dict[str, Any]] | None = None,
     ) -> CallToolResult:
-        envelope = run_signal_fixtures_service(
-            artifact_root=environment.artifact_root,
-            implementation_id=implementation_id,
-            implementation_manifest=implementation_manifest,
-            fixtures=fixtures,
-            knowledge_store=_knowledge_store(),
-        )
+        try:
+            envelope = run_signal_fixtures_service(
+                artifact_root=environment.artifact_root,
+                implementation_id=implementation_id,
+                implementation_manifest=implementation_manifest,
+                fixtures=fixtures,
+                knowledge_store=_knowledge_store(),
+                artifact_store=_artifact_store(),
+            )
+        except ResearchArtifactStoreError as exc:
+            return _artifact_store_error(MATH_RUN_SIGNAL_FIXTURES_TOOL, exc)
         return CallToolResult(**envelope_to_mcp_result(envelope))
 
     @server.tool(
@@ -517,13 +545,17 @@ def register_quant_methods_tools(
         cxx_kernel_id: str | None = None,
         cxx_kernel_manifest: dict[str, Any] | None = None,
     ) -> CallToolResult:
-        envelope = package_method_artifact_service(
-            artifact_root=environment.artifact_root,
-            implementation_id=implementation_id,
-            implementation_manifest=implementation_manifest,
-            validation_report_id=validation_report_id,
-            validation_report=validation_report,
-            cxx_kernel_id=cxx_kernel_id,
-            cxx_kernel_manifest=cxx_kernel_manifest,
-        )
+        try:
+            envelope = package_method_artifact_service(
+                artifact_root=environment.artifact_root,
+                implementation_id=implementation_id,
+                implementation_manifest=implementation_manifest,
+                validation_report_id=validation_report_id,
+                validation_report=validation_report,
+                cxx_kernel_id=cxx_kernel_id,
+                cxx_kernel_manifest=cxx_kernel_manifest,
+                artifact_store=_artifact_store(),
+            )
+        except ResearchArtifactStoreError as exc:
+            return _artifact_store_error(MATH_PACKAGE_METHOD_ARTIFACT_TOOL, exc)
         return CallToolResult(**envelope_to_mcp_result(envelope))

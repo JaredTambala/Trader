@@ -14,10 +14,16 @@ from .services import (
     risk_manager_candidate_path,
     risk_manager_candidate_source_path,
 )
+from .validation import (
+    RESEARCH_VALIDATE_RISK_MANAGER_CANDIDATE,
+    risk_manager_candidate_validation_report_path,
+    validate_risk_manager_candidate,
+)
 
 __all__ = [
     "RESEARCH_CREATE_RISK_MANAGER_CANDIDATE",
     "RESEARCH_LIST_RISK_MANAGER_TEMPLATES",
+    "RESEARCH_VALIDATE_RISK_MANAGER_CANDIDATE",
     "RISK_MANAGER_RUNTIME_CONTRACT",
     "SUPPORTED_RISK_MANAGER_FAMILIES",
     "RiskManagerTemplate",
@@ -28,4 +34,6 @@ __all__ = [
     "normalize_risk_manager_family",
     "risk_manager_candidate_path",
     "risk_manager_candidate_source_path",
+    "risk_manager_candidate_validation_report_path",
+    "validate_risk_manager_candidate",
 ]

@@ -449,6 +449,124 @@ class LongFlatSignalStrategy(Strategy):
         return [order] if order is not None else []
 
 
+class CrossSectionalMomentumStrategy(Strategy):
+    """Long-only cross-sectional momentum strategy over a supplied universe.
+
+    The strategy ranks configured symbols by simple lookback return, buys the
+    top-ranked symbols up to `top_n`, and flattens held symbols that fall out of
+    the selected set. It is intentionally deterministic and backtest-friendly.
+    """
+
+    def __init__(
+        self,
+        *,
+        strategy_id: str,
+        symbols: Sequence[str],
+        asset_class: str,
+        timeframe: str,
+        lookback_period: int = 20,
+        top_n: int = 2,
+        target_qty_when_long: float = 1.0,
+        rebalance_cadence: str = "every_bar",
+    ) -> None:
+        self._strategy_id = str(strategy_id).strip() or "cross_sectional_momentum"
+        self._symbols = tuple(symbol.strip().upper() for symbol in symbols if str(symbol).strip())
+        self._asset_class = asset_class
+        self._timeframe = timeframe
+        self._lookback_period = max(1, int(lookback_period))
+        self._top_n = max(1, int(top_n))
+        self._target_qty_when_long = max(0.0, float(target_qty_when_long))
+        self._rebalance_cadence = str(rebalance_cadence or "every_bar")
+
+    @property
+    def strategy_id(self) -> str:
+        """Return the configured strategy identifier used in run metadata and artifacts."""
+        return self._strategy_id
+
+    @property
+    def strategy_info(self) -> StrategyInfo:
+        """Return structured strategy metadata for research runs and artifact export payloads."""
+        return StrategyInfo(
+            strategy_id=self._strategy_id,
+            name=self._strategy_id,
+            version="1",
+            description="Long-only cross-sectional momentum strategy from trader_standard.",
+            parameters={
+                "symbols": list(self._symbols),
+                "asset_class": self._asset_class,
+                "timeframe": self._timeframe,
+                "lookback_period": self._lookback_period,
+                "top_n": self._top_n,
+                "target_qty_when_long": self._target_qty_when_long,
+                "rebalance_cadence": self._rebalance_cadence,
+            },
+            author="trader_standard",
+            source=f"{self.__class__.__module__}.{self.__class__.__qualname__}",
+        )
+
+    def generate_orders(
+        self,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+    ) -> Sequence[Mapping[str, object]]:
+        """Generate rebalance orders for the top-ranked symbols."""
+        table = table_for_asset_class(self._asset_class)
+        scores: list[tuple[float, str, float]] = []
+        for symbol in self._symbols:
+            bars = fetch_recent_bars(
+                event_store,
+                table=table,
+                symbol=symbol,
+                timeframe=self._timeframe,
+                limit=self._lookback_period + 1,
+                as_of_ts=decision_ts,
+            )
+            if len(bars) < self._lookback_period + 1:
+                logger.warning(
+                    "Skipping cross-sectional score due to insufficient bars symbol=%s have=%s need=%s",
+                    symbol,
+                    len(bars),
+                    self._lookback_period + 1,
+                )
+                continue
+            latest_close = float(bars[0].close)
+            lookback_close = float(bars[-1].close)
+            if lookback_close <= 0.0:
+                continue
+            scores.append(((latest_close / lookback_close) - 1.0, symbol, latest_close))
+
+        ranked = sorted(scores, key=lambda item: (item[0], item[1]), reverse=True)
+        selected = {symbol for _, symbol, _ in ranked[: self._top_n]}
+        orders: list[Mapping[str, object]] = []
+        for _, symbol, latest_close in ranked:
+            position = portfolio.positions.get(symbol, Position(symbol=symbol, qty=0.0, avg_price=None))
+            if symbol in selected and position.qty <= 0.0 and self._target_qty_when_long > 0.0:
+                orders.append(
+                    {
+                        "symbol": symbol,
+                        "side": "buy",
+                        "qty": float(self._target_qty_when_long),
+                        "order_type": "market",
+                    }
+                )
+            elif symbol not in selected and position.qty > 0.0:
+                orders.append(_flatten_order(symbol, position.qty))
+            _record_signal_event(
+                event_store,
+                run_id=run_id,
+                cycle_id=cycle_id,
+                symbol=symbol,
+                signal_value=float(next(score for score, ranked_symbol, _ in ranked if ranked_symbol == symbol)),
+                target_qty=float(self._target_qty_when_long if symbol in selected else 0.0),
+            )
+            del latest_close
+        return orders
+
+
 def build_trend_following_strategy(
     *,
     symbols: Sequence[str],
@@ -497,6 +615,29 @@ def build_trend_following_strategy(
         ),
         stop_policy=stop_policy,
         target_qty_when_long=target_qty_when_long,
+    )
+
+
+def build_cross_sectional_momentum_strategy(
+    *,
+    symbols: Sequence[str],
+    asset_class: str,
+    timeframe: str,
+    target_qty_when_long: float = 1.0,
+    lookback_period: int = 20,
+    top_n: int = 2,
+    rebalance_cadence: str = "every_bar",
+) -> CrossSectionalMomentumStrategy:
+    """Build a long-only cross-sectional momentum allocation strategy."""
+    return CrossSectionalMomentumStrategy(
+        strategy_id="cross_sectional_momentum",
+        symbols=symbols,
+        asset_class=asset_class,
+        timeframe=timeframe,
+        lookback_period=lookback_period,
+        top_n=top_n,
+        target_qty_when_long=target_qty_when_long,
+        rebalance_cadence=rebalance_cadence,
     )
 
 

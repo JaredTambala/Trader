@@ -6,6 +6,7 @@ from .policy_driven import (
     EntryPolicy,
     ExitPolicy,
     FixedStopLossPolicy,
+    CrossSectionalMomentumStrategy,
     LongFlatSignalStrategy,
     NoOpStopPolicy,
     SignalThresholdEntryPolicy,
@@ -14,6 +15,7 @@ from .policy_driven import (
     StrategySnapshot,
     TrailingStopPolicy,
     build_bollinger_band_strategy,
+    build_cross_sectional_momentum_strategy,
     build_mean_reversion_strategy,
     build_trend_following_strategy,
 )
@@ -32,6 +34,7 @@ __all__ = [
     "StopPolicy",
     "NoOpStopPolicy",
     "FixedStopLossPolicy",
+    "CrossSectionalMomentumStrategy",
     "TrailingStopPolicy",
     "CompositeStopPolicy",
     "SignalThresholdEntryPolicy",
@@ -40,4 +43,5 @@ __all__ = [
     "build_trend_following_strategy",
     "build_mean_reversion_strategy",
     "build_bollinger_band_strategy",
+    "build_cross_sectional_momentum_strategy",
 ]
