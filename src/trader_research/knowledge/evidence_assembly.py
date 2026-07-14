@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Any, Mapping, Sequence
 
 from trader_research.artifact_store import (
@@ -13,6 +14,7 @@ from trader_research.artifact_store import (
 from trader_research.contracts import SideEffect, ToolEnvelope, error_envelope, success_envelope
 from trader_research.domain import METHODOLOGY_CANDIDATE, METHODOLOGY_EVIDENCE_PACKET, stable_research_id
 
+from .claim_spans import detect_local_method_labels, select_role_claim_spans
 from .domain import KnowledgeChunk, MethodologyCandidate, MethodologyEvidencePacket
 from .evidence_profiles import (
     EvidenceRoleProfile,
@@ -25,6 +27,9 @@ from .store import KnowledgeStore, KnowledgeStoreError
 
 
 KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE = "knowledge_assemble_methodology_evidence"
+
+ACCEPTED_TARGET_BINDINGS = frozenset({"direct_label", "alias_label", "same_sentence", "same_paragraph", "nearby_context"})
+"""Evidence-unit bindings that may satisfy role/readiness requirements."""
 
 
 def assemble_methodology_evidence(
@@ -71,11 +76,14 @@ def assemble_methodology_evidence(
     role_evidence: list[Mapping[str, Any]] = []
     missing_roles: list[str] = []
     all_chunk_ids: list[str] = []
+    rejected_chunk_ids: list[str] = []
     diagnostics: dict[str, Any] = {
         "readiness_goal": readiness,
         "profile_family": profile.family,
         "required_roles": sorted(required_roles),
         "candidate_families": list(candidate.families),
+        "target_identity": dict(candidate.method_identity),
+        "target_binding_accepts": sorted(ACCEPTED_TARGET_BINDINGS),
     }
 
     for role in profile.roles:
@@ -87,21 +95,39 @@ def assemble_methodology_evidence(
             neighbor_radius=neighbor_radius,
             max_chunks_per_role=max_chunks_per_role,
         )
-        if not role_chunks:
+        bound_refs = [
+            _target_bound_chunk_ref(
+                chunk,
+                role,
+                candidate,
+                candidate_chunks=chunks,
+                context_chunks=source_chunks.get(chunk.source_id, ()),
+            )
+            for chunk in role_chunks
+        ]
+        accepted_refs = tuple(ref for ref in bound_refs if _is_accepted_binding(ref))
+        rejected_refs = tuple(ref for ref in bound_refs if not _is_accepted_binding(ref))
+        if not accepted_refs:
             missing_roles.append(role.role_id)
-        all_chunk_ids.extend(chunk.chunk_id for chunk in role_chunks)
+        all_chunk_ids.extend(str(ref["chunk_id"]) for ref in accepted_refs)
+        rejected_chunk_ids.extend(str(ref["chunk_id"]) for ref in rejected_refs)
         role_evidence.append(
             {
                 "role_id": role.role_id,
                 "description": role.description,
-                "status": "found" if role_chunks else "missing",
+                "status": "found" if accepted_refs else "missing",
                 "required": role.role_id in required_roles,
                 "field_paths": [".".join(path) for path in role.field_paths],
                 "semantic_expectation": role.semantic_expectation,
                 "search_terms": list(role.search_terms),
-                "chunks": [_chunk_ref(chunk, role) for chunk in role_chunks],
+                "target_binding_required": True,
+                "accepted_target_bindings": sorted(ACCEPTED_TARGET_BINDINGS),
+                "chunks": list(accepted_refs),
+                "rejected_chunks": list(rejected_refs),
+                "target_binding_summary": _target_binding_summary(bound_refs),
             }
         )
+    diagnostics["rejected_or_weak_chunk_ids"] = sorted(set(rejected_chunk_ids))
 
     blockers = tuple(
         f"missing required evidence role for {readiness}: {role_id}"
@@ -115,9 +141,16 @@ def assemble_methodology_evidence(
             "family": profile.family,
             "readiness_goal": readiness,
             "role_chunks": {
-                str(role["role_id"]): [chunk["chunk_id"] for chunk in role.get("chunks", ())]
+                str(role["role_id"]): [
+                    {
+                        "chunk_id": chunk["chunk_id"],
+                        "claim_span_ids": [span["span_id"] for span in chunk.get("claim_spans", ())],
+                    }
+                    for chunk in role.get("chunks", ())
+                ]
                 for role in role_evidence
             },
+            "rejected_or_weak_chunk_ids": sorted(set(rejected_chunk_ids)),
             "blockers": list(blockers),
         },
     )
@@ -303,11 +336,350 @@ def _chunk_ref(chunk: KnowledgeChunk, role: EvidenceRoleProfile) -> Mapping[str,
     return {
         "source_id": chunk.source_id,
         "chunk_id": chunk.chunk_id,
+        "evidence_unit_id": chunk.evidence_unit_id,
         "ordinal": chunk.ordinal,
         "locator": dict(chunk.locator),
         "text_hash": chunk.text_hash,
         "matched_terms": list(matched_terms),
+        "detected_labels": list(chunk.detected_labels),
+        "neighbor_chunk_ids": list(chunk.neighbor_chunk_ids),
+        "chunker_version": chunk.chunker_version,
     }
+
+
+def _target_bound_chunk_ref(
+    chunk: KnowledgeChunk,
+    role: EvidenceRoleProfile,
+    candidate: MethodologyCandidate,
+    *,
+    candidate_chunks: Sequence[KnowledgeChunk],
+    context_chunks: Sequence[KnowledgeChunk],
+) -> Mapping[str, Any]:
+    ref = dict(_chunk_ref(chunk, role))
+    binding = _target_binding(
+        chunk,
+        role,
+        candidate,
+        candidate_chunks=candidate_chunks,
+        context_chunks=context_chunks,
+    )
+    accepted_spans, rejected_spans = select_role_claim_spans(
+        chunk,
+        role,
+        candidate,
+        fallback_binding=str(binding.get("target_binding") or "weak"),
+    )
+    selected_binding = (
+        accepted_spans[0].target_binding
+        if accepted_spans
+        else rejected_spans[0].target_binding
+        if rejected_spans
+        else str(binding.get("target_binding") or "weak")
+    )
+    matched_terms = tuple(
+        dict.fromkeys(term for span in (*accepted_spans, *rejected_spans) for term in span.matched_terms)
+    )
+    ref.update(
+        {
+            **binding,
+            "target_binding": selected_binding,
+            "accepted_target_binding": bool(accepted_spans),
+            "matched_role_terms": list(matched_terms),
+            "claim_spans": [span.to_dict() for span in accepted_spans],
+            "rejected_claim_spans": [span.to_dict() for span in rejected_spans],
+            "target_binding_reason": (
+                "one or more role-bearing claim spans bind to the candidate identity"
+                if accepted_spans
+                else "no role-bearing claim span binds to the candidate identity"
+            ),
+        }
+    )
+    return ref
+
+
+def _target_binding(
+    chunk: KnowledgeChunk,
+    role: EvidenceRoleProfile,
+    candidate: MethodologyCandidate,
+    *,
+    candidate_chunks: Sequence[KnowledgeChunk],
+    context_chunks: Sequence[KnowledgeChunk],
+) -> Mapping[str, Any]:
+    direct_terms, alias_terms = _target_identity_terms(candidate)
+    all_terms = tuple(dict.fromkeys((*direct_terms, *alias_terms)))
+    labels = tuple(chunk.detected_labels)
+    direct_label_terms = tuple(label for label in labels if _label_matches_any(label, direct_terms))
+    alias_label_terms = tuple(label for label in labels if _label_matches_any(label, alias_terms))
+    competing_labels = tuple(label for label in labels if not _label_matches_any(label, all_terms))
+    matched_role_terms = tuple(term for term in role.search_terms if term.lower() in chunk.text.lower())
+    identity_evidence_ids = _identity_evidence_ids(candidate)
+
+    if not matched_role_terms:
+        return _binding_payload(
+            "rejected",
+            "evidence unit did not contain role evidence after neighbor expansion",
+            binding_terms=(),
+            competing_labels=competing_labels,
+            matched_role_terms=matched_role_terms,
+        )
+    if direct_label_terms:
+        return _binding_payload(
+            "direct_label",
+            "detected method label matches the candidate identity",
+            binding_terms=direct_label_terms,
+            competing_labels=competing_labels,
+            matched_role_terms=matched_role_terms,
+        )
+    if alias_label_terms:
+        return _binding_payload(
+            "alias_label",
+            "detected method label matches a candidate alias or abbreviation",
+            binding_terms=alias_label_terms,
+            competing_labels=competing_labels,
+            matched_role_terms=matched_role_terms,
+        )
+
+    same_sentence_terms = _same_sentence_binding_terms(chunk.text, role.search_terms, all_terms)
+    if same_sentence_terms:
+        return _binding_payload(
+            "same_sentence",
+            "role term and target identity term appear in the same sentence",
+            binding_terms=same_sentence_terms,
+            competing_labels=competing_labels,
+            matched_role_terms=matched_role_terms,
+        )
+
+    contextual_label, contextual_binding = _nearest_preceding_method_binding(
+        chunk,
+        context_chunks,
+        direct_terms=direct_terms,
+        alias_terms=alias_terms,
+    )
+    if contextual_binding == "nearby_context":
+        return _binding_payload(
+            "nearby_context",
+            "nearest preceding source method label matches the candidate identity",
+            binding_terms=(contextual_label,),
+            competing_labels=competing_labels,
+            matched_role_terms=matched_role_terms,
+        )
+
+    if contextual_binding == "rejected":
+        return _binding_payload(
+            "rejected",
+            "nearest preceding source method label belongs to another method",
+            binding_terms=(),
+            competing_labels=tuple(dict.fromkeys((*competing_labels, contextual_label))),
+            matched_role_terms=matched_role_terms,
+        )
+
+    if _same_paragraph_as_identity(chunk, candidate_chunks, identity_evidence_ids) and matched_role_terms:
+        return _binding_payload(
+            "same_paragraph",
+            "role evidence shares a source paragraph with target identity evidence",
+            binding_terms=tuple(str(term) for term in all_terms[:3]),
+            competing_labels=competing_labels,
+            matched_role_terms=matched_role_terms,
+        )
+
+    if _near_identity_context(chunk, candidate_chunks, identity_evidence_ids) and matched_role_terms:
+        return _binding_payload(
+            "nearby_context",
+            "role evidence is within accepted candidate context near target identity evidence",
+            binding_terms=tuple(str(term) for term in all_terms[:3]),
+            competing_labels=competing_labels,
+            matched_role_terms=matched_role_terms,
+        )
+
+    if matched_role_terms:
+        return _binding_payload(
+            "weak",
+            "role terms matched but no target identity binding was found",
+            binding_terms=(),
+            competing_labels=competing_labels,
+            matched_role_terms=matched_role_terms,
+        )
+    return _binding_payload(
+        "rejected",
+        "evidence unit did not contain role evidence after neighbor expansion",
+        binding_terms=(),
+        competing_labels=competing_labels,
+        matched_role_terms=matched_role_terms,
+    )
+
+
+def _binding_payload(
+    target_binding: str,
+    reason: str,
+    *,
+    binding_terms: Sequence[str],
+    competing_labels: Sequence[str],
+    matched_role_terms: Sequence[str],
+) -> Mapping[str, Any]:
+    return {
+        "target_binding": target_binding,
+        "accepted_target_binding": target_binding in ACCEPTED_TARGET_BINDINGS,
+        "target_binding_terms": list(dict.fromkeys(str(term) for term in binding_terms if str(term).strip())),
+        "competing_method_labels": list(dict.fromkeys(str(label) for label in competing_labels if str(label).strip())),
+        "matched_role_terms": list(dict.fromkeys(str(term) for term in matched_role_terms if str(term).strip())),
+        "target_binding_reason": reason,
+    }
+
+
+def _is_accepted_binding(chunk_ref: Mapping[str, Any]) -> bool:
+    return bool(chunk_ref.get("accepted_target_binding")) and str(chunk_ref.get("target_binding") or "") in ACCEPTED_TARGET_BINDINGS
+
+
+def _target_binding_summary(refs: Sequence[Mapping[str, Any]]) -> Mapping[str, Any]:
+    counts: dict[str, int] = {}
+    for ref in refs:
+        binding = str(ref.get("target_binding") or "unknown")
+        counts[binding] = counts.get(binding, 0) + 1
+    return {
+        "counts": counts,
+        "accepted_count": sum(1 for ref in refs if _is_accepted_binding(ref)),
+        "rejected_or_weak_count": sum(1 for ref in refs if not _is_accepted_binding(ref)),
+    }
+
+
+def _target_identity_terms(candidate: MethodologyCandidate) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    identity = candidate.method_identity if isinstance(candidate.method_identity, Mapping) else {}
+    direct_terms = [
+        candidate.title,
+        str(identity.get("canonical_name") or ""),
+        str(identity.get("source_name") or ""),
+    ]
+    aliases = []
+    for key in ("aliases", "abbreviations"):
+        value = identity.get(key)
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            aliases.extend(str(item) for item in value)
+    direct = tuple(dict.fromkeys(term.strip() for term in direct_terms if term.strip()))
+    alias = tuple(dict.fromkeys(term.strip() for term in aliases if term.strip() and term.strip() not in direct))
+    return direct, alias
+
+
+def _identity_evidence_ids(candidate: MethodologyCandidate) -> frozenset[str]:
+    identity = candidate.method_identity if isinstance(candidate.method_identity, Mapping) else {}
+    values = identity.get("identity_evidence_unit_ids")
+    if isinstance(values, Sequence) and not isinstance(values, (str, bytes)):
+        return frozenset(str(value) for value in values if str(value).strip())
+    return frozenset()
+
+
+def _nearest_preceding_method_binding(
+    chunk: KnowledgeChunk,
+    context_chunks: Sequence[KnowledgeChunk],
+    *,
+    direct_terms: Sequence[str],
+    alias_terms: Sequence[str],
+) -> tuple[str, str]:
+    for context in sorted(context_chunks, key=lambda item: (item.ordinal, item.chunk_id), reverse=True):
+        if context.ordinal >= chunk.ordinal:
+            continue
+        labels = tuple(dict.fromkeys((*context.detected_labels, *detect_local_method_labels(context.text))))
+        labels = tuple(label for label in labels if _context_label_is_boundary(label))
+        if not labels:
+            continue
+        label = labels[-1]
+        if _label_matches_any(label, direct_terms) or _label_matches_any(label, alias_terms):
+            return label, "nearby_context"
+        return label, "rejected"
+    return "", "weak"
+
+
+def _context_label_is_boundary(label: str) -> bool:
+    words = _normalize_text(label).split()
+    return len(words) >= 2 or (len(words) == 1 and label.isupper() and len(label) >= 2)
+
+
+def _label_matches_any(label: str, terms: Sequence[str]) -> bool:
+    normalized_label = _normalize_text(label)
+    if not normalized_label:
+        return False
+    return any(normalized_label == _normalize_text(term) for term in terms if _normalize_text(term))
+
+
+def _same_sentence_binding_terms(
+    text: str,
+    role_terms: Sequence[str],
+    identity_terms: Sequence[str],
+) -> tuple[str, ...]:
+    matched: list[str] = []
+    for sentence in _sentences(text):
+        if not any(term.lower() in sentence.lower() for term in role_terms):
+            continue
+        matched.extend(term for term in identity_terms if _term_in_text(term, sentence))
+        if not matched and _identity_token_overlap(identity_terms, sentence):
+            matched.extend(_identity_token_overlap(identity_terms, sentence))
+    return tuple(dict.fromkeys(matched))
+
+
+def _same_paragraph_as_identity(
+    chunk: KnowledgeChunk,
+    candidate_chunks: Sequence[KnowledgeChunk],
+    identity_evidence_ids: frozenset[str],
+) -> bool:
+    if not identity_evidence_ids:
+        return False
+    parent = chunk.parent_section_id or str(chunk.locator.get("parent_section_id") or "")
+    paragraph = chunk.paragraph_index
+    for candidate_chunk in candidate_chunks:
+        if candidate_chunk.chunk_id not in identity_evidence_ids:
+            continue
+        candidate_parent = candidate_chunk.parent_section_id or str(candidate_chunk.locator.get("parent_section_id") or "")
+        if parent and parent == candidate_parent and paragraph == candidate_chunk.paragraph_index:
+            return True
+    return False
+
+
+def _near_identity_context(
+    chunk: KnowledgeChunk,
+    candidate_chunks: Sequence[KnowledgeChunk],
+    identity_evidence_ids: frozenset[str],
+) -> bool:
+    if chunk.chunk_id in identity_evidence_ids:
+        return True
+    if chunk.chunk_id in {candidate_chunk.chunk_id for candidate_chunk in candidate_chunks}:
+        return True
+    for candidate_chunk in candidate_chunks:
+        if candidate_chunk.chunk_id not in identity_evidence_ids:
+            continue
+        if chunk.chunk_id in candidate_chunk.neighbor_chunk_ids or candidate_chunk.chunk_id in chunk.neighbor_chunk_ids:
+            return True
+    return False
+
+
+def _term_in_text(term: str, text: str) -> bool:
+    normalized_term = _normalize_text(term)
+    normalized_text = _normalize_text(text)
+    if not normalized_term or not normalized_text:
+        return False
+    if " " in normalized_term:
+        return normalized_term in normalized_text
+    return re.search(rf"\b{re.escape(normalized_term)}\b", normalized_text) is not None
+
+
+def _identity_token_overlap(identity_terms: Sequence[str], text: str) -> tuple[str, ...]:
+    text_terms = set(_normalize_text(text).split())
+    matches: list[str] = []
+    for term in identity_terms:
+        tokens = [token for token in _normalize_text(term).split() if len(token) > 2 and token not in {"and", "the", "method"}]
+        if len(tokens) >= 2 and len(set(tokens) & text_terms) >= min(2, len(tokens)):
+            matches.append(term)
+    return tuple(matches)
+
+
+def _normalize_text(text: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9+-]+", str(text).lower()))
+
+
+def _sentences(text: str) -> tuple[str, ...]:
+    normalized = " ".join(text.replace("\n", " ").split())
+    if not normalized:
+        return tuple()
+    sentences = re.split(r"(?<=[.!?:;])\s+", normalized)
+    return tuple(sentence.strip() for sentence in sentences if sentence.strip())
 
 
 def _validation_error(message: str) -> ToolEnvelope:

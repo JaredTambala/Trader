@@ -9,10 +9,10 @@ from trader_research.contracts import SideEffect, ToolEnvelope, error_envelope, 
 from trader_research.domain import stable_research_id
 
 from .chunking import chunk_sections
-from .domain import KnowledgeIngestionReport
+from .domain import KnowledgeChunk, KnowledgeIngestionReport
 from .embeddings import EmbeddingConfigurationError, EmbeddingProvider, EmbeddingRequestError
 from .extractors import extract_text
-from .index import index_chunks
+from .index import build_embedding_index
 from .store import JsonKnowledgeStore, KnowledgeStore, KnowledgeStoreError
 
 
@@ -55,6 +55,7 @@ def ingest_documents(
     warnings: list[str] = []
     blockers: list[str] = []
     all_chunks = []
+    replacement_chunks: dict[str, tuple[KnowledgeChunk, ...]] = {}
     ingested_source_ids: list[str] = []
     try:
         for source_id in source_ids:
@@ -62,19 +63,20 @@ def ingest_documents(
             if source is None:
                 blockers.append(f"unknown source_id: {source_id}")
                 continue
-            existing_chunks = store.load_chunks(source.source_id)
-            if existing_chunks and not force:
-                all_chunks.extend(existing_chunks)
-                ingested_source_ids.append(source.source_id)
-                warnings.append(f"source {source.source_id} already indexed; reused existing chunks")
-                continue
+            if not force:
+                existing_chunks = store.load_chunks(source.source_id)
+                if existing_chunks:
+                    all_chunks.extend(existing_chunks)
+                    ingested_source_ids.append(source.source_id)
+                    warnings.append(f"source {source.source_id} already indexed; reused existing chunks")
+                    continue
             extracted = extract_text(source.path)
             warnings.extend(extracted.warnings)
             chunks = chunk_sections(source, extracted.sections)
             if not chunks:
                 blockers.append(f"source {source.source_id} produced no chunks")
                 continue
-            store.replace_chunks(source.source_id, chunks)
+            replacement_chunks[source.source_id] = chunks
             all_chunks.extend(chunks)
             ingested_source_ids.append(source.source_id)
     except (OSError, ValueError, KnowledgeStoreError) as exc:
@@ -85,7 +87,10 @@ def ingest_documents(
             message=str(exc),
         )
     try:
-        embedding_manifest = index_chunks(store, all_chunks, provider=embedding_provider) if all_chunks else None
+        if all_chunks:
+            embedding_manifest, embeddings = build_embedding_index(all_chunks, provider=embedding_provider)
+        else:
+            embedding_manifest, embeddings = None, tuple()
     except (EmbeddingConfigurationError, EmbeddingRequestError, ValueError, KnowledgeStoreError) as exc:
         report = KnowledgeIngestionReport(
             ingestion_id=stable_research_id(
@@ -135,7 +140,16 @@ def ingest_documents(
         blockers=tuple(blockers),
     )
     try:
-        store.save_ingestion_report(report)
+        if embedding_manifest is not None:
+            store.publish_ingestion(
+                replacement_chunks,
+                embedding_manifest,
+                all_chunks,
+                embeddings,
+                report,
+            )
+        else:
+            store.save_ingestion_report(report)
     except KnowledgeStoreError as exc:
         return error_envelope(
             command=KNOWLEDGE_INGEST_DOCUMENTS,

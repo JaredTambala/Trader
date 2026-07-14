@@ -369,6 +369,8 @@ def _approved_pairs_rich_card(*, status: str = "approved") -> RichMethodCard:
     field = _evidenced_field(ref)
     return RichMethodCard(
         method_card_id="method_card_pairs_mean_reversion_v1",
+        method_card_set_id="method_card_set_pairs_mean_reversion_test",
+        revision_number=1,
         method_id="pairs_mean_reversion",
         title="Pairs Mean Reversion",
         family="statistical_arbitrage",

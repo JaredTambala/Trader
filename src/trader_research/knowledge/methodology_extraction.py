@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 from pathlib import Path
+import re
 from typing import Any, Mapping, Sequence
 
 from trader_research.artifact_store import (
@@ -22,6 +24,7 @@ from trader_research.domain import (
 
 from .domain import (
     EvidenceBackedField,
+    EvidenceClaimSpan,
     EvidenceReference,
     KnowledgeChunk,
     KnowledgeSourceManifest,
@@ -30,6 +33,7 @@ from .domain import (
     MethodologyEvidencePacket,
     MethodologyFieldExtractionReport,
 )
+from .evidence_assembly import ACCEPTED_TARGET_BINDINGS
 from .evidence_profiles import profile_for_family, required_roles_for_readiness
 from .store import JsonKnowledgeStore, KnowledgeStore, KnowledgeStoreError
 
@@ -218,14 +222,21 @@ def validate_methodology_candidate(
             checked_refs.append(checked_ref)
             blockers.extend(ref_blockers)
         blockers.extend(_quote_blockers(path, field.value))
+        blockers.extend(_field_claim_semantic_blockers(path, field, candidate))
 
-    if packet is not None:
+    blockers.extend(_semantic_identity_blockers(candidate))
+    readiness_summary = _readiness_summary(candidate, packet)
+    if packet is None:
+        blockers.append("methodology candidate validation requires methodology_evidence_packet lineage")
+    else:
         blockers.extend(packet.blockers)
         blockers.extend(_semantic_role_blockers(candidate, field_entries, packet))
+        blockers.extend(_target_bound_packet_blockers(field_entries, packet, chunks))
+        requested_readiness = str(candidate.lineage.get("readiness_goal") or packet.readiness_goal or "descriptive")
+        blockers.extend(_readiness_level_blockers(readiness_summary, requested_readiness))
     blockers.extend(_family_minimum_blockers(candidate))
     blockers.extend(_high_risk_blockers(candidate))
     blockers.extend(_source_policy_blockers(candidate, field_entries, source_types_by_id))
-    readiness_summary = _readiness_summary(candidate, packet)
     status = "blocked" if blockers else "passed"
     report = MethodologyCandidateValidationReport(
         validation_id=stable_research_id(
@@ -540,6 +551,7 @@ def _extract_fields(
         source_ids=candidate.source_ids,
         chunk_ids=candidate.chunk_ids,
         candidate_spans=candidate.candidate_spans,
+        method_identity=candidate.method_identity,
         core_fields=core,
         extension_fields=extension,
         lineage={**dict(candidate.lineage), "extraction_engine": "deterministic_rules"},
@@ -559,8 +571,8 @@ def _extract_fields_from_packet(
     max_chars_per_chunk: int,
 ) -> tuple[MethodologyCandidate, tuple[str, ...], tuple[str, ...]]:
     del sources
-    core = {group: dict(fields) for group, fields in candidate.core_fields.items()}
-    extension = {group: dict(fields) for group, fields in candidate.extension_fields.items()}
+    core: dict[str, dict[str, EvidenceBackedField]] = {}
+    extension: dict[str, dict[str, EvidenceBackedField]] = {}
     populated: list[str] = []
     warnings: list[str] = []
     chunks_by_id = {chunk.chunk_id: chunk for chunk in chunks}
@@ -569,51 +581,68 @@ def _extract_fields_from_packet(
         warnings.append(f"unsupported evidence packet family: {packet.family}")
         return candidate, tuple(), tuple(warnings)
 
-    role_chunks_by_id = {
-        str(role.get("role_id")): tuple(
-            chunks_by_id[str(chunk_ref.get("chunk_id"))]
-            for chunk_ref in role.get("chunks", ())
-            if str(chunk_ref.get("chunk_id")) in chunks_by_id
-        )
+    role_claims_by_id = {
+        str(role.get("role_id")): _role_claims(role, chunks_by_id)
         for role in packet.role_evidence
     }
     first_chunk = next(iter(chunks), None)
-    identity_chunk = _first_role_chunk(role_chunks_by_id, "definition") or first_chunk
-    if identity_chunk is not None:
+    identity_claims = role_claims_by_id.get("definition", tuple())
+    identity_chunk = identity_claims[0][0] if identity_claims else first_chunk
+    identity_span = identity_claims[0][1] if identity_claims else None
+    if identity_chunk is not None and identity_span is not None:
+        identity_ref = _field_ref(
+            identity_chunk,
+            "role evidence supports methodology identity",
+            role_id="definition",
+            claim_span=identity_span,
+        )
         _put(
             core,
             "identity",
             "method_name",
             candidate.title,
-            _field_ref(identity_chunk, "role evidence supports methodology identity", role_id="definition"),
+            (identity_ref,),
             populated,
         )
         _put(
             core,
             "identity",
             "description",
-            _role_summary("definition", (identity_chunk,), candidate=candidate),
-            _field_ref(identity_chunk, "role evidence supports methodology description", role_id="definition"),
+            _claim_field_value("definition", packet.family, identity_claims, candidate, max_chars_per_chunk),
+            (identity_ref,),
             populated,
         )
 
     for role in profile.roles:
-        role_chunks = role_chunks_by_id.get(role.role_id, tuple())
-        if not role_chunks:
+        role_claims = role_claims_by_id.get(role.role_id, tuple())
+        if not role_claims:
             continue
-        value = _role_field_value(role.role_id, packet.family, role_chunks, candidate, max_chars_per_chunk)
-        if value is None:
-            continue
-        ref = _field_ref(
-            role_chunks[0],
-            f"role evidence supports {role.role_id.replace('_', ' ')}",
-            role_id=role.role_id,
-        )
         for scope, group, field_name in role.field_paths:
+            field_claims = _claims_for_field(field_name, role_claims)
+            if not field_claims:
+                continue
+            value = _claim_field_value(
+                role.role_id,
+                packet.family,
+                field_claims,
+                candidate,
+                max_chars_per_chunk,
+            )
+            if value is None:
+                continue
+            refs = tuple(
+                _field_ref(
+                    chunk,
+                    f"role evidence supports {role.role_id.replace('_', ' ')}",
+                    role_id=role.role_id,
+                    claim_span=claim_span,
+                )
+                for chunk, claim_span in field_claims
+            )
             if scope == "core_fields":
-                _put(core, group, field_name, value, ref, populated, quality=f"role_evidence:{role.role_id}")
+                _put(core, group, field_name, value, refs, populated, quality=f"role_evidence:{role.role_id}")
             elif scope == "extension_fields":
-                _put(extension, group, field_name, value, ref, populated, quality=f"role_evidence:{role.role_id}")
+                _put(extension, group, field_name, value, refs, populated, quality=f"role_evidence:{role.role_id}")
 
     if not populated:
         warnings.append("role-grounded extraction found no supported fields")
@@ -626,11 +655,13 @@ def _extract_fields_from_packet(
         source_ids=candidate.source_ids,
         chunk_ids=tuple(dict.fromkeys((*candidate.chunk_ids, *packet.chunk_ids))),
         candidate_spans=candidate.candidate_spans,
+        method_identity=candidate.method_identity,
         core_fields=core,
         extension_fields=extension,
         lineage={
             **dict(candidate.lineage),
-            "extraction_engine": "role_grounded_rules",
+            "extraction_engine": "role_grounded_claim_spans",
+            "extraction_version": "1",
             "evidence_packet_id": packet.evidence_packet_id,
             "evidence_profile": {"family": packet.family, "version": packet.profile_version},
             "readiness_goal": packet.readiness_goal,
@@ -727,12 +758,116 @@ def _extract_family_fields(
             _put(extension, family, "slippage_model", "slippage model evidence", ref, populated)
 
 
+def _role_claims(
+    role: Mapping[str, Any],
+    chunks_by_id: Mapping[str, KnowledgeChunk],
+) -> tuple[tuple[KnowledgeChunk, EvidenceClaimSpan], ...]:
+    claims: list[tuple[KnowledgeChunk, EvidenceClaimSpan]] = []
+    seen: set[str] = set()
+    for chunk_ref in role.get("chunks", ()):
+        if not _accepted_role_chunk_ref(chunk_ref):
+            continue
+        chunk = chunks_by_id.get(str(chunk_ref.get("chunk_id") or ""))
+        if chunk is None:
+            continue
+        for span_payload in chunk_ref.get("claim_spans", ()):
+            if not isinstance(span_payload, Mapping):
+                continue
+            span = EvidenceClaimSpan.from_dict(span_payload)
+            if span.span_id in seen:
+                continue
+            seen.add(span.span_id)
+            claims.append((chunk, span))
+    return tuple(claims)
+
+
+_FIELD_SEMANTIC_TERMS: Mapping[str, tuple[str, ...]] = {
+    "lookback_period": ("period", "lookback", "window"),
+    "smoothing_method": ("smooth", "weighted", "exponential"),
+    "warmup_period": ("warmup", "initial observations", "minimum observations"),
+    "parameter_defaults": ("default", "recommended", "typically"),
+    "overbought_threshold": ("overbought",),
+    "oversold_threshold": ("oversold",),
+    "normalization": ("normalize", "normalised", "normalized", "z-score", "ratio", "bounded"),
+    "entry_rules": ("entry", "enter", "buy", "sell", "long", "short", "cross"),
+    "exit_rules": ("exit", "close", "liquidat", "mean revert"),
+    "assumptions": ("assume", "assumption", "requires", "subject to"),
+    "failure_modes": ("failure", "risk", "whipsaw", "noise", "breakdown"),
+    "known_limitations": ("limitation", "lag", "regime", "unstable", "sensitivity"),
+    "validation_tests": ("validate", "test", "backtest", "out-of-sample", "no-lookahead", "sensitivity"),
+}
+
+
+def _claims_for_field(
+    field_name: str,
+    claims: Sequence[tuple[KnowledgeChunk, EvidenceClaimSpan]],
+) -> tuple[tuple[KnowledgeChunk, EvidenceClaimSpan], ...]:
+    terms = _FIELD_SEMANTIC_TERMS.get(field_name)
+    if terms is None:
+        return tuple(claims)
+    return tuple(
+        item
+        for item in claims
+        if any(term in item[1].text.lower() for term in terms)
+    )
+
+
+def _claim_field_value(
+    role_id: str,
+    family: str,
+    claims: Sequence[tuple[KnowledgeChunk, EvidenceClaimSpan]],
+    candidate: MethodologyCandidate,
+    max_chars_per_chunk: int,
+) -> Any | None:
+    if role_id in {
+        "formula_algorithm",
+        "signal_logic",
+        "entry_logic",
+        "exit_logic",
+        "spread_definition",
+        "relationship_model",
+        "limitations",
+        "validation_requirements",
+    }:
+        synthesized = _bounded_claim_synthesis(candidate.title, claims)
+        if synthesized:
+            return synthesized
+    synthetic_chunks = tuple(
+        replace(chunk, text=span.text, text_hash=span.text_hash)
+        for chunk, span in claims
+    )
+    return _role_field_value(role_id, family, synthetic_chunks, candidate, max_chars_per_chunk)
+
+
+def _bounded_claim_synthesis(
+    title: str,
+    claims: Sequence[tuple[KnowledgeChunk, EvidenceClaimSpan]],
+) -> str | None:
+    selected: list[str] = []
+    word_count = 0
+    for _, span in claims:
+        text = " ".join(span.text.split())
+        if not text or text in selected:
+            continue
+        words = text.split()
+        remaining = 60 - word_count
+        if remaining <= 0:
+            break
+        selected.append(" ".join(words[:remaining]))
+        word_count += min(len(words), remaining)
+        if len(selected) == 3:
+            break
+    if not selected:
+        return None
+    return f"{title}: {' '.join(selected)}"[:480]
+
+
 def _put(
     groups: dict[str, dict[str, EvidenceBackedField]],
     group: str,
     field_name: str,
     value: Any,
-    ref: EvidenceReference,
+    refs: EvidenceReference | Sequence[EvidenceReference],
     populated: list[str],
     *,
     quality: str = "deterministic_keyword",
@@ -745,16 +880,23 @@ def _put(
         and not str(existing.quality or "").startswith("role_evidence:")
     ):
         return
+    normalized_refs = (refs,) if isinstance(refs, EvidenceReference) else tuple(refs)
     groups[group][field_name] = EvidenceBackedField(
         value=value,
-        evidence_refs=(ref,),
+        evidence_refs=normalized_refs,
         confidence=0.65,
         quality=quality,
     )
     populated.append(f"{group}.{field_name}")
 
 
-def _field_ref(chunk: KnowledgeChunk, claim: str, *, role_id: str | None = None) -> EvidenceReference:
+def _field_ref(
+    chunk: KnowledgeChunk,
+    claim: str,
+    *,
+    role_id: str | None = None,
+    claim_span: EvidenceClaimSpan | None = None,
+) -> EvidenceReference:
     if role_id is not None:
         claim = f"{claim}; evidence_role={role_id}"
     return EvidenceReference(
@@ -762,6 +904,7 @@ def _field_ref(chunk: KnowledgeChunk, claim: str, *, role_id: str | None = None)
         chunk_id=chunk.chunk_id,
         locator=chunk.locator,
         claim=claim,
+        claim_span=claim_span,
     )
 
 
@@ -1052,6 +1195,10 @@ def _validate_ref(
                 blockers.append(f"locator mismatch for chunk {ref.chunk_id}: {key}")
                 break
         checked["chunk_locator"] = dict(chunk.locator)
+        if ref.claim_span is None:
+            blockers.append(f"field evidence ref for chunk {ref.chunk_id} must include claim_span")
+        else:
+            blockers.extend(_claim_span_consistency_blockers(ref.claim_span, chunk))
     if source is not None:
         checked["source_type"] = source.source_type
         checked["source_status"] = source.status
@@ -1078,11 +1225,13 @@ def _semantic_role_blockers(
 ) -> tuple[str, ...]:
     del candidate
     blockers: list[str] = []
-    role_chunk_ids = {
+    role_span_ids = {
         str(role.get("role_id")): {
-            str(chunk.get("chunk_id"))
+            str(span.get("span_id"))
             for chunk in role.get("chunks", ())
-            if isinstance(chunk, Mapping)
+            if isinstance(chunk, Mapping) and _accepted_role_chunk_ref(chunk)
+            for span in chunk.get("claim_spans", ())
+            if isinstance(span, Mapping)
         }
         for role in packet.role_evidence
     }
@@ -1090,14 +1239,161 @@ def _semantic_role_blockers(
         role_id = _role_id_from_field(field)
         if role_id is None:
             continue
-        allowed_chunk_ids = role_chunk_ids.get(role_id, set())
-        if not allowed_chunk_ids:
-            blockers.append(f"{path} cites role {role_id} but the evidence packet has no chunks for that role")
+        allowed_span_ids = role_span_ids.get(role_id, set())
+        if not allowed_span_ids:
+            blockers.append(f"{path} cites role {role_id} but the evidence packet has no claim spans for that role")
             continue
-        cited_chunk_ids = {ref.chunk_id for ref in field.evidence_refs if ref.chunk_id is not None}
-        if cited_chunk_ids and not cited_chunk_ids <= allowed_chunk_ids:
-            blockers.append(f"{path} cites chunks outside evidence role {role_id}")
+        for ref in field.evidence_refs:
+            if ref.claim_span is None:
+                blockers.append(f"{path} must cite an addressable claim span for evidence role {role_id}")
+                continue
+            if ref.claim_span.evidence_role != role_id:
+                blockers.append(f"{path} claim span role does not match evidence role {role_id}")
+            if ref.claim_span.span_id not in allowed_span_ids:
+                blockers.append(f"{path} cites claim spans outside evidence role {role_id}")
     return tuple(blockers)
+
+
+def _field_claim_semantic_blockers(
+    path: str,
+    field: EvidenceBackedField,
+    candidate: MethodologyCandidate,
+) -> tuple[str, ...]:
+    blockers: list[str] = []
+    field_name = path.rsplit(".", 1)[-1]
+    semantic_terms = _FIELD_SEMANTIC_TERMS.get(field_name)
+    spans = tuple(ref.claim_span for ref in field.evidence_refs if ref.claim_span is not None)
+    if semantic_terms and spans and not any(
+        term in span.text.lower()
+        for span in spans
+        for term in semantic_terms
+    ):
+        blockers.append(f"{path} is not entailed by its cited claim spans")
+    supported_targets = {_normalize_identity(term) for term in _identity_terms(candidate)}
+    supported_targets.add(_normalize_identity(candidate.title))
+    for span in spans:
+        if _normalize_identity(span.target_method) not in supported_targets:
+            blockers.append(f"{path} claim span target does not match candidate method identity")
+        if span.target_binding not in ACCEPTED_TARGET_BINDINGS:
+            blockers.append(f"{path} cites a claim span without accepted target binding")
+    return tuple(blockers)
+
+
+def _semantic_identity_blockers(candidate: MethodologyCandidate) -> tuple[str, ...]:
+    identity = candidate.method_identity if isinstance(candidate.method_identity, Mapping) else {}
+    identity_terms = _identity_terms(candidate)
+    blockers: list[str] = []
+    if not identity_terms:
+        blockers.append("candidate method identity must include source-backed canonical name or aliases")
+    evidence_ids = identity.get("identity_evidence_unit_ids")
+    if not isinstance(evidence_ids, Sequence) or isinstance(evidence_ids, (str, bytes)) or not evidence_ids:
+        blockers.append("candidate method identity must include direct or alias evidence-unit refs")
+    if identity_terms and _normalize_identity(candidate.title) not in {
+        _normalize_identity(term) for term in identity_terms
+    }:
+        blockers.append("candidate title is not supported by method identity or alias evidence")
+    return tuple(blockers)
+
+
+def _target_bound_packet_blockers(
+    fields: Sequence[tuple[str, EvidenceBackedField]],
+    packet: MethodologyEvidencePacket,
+    chunks: Sequence[KnowledgeChunk],
+) -> tuple[str, ...]:
+    chunks_by_id = {chunk.chunk_id: chunk for chunk in chunks}
+    blockers: list[str] = []
+    accepted_by_chunk: dict[str, list[Mapping[str, Any]]] = {}
+    accepted_span_ids: set[str] = set()
+    for role in packet.role_evidence:
+        for chunk_ref in role.get("chunks", ()):
+            if not isinstance(chunk_ref, Mapping):
+                continue
+            chunk_id = str(chunk_ref.get("chunk_id") or "")
+            if not _accepted_role_chunk_ref(chunk_ref):
+                continue
+            accepted_by_chunk.setdefault(chunk_id, []).append(chunk_ref)
+            if not chunk_ref.get("matched_role_terms"):
+                blockers.append(f"accepted role evidence chunk {chunk_id} is missing matched role terms")
+            accepted_span_ids.update(
+                str(span.get("span_id"))
+                for span in chunk_ref.get("claim_spans", ())
+                if isinstance(span, Mapping) and str(span.get("span_id") or "")
+            )
+            blockers.extend(_packet_ref_consistency_blockers(chunk_ref, chunks_by_id))
+
+    accepted_chunk_ids = set(accepted_by_chunk)
+    for path, field in fields:
+        for ref in field.evidence_refs:
+            if ref.chunk_id is None:
+                continue
+            if ref.chunk_id not in accepted_chunk_ids:
+                blockers.append(f"{path} cites chunk {ref.chunk_id} outside accepted target-bound evidence")
+            if ref.claim_span is None:
+                blockers.append(f"{path} must cite a target-bound claim span")
+                continue
+            if ref.claim_span.span_id not in accepted_span_ids:
+                blockers.append(f"{path} cites claim span outside accepted target-bound evidence")
+    return tuple(dict.fromkeys(blockers))
+
+
+def _packet_ref_consistency_blockers(
+    chunk_ref: Mapping[str, Any],
+    chunks_by_id: Mapping[str, KnowledgeChunk],
+) -> tuple[str, ...]:
+    chunk_id = str(chunk_ref.get("chunk_id") or "")
+    chunk = chunks_by_id.get(chunk_id)
+    if chunk is None:
+        return (f"accepted role evidence chunk {chunk_id} is missing from candidate context",)
+    blockers: list[str] = []
+    if str(chunk_ref.get("source_id") or "") != chunk.source_id:
+        blockers.append(f"accepted role evidence chunk {chunk_id} has stale source_id")
+    if str(chunk_ref.get("text_hash") or "") != chunk.text_hash:
+        blockers.append(f"accepted role evidence chunk {chunk_id} has stale text_hash")
+    locator = chunk_ref.get("locator")
+    if isinstance(locator, Mapping):
+        for key, value in locator.items():
+            if chunk.locator.get(key) != value:
+                blockers.append(f"accepted role evidence chunk {chunk_id} has stale locator: {key}")
+                break
+    for span_payload in chunk_ref.get("claim_spans", ()):
+        if not isinstance(span_payload, Mapping):
+            blockers.append(f"accepted role evidence chunk {chunk_id} has invalid claim span payload")
+            continue
+        try:
+            span = EvidenceClaimSpan.from_dict(span_payload)
+        except (TypeError, ValueError) as exc:
+            blockers.append(f"accepted role evidence chunk {chunk_id} has invalid claim span: {exc}")
+            continue
+        blockers.extend(_claim_span_consistency_blockers(span, chunk))
+    return tuple(blockers)
+
+
+def _claim_span_consistency_blockers(
+    span: EvidenceClaimSpan,
+    chunk: KnowledgeChunk,
+) -> tuple[str, ...]:
+    blockers: list[str] = []
+    if span.end_char > len(chunk.text):
+        blockers.append(f"claim span {span.span_id} exceeds chunk {chunk.chunk_id} text length")
+        return tuple(blockers)
+    stored_text = chunk.text[span.start_char:span.end_char]
+    if stored_text != span.text:
+        blockers.append(f"claim span {span.span_id} text does not match chunk {chunk.chunk_id}")
+    if span.text_hash != hashlib.sha256(stored_text.encode("utf-8")).hexdigest():
+        blockers.append(f"claim span {span.span_id} has stale text_hash")
+    return tuple(blockers)
+
+
+def _readiness_level_blockers(readiness_summary: Mapping[str, Any], readiness_goal: str) -> tuple[str, ...]:
+    normalized_goal = str(readiness_goal or "descriptive").strip().lower().replace("-", "_").replace(" ", "_")
+    level = readiness_summary.get(normalized_goal)
+    if not isinstance(level, Mapping):
+        return (f"methodology candidate validation missing target-bound {normalized_goal} readiness",)
+    if str(level.get("status") or "") == "passed":
+        return tuple()
+    missing = ", ".join(str(role) for role in level.get("missing_roles", ()))
+    suffix = f"; missing roles: {missing}" if missing else ""
+    return (f"methodology candidate {normalized_goal} readiness must be target-bound and passed{suffix}",)
 
 
 def _role_id_from_field(field: EvidenceBackedField) -> str | None:
@@ -1132,6 +1428,7 @@ def _readiness_summary(
         str(role.get("role_id"))
         for role in packet.role_evidence
         if str(role.get("status") or "") == "found"
+        and any(_accepted_role_chunk_ref(chunk) for chunk in role.get("chunks", ()))
     }
     levels: dict[str, Any] = {}
     for level in profile.readiness_required_roles:
@@ -1145,7 +1442,34 @@ def _readiness_summary(
     levels["candidate_id"] = candidate.methodology_candidate_id
     levels["family"] = packet.family
     levels["evidence_packet_id"] = packet.evidence_packet_id
+    levels["source"] = "methodology_evidence_packet"
     return levels
+
+
+def _accepted_role_chunk_ref(chunk_ref: Any) -> bool:
+    if not isinstance(chunk_ref, Mapping):
+        return False
+    return (
+        bool(chunk_ref.get("accepted_target_binding"))
+        and str(chunk_ref.get("target_binding") or "") in ACCEPTED_TARGET_BINDINGS
+    )
+
+
+def _identity_terms(candidate: MethodologyCandidate) -> tuple[str, ...]:
+    identity = candidate.method_identity if isinstance(candidate.method_identity, Mapping) else {}
+    terms = [
+        str(identity.get("canonical_name") or ""),
+        str(identity.get("source_name") or ""),
+    ]
+    for key in ("aliases", "abbreviations"):
+        values = identity.get(key)
+        if isinstance(values, Sequence) and not isinstance(values, (str, bytes)):
+            terms.extend(str(value) for value in values)
+    return tuple(dict.fromkeys(term.strip() for term in terms if term.strip()))
+
+
+def _normalize_identity(text: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9+-]+", str(text).lower()))
 
 
 def _family_minimum_blockers(candidate: MethodologyCandidate) -> tuple[str, ...]:

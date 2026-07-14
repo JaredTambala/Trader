@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from trader_research.knowledge.citation_validation import validate_citations
-from trader_research.knowledge.domain import MethodCard
+from trader_research.knowledge.domain import MethodCard, MethodCardSet
 from trader_research.knowledge.embeddings import DeterministicEmbeddingProvider
 from trader_research.knowledge.ingestion import ingest_documents
 from trader_research.knowledge.postgres_store import PostgresKnowledgeStore
@@ -69,6 +69,8 @@ def test_postgres_knowledge_store_register_ingest_retrieve_validate(
     )
     method_card = MethodCard(
         method_card_id="method_card_postgres_demo",
+        method_card_set_id="method_card_set_postgres_demo",
+        revision_number=1,
         method_id="sma",
         title="Postgres Method Card Demo",
         family="indicator",
@@ -79,6 +81,19 @@ def test_postgres_knowledge_store_register_ingest_retrieve_validate(
         failure_modes=("warmup",),
     )
     postgres_knowledge_store.save_method_card(method_card)
+    method_card_set = MethodCardSet(
+        method_card_set_id=method_card.method_card_set_id,
+        method_id=method_card.method_id,
+        family=method_card.family,
+        canonical_title=method_card.title,
+        status="active",
+        current_draft_method_card_id=method_card.method_card_id,
+        card_ids=(method_card.method_card_id,),
+        revision_count=1,
+        latest_revision_number=1,
+        status_counts={"draft": 1},
+    )
+    postgres_knowledge_store.save_method_card_set(method_card_set)
     method_contract = MethodRegistryEntry(
         method_id="postgres_db_backed_demo",
         family="indicator",
@@ -110,5 +125,6 @@ def test_postgres_knowledge_store_register_ingest_retrieve_validate(
     assert dereferenced.data["chunks"][0]["locator"] == evidence["locator"]
     assert citations.ok is True
     assert postgres_knowledge_store.list_persisted_method_cards() == (method_card,)
+    assert postgres_knowledge_store.list_method_card_sets() == (method_card_set,)
     assert postgres_knowledge_store.list_persisted_method_contracts() == (method_contract,)
     assert runtime["pgvector_available"] is True

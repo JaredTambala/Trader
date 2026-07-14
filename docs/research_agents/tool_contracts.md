@@ -16,6 +16,67 @@ The Quant Research Supervisor Agent may coordinate specialist work, but each spe
 Use [mcp_tools.md](mcp_tools.md) for the current registered MCP catalog. This file is the detailed contract appendix for
 request fields, envelope shapes, artifact payloads, and validation behavior.
 
+## Functional Status Boundary
+
+This appendix contains both implemented contracts and planned contract names. Only tools listed as registered in
+[mcp_tools.md](mcp_tools.md) and returned by `mcp_get_config` are callable. In particular:
+
+- current strategy/risk candidate contracts are maintained-template and generated-source contracts;
+- no registered tool currently accepts an arbitrary handwritten or externally AI-produced strategy/risk package as a
+  first-class versioned implementation;
+- no registered immutable backtest-specification tool exists independently of the current candidate/stack inputs;
+- ML feature/model versioning, broader Evaluation critique, attribution, robustness/adversarial, recommendation, and
+  experiment-runner names in this appendix are planned rather than registered;
+- tasks 56-57 define the next implementation intake and backtest-specification contracts, followed by task 39 model
+  versioning and tasks 44/46 robustness work.
+
+Knowledge-base and bounded methodology contracts remain implemented and maintained at the 33AB baseline. Composite
+methodology expansion is deferred under 33AC.
+
+### Planned MLflow Contract Invariants
+
+Tasks 39A-39J will add the ML contracts; none are currently callable. All ML requests and artifacts must obey these
+rules:
+
+- MLflow tracking and registry locations come from approved server configuration, not request payloads.
+- MLflow experiment/run/model refs are reconciled into Trader Postgres artifacts with source, dataset, feature,
+  environment, signature, and digest evidence.
+- Data Agent manifests own market-data scope. Feature and training tools reject loose hidden scope and inconsistent
+  dataset refs.
+- Training uses explicit chronological split plans with target horizons, purge/embargo, and point-in-time leakage
+  evidence. Random splitting is not the default time-series contract.
+- Registered-model aliases are mutable selectors. Every training evaluation, backtest, deployment manifest, trading
+  session, prediction, and drift report records an immutable resolved model version.
+- Model-version tags and aliases represent lifecycle state; deprecated MLflow model stages are not used.
+- Supplied trainer code is an immutable validated artifact. MCP does not execute prompt text, arbitrary notebook state,
+  or an unvalidated pickle.
+- Runtime inference uses a dependency-neutral core contract and an optional MLflow adapter. It does not call MCP or
+  perform per-prediction MLflow tracking writes.
+- Model evaluation is ML-owned predictive evidence. Strategy profitability remains Evaluation-owned backtest evidence.
+- MLflow writes, training, alias assignment, and runtime deployment have separate policy gates. The ML Agent cannot
+  mutate live trading or broker state.
+
+### Deferred Walk-Forward Contract Invariants
+
+Tasks 58-59 add full walk-forward optimisation after the reproducible backtest, ML deployment, and robustness
+prerequisites. Chronological validation folds in 39C/39F remain earlier ML correctness contracts.
+
+- `walk_forward_optimization_plan` is immutable and records implementation/deployment refs, base backtest spec, fold
+  boundaries, purge/embargo, candidate search space, objective, constraints, costs, seeds, budgets, and stop/resume
+  policy before execution.
+- Each fold records in-sample/selection and untouched out-of-sample boundaries separately. Selected parameters or model
+  version are locked before creating the out-of-sample child specification.
+- Every evaluated/rejected candidate, score, exception, seed, selected ref, child specification, backtest, and MLflow
+  run/model ref remains visible. Results cannot retain only the winner.
+- Out-of-sample results cannot alter the same fold's selection. Procedure-level tuning against aggregate results must be
+  disclosed and may require nested walk-forward evidence.
+- `walk_forward_evaluation_report` contains stitched out-of-sample evidence only; in-sample/selection returns are not
+  reported as walk-forward performance.
+- `walk_forward_robustness_report` is independently Adversarial-owned and cannot mutate the optimisation run, model
+  alias, deployment, or promotion state.
+- The optimisation runner declares the maximum side effect it may perform. An ML-enabled run requires the backtest,
+  MLflow-write, and training gates in addition to its general execution gate.
+
 ## Control Plane And Execution Plane
 
 Research tooling has two separate configuration planes.
@@ -91,8 +152,13 @@ baseline bundles; MCP clients should prefer `uri` when present.
 | --- | --- | --- |
 | `read_only` | Reads config, event-store data, local artifacts, or broker/operator snapshots without writing. | Inventory, data quality summary, result lookup. |
 | `local_mutating` | Writes local artifacts or bounded research records; never submits broker orders. | Dataset manifest, quality report, sample load, backtest artifact, robustness report. |
+| `external_research_mutating` | Future class for mutating an approved external research service without broker or live-runtime mutation. | MLflow run creation, model registration, tags, and aliases. Not implemented in the current enum. |
 | `broker_read` | Reads broker state through operator-owned surfaces. | Future read-only operator context tools. |
 | `broker_mutating` | Mutates broker state. | Not allowed for research-agent MCP tools. |
+
+Adding `external_research_mutating` requires an implementation change to the shared side-effect enum, MCP metadata,
+agent policy, tests, and documentation before any MLflow-writing tool is registered. Training execution and alias
+promotion also require independent policy gates even though both use the external research mutation class.
 
 No research-agent tool may start `TraderService`, submit orders, clear halt state, reconcile broker state, run raw SQL,
 or bypass core platform validation.
@@ -112,10 +178,12 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | Tool | Owning agent | Primary artifact |
 | --- | --- | --- |
 | `knowledge_register_source` | Quantitative Methods Agent | `knowledge_source_manifest.json` or `knowledge://postgres/knowledge_source_manifest/...` |
-| `knowledge_ingest_documents` | Quantitative Methods Agent | `knowledge_ingestion_report.json`, Postgres `knowledge_chunks`, `knowledge_embedding_manifest.json` or `knowledge://postgres/...` refs |
+| `knowledge_ingest_documents` | Quantitative Methods Agent | `knowledge_ingestion_report.json`, schema-v2 evidence units stored in Postgres `knowledge_chunks`, `knowledge_embedding_manifest.json` or `knowledge://postgres/...` refs |
 | `knowledge_get_ingestion_status` | Quantitative Methods Agent | source and ingestion status summary |
 | `knowledge_list_sources` | Quantitative Methods Agent | source manifest listing |
 | `knowledge_search_methods` | Quantitative Methods Agent | approved method-card search result |
+| `knowledge_list_method_card_sets` | Quantitative Methods Agent | stable method-card set summaries |
+| `knowledge_get_method_card_set` | Quantitative Methods Agent | method-card set revision history |
 | `knowledge_retrieve_evidence` | Quantitative Methods Agent | `evidence_retrieval_report.json` with lexical/vector/combined rank diagnostics |
 | `knowledge_get_evidence_chunks` | Quantitative Methods Agent | `evidence_chunk_dereference_report.json` with bounded stored chunk text |
 | `knowledge_discover_methodology_candidates` | Quantitative Methods Agent | `research://postgres/methodology_candidate/...` refs |
@@ -139,8 +207,15 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | `math_compile_kernel` | Quantitative Methods Agent | local compiled-kernel build evidence |
 | `math_package_method_artifact` | Quantitative Methods Agent | source-backed `method_package_manifest.json` for validated Python indicator/signal implementations |
 | `math_run_cpp_conformance` | Quantitative Methods Agent | deferred compiled-kernel conformance/equivalence report |
-| `ml_create_feature_manifest` | ML Agent | `feature_dataset_manifest.json` |
-| `ml_summarize_model_artifact` | ML Agent | model card, prediction, or drift artifact summary |
+| `ml_get_runtime`, `ml_health`, `ml_list_experiments` | ML Agent | planned configured MLflow runtime/health metadata |
+| `ml_create_feature_set`, `ml_validate_feature_set` | ML Agent | planned `ml_feature_set_spec` and validation report |
+| `ml_create_training_dataset`, `ml_create_time_series_split_plan` | ML Agent | planned point-in-time dataset and chronological split artifacts |
+| `ml_register_training_pipeline`, `ml_validate_training_pipeline`, `ml_create_training_spec`, `ml_run_training` | ML Agent | planned training pipeline/spec and MLflow fitting evidence |
+| `ml_get_training_run`, `ml_reconcile_mlflow_run` | ML Agent | planned reconciled `mlflow_run_ref` |
+| `ml_evaluate_model`, `ml_compare_model_versions` | ML Agent | planned time-series model evaluation/comparison reports |
+| `ml_register_model_version`, `ml_get_model_version`, `ml_list_model_versions`, `ml_resolve_model_alias`, `ml_assign_model_alias` | ML Agent | planned immutable model-version and promotion artifacts |
+| `ml_create_deployment_manifest`, `ml_validate_deployment` | ML Agent | planned version-pinned deployment evidence |
+| `ml_summarize_predictions`, `ml_compute_drift_report` | ML Agent | planned prediction and drift artifacts |
 | `hypothesis_create_card` | Hypothesis Agent | `hypothesis_card.json` |
 | `research_create_plan` | Quant Research Supervisor Agent | experiment plan |
 | `research_list_strategy_templates` | Quant Research Supervisor Agent | strategy template catalog |
@@ -155,9 +230,12 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | `research_validate_risk_manager_candidate` | Quant Research Supervisor Agent | `risk_manager_candidate_validation_report.json` |
 | `research_create_strategy_risk_stack` | Quant Research Supervisor Agent | `strategy_risk_stack_manifest.json` |
 | `research_validate_strategy_risk_stack` | Quant Research Supervisor Agent | `strategy_risk_stack_validation_report.json` |
+| `research_create_walk_forward_plan`, `research_run_walk_forward_optimization`, `research_get_walk_forward_results` | Quant Research Supervisor Agent | deferred walk-forward plan/run/result artifacts |
 | `evaluation_generate_performance_report` | Evaluation Agent | first practical `evaluation_report.json` from backtest/data-quality artifacts |
+| `evaluation_generate_walk_forward_report` | Evaluation Agent | deferred stitched out-of-sample walk-forward Evaluation report |
 | `evaluation_generate_report` | Evaluation Agent | later skeptical critique report |
 | `adversarial_run_robustness` | Adversarial Agent | `robustness_report.json` |
+| `adversarial_audit_walk_forward` | Adversarial Agent | deferred walk-forward robustness report |
 | `research_analyze_return_attribution` | Quant Research Supervisor Agent | attribution report |
 | `research_generate_recommendation` | Quant Research Supervisor Agent | recommendation report |
 | `research_run_experiment` | Quant Research Supervisor Agent | composed experiment output |
@@ -622,11 +700,19 @@ Knowledge-base rules:
 - Runtime MCP knowledge storage uses Postgres by default. PostgreSQL full-text search handles lexical retrieval and
   pgvector handles dense retrieval; tests may inject a JSON compatibility store.
 - The authority is the approved source registry plus approved method cards.
-- Evidence retrieval should return citeable chunks with source IDs, locators, source approval status, and lexical/vector
-  rank metadata rather than opaque context blobs.
+- Evidence retrieval should return citeable schema-v2 evidence units with source IDs, locators, source approval status,
+  local label metadata, neighbor refs, and lexical/vector rank metadata rather than opaque context blobs.
 - Evidence dereferencing is explicit: agents call `knowledge_get_evidence_chunks` with retrieved `chunk_id` values to
-  receive real stored chunk text, source metadata, locators, text hashes, `hash_verified`, text length metadata, and
-  `text_truncated`.
+  receive real stored evidence-unit text, source metadata, locators, text hashes, `hash_verified`, text length metadata,
+  and `text_truncated`. The request field remains `chunk_ids`; the values are evidence-unit IDs after schema v2.
+- Legacy broad chunk manifests are not translated. A knowledge base created before schema-v2 evidence units must be
+  reset and reingested so old chunk refs do not silently contaminate methodology artifacts.
+- `knowledge_ingest_documents(force=true)` performs source-scoped replacement without first deserializing existing
+  evidence rows. This allows an operator to regenerate incompatible evidence-unit versions without adding legacy
+  translation or compatibility reads.
+- Ingestion builds and validates the complete embedding generation before replacing active evidence. The Postgres store
+  publishes replacement evidence units, vectors, the embedding manifest, and the success report in one transaction;
+  provider or publication failure leaves the prior active generation visible.
 - Ingestion does not imply approval; `method_card_draft.json` is not executable.
 - Sophisticated statistical-test and multiple-testing contracts must cite approved method cards and pass
   `knowledge_validate_citations`. Seeded cards and persisted approved cards in the configured `KnowledgeStore` are both
@@ -636,11 +722,16 @@ Knowledge-base rules:
 
 Rich methodology schema:
 
+The conceptual semantic-extraction design and execution graph are defined in
+[semantic_extraction.md](semantic_extraction.md). This appendix defines transport and artifact contracts.
+
 - `methodology_candidate` is a Quantitative Methods artifact for source-backed candidate structure before approval or
   execution. It is not a method card, implementation, strategy, or risk manager.
 - `methodology_evidence_packet` is a Quantitative Methods artifact that records family-role evidence assembled from
-  candidate chunks before field extraction. It stores role IDs, found/missing roles, role chunk refs, source/chunk/text
-  hashes, readiness goal, and diagnostics. It is not a method card or approval.
+  candidate evidence units before field extraction. It stores role IDs, found/missing roles, accepted role
+  evidence-unit refs, rejected or weak role refs, source/chunk/text hashes, readiness goal, and diagnostics. Each role
+  ref records `target_binding`, `accepted_target_binding`, binding terms, competing method labels, and the reason it was
+  accepted or rejected. It is not a method card or approval.
 - Rich method cards keep the existing `method_card_draft` and `method_card` artifact types and add
   `card_format="rich_method_card"` plus nullable rich fields, so shallow method-card search remains compatible.
 - Rich fields are grouped into common core groups: `identity`, `scope`, `data_requirements`, `method_specification`,
@@ -663,39 +754,58 @@ Methodology candidate tool contracts:
 - `knowledge_discover_methodology_candidates` request: optional `query`, optional `source_ids`, optional
   `method_families`, `top_k=25`, `neighbor_radius=1`, `max_candidates=10`, and `approved_only=true`. At least one of
   `query`, `source_ids`, or `method_families` is required.
-- Discovery combines retrieval, direct source chunk scans, neighboring chunks, local text evidence, deterministic
-  grouping, and de-duplication. Source-level method families are scope hints, not automatic candidate labels. Success
-  writes `methodology_candidate` records and returns `research://postgres/...` refs. It does not create method cards,
+- Discovery combines retrieval, direct source evidence-unit scans, neighboring evidence units, local method-label
+  evidence, deterministic method-identity grouping, and de-duplication. Source-level method families are scope hints,
+  not automatic candidate labels. Candidate records carry `method_identity` with canonical/source name, aliases,
+  abbreviations, identity evidence-unit refs, query alignment, and competing method labels. Success writes
+  `methodology_candidate` records and returns `research://postgres/...` refs. It does not create method cards,
   implementations, strategies, or approvals.
 - `knowledge_assemble_methodology_evidence` request: exactly one of `methodology_candidate_id`,
   `methodology_candidate_uri`, or inline `methodology_candidate`; optional `readiness_goal`, `neighbor_radius`, and
   `max_chunks_per_role`.
-- Evidence assembly selects a family-level evidence profile, searches candidate/source chunks for role-specific
+- Evidence assembly selects a family-level evidence profile, searches candidate/source evidence units for role-specific
   evidence, and writes `methodology_evidence_packet`. Role profiles are target-agnostic: they define evidence
   categories such as definition, input data, formula, parameters, signal logic, risk controls, limitations, and
-  validation requirements, but they do not enumerate known method names. Missing required roles produce packet blockers.
+  validation requirements, but they do not enumerate known method names. A role item counts only when the evidence unit
+  contains role terms and is bound to the target method by direct label, alias label, same sentence, same paragraph, or
+  accepted nearby context. Generic family nouns do not satisfy specialized implementation roles by themselves; for
+  example, calling something an indicator is not formula or algorithm evidence. Competing labels, missing role terms,
+  and weak context are retained under `rejected_chunks` and diagnostics, not counted as readiness evidence. Missing
+  required accepted roles produce packet blockers.
 - `knowledge_extract_methodology_fields` request: exactly one candidate input or evidence-packet input
   (`methodology_candidate_id`, `methodology_candidate_uri`, inline `methodology_candidate`, `evidence_packet_id`,
   `evidence_packet_uri`, or inline `evidence_packet`); optional `max_chars_per_chunk`.
-- Extraction dereferences candidate chunks and, when a packet is supplied, populates only fields supported by
-  role-labeled evidence. Every populated field carries field-level source/chunk refs and role provenance in field
-  quality/claims; unrelated extension blocks remain absent/null. Success writes the updated `methodology_candidate` plus
-  `methodology_field_extraction_report`.
+- Extraction dereferences candidate evidence units and, when a packet is supplied, populates only fields supported by
+  accepted target-bound role evidence. Evidence units are non-exclusive; packet refs carry accepted and rejected exact
+  claim spans within each unit. Rejected or weak spans never populate fields, even when the surrounding unit also
+  contains accepted target evidence. Field-level source/chunk/claim-span refs identify every contributing
+  span, including offsets, selected text/hash, role, target binding, and extraction version. Field-specific semantic
+  filters prevent generic role evidence from populating specialized fields, and bounded multi-span synthesis retains all
+  contributing refs. Unrelated extension blocks remain absent/null. Success writes the updated
+  `methodology_candidate` plus `methodology_field_extraction_report`.
 - `knowledge_validate_methodology_candidate` request: exactly one candidate input or extraction-report ref
   (`methodology_candidate_id`, `methodology_candidate_uri`, inline `methodology_candidate`, `extraction_report_id`, or
   `extraction_report_uri`).
 - Validation checks source/chunk existence, chunk-source consistency, locator matches, closed field groups and names,
   field-level refs, quote limits, family minimums, high-risk family evidence counts, internal-note-only textbook or
-  primary-source claims, and packet role consistency when packet lineage exists. It writes
+  primary-source claims, source-backed method identity, required identity evidence-unit refs, packet role consistency
+  against accepted target-bound role refs, stale packet source/locator/text hashes, and fields that cite rejected or
+  competing-method evidence. Packet lineage is required for passed semantic validation; packet-less extraction can
+  populate fields but cannot validate into a canonical method-card draft. It writes
   `methodology_candidate_validation_report` with status `passed` or `blocked` and readiness summaries for descriptive,
   implementation, signal, strategy-template, or risk-manager use where the family profile defines them.
+- Methodology field refs must include exact `claim_span` provenance. Validation re-slices stored evidence-unit text at
+  the supplied offsets, recomputes the span hash, checks role and target binding, and verifies specialized field semantics.
+  Another method appearing elsewhere in the same evidence unit is not a blocker.
 - `knowledge_create_rich_method_card_draft` request: exactly one of `methodology_candidate_validation_id`,
   `methodology_candidate_validation_uri`, or inline `methodology_candidate_validation_report`; optional `method_id`,
   `title`, `family`, and `version`.
-- Rich draft creation requires a packet-backed passed validation report with `valid=true`, empty blockers,
-  implementation readiness, and a loadable matching `methodology_candidate`. It revalidates source/chunk evidence,
-  derives summary fields from evidence-backed rich fields, and fails closed if assumptions, inputs, outputs, or failure
-  modes cannot be populated.
+- Canonical method-card draft materialization requires a packet-backed passed validation report with `valid=true`, empty
+  blockers, implementation readiness, and a loadable matching `methodology_candidate` whose lineage points to the same
+  evidence packet as the validation report. Optional `method_id`, `title`, or `family` overrides fail closed unless the
+  candidate identity, aliases, abbreviations, and validated families support them. The service revalidates source/chunk
+  evidence, derives summary fields from evidence-backed rich fields, and fails closed if assumptions, inputs, outputs,
+  or failure modes cannot be populated.
   Success writes a rich `method_card_draft` with nullable field groups, field-level evidence refs, candidate lineage,
   validation refs, source hashes, and chunk hashes while preserving shallow `MethodCard` projection compatibility.
 - `knowledge_publish_method_card` preserves rich payloads when publishing rich drafts. Approved rich cards remain visible
@@ -713,9 +823,9 @@ Methodology candidate tool contracts:
 - Request: `chunk_ids: list[str]` required, maximum 25; optional `source_id`; `include_text: bool = true`;
   `max_chars_per_chunk: int = 4000`, bounded to 1-20000.
 - Success data: `evidence_chunk_dereference_report`, top-level `chunks`, `chunk_count`, and `missing_chunk_ids`.
-- Each chunk includes `chunk_id`, `source_id`, source title/type/status, `approved_source`, `locator`, `topics`,
-  `method_families`, `text_hash`, `hash_verified`, `text_char_count`, `text_word_count`, `text_truncated`, and `text`
-  when requested.
+- Each returned item is a schema-v2 evidence unit and includes `chunk_id`, `evidence_unit_id`, `source_id`, source
+  title/type/status, `approved_source`, `locator`, `topics`, `method_families`, `text_hash`, `hash_verified`,
+  `text_char_count`, `text_word_count`, `text_truncated`, and `text` when requested.
 - Missing chunk IDs or source mismatches fail closed with `code="chunk_dereference_error"` and structured
   `missing_chunk_ids` / `source_mismatch_chunk_ids`; no embedding vectors are returned.
 
@@ -732,8 +842,27 @@ Methodology candidate tool contracts:
 
 - Request: `draft_method_card_id`, `approved_method_card_id`, `approved_by`, `approval_note`, and `approve=true`.
 - Publishing preserves the draft and creates a separate approved `method_card` with approval provenance.
+- Publishing preserves `method_card_set_id` lineage, writes a new immutable card revision, supersedes any prior current
+  approved card in the same set, and updates the set's current approved pointer.
 - Re-publishing the same approved card is idempotent only when the persisted content matches; conflicting content fails
   closed.
+
+Method-card set contracts:
+
+- Method-card rows carry `method_card_set_id`, `revision_number`, and optional `supersedes_method_card_id`.
+- Rows or payloads missing `method_card_set_id` or `revision_number` are invalid. The platform does not synthesize
+  legacy set IDs or silently backfill old Postgres method-card data; operators should reset/recreate method-card rows or
+  run an explicit reviewed migration when old data must be kept.
+- A method-card set is the stable aggregate identity for a methodology card; `method_card_id` remains the immutable
+  draft or approved revision ID used for exact citations.
+- Draft creation derives a set ID from method ID, family, normalized title, and source fingerprint, unless the caller
+  supplies an explicit set ID to create an intentional revision.
+- Set summaries expose current approved and draft pointers, status counts, source fingerprint, card IDs, and latest
+  revision number.
+- The set-listing tool is read-only and supports method ID, family, status, retired visibility, and limit filters.
+- The set-detail tool is read-only and returns one set plus revision history when requested.
+- Postgres exposes pgAdmin-friendly active-card, revision-history, and set-summary views. Active views filter out
+  `rejected` and `superseded` card rows; canonical storage preserves those rows for audit.
 
 `knowledge_update_method_card_status` contract:
 
@@ -743,7 +872,8 @@ Methodology candidate tool contracts:
 - `superseded_by_method_card_id` is required when `status="superseded"`.
 - The target must be a persisted method card. Seeded cards are not retired by this tool.
 - Success updates the stored method-card payload through the configured knowledge store, preserves lifecycle audit
-  metadata, and hides the retired card from normal method-card search and approved-card checks.
+  metadata, repairs method-card set current pointers, and hides the retired card from normal method-card search and
+  approved-card checks.
 
 `math_register_method_implementation` contract:
 
@@ -893,7 +1023,7 @@ Minimal allowlists:
 | Data Agent | `data_get_inventory`, `data_summarize_quality`, `data_ensure_loaded`, read-only health/config |
 | Quant Research Supervisor Agent | Specialist artifact reads, supervisor handoff tools, `research_*` tools |
 | Quantitative Methods Agent | `knowledge_*` retrieval/ingestion/citation tools, `math_list_method_contracts`, `math_validate_method_contract`, fixture, diagnostic, multiple-testing, method-packaging, and optional kernel tools |
-| ML Agent | `ml_create_feature_manifest`, `ml_summarize_model_artifact` |
+| ML Agent | Planned 39A-39J `ml_*` lifecycle tools only; none are registered yet. |
 | Hypothesis Agent | Ingredient artifact reads, `hypothesis_create_card` |
 | Evaluation Agent | Data/backtest artifact reads, `evaluation_generate_performance_report`, later `evaluation_generate_report` |
 | Adversarial Agent | Baseline artifact reads, `adversarial_run_robustness` |

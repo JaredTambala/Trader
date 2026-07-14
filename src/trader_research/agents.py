@@ -40,6 +40,8 @@ QUANTITATIVE_METHODS_TOOLS = (
     "knowledge_get_ingestion_status",
     "knowledge_list_sources",
     "knowledge_search_methods",
+    "knowledge_list_method_card_sets",
+    "knowledge_get_method_card_set",
     "knowledge_retrieve_evidence",
     "knowledge_get_evidence_chunks",
     "knowledge_discover_methodology_candidates",
@@ -70,8 +72,30 @@ QUANTITATIVE_METHODS_COMPATIBILITY_TOOLS = (
 )
 
 ML_AGENT_TOOLS = (
-    "ml_create_feature_manifest",
-    "ml_summarize_model_artifact",
+    "ml_get_runtime",
+    "ml_health",
+    "ml_list_experiments",
+    "ml_create_feature_set",
+    "ml_validate_feature_set",
+    "ml_create_training_dataset",
+    "ml_create_time_series_split_plan",
+    "ml_register_training_pipeline",
+    "ml_validate_training_pipeline",
+    "ml_create_training_spec",
+    "ml_run_training",
+    "ml_get_training_run",
+    "ml_reconcile_mlflow_run",
+    "ml_evaluate_model",
+    "ml_compare_model_versions",
+    "ml_register_model_version",
+    "ml_get_model_version",
+    "ml_list_model_versions",
+    "ml_resolve_model_alias",
+    "ml_assign_model_alias",
+    "ml_create_deployment_manifest",
+    "ml_validate_deployment",
+    "ml_summarize_predictions",
+    "ml_compute_drift_report",
 )
 
 HYPOTHESIS_AGENT_TOOLS = ("hypothesis_create_card",)
@@ -93,11 +117,21 @@ QUANT_RESEARCH_SUPERVISOR_TOOLS = (
     "research_analyze_return_attribution",
     "research_generate_recommendation",
     "research_run_experiment",
+    "research_create_walk_forward_plan",
+    "research_run_walk_forward_optimization",
+    "research_get_walk_forward_results",
 )
 
-EVALUATION_AGENT_TOOLS = ("evaluation_generate_performance_report", "evaluation_generate_report")
+EVALUATION_AGENT_TOOLS = (
+    "evaluation_generate_performance_report",
+    "evaluation_generate_report",
+    "evaluation_generate_walk_forward_report",
+)
 
-ADVERSARIAL_AGENT_TOOLS = ("adversarial_run_robustness",)
+ADVERSARIAL_AGENT_TOOLS = (
+    "adversarial_run_robustness",
+    "adversarial_audit_walk_forward",
+)
 
 
 AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
@@ -120,6 +154,8 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
             "backtest_run_ref.json",
             "comparison_report.json",
             "recommendation_report.json",
+            "walk_forward_optimization_plan.json",
+            "walk_forward_optimization_run.json",
         ),
         initial_tools=QUANT_RESEARCH_SUPERVISOR_TOOLS,
     ),
@@ -174,14 +210,28 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
     AgentDefinition(
         key="ml_agent",
         display_name="ML Agent",
-        mission="Produce versioned feature, model, prediction, and drift artifacts.",
-        owned_artifacts=(
-            "feature_dataset_manifest.json",
-            "model_card.json",
-            "prediction_artifact.json",
-            "drift_report.json",
+        mission=(
+            "Coordinate point-in-time feature engineering, fitting, MLflow model lineage, deployment evidence, "
+            "predictions, and drift without live-trading authority."
         ),
-        initial_tools=ML_AGENT_TOOLS,
+        owned_artifacts=(
+            "ml_feature_set_spec.json",
+            "ml_feature_set_validation_report.json",
+            "ml_training_dataset_manifest.json",
+            "ml_time_series_split_plan.json",
+            "ml_training_pipeline_manifest.json",
+            "ml_training_pipeline_validation_report.json",
+            "ml_training_spec.json",
+            "mlflow_run_ref.json",
+            "ml_model_evaluation_report.json",
+            "ml_model_version_ref.json",
+            "ml_model_promotion_report.json",
+            "ml_deployment_manifest.json",
+            "ml_deployment_validation_report.json",
+            "ml_prediction_artifact.json",
+            "ml_drift_report.json",
+        ),
+        initial_tools=(*READ_ONLY_SUPPORT_TOOLS, *ML_AGENT_TOOLS),
     ),
     AgentDefinition(
         key="hypothesis_agent",
@@ -194,14 +244,14 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
         key="evaluation_agent",
         display_name="Evaluation Agent",
         mission="Produce skeptical critique artifacts from research evidence.",
-        owned_artifacts=("evaluation_report.json",),
+        owned_artifacts=("evaluation_report.json", "walk_forward_evaluation_report.json"),
         initial_tools=EVALUATION_AGENT_TOOLS,
     ),
     AgentDefinition(
         key="adversarial_agent",
         display_name="Adversarial Agent",
         mission="Produce robustness and stress-test artifacts for candidate strategies.",
-        owned_artifacts=("robustness_report.json",),
+        owned_artifacts=("robustness_report.json", "walk_forward_robustness_report.json"),
         initial_tools=ADVERSARIAL_AGENT_TOOLS,
     ),
 )

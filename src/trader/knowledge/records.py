@@ -23,10 +23,14 @@ def result_from_row(row: Mapping[str, Any]) -> Mapping[str, Any]:
         "source_status": source_status,
         "approved_source": source_status == "approved",
         "chunk_id": row.get("chunk_id"),
+        "evidence_unit_id": row.get("evidence_unit_id") or row.get("chunk_id"),
         "locator": mapping(row.get("locator")),
         "score": float(row.get("score") or 0.0),
         "excerpt": text[:360],
         "text_hash": row.get("text_hash"),
+        "detected_labels": string_list(row.get("detected_labels")),
+        "neighbor_chunk_ids": string_list(row.get("neighbor_chunk_ids")),
+        "chunker_version": row.get("chunker_version"),
     }
 
 

@@ -210,6 +210,8 @@ def _validated_signal(artifact_root: Path) -> tuple[dict[str, object], dict[str,
     store.save_method_card(
         MethodCard(
             method_card_id=method_card_id,
+            method_card_set_id="method_card_set_bollinger_bwma_action_signal_package_test",
+            revision_number=1,
             method_id="bollinger_bwma_action_signal",
             title="Bollinger BWMA action signal",
             family="signal",
@@ -300,4 +302,3 @@ def _compiled_cxx_manifest(python_manifest: dict[str, object]) -> dict[str, obje
         "warnings": [],
         "blockers": [],
     }
-

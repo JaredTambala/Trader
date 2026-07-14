@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+
+import pytest
 
 from trader_research.knowledge.domain import KnowledgeIngestionReport, KnowledgeSourceManifest, MethodCard
 from trader_research.knowledge.embeddings import DeterministicEmbeddingProvider
@@ -42,6 +45,8 @@ def test_json_knowledge_store_contract_indexes_active_chunks(tmp_path: Path) -> 
     store.save_ingestion_report(report)
     method_card = MethodCard(
         method_card_id="method_card_store_demo",
+        method_card_set_id="method_card_set_store_demo",
+        revision_number=1,
         method_id="sma",
         title="SMA Store Demo",
         family="indicator",
@@ -117,3 +122,39 @@ def test_reciprocal_rank_fusion_is_deterministic() -> None:
         "vector_score": 0.9,
         "fusion_score": (1.0 / 62.0) + (1.0 / 61.0),
     }
+
+
+def test_json_knowledge_store_rejects_legacy_chunk_manifest(tmp_path: Path) -> None:
+    store = JsonKnowledgeStore(tmp_path / "artifacts")
+    source = KnowledgeSourceManifest(
+        source_id="source_legacy_chunks",
+        title="Legacy Chunk Source",
+        source_type="internal_note",
+        path=str(FIXTURE),
+        file_hash="hash_legacy",
+        file_size_bytes=FIXTURE.stat().st_size,
+    )
+    store.save_source(source)
+    store.repository.ensure_dirs()
+    store.repository.chunk_manifest_path(source.source_id).write_text(
+        json.dumps(
+            {
+                "artifact_type": "knowledge_chunk_manifest",
+                "source_id": source.source_id,
+                "chunks": [
+                    {
+                        "chunk_id": "knowledge_chunk_legacy",
+                        "source_id": source.source_id,
+                        "ordinal": 0,
+                        "text": "legacy text",
+                        "text_hash": "legacy_hash",
+                        "locator": {"source_id": source.source_id},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="legacy knowledge chunk manifest"):
+        store.load_chunks(source.source_id)

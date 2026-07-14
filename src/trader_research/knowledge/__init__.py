@@ -2,6 +2,7 @@
 
 from .domain import (
     CitationValidationReport,
+    EvidenceClaimSpan,
     EvidenceReference,
     EvidenceRetrievalReport,
     RichMethodCard,
@@ -14,10 +15,12 @@ from .domain import (
     KnowledgeIngestionReport,
     KnowledgeSourceManifest,
     MethodCard,
+    MethodCardSet,
 )
 
 __all__ = [
     "CitationValidationReport",
+    "EvidenceClaimSpan",
     "EvidenceReference",
     "EvidenceRetrievalReport",
     "RichMethodCard",
@@ -30,4 +33,5 @@ __all__ = [
     "KnowledgeIngestionReport",
     "KnowledgeSourceManifest",
     "MethodCard",
+    "MethodCardSet",
 ]

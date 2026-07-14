@@ -235,9 +235,12 @@ class PostgresKnowledgeRecordStore:
                     """
                     INSERT INTO knowledge_chunks (
                         chunk_id, source_id, ordinal, text, text_hash, locator,
-                        topics, method_families, active, payload
+                        topics, method_families, evidence_unit_id, parent_section_id,
+                        paragraph_index, sentence_start_index, sentence_end_index,
+                        detected_labels, neighbor_chunk_ids, chunker_version,
+                        schema_version, active, payload
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE, %s)
                     ON CONFLICT (chunk_id) DO UPDATE SET
                         ordinal = EXCLUDED.ordinal,
                         text = EXCLUDED.text,
@@ -245,6 +248,15 @@ class PostgresKnowledgeRecordStore:
                         locator = EXCLUDED.locator,
                         topics = EXCLUDED.topics,
                         method_families = EXCLUDED.method_families,
+                        evidence_unit_id = EXCLUDED.evidence_unit_id,
+                        parent_section_id = EXCLUDED.parent_section_id,
+                        paragraph_index = EXCLUDED.paragraph_index,
+                        sentence_start_index = EXCLUDED.sentence_start_index,
+                        sentence_end_index = EXCLUDED.sentence_end_index,
+                        detected_labels = EXCLUDED.detected_labels,
+                        neighbor_chunk_ids = EXCLUDED.neighbor_chunk_ids,
+                        chunker_version = EXCLUDED.chunker_version,
+                        schema_version = EXCLUDED.schema_version,
                         active = TRUE,
                         payload = EXCLUDED.payload
                     """,
@@ -257,6 +269,15 @@ class PostgresKnowledgeRecordStore:
                         Jsonb(_mapping(chunk.get("locator"))),
                         _string_list(chunk.get("topics")),
                         _string_list(chunk.get("method_families")),
+                        chunk.get("evidence_unit_id") or chunk.get("chunk_id"),
+                        chunk.get("parent_section_id"),
+                        chunk.get("paragraph_index"),
+                        chunk.get("sentence_start_index"),
+                        chunk.get("sentence_end_index"),
+                        _string_list(chunk.get("detected_labels")),
+                        _string_list(chunk.get("neighbor_chunk_ids")),
+                        chunk.get("chunker_version"),
+                        chunk.get("schema_version"),
                         Jsonb(dict(chunk)),
                     ],
                 )
@@ -409,6 +430,26 @@ class PostgresKnowledgeRecordStore:
             ],
         )
 
+    def publish_ingestion(
+        self,
+        replacements: Mapping[str, Sequence[Mapping[str, Any]]],
+        embedding_manifest: Mapping[str, Any],
+        embeddings: Sequence[Mapping[str, Any]],
+        ingestion_report: Mapping[str, Any],
+    ) -> None:
+        """Publish chunks, vectors, and the indexed report in one transaction.
+
+        The existing write methods open nested transaction contexts, which
+        psycopg implements as savepoints. Any failure escapes this outer context
+        and rolls back the entire generation, leaving the prior active chunks and
+        retrieval index visible.
+        """
+        with self._connection.transaction():
+            for source_id, chunks in replacements.items():
+                self.replace_chunks(source_id, chunks)
+            self.index_embeddings(embedding_manifest, embeddings)
+            self.save_ingestion_report(ingestion_report)
+
     def list_ingestion_reports(
         self,
         *,
@@ -460,6 +501,7 @@ class PostgresKnowledgeRecordStore:
         sql = f"""
             SELECT
                 c.chunk_id, c.source_id, c.text, c.text_hash, c.locator,
+                c.evidence_unit_id, c.detected_labels, c.neighbor_chunk_ids, c.chunker_version,
                 s.title AS source_title, s.source_type, s.status AS source_status,
                 ts_rank_cd(c.search_vector, plainto_tsquery('english', %s)) AS score
             FROM knowledge_chunks c
@@ -502,6 +544,7 @@ class PostgresKnowledgeRecordStore:
         sql = f"""
             SELECT
                 c.chunk_id, c.source_id, c.text, c.text_hash, c.locator,
+                c.evidence_unit_id, c.detected_labels, c.neighbor_chunk_ids, c.chunker_version,
                 s.title AS source_title, s.source_type, s.status AS source_status,
                 1.0 - (e.embedding <=> %s::vector) AS score
             FROM knowledge_embeddings e
@@ -541,25 +584,32 @@ class PostgresKnowledgeRecordStore:
         self._connection.execute(
             """
             INSERT INTO knowledge_method_cards (
-                method_card_id, method_id, family, status, card_format,
-                source_methodology_candidate_id, validation_refs, created_at, payload
+                method_card_id, method_card_set_id, method_id, family, status, card_format,
+                revision_number, supersedes_method_card_id, source_methodology_candidate_id,
+                validation_refs, created_at, payload
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (method_card_id) DO UPDATE SET
+                method_card_set_id = EXCLUDED.method_card_set_id,
                 method_id = EXCLUDED.method_id,
                 family = EXCLUDED.family,
                 status = EXCLUDED.status,
                 card_format = EXCLUDED.card_format,
+                revision_number = EXCLUDED.revision_number,
+                supersedes_method_card_id = EXCLUDED.supersedes_method_card_id,
                 source_methodology_candidate_id = EXCLUDED.source_methodology_candidate_id,
                 validation_refs = EXCLUDED.validation_refs,
                 payload = EXCLUDED.payload
             """,
             [
                 payload["method_card_id"],
+                payload["method_card_set_id"],
                 payload["method_id"],
                 payload["family"],
                 payload["status"],
                 payload.get("card_format") or "method_card",
+                int(payload.get("revision_number") or payload.get("version") or 1),
+                payload.get("supersedes_method_card_id"),
                 payload.get("source_methodology_candidate_id"),
                 Jsonb(validation_refs_payload),
                 payload["created_at"],
@@ -570,6 +620,58 @@ class PostgresKnowledgeRecordStore:
     def list_persisted_method_cards(self) -> tuple[Mapping[str, Any], ...]:
         """Return persisted method-card payloads ordered deterministically by method-card identifier for merging."""
         rows = self._connection.execute("SELECT payload FROM knowledge_method_cards ORDER BY method_card_id").fetchall()
+        return tuple(_mapping(row["payload"]) for row in rows)
+
+    def save_method_card_set(self, payload: Mapping[str, Any]) -> None:
+        """Insert or update one stable method-card set payload keyed by set ID."""
+        self._connection.execute(
+            """
+            INSERT INTO knowledge_method_card_sets (
+                method_card_set_id, method_id, family, canonical_title, status,
+                source_fingerprint, current_approved_method_card_id, current_draft_method_card_id,
+                card_ids, revision_count, latest_revision_number, status_counts,
+                created_at, updated_at, payload
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (method_card_set_id) DO UPDATE SET
+                method_id = EXCLUDED.method_id,
+                family = EXCLUDED.family,
+                canonical_title = EXCLUDED.canonical_title,
+                status = EXCLUDED.status,
+                source_fingerprint = EXCLUDED.source_fingerprint,
+                current_approved_method_card_id = EXCLUDED.current_approved_method_card_id,
+                current_draft_method_card_id = EXCLUDED.current_draft_method_card_id,
+                card_ids = EXCLUDED.card_ids,
+                revision_count = EXCLUDED.revision_count,
+                latest_revision_number = EXCLUDED.latest_revision_number,
+                status_counts = EXCLUDED.status_counts,
+                updated_at = EXCLUDED.updated_at,
+                payload = EXCLUDED.payload
+            """,
+            [
+                payload["method_card_set_id"],
+                payload["method_id"],
+                payload["family"],
+                payload["canonical_title"],
+                payload["status"],
+                payload.get("source_fingerprint"),
+                payload.get("current_approved_method_card_id"),
+                payload.get("current_draft_method_card_id"),
+                list(payload.get("card_ids") or ()),
+                int(payload.get("revision_count") or 0),
+                int(payload.get("latest_revision_number") or 0),
+                Jsonb(dict(payload.get("status_counts") or {})),
+                payload["created_at"],
+                payload["updated_at"],
+                Jsonb(dict(payload)),
+            ],
+        )
+
+    def list_method_card_sets(self) -> tuple[Mapping[str, Any], ...]:
+        """Return stable method-card set payloads ordered deterministically by set identifier."""
+        rows = self._connection.execute(
+            "SELECT payload FROM knowledge_method_card_sets ORDER BY method_card_set_id"
+        ).fetchall()
         return tuple(_mapping(row["payload"]) for row in rows)
 
     def save_method_contract(self, payload: Mapping[str, Any]) -> None:

@@ -83,6 +83,8 @@ def test_quantitative_methods_tool_owner_and_identity_use_method_contract_tools(
     assert identity.agent_key == "quant_methods_agent"
     assert identity.display_name == "Quantitative Methods Agent"
     assert "knowledge_search_methods" in identity.tool_allowlist
+    assert "knowledge_list_method_card_sets" in identity.tool_allowlist
+    assert "knowledge_get_method_card_set" in identity.tool_allowlist
     assert "knowledge_get_evidence_chunks" in identity.tool_allowlist
     assert "knowledge_discover_methodology_candidates" in identity.tool_allowlist
     assert "knowledge_extract_methodology_fields" in identity.tool_allowlist
@@ -98,6 +100,8 @@ def test_quantitative_methods_tool_owner_and_identity_use_method_contract_tools(
     assert "math_compile_kernel" in identity.tool_allowlist
     assert "math_package_method_artifact" in identity.tool_allowlist
     assert agent_owner_for_tool("knowledge_retrieve_evidence") == "Quantitative Methods Agent"
+    assert agent_owner_for_tool("knowledge_list_method_card_sets") == "Quantitative Methods Agent"
+    assert agent_owner_for_tool("knowledge_get_method_card_set") == "Quantitative Methods Agent"
     assert agent_owner_for_tool("knowledge_get_evidence_chunks") == "Quantitative Methods Agent"
     assert agent_owner_for_tool("knowledge_discover_methodology_candidates") == "Quantitative Methods Agent"
     assert agent_owner_for_tool("knowledge_extract_methodology_fields") == "Quantitative Methods Agent"
@@ -147,6 +151,62 @@ def test_quant_research_supervisor_owns_strategy_candidate_creation() -> None:
     assert agent_owner_for_tool("research_validate_risk_manager_candidate") == "Quant Research Supervisor Agent"
     assert agent_owner_for_tool("research_create_strategy_risk_stack") == "Quant Research Supervisor Agent"
     assert agent_owner_for_tool("research_validate_strategy_risk_stack") == "Quant Research Supervisor Agent"
+
+
+def test_walk_forward_tool_ownership_separates_optimization_evaluation_and_audit() -> None:
+    supervisor = build_agent_identity("Quant Research Supervisor Agent")
+    evaluation = build_agent_identity("Evaluation Agent")
+    adversarial = build_agent_identity("Adversarial Agent")
+
+    supervisor_tools = {
+        "research_create_walk_forward_plan",
+        "research_run_walk_forward_optimization",
+        "research_get_walk_forward_results",
+    }
+    assert supervisor_tools.issubset(supervisor.tool_allowlist)
+    assert "walk_forward_optimization_plan.json" in supervisor.output_artifacts
+    assert "walk_forward_optimization_run.json" in supervisor.output_artifacts
+    assert "evaluation_generate_walk_forward_report" in evaluation.tool_allowlist
+    assert "walk_forward_evaluation_report.json" in evaluation.output_artifacts
+    assert "adversarial_audit_walk_forward" in adversarial.tool_allowlist
+    assert "walk_forward_robustness_report.json" in adversarial.output_artifacts
+
+    for tool_name in supervisor_tools:
+        assert agent_owner_for_tool(tool_name) == "Quant Research Supervisor Agent"
+    assert agent_owner_for_tool("evaluation_generate_walk_forward_report") == "Evaluation Agent"
+    assert agent_owner_for_tool("adversarial_audit_walk_forward") == "Adversarial Agent"
+
+
+def test_ml_agent_identity_covers_planned_mlflow_lifecycle_without_trading_mutation() -> None:
+    identity = build_agent_identity("ML Agent")
+
+    required_tools = {
+        "ml_create_feature_set",
+        "ml_create_training_dataset",
+        "ml_run_training",
+        "ml_reconcile_mlflow_run",
+        "ml_evaluate_model",
+        "ml_register_model_version",
+        "ml_resolve_model_alias",
+        "ml_assign_model_alias",
+        "ml_create_deployment_manifest",
+        "ml_compute_drift_report",
+    }
+    forbidden_tools = {
+        "research_run_backtest",
+        "research_generate_recommendation",
+        "place_order",
+        "start_trading",
+        "clear_halt",
+    }
+
+    assert required_tools.issubset(identity.tool_allowlist)
+    assert forbidden_tools.isdisjoint(identity.tool_allowlist)
+    assert "mlflow_run_ref.json" in identity.output_artifacts
+    assert "ml_model_version_ref.json" in identity.output_artifacts
+    assert "ml_deployment_manifest.json" in identity.output_artifacts
+    for tool_name in required_tools:
+        assert agent_owner_for_tool(tool_name) == "ML Agent"
 
 
 def test_evaluation_agent_owns_performance_report_tool() -> None:

@@ -25,6 +25,22 @@ def index_chunks(
     because vector search cannot safely compare embeddings from inconsistent
     output shapes.
     """
+    manifest, embeddings = build_embedding_index(chunks, provider=provider)
+    store.index_embeddings(manifest, chunks, embeddings)
+    return manifest
+
+
+def build_embedding_index(
+    chunks: Sequence[KnowledgeChunk],
+    *,
+    provider: EmbeddingProvider,
+) -> tuple[KnowledgeEmbeddingManifest, tuple[StoredEmbedding, ...]]:
+    """Build and validate an embedding generation without persisting it.
+
+    Ingestion uses this staging boundary so provider failures happen before the
+    active evidence generation is replaced. Stores can then publish chunks,
+    vectors, and the success report atomically.
+    """
     embeddings: list[StoredEmbedding] = []
     dimensions: set[int] = set()
     for chunk in chunks:
@@ -50,8 +66,7 @@ def index_chunks(
         dimension=dimension,
         chunk_ids=tuple(chunk.chunk_id for chunk in chunks),
     )
-    store.index_embeddings(manifest, chunks, embeddings)
-    return manifest
+    return manifest, tuple(embeddings)
 
 
 def search_chunks(

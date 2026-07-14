@@ -182,6 +182,8 @@ def _approved_var_rich_card(*, limit_thresholds: object | None = None) -> RichMe
     )
     return RichMethodCard(
         method_card_id="method_card_var_cvar_limit_v1",
+        method_card_set_id="method_card_set_var_cvar_limit_test",
+        revision_number=1,
         method_id="var_cvar_limit",
         title="VaR/CVaR Limit",
         family="risk_models",

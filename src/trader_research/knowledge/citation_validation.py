@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -82,6 +83,16 @@ def validate_citations(
                             break
                 checked_ref["chunk_known"] = True
                 checked_ref["chunk_locator"] = dict(chunk.locator)
+                if ref.claim_span is not None:
+                    span = ref.claim_span
+                    if span.end_char > len(chunk.text):
+                        blockers.append(f"claim span {span.span_id} exceeds chunk {ref.chunk_id} text length")
+                    else:
+                        stored_text = chunk.text[span.start_char:span.end_char]
+                        if stored_text != span.text:
+                            blockers.append(f"claim span {span.span_id} text mismatch for chunk {ref.chunk_id}")
+                        if hashlib.sha256(stored_text.encode("utf-8")).hexdigest() != span.text_hash:
+                            blockers.append(f"claim span {span.span_id} hash mismatch for chunk {ref.chunk_id}")
         if ref.source_id is None and ref.chunk_id is None and ref.method_card_id is None:
             warnings.append("empty evidence reference ignored")
         checked.append(checked_ref)

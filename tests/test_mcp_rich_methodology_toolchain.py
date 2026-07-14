@@ -120,12 +120,19 @@ def test_mcp_rich_methodology_pairs_chain_runs_to_portfolio_evaluation(tmp_path:
             {"extraction_report_uri": extraction_ref["uri"]},
         )
         validation_ref = validated.structuredContent["artifacts"]["methodology_candidate_validation_report"]
-        rich_draft = await server.call_tool(
+        unsupported_override_draft = await server.call_tool(
             KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL,
             {
                 "methodology_candidate_validation_uri": validation_ref["uri"],
                 "method_id": "pairs_mean_reversion",
                 "title": "Pairs Mean Reversion",
+                "family": "statistical_arbitrage",
+            },
+        )
+        rich_draft = await server.call_tool(
+            KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL,
+            {
+                "methodology_candidate_validation_uri": validation_ref["uri"],
                 "family": "statistical_arbitrage",
             },
         )
@@ -308,6 +315,10 @@ def test_mcp_rich_methodology_pairs_chain_runs_to_portfolio_evaluation(tmp_path:
         assert "family must be statistical_arbitrage" in "\n".join(
             unsupported_family_strategy.structuredContent["data"]["blockers"]
         )
+        assert unsupported_override_draft.isError is True
+        assert "title must be supported" in "\n".join(
+            error["message"] for error in unsupported_override_draft.structuredContent["errors"]
+        )
         assert internal_note_validation.isError is True
         assert internal_note_validation.structuredContent["data"]["methodology_candidate_validation_report"][
             "status"
@@ -363,9 +374,14 @@ async def _internal_note_validation_blocker(server: Any, source_path: Path) -> A
         {"source_ids": [source_id], "method_families": ["statistical_arbitrage"], "max_candidates": 1},
     )
     candidate_ref = discovered.structuredContent["artifacts"]["methodology_candidates"][0]
+    assembled = await server.call_tool(
+        KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL,
+        {"methodology_candidate_uri": candidate_ref["uri"], "readiness_goal": "strategy_template"},
+    )
+    evidence_packet_ref = assembled.structuredContent["artifacts"]["methodology_evidence_packet"]
     extracted = await server.call_tool(
         KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL,
-        {"methodology_candidate_uri": candidate_ref["uri"]},
+        {"evidence_packet_uri": evidence_packet_ref["uri"]},
     )
     candidate = extracted.structuredContent["data"]["methodology_candidate"]
     candidate["lineage"] = {
@@ -476,6 +492,8 @@ def _base_rich_card(family: str) -> dict[str, Any]:
         "artifact_type": "method_card",
         "card_format": "rich_method_card",
         "method_card_id": "method_card_inline_rich",
+        "method_card_set_id": "method_card_set_inline_rich_test",
+        "revision_number": 1,
         "method_id": "pairs_mean_reversion",
         "title": "Inline Rich Card",
         "family": family,

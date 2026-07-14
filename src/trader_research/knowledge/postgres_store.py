@@ -19,6 +19,7 @@ from .domain import (
     KnowledgeIngestionReport,
     KnowledgeSourceManifest,
     MethodCard,
+    MethodCardSet,
     RICH_METHOD_CARD_FORMAT,
     RichMethodCard,
 )
@@ -156,6 +157,25 @@ class PostgresKnowledgeStore:
         """Persist an ingestion report by converting it to a core JSON payload."""
         _translate_errors(lambda: self._records.save_ingestion_report(report.to_dict()))
 
+    def publish_ingestion(
+        self,
+        replacements: Mapping[str, Sequence[KnowledgeChunk]],
+        manifest: KnowledgeEmbeddingManifest,
+        indexed_chunks: Sequence[KnowledgeChunk],
+        embeddings: Sequence[StoredEmbedding],
+        report: KnowledgeIngestionReport,
+    ) -> None:
+        """Atomically publish a complete Postgres evidence generation."""
+        del indexed_chunks
+        _translate_errors(
+            lambda: self._records.publish_ingestion(
+                {source_id: [chunk.to_dict() for chunk in chunks] for source_id, chunks in replacements.items()},
+                manifest.to_dict(),
+                [{"chunk_id": embedding.chunk_id, "vector": list(embedding.vector)} for embedding in embeddings],
+                report.to_dict(),
+            )
+        )
+
     def list_ingestion_reports(
         self,
         *,
@@ -239,6 +259,15 @@ class PostgresKnowledgeStore:
             for payload in payloads
             if payload.get("card_format") == RICH_METHOD_CARD_FORMAT
         )
+
+    def save_method_card_set(self, method_card_set: MethodCardSet) -> None:
+        """Persist a stable method-card set through the core Postgres record store adapter."""
+        _translate_errors(lambda: self._records.save_method_card_set(method_card_set.to_dict()))
+
+    def list_method_card_sets(self) -> tuple[MethodCardSet, ...]:
+        """List stable method-card sets from Postgres and parse each payload into domain objects."""
+        payloads = _translate_errors(self._records.list_method_card_sets)
+        return tuple(MethodCardSet.from_dict(payload) for payload in payloads)
 
     def save_method_contract(self, method: MethodRegistryEntry) -> None:
         """Persist a method contract through the core Postgres record store adapter."""

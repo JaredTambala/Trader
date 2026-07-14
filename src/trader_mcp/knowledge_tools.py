@@ -16,7 +16,9 @@ from trader_mcp.constants import (
     KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL,
     KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL,
     KNOWLEDGE_GET_INGESTION_STATUS_TOOL,
+    KNOWLEDGE_GET_METHOD_CARD_SET_TOOL,
     KNOWLEDGE_INGEST_DOCUMENTS_TOOL,
+    KNOWLEDGE_LIST_METHOD_CARD_SETS_TOOL,
     KNOWLEDGE_LIST_SOURCES_TOOL,
     KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL,
     KNOWLEDGE_REGISTER_SOURCE_TOOL,
@@ -52,6 +54,8 @@ from trader_research.knowledge.ingestion import (
 from trader_research.knowledge.method_cards import (
     create_method_card_draft as create_method_card_draft_service,
     create_rich_method_card_draft as create_rich_method_card_draft_service,
+    get_method_card_set as get_method_card_set_service,
+    list_method_card_sets as list_method_card_sets_service,
     publish_method_card as publish_method_card_service,
     update_method_card_status as update_method_card_status_service,
 )
@@ -216,6 +220,44 @@ def register_quant_methods_tools(
         return CallToolResult(**envelope_to_mcp_result(envelope))
 
     @server.tool(
+        name=KNOWLEDGE_LIST_METHOD_CARD_SETS_TOOL,
+        description=KNOWLEDGE_TOOL_DESCRIPTIONS[KNOWLEDGE_LIST_METHOD_CARD_SETS_TOOL],
+    )
+    def knowledge_list_method_card_sets(
+        method_id: str | None = None,
+        family: str | None = None,
+        status: str | None = None,
+        include_retired: bool = False,
+        limit: int = 50,
+    ) -> CallToolResult:
+        envelope = list_method_card_sets_service(
+            artifact_root=environment.artifact_root,
+            method_id=method_id,
+            family=family,
+            status=status,
+            include_retired=include_retired,
+            limit=limit,
+            knowledge_store=_knowledge_store(),
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
+        name=KNOWLEDGE_GET_METHOD_CARD_SET_TOOL,
+        description=KNOWLEDGE_TOOL_DESCRIPTIONS[KNOWLEDGE_GET_METHOD_CARD_SET_TOOL],
+    )
+    def knowledge_get_method_card_set(
+        method_card_set_id: str,
+        include_cards: bool = True,
+    ) -> CallToolResult:
+        envelope = get_method_card_set_service(
+            artifact_root=environment.artifact_root,
+            method_card_set_id=method_card_set_id,
+            include_cards=include_cards,
+            knowledge_store=_knowledge_store(),
+        )
+        return CallToolResult(**envelope_to_mcp_result(envelope))
+
+    @server.tool(
         name=KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL,
         description=KNOWLEDGE_TOOL_DESCRIPTIONS[KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL],
     )
@@ -373,6 +415,7 @@ def register_quant_methods_tools(
         title: str | None = None,
         family: str | None = None,
         version: int = 1,
+        method_card_set_id: str | None = None,
     ) -> CallToolResult:
         envelope = create_rich_method_card_draft_service(
             artifact_root=environment.artifact_root,
@@ -383,6 +426,7 @@ def register_quant_methods_tools(
             title=title,
             family=family,
             version=version,
+            method_card_set_id=method_card_set_id,
             knowledge_store=_knowledge_store(),
             artifact_store=_artifact_store(),
         )
@@ -402,6 +446,7 @@ def register_quant_methods_tools(
         failure_modes: list[str],
         evidence_refs: list[dict[str, Any]],
         version: int = 1,
+        method_card_set_id: str | None = None,
     ) -> CallToolResult:
         envelope = create_method_card_draft_service(
             artifact_root=environment.artifact_root,
@@ -414,6 +459,7 @@ def register_quant_methods_tools(
             failure_modes=failure_modes,
             evidence_refs=evidence_refs,
             version=version,
+            method_card_set_id=method_card_set_id,
             knowledge_store=_knowledge_store(),
         )
         return CallToolResult(**envelope_to_mcp_result(envelope))

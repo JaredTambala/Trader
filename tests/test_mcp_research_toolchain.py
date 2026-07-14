@@ -264,6 +264,8 @@ def _knowledge_store_with_bollinger_signal(artifact_root: Path) -> JsonKnowledge
     store.save_method_card(
         MethodCard(
             method_card_id=METHOD_CARD_ID,
+            method_card_set_id="method_card_set_bollinger_bwma_action_signal_test",
+            revision_number=1,
             method_id=METHOD_ID,
             title="Bollinger BWMA action signal",
             family="signal",

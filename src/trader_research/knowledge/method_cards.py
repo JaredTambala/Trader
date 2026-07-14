@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,9 +26,11 @@ from .domain import (
     EvidenceBackedField,
     EvidenceReference,
     MethodCard,
+    MethodCardSet,
     MethodologyCandidate,
     MethodologyCandidateValidationReport,
     RichMethodCard,
+    default_method_card_set_id,
 )
 from .storage import KnowledgeRepository
 from .store import JsonKnowledgeStore, KnowledgeStore, KnowledgeStoreError
@@ -37,6 +40,8 @@ KNOWLEDGE_CREATE_METHOD_CARD_DRAFT = "knowledge_create_method_card_draft"
 KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT = "knowledge_create_rich_method_card_draft"
 KNOWLEDGE_PUBLISH_METHOD_CARD = "knowledge_publish_method_card"
 KNOWLEDGE_UPDATE_METHOD_CARD_STATUS = "knowledge_update_method_card_status"
+KNOWLEDGE_LIST_METHOD_CARD_SETS = "knowledge_list_method_card_sets"
+KNOWLEDGE_GET_METHOD_CARD_SET = "knowledge_get_method_card_set"
 
 RETIRED_METHOD_CARD_STATUSES = frozenset({"rejected", "superseded"})
 WRITABLE_RETIRED_METHOD_CARD_STATUSES = RETIRED_METHOD_CARD_STATUSES
@@ -44,6 +49,8 @@ WRITABLE_RETIRED_METHOD_CARD_STATUSES = RETIRED_METHOD_CARD_STATUSES
 SEEDED_METHOD_CARDS: tuple[MethodCard, ...] = (
     MethodCard(
         method_card_id="method_card_sma_seed_v1",
+        method_card_set_id="method_card_set_sma_seed",
+        revision_number=1,
         method_id="sma",
         title="Simple moving average contract",
         family="indicator",
@@ -55,6 +62,8 @@ SEEDED_METHOD_CARDS: tuple[MethodCard, ...] = (
     ),
     MethodCard(
         method_card_id="method_card_ema_seed_v1",
+        method_card_set_id="method_card_set_ema_seed",
+        revision_number=1,
         method_id="ema",
         title="Exponential moving average contract",
         family="indicator",
@@ -66,6 +75,8 @@ SEEDED_METHOD_CARDS: tuple[MethodCard, ...] = (
     ),
     MethodCard(
         method_card_id="method_card_rsi_seed_v1",
+        method_card_set_id="method_card_set_rsi_seed",
+        revision_number=1,
         method_id="rsi",
         title="Relative strength index contract",
         family="indicator",
@@ -77,6 +88,8 @@ SEEDED_METHOD_CARDS: tuple[MethodCard, ...] = (
     ),
     MethodCard(
         method_card_id="method_card_rolling_volatility_seed_v1",
+        method_card_set_id="method_card_set_rolling_volatility_seed",
+        revision_number=1,
         method_id="rolling_volatility",
         title="Rolling volatility contract",
         family="transform",
@@ -88,6 +101,8 @@ SEEDED_METHOD_CARDS: tuple[MethodCard, ...] = (
     ),
     MethodCard(
         method_card_id="method_card_z_score_seed_v1",
+        method_card_set_id="method_card_set_z_score_seed",
+        revision_number=1,
         method_id="z_score",
         title="Z-score transform contract",
         family="transform",
@@ -99,6 +114,8 @@ SEEDED_METHOD_CARDS: tuple[MethodCard, ...] = (
     ),
     MethodCard(
         method_card_id="method_card_rank_ic_seed_v1",
+        method_card_set_id="method_card_set_rank_ic_seed",
+        revision_number=1,
         method_id="rank_ic",
         title="Rank information coefficient diagnostic",
         family="signal_diagnostic",
@@ -110,6 +127,8 @@ SEEDED_METHOD_CARDS: tuple[MethodCard, ...] = (
     ),
     MethodCard(
         method_card_id="method_card_benjamini_hochberg_seed_v1",
+        method_card_set_id="method_card_set_benjamini_hochberg_seed",
+        revision_number=1,
         method_id="benjamini_hochberg",
         title="Benjamini-Hochberg FDR correction",
         family="multiple_testing",
@@ -190,6 +209,84 @@ def get_rich_method_card(
         if card.method_card_id == method_card_id:
             return card
     return None
+
+
+def list_method_card_sets(
+    artifact_root: str | Path,
+    *,
+    method_id: str | None = None,
+    family: str | None = None,
+    status: str | None = None,
+    include_retired: bool = False,
+    limit: int = 50,
+    knowledge_store: KnowledgeStore | None = None,
+) -> ToolEnvelope:
+    """Return stable method-card set summaries for operator inspection."""
+    store = knowledge_store or JsonKnowledgeStore(artifact_root)
+    try:
+        sets = tuple(sorted(store.list_method_card_sets(), key=lambda item: item.method_card_set_id))
+    except KnowledgeStoreError as exc:
+        return _set_read_error(KNOWLEDGE_LIST_METHOD_CARD_SETS, str(exc))
+    normalized_method_id = str(method_id or "").strip()
+    normalized_family = str(family or "").strip()
+    normalized_status = str(status or "").strip()
+    filtered = []
+    for method_card_set in sets:
+        if normalized_method_id and method_card_set.method_id != normalized_method_id:
+            continue
+        if normalized_family and method_card_set.family != normalized_family:
+            continue
+        if normalized_status and method_card_set.status != normalized_status:
+            continue
+        if not include_retired and method_card_set.status == "retired":
+            continue
+        filtered.append(method_card_set)
+    bounded = filtered[: max(1, min(int(limit), 100))]
+    return success_envelope(
+        command=KNOWLEDGE_LIST_METHOD_CARD_SETS,
+        side_effect=SideEffect.READ_ONLY,
+        data={
+            "method_card_sets": [item.to_dict() for item in bounded],
+            "method_card_set_count": len(bounded),
+            "total_matching_count": len(filtered),
+        },
+    )
+
+
+def get_method_card_set(
+    artifact_root: str | Path,
+    *,
+    method_card_set_id: str,
+    include_cards: bool = True,
+    knowledge_store: KnowledgeStore | None = None,
+) -> ToolEnvelope:
+    """Return one stable method-card set with optional revision history."""
+    store = knowledge_store or JsonKnowledgeStore(artifact_root)
+    set_id = method_card_set_id.strip()
+    if not set_id:
+        return _set_read_error(KNOWLEDGE_GET_METHOD_CARD_SET, "method_card_set_id is required")
+    try:
+        method_card_set = _method_card_set_by_id(store, set_id)
+        if method_card_set is None:
+            return _set_read_error(KNOWLEDGE_GET_METHOD_CARD_SET, f"unknown method_card_set_id: {set_id}")
+        revisions = [
+            card.to_dict()
+            for card in sorted(
+                _cards_for_set(store, set_id),
+                key=lambda card: (int(card.revision_number or 0), card.created_at.isoformat(), card.method_card_id),
+            )
+        ]
+    except KnowledgeStoreError as exc:
+        return _set_read_error(KNOWLEDGE_GET_METHOD_CARD_SET, str(exc))
+    data: dict[str, Any] = {"method_card_set": method_card_set.to_dict()}
+    if include_cards:
+        data["revision_history"] = revisions
+        data["revision_count"] = len(revisions)
+    return success_envelope(
+        command=KNOWLEDGE_GET_METHOD_CARD_SET,
+        side_effect=SideEffect.READ_ONLY,
+        data=data,
+    )
 
 
 def method_cards_for_method(
@@ -311,6 +408,7 @@ def create_method_card_draft(
     failure_modes: Sequence[str],
     evidence_refs: Sequence[Mapping[str, Any]],
     version: int = 1,
+    method_card_set_id: str | None = None,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ToolEnvelope:
     """Validate method-card fields and persist a draft tied to source evidence.
@@ -347,10 +445,19 @@ def create_method_card_draft(
                 message="method-card draft evidence validation failed",
                 data=citation_result.data,
             )
+        source_fingerprint = _source_fingerprint_from_refs(store, refs)
+        resolved_set_id = _resolve_method_card_set_id(
+            method_card_set_id=method_card_set_id,
+            method_id=method_id,
+            title=title,
+            family=family,
+            source_fingerprint=source_fingerprint,
+        )
         draft = MethodCard(
             method_card_id=stable_research_id(
                 "method_card_draft",
                 {
+                    "method_card_set_id": resolved_set_id,
                     "method_id": method_id.strip(),
                     "title": title.strip(),
                     "family": family.strip(),
@@ -363,6 +470,8 @@ def create_method_card_draft(
             family=family.strip(),
             status="draft",
             version=int(version),
+            method_card_set_id=resolved_set_id,
+            revision_number=int(version),
             assumptions=_clean_tuple(assumptions),
             inputs=_clean_tuple(inputs),
             outputs=_clean_tuple(outputs),
@@ -370,6 +479,7 @@ def create_method_card_draft(
             evidence_refs=refs,
         )
         store.save_method_card(draft)
+        _sync_method_card_set(store, draft, source_fingerprint=source_fingerprint)
     except (ValueError, KnowledgeStoreError) as exc:
         return error_envelope(
             command=KNOWLEDGE_CREATE_METHOD_CARD_DRAFT,
@@ -401,6 +511,7 @@ def create_rich_method_card_draft(
     title: str | None = None,
     family: str | None = None,
     version: int = 1,
+    method_card_set_id: str | None = None,
     knowledge_store: KnowledgeStore | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ToolEnvelope:
@@ -435,6 +546,7 @@ def create_rich_method_card_draft(
                 message="rich method-card draft evidence validation failed",
                 data=citation_result.data,
             )
+        source_fingerprint = _source_fingerprint_from_sources(sources)
         draft = _rich_method_card_from_candidate(
             candidate=candidate,
             report=report,
@@ -444,9 +556,12 @@ def create_rich_method_card_draft(
             title=title,
             family=family,
             version=version,
+            method_card_set_id=method_card_set_id,
+            source_fingerprint=source_fingerprint,
             evidence_refs=refs,
         )
         knowledge_store.save_rich_method_card(draft)
+        _sync_method_card_set(knowledge_store, draft, source_fingerprint=source_fingerprint)
     except (ValueError, KnowledgeStoreError, ResearchArtifactStoreError) as exc:
         return _rich_draft_error(str(exc))
     return success_envelope(
@@ -525,6 +640,11 @@ def publish_method_card(
                 message="method-card publish evidence validation failed",
                 data=citation_result.data,
             )
+        supersedes_method_card_id = _current_approved_method_card_id(
+            store,
+            _required_method_card_set_id(draft),
+            excluding_method_card_id=approved_method_card_id.strip(),
+        )
         approved = replace(
             draft,
             method_card_id=approved_method_card_id.strip(),
@@ -532,6 +652,7 @@ def publish_method_card(
             source_method_card_id=draft.method_card_id,
             approved_by=approved_by.strip(),
             approval_note=approval_note.strip(),
+            supersedes_method_card_id=supersedes_method_card_id,
         )
         existing = get_method_card(
             artifact_root,
@@ -540,8 +661,10 @@ def publish_method_card(
             knowledge_store=store,
         )
         if existing is not None:
+            approved = replace(approved, supersedes_method_card_id=existing.supersedes_method_card_id)
             if _comparable_card_payload(existing) != _comparable_card_payload(approved):
                 return _publish_error(f"approved method card already exists with different content: {approved.method_card_id}")
+            _sync_method_card_set(store, existing)
             return success_envelope(
                 command=KNOWLEDGE_PUBLISH_METHOD_CARD,
                 side_effect=SideEffect.LOCAL_MUTATING,
@@ -551,7 +674,13 @@ def publish_method_card(
                 },
                 warnings=("approved method card already exists with identical content",),
             )
+        _supersede_prior_approved_revision(
+            store,
+            method_card_set_id=_required_method_card_set_id(approved),
+            superseded_by_method_card_id=approved.method_card_id,
+        )
         store.save_method_card(approved)
+        _sync_method_card_set(store, approved)
     except KnowledgeStoreError as exc:
         return error_envelope(
             command=KNOWLEDGE_PUBLISH_METHOD_CARD,
@@ -616,6 +745,7 @@ def update_method_card_status(
                 superseded_by_method_card_id=superseded_by,
             )
             store.save_rich_method_card(updated_card)
+            _sync_method_card_set(store, updated_card)
         else:
             card = _get_persisted_method_card_any_status(
                 artifact_root,
@@ -633,6 +763,7 @@ def update_method_card_status(
                 superseded_by_method_card_id=superseded_by,
             )
             store.save_method_card(updated_card)
+            _sync_method_card_set(store, updated_card)
     except KnowledgeStoreError as exc:
         return error_envelope(
             command=KNOWLEDGE_UPDATE_METHOD_CARD_STATUS,
@@ -680,6 +811,11 @@ def _publish_rich_method_card(
             message="method-card publish evidence validation failed",
             data=citation_result.data,
         )
+    supersedes_method_card_id = _current_approved_method_card_id(
+        store,
+        _required_method_card_set_id(draft),
+        excluding_method_card_id=approved_method_card_id.strip(),
+    )
     approved = replace(
         draft,
         method_card_id=approved_method_card_id.strip(),
@@ -687,6 +823,7 @@ def _publish_rich_method_card(
         source_method_card_id=draft.method_card_id,
         approved_by=approved_by.strip(),
         approval_note=approval_note.strip(),
+        supersedes_method_card_id=supersedes_method_card_id,
         lineage={
             **dict(draft.lineage),
             "approval": {
@@ -709,8 +846,10 @@ def _publish_rich_method_card(
         knowledge_store=store,
     )
     if existing is not None:
+        approved = replace(approved, supersedes_method_card_id=existing.supersedes_method_card_id)
         if _comparable_card_payload(existing) != _comparable_card_payload(approved):
             return _publish_error(f"approved method card already exists with different content: {approved.method_card_id}")
+        _sync_method_card_set(store, existing)
         return success_envelope(
             command=KNOWLEDGE_PUBLISH_METHOD_CARD,
             side_effect=SideEffect.LOCAL_MUTATING,
@@ -720,7 +859,13 @@ def _publish_rich_method_card(
             },
             warnings=("approved method card already exists with identical content",),
         )
+    _supersede_prior_approved_revision(
+        store,
+        method_card_set_id=_required_method_card_set_id(approved),
+        superseded_by_method_card_id=approved.method_card_id,
+    )
     store.save_rich_method_card(approved)
+    _sync_method_card_set(store, approved)
     return success_envelope(
         command=KNOWLEDGE_PUBLISH_METHOD_CARD,
         side_effect=SideEffect.LOCAL_MUTATING,
@@ -766,7 +911,7 @@ def _require_passed_methodology_validation(report: MethodologyCandidateValidatio
 
 
 def _readiness_gate_blockers(readiness_summary: Mapping[str, Any], required_level: str) -> list[str]:
-    if not readiness_summary or readiness_summary.get("source") == "legacy_candidate_validation":
+    if not readiness_summary or readiness_summary.get("source") != "methodology_evidence_packet":
         return [
             "methodology candidate validation must include methodology_evidence_packet readiness "
             f"for {required_level}"
@@ -831,19 +976,38 @@ def _rich_method_card_from_candidate(
     title: str | None,
     family: str | None,
     version: int,
+    method_card_set_id: str | None,
+    source_fingerprint: str | None,
     evidence_refs: Sequence[EvidenceReference],
 ) -> RichMethodCard:
+    override_blockers = _rich_draft_semantic_blockers(
+        candidate=candidate,
+        report=report,
+        method_id=method_id,
+        title=title,
+        family=family,
+    )
+    if override_blockers:
+        raise ValueError("; ".join(override_blockers))
     resolved_family = (family or (candidate.families[0] if candidate.families else "")).strip()
     if not resolved_family:
         raise ValueError("rich method-card family is required")
     resolved_title = (title or candidate.title).strip()
     resolved_method_id = (method_id or _method_id_from_title(resolved_title)).strip()
+    resolved_set_id = _resolve_method_card_set_id(
+        method_card_set_id=method_card_set_id,
+        method_id=resolved_method_id,
+        title=resolved_title,
+        family=resolved_family,
+        source_fingerprint=source_fingerprint,
+    )
     assumptions, inputs, outputs, failure_modes, blockers = _derive_shallow_method_fields(candidate)
     if blockers:
         raise ValueError("; ".join(blockers))
     draft_id = stable_research_id(
         "method_card_draft",
         {
+            "method_card_set_id": resolved_set_id,
             "method_id": resolved_method_id,
             "candidate_id": candidate.methodology_candidate_id,
             "validation_id": report.validation_id,
@@ -865,6 +1029,8 @@ def _rich_method_card_from_candidate(
         family=resolved_family,
         status="draft",
         version=int(version),
+        method_card_set_id=resolved_set_id,
+        revision_number=int(version),
         assumptions=assumptions,
         inputs=inputs,
         outputs=outputs,
@@ -880,11 +1046,64 @@ def _rich_method_card_from_candidate(
             "methodology_validation_id": report.validation_id,
             "candidate_ref": dict(report.candidate_ref),
             "readiness_summary": dict(report.readiness_summary),
+            "source_fingerprint": source_fingerprint,
             "source_hashes": {source_id: source.file_hash for source_id, source in sorted(sources.items())},
             "chunk_hashes": {chunk.chunk_id: chunk.text_hash for chunk in chunks},
             "candidate_lineage": dict(candidate.lineage),
         },
     )
+
+
+def _rich_draft_semantic_blockers(
+    *,
+    candidate: MethodologyCandidate,
+    report: MethodologyCandidateValidationReport,
+    method_id: str | None,
+    title: str | None,
+    family: str | None,
+) -> tuple[str, ...]:
+    blockers: list[str] = []
+    identity_terms = _candidate_identity_terms(candidate)
+    normalized_terms = {_normalize_identity(term) for term in identity_terms if _normalize_identity(term)}
+    identity = candidate.method_identity if isinstance(candidate.method_identity, Mapping) else {}
+    evidence_ids = identity.get("identity_evidence_unit_ids")
+    if not identity_terms:
+        blockers.append("rich method-card draft requires source-backed method identity terms")
+    if not isinstance(evidence_ids, Sequence) or isinstance(evidence_ids, (str, bytes)) or not evidence_ids:
+        blockers.append("rich method-card draft requires method identity evidence-unit refs")
+
+    resolved_title = str(title or candidate.title).strip()
+    if normalized_terms and _normalize_identity(resolved_title) not in normalized_terms:
+        blockers.append("rich method-card title must be supported by candidate identity or alias evidence")
+
+    if method_id is not None:
+        supported_method_ids = {_method_id_from_title(term) for term in identity_terms}
+        if str(method_id).strip() not in supported_method_ids:
+            blockers.append("rich method-card method_id must be derived from candidate identity or alias evidence")
+
+    if family is not None and str(family).strip() not in set(candidate.families):
+        blockers.append("rich method-card family override must match a validated candidate family")
+    readiness_packet_id = str(report.readiness_summary.get("evidence_packet_id") or "")
+    candidate_packet_id = str(candidate.lineage.get("evidence_packet_id") or "")
+    if report.readiness_summary.get("source") != "methodology_evidence_packet":
+        blockers.append("rich method-card draft requires packet-backed semantic validation")
+    if not readiness_packet_id or readiness_packet_id != candidate_packet_id:
+        blockers.append("rich method-card draft requires candidate lineage matching validation evidence_packet_id")
+    return tuple(dict.fromkeys(blockers))
+
+
+def _candidate_identity_terms(candidate: MethodologyCandidate) -> tuple[str, ...]:
+    identity = candidate.method_identity if isinstance(candidate.method_identity, Mapping) else {}
+    terms = [candidate.title, str(identity.get("canonical_name") or ""), str(identity.get("source_name") or "")]
+    for key in ("aliases", "abbreviations"):
+        values = identity.get(key)
+        if isinstance(values, Sequence) and not isinstance(values, (str, bytes)):
+            terms.extend(str(value) for value in values)
+    return tuple(dict.fromkeys(term.strip() for term in terms if term.strip()))
+
+
+def _normalize_identity(text: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9+-]+", str(text).lower()))
 
 
 def _derive_shallow_method_fields(
@@ -1145,6 +1364,228 @@ def _get_persisted_rich_method_card_any_status(
     return None
 
 
+def _resolve_method_card_set_id(
+    *,
+    method_card_set_id: str | None,
+    method_id: str,
+    title: str,
+    family: str,
+    source_fingerprint: str | None,
+) -> str:
+    explicit = str(method_card_set_id or "").strip()
+    if explicit:
+        return explicit
+    return default_method_card_set_id(
+        method_id=method_id,
+        title=title,
+        family=family,
+        source_fingerprint=source_fingerprint,
+    )
+
+
+def _source_fingerprint_from_refs(store: KnowledgeStore, refs: Sequence[EvidenceReference]) -> str | None:
+    source_ids = sorted({str(ref.source_id) for ref in refs if ref.source_id})
+    if not source_ids:
+        return None
+    source_rows = []
+    for source_id in source_ids:
+        source = store.load_source(source_id)
+        if source is None:
+            continue
+        source_rows.append(
+            {
+                "source_id": source.source_id,
+                "file_hash": source.file_hash,
+                "title": source.title,
+                "source_type": source.source_type,
+            }
+        )
+    if not source_rows:
+        return None
+    return stable_research_id("source_fingerprint", {"sources": source_rows})
+
+
+def _source_fingerprint_from_sources(sources: Mapping[str, Any]) -> str | None:
+    source_rows = [
+        {
+            "source_id": source_id,
+            "file_hash": source.file_hash,
+            "title": source.title,
+            "source_type": source.source_type,
+        }
+        for source_id, source in sorted(sources.items())
+    ]
+    if not source_rows:
+        return None
+    return stable_research_id("source_fingerprint", {"sources": source_rows})
+
+
+def _method_card_set_by_id(store: KnowledgeStore, method_card_set_id: str) -> MethodCardSet | None:
+    for method_card_set in store.list_method_card_sets():
+        if method_card_set.method_card_set_id == method_card_set_id:
+            return method_card_set
+    return None
+
+
+def _cards_for_set(store: KnowledgeStore, method_card_set_id: str) -> tuple[MethodCard, ...]:
+    return tuple(
+        card
+        for card in store.list_persisted_method_cards()
+        if card.method_card_set_id == method_card_set_id
+    )
+
+
+def _required_method_card_set_id(card: MethodCard | RichMethodCard) -> str:
+    method_card_set_id = str(card.method_card_set_id or "").strip()
+    if not method_card_set_id:
+        raise ValueError(f"method_card_set_id is required for method card {card.method_card_id}")
+    return method_card_set_id
+
+
+def _sync_method_card_set(
+    store: KnowledgeStore,
+    card: MethodCard | RichMethodCard,
+    *,
+    source_fingerprint: str | None = None,
+) -> MethodCardSet:
+    method_card_set = _build_method_card_set(
+        store,
+        _required_method_card_set_id(card),
+        base_card=card.to_method_card() if isinstance(card, RichMethodCard) else card,
+        source_fingerprint=source_fingerprint,
+    )
+    store.save_method_card_set(method_card_set)
+    return method_card_set
+
+
+def _build_method_card_set(
+    store: KnowledgeStore,
+    method_card_set_id: str,
+    *,
+    base_card: MethodCard | None = None,
+    source_fingerprint: str | None = None,
+) -> MethodCardSet:
+    if not method_card_set_id.strip():
+        raise ValueError("method_card_set_id is required")
+    cards = list(_cards_for_set(store, method_card_set_id))
+    if base_card is not None and base_card.method_card_id not in {card.method_card_id for card in cards}:
+        cards.append(base_card)
+    if not cards:
+        if base_card is None:
+            raise ValueError(f"cannot build empty method-card set: {method_card_set_id}")
+        cards = [base_card]
+    cards.sort(key=lambda card: (int(card.revision_number or 0), card.created_at.isoformat(), card.method_card_id))
+    existing = _method_card_set_by_id(store, method_card_set_id)
+    first = cards[0]
+    status_counts = Counter(card.status for card in cards)
+    active_approved = [card for card in cards if card.status == "approved"]
+    published_draft_ids = {card.source_method_card_id for card in cards if card.source_method_card_id}
+    active_drafts = [
+        card
+        for card in cards
+        if card.status == "draft" and card.method_card_id not in published_draft_ids
+    ]
+    current_approved = _latest_revision(active_approved)
+    current_draft = _latest_revision(active_drafts)
+    if len(active_approved) > 1:
+        set_status = "needs_review"
+    elif current_approved is not None or current_draft is not None:
+        set_status = "active"
+    else:
+        set_status = "retired"
+    existing_fingerprint = existing.source_fingerprint if existing is not None else None
+    created_at = existing.created_at if existing is not None else min(card.created_at for card in cards)
+    now = datetime.now(timezone.utc)
+    return MethodCardSet(
+        method_card_set_id=method_card_set_id,
+        method_id=first.method_id,
+        family=first.family,
+        canonical_title=existing.canonical_title if existing is not None else first.title,
+        status=set_status,
+        source_fingerprint=source_fingerprint or existing_fingerprint,
+        current_approved_method_card_id=current_approved.method_card_id if current_approved else None,
+        current_draft_method_card_id=current_draft.method_card_id if current_draft else None,
+        card_ids=tuple(card.method_card_id for card in cards),
+        revision_count=len(cards),
+        latest_revision_number=max(int(card.revision_number or 0) for card in cards),
+        status_counts=dict(sorted(status_counts.items())),
+        lineage={
+            **(dict(existing.lineage) if existing is not None else {}),
+            "updated_by": "method_card_set_sync",
+            "updated_at": now.isoformat(),
+        },
+        created_at=created_at,
+        updated_at=now,
+    )
+
+
+def _latest_revision(cards: Sequence[MethodCard]) -> MethodCard | None:
+    if not cards:
+        return None
+    return max(cards, key=lambda card: (int(card.revision_number or 0), card.created_at.isoformat(), card.method_card_id))
+
+
+def _current_approved_method_card_id(
+    store: KnowledgeStore,
+    method_card_set_id: str,
+    *,
+    excluding_method_card_id: str,
+) -> str | None:
+    approved = [
+        card
+        for card in _cards_for_set(store, method_card_set_id)
+        if card.status == "approved" and card.method_card_id != excluding_method_card_id
+    ]
+    current = _latest_revision(approved)
+    return current.method_card_id if current is not None else None
+
+
+def _supersede_prior_approved_revision(
+    store: KnowledgeStore,
+    *,
+    method_card_set_id: str,
+    superseded_by_method_card_id: str,
+) -> None:
+    prior_id = _current_approved_method_card_id(
+        store,
+        method_card_set_id,
+        excluding_method_card_id=superseded_by_method_card_id,
+    )
+    if prior_id is None:
+        return
+    prior_rich = _get_persisted_rich_method_card_any_status(
+        ".",
+        prior_id,
+        knowledge_store=store,
+    )
+    if prior_rich is not None:
+        store.save_rich_method_card(
+            _retired_rich_method_card(
+                prior_rich,
+                status="superseded",
+                updated_by="knowledge_publish_method_card",
+                note="Superseded by a newer approved revision in the same method-card set.",
+                superseded_by_method_card_id=superseded_by_method_card_id,
+            )
+        )
+        return
+    prior = _get_persisted_method_card_any_status(
+        ".",
+        prior_id,
+        knowledge_store=store,
+    )
+    if prior is not None:
+        store.save_method_card(
+            _retired_method_card(
+                prior,
+                status="superseded",
+                updated_by="knowledge_publish_method_card",
+                note="Superseded by a newer approved revision in the same method-card set.",
+                superseded_by_method_card_id=superseded_by_method_card_id,
+            )
+        )
+
+
 def _retired_method_card(
     card: MethodCard,
     *,
@@ -1241,6 +1682,15 @@ def _lifecycle_error(message: str) -> ToolEnvelope:
         command=KNOWLEDGE_UPDATE_METHOD_CARD_STATUS,
         side_effect=SideEffect.LOCAL_MUTATING,
         code="method_card_lifecycle_error",
+        message=message,
+    )
+
+
+def _set_read_error(command: str, message: str) -> ToolEnvelope:
+    return error_envelope(
+        command=command,
+        side_effect=SideEffect.READ_ONLY,
+        code="method_card_set_error",
         message=message,
     )
 

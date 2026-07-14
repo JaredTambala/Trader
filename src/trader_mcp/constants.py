@@ -44,6 +44,12 @@ KNOWLEDGE_LIST_SOURCES_TOOL: Final = "knowledge_list_sources"
 KNOWLEDGE_SEARCH_METHODS_TOOL: Final = "knowledge_search_methods"
 """Tool name for searching method-card metadata."""
 
+KNOWLEDGE_LIST_METHOD_CARD_SETS_TOOL: Final = "knowledge_list_method_card_sets"
+"""Tool name for listing stable method-card set summaries."""
+
+KNOWLEDGE_GET_METHOD_CARD_SET_TOOL: Final = "knowledge_get_method_card_set"
+"""Tool name for reading stable method-card set revision history."""
+
 KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL: Final = "knowledge_retrieve_evidence"
 """Tool name for retrieving citeable method evidence."""
 
@@ -166,6 +172,8 @@ KNOWLEDGE_TOOL_NAMES: Final = (
     KNOWLEDGE_GET_INGESTION_STATUS_TOOL,
     KNOWLEDGE_LIST_SOURCES_TOOL,
     KNOWLEDGE_SEARCH_METHODS_TOOL,
+    KNOWLEDGE_LIST_METHOD_CARD_SETS_TOOL,
+    KNOWLEDGE_GET_METHOD_CARD_SET_TOOL,
     KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL,
     KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL,
     KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL,
@@ -244,6 +252,8 @@ KNOWLEDGE_TOOL_DESCRIPTIONS: Final = {
     KNOWLEDGE_GET_INGESTION_STATUS_TOOL: "Return knowledge source and ingestion status.",
     KNOWLEDGE_LIST_SOURCES_TOOL: "List registered Quant Methods knowledge sources.",
     KNOWLEDGE_SEARCH_METHODS_TOOL: "Search approved Quant Methods method-card metadata.",
+    KNOWLEDGE_LIST_METHOD_CARD_SETS_TOOL: "List stable Quant Methods method-card sets and current pointers.",
+    KNOWLEDGE_GET_METHOD_CARD_SET_TOOL: "Return one method-card set with revision history.",
     KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL: "Retrieve citeable Quant Methods evidence chunks.",
     KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL: "Dereference citeable Quant Methods evidence chunks into bounded stored text.",
     KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL: (

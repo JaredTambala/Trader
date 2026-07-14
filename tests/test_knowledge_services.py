@@ -5,11 +5,16 @@ from pathlib import Path
 from pypdf import PdfWriter
 
 from trader_research.knowledge.citation_validation import validate_citations
-from trader_research.knowledge.embeddings import DeterministicEmbeddingProvider, RuntimeConfiguredEmbeddingProvider
+from trader_research.knowledge.embeddings import (
+    DeterministicEmbeddingProvider,
+    EmbeddingRequestError,
+    RuntimeConfiguredEmbeddingProvider,
+)
 from trader_research.knowledge.extractors import extract_text
 from trader_research.knowledge.ingestion import ingest_documents
 from trader_research.knowledge.retrieval import get_evidence_chunks, retrieve_evidence
 from trader_research.knowledge.sources import register_source
+from trader_research.knowledge.store import JsonKnowledgeStore
 
 
 FIXTURE = Path("tests/fixtures/knowledge/sma_method.md")
@@ -142,6 +147,9 @@ def test_ingest_retrieve_and_validate_citations(tmp_path: Path) -> None:
     assert result["source_status"] == "registered"
     assert dereferenced.ok is True
     dereferenced_chunk = dereferenced.data["evidence_chunk_dereference_report"]["chunks"][0]
+    assert result["chunk_id"].startswith("knowledge_evidence_unit_")
+    assert dereferenced_chunk["evidence_unit_id"] == result["chunk_id"]
+    assert dereferenced_chunk["chunker_version"] == "evidence-unit-v1"
     assert "simple moving average computes the arithmetic mean" in dereferenced_chunk["text"]
     assert "warmup observations exist" in dereferenced_chunk["text"]
     assert dereferenced_chunk["hash_verified"] is True
@@ -159,6 +167,39 @@ def test_ingest_retrieve_and_validate_citations(tmp_path: Path) -> None:
     assert citation.data["citation_validation_report"]["valid"] is True
     assert bad_citation.ok is False
     assert bad_citation.errors[0]["code"] == "citation_validation_failed"
+
+
+def test_force_ingestion_replaces_chunks_without_loading_legacy_payloads(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    store = JsonKnowledgeStore(artifact_root)
+    registered = register_source(
+        artifact_root=artifact_root,
+        path=FIXTURE,
+        title="Legacy SMA Source",
+        source_type="method_textbook",
+        knowledge_store=store,
+    )
+    source_id = registered.data["knowledge_source_manifest"]["source_id"]
+
+    def reject_legacy_load(_source_id: str):
+        raise ValueError("knowledge evidence unit must be regenerated with schema_version 2")
+
+    monkeypatch.setattr(store, "load_chunks", reject_legacy_load)
+
+    result = ingest_documents(
+        artifact_root=artifact_root,
+        source_ids=(source_id,),
+        embedding_provider=DeterministicEmbeddingProvider(),
+        force=True,
+        knowledge_store=store,
+    )
+
+    assert result.ok is True
+    assert result.data["knowledge_ingestion_report"]["source_ids"] == [source_id]
+    assert result.data["knowledge_ingestion_report"]["evidence_units_indexed"] >= 1
 
 
 def test_pdf_extraction_reports_scanned_page_warning(tmp_path: Path) -> None:
@@ -193,3 +234,48 @@ def test_ingestion_requires_configured_real_embedding_provider_by_default(tmp_pa
     assert result.ok is False
     assert result.errors[0]["code"] == "embedding_configuration_error"
     assert "TRADER_RESEARCH_EMBEDDINGS_PROVIDER" in result.errors[0]["message"]
+
+
+def test_force_ingestion_stages_embeddings_before_replacing_active_evidence(tmp_path: Path) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source_path = tmp_path / "method.md"
+    source_path.write_text(FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
+    store = JsonKnowledgeStore(artifact_root)
+    registered = register_source(
+        artifact_root=artifact_root,
+        path=source_path,
+        title="Staged SMA Source",
+        source_type="method_textbook",
+        allowed_roots=(tmp_path,),
+        knowledge_store=store,
+    )
+    source_id = registered.data["knowledge_source_manifest"]["source_id"]
+    initial = ingest_documents(
+        artifact_root=artifact_root,
+        source_ids=(source_id,),
+        embedding_provider=DeterministicEmbeddingProvider(),
+        knowledge_store=store,
+    )
+    active_before = store.load_chunks(source_id)
+    source_path.write_text("Replacement Method: entirely new source text.", encoding="utf-8")
+
+    class FailingEmbeddingProvider:
+        provider = "test"
+        model = "always-fails"
+        version = "1"
+
+        def embed(self, text: str) -> tuple[float, ...]:
+            raise EmbeddingRequestError(f"embedding failed for {len(text)} chars")
+
+    failed = ingest_documents(
+        artifact_root=artifact_root,
+        source_ids=(source_id,),
+        embedding_provider=FailingEmbeddingProvider(),
+        force=True,
+        knowledge_store=store,
+    )
+
+    assert initial.ok is True
+    assert failed.ok is False
+    assert failed.errors[0]["code"] == "embedding_index_error"
+    assert store.load_chunks(source_id) == active_before

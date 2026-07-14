@@ -15,6 +15,7 @@ from .domain import (
     KnowledgeIngestionReport,
     KnowledgeSourceManifest,
     MethodCard,
+    MethodCardSet,
     RICH_METHOD_CARD_FORMAT,
     RichMethodCard,
 )
@@ -61,6 +62,11 @@ class KnowledgeRepository:
         return self.artifact_root / "method_cards"
 
     @property
+    def method_card_set_dir(self) -> Path:
+        """Return the artifact directory containing stable method-card set records."""
+        return self.artifact_root / "method_card_sets"
+
+    @property
     def method_contract_dir(self) -> Path:
         """Return the artifact directory containing persisted method contract override artifacts under root."""
         return self.artifact_root / "method_contracts"
@@ -78,6 +84,7 @@ class KnowledgeRepository:
             self.embedding_dir,
             self.ingestion_dir,
             self.method_card_dir,
+            self.method_card_set_dir,
             self.method_contract_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
@@ -99,7 +106,7 @@ class KnowledgeRepository:
         return self.source_dir / f"{source_id}.json"
 
     def chunk_manifest_path(self, source_id: str) -> Path:
-        """Return the chunk-manifest artifact path associated with a stable source identifier."""
+        """Return the evidence-unit manifest path associated with a stable source identifier."""
         return self.chunk_dir / f"{source_id}.json"
 
     def ingestion_path(self, ingestion_id: str) -> Path:
@@ -113,6 +120,10 @@ class KnowledgeRepository:
     def method_card_path(self, method_card_id: str) -> Path:
         """Return the method-card artifact path for a draft or approved card ID."""
         return self.method_card_dir / f"{method_card_id}.json"
+
+    def method_card_set_path(self, method_card_set_id: str) -> Path:
+        """Return the method-card set artifact path for a stable aggregate ID."""
+        return self.method_card_set_dir / f"{method_card_set_id}.json"
 
     def method_contract_path(self, method_id: str) -> Path:
         """Return the method-contract artifact path for a maintained method identifier under root."""
@@ -140,32 +151,38 @@ class KnowledgeRepository:
         )
 
     def save_chunks(self, source_id: str, chunks: Sequence[KnowledgeChunk]) -> Path:
-        """Persist the active chunk manifest for one registered source identifier under root."""
+        """Persist the active evidence-unit manifest for one registered source identifier under root."""
         self.ensure_dirs()
         payload = {
-            "artifact_type": "knowledge_chunk_manifest",
+            "artifact_type": "knowledge_evidence_unit_manifest",
+            "schema_version": "2",
             "source_id": source_id,
+            "evidence_unit_count": len(chunks),
             "chunk_count": len(chunks),
-            "chunks": [chunk.to_dict() for chunk in chunks],
+            "evidence_units": [chunk.to_dict() for chunk in chunks],
         }
         return write_json_artifact(payload, self.chunk_manifest_path(source_id))
 
     def load_chunks(self, source_id: str) -> tuple[KnowledgeChunk, ...]:
-        """Load chunk artifacts for one source, returning an empty tuple if absent locally."""
+        """Load schema-v2 evidence units for one source, returning empty when absent locally."""
         path = self.chunk_manifest_path(source_id)
         if not path.exists():
             return tuple()
         payload = _read_json(path)
-        return tuple(KnowledgeChunk.from_dict(item) for item in _sequence(payload.get("chunks")))
+        if payload.get("artifact_type") != "knowledge_evidence_unit_manifest":
+            raise ValueError("legacy knowledge chunk manifest must be regenerated with evidence-unit ingestion")
+        return tuple(KnowledgeChunk.from_dict(item) for item in _sequence(payload.get("evidence_units")))
 
     def list_chunks(self) -> tuple[KnowledgeChunk, ...]:
-        """Load chunks from every source manifest in deterministic file order for indexing."""
+        """Load evidence units from every source manifest in deterministic file order for indexing."""
         if not self.chunk_dir.exists():
             return tuple()
         chunks: list[KnowledgeChunk] = []
         for path in sorted(self.chunk_dir.glob("*.json")):
             payload = _read_json(path)
-            chunks.extend(KnowledgeChunk.from_dict(item) for item in _sequence(payload.get("chunks")))
+            if payload.get("artifact_type") != "knowledge_evidence_unit_manifest":
+                raise ValueError("legacy knowledge chunk manifest must be regenerated with evidence-unit ingestion")
+            chunks.extend(KnowledgeChunk.from_dict(item) for item in _sequence(payload.get("evidence_units")))
         return tuple(chunks)
 
     def save_embedding_manifest(self, manifest: KnowledgeEmbeddingManifest) -> Path:
@@ -214,6 +231,11 @@ class KnowledgeRepository:
         self.ensure_dirs()
         return write_json_artifact(method_card.to_dict(), self.method_card_path(method_card.method_card_id))
 
+    def save_method_card_set(self, method_card_set: MethodCardSet) -> Path:
+        """Persist a stable method-card set summary and return its artifact path."""
+        self.ensure_dirs()
+        return write_json_artifact(method_card_set.to_dict(), self.method_card_set_path(method_card_set.method_card_set_id))
+
     def list_persisted_method_cards(self) -> tuple[MethodCard, ...]:
         """Load persisted method cards from disk in deterministic filename order for merging."""
         if not self.method_card_dir.exists():
@@ -230,6 +252,14 @@ class KnowledgeRepository:
             if payload.get("card_format") == RICH_METHOD_CARD_FORMAT:
                 cards.append(RichMethodCard.from_dict(payload))
         return tuple(cards)
+
+    def list_method_card_sets(self) -> tuple[MethodCardSet, ...]:
+        """Load stable method-card set summaries from disk in deterministic order."""
+        if not self.method_card_set_dir.exists():
+            return tuple()
+        return tuple(
+            MethodCardSet.from_dict(_read_json(path)) for path in sorted(self.method_card_set_dir.glob("*.json"))
+        )
 
     def save_method_contract(self, method: MethodRegistryEntry) -> Path:
         """Persist a method-contract artifact and return its deterministic artifact path for callers."""

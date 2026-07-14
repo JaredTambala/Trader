@@ -290,6 +290,7 @@ def _chunk_payload(
     text = chunk.text[:max_chars_per_chunk] if include_text else None
     return {
         "chunk_id": chunk.chunk_id,
+        "evidence_unit_id": chunk.evidence_unit_id,
         "source_id": chunk.source_id,
         "source_title": source.title if source is not None else None,
         "source_type": source.source_type if source is not None else None,
@@ -298,6 +299,13 @@ def _chunk_payload(
         "locator": dict(chunk.locator),
         "topics": list(chunk.topics),
         "method_families": list(chunk.method_families),
+        "parent_section_id": chunk.parent_section_id,
+        "paragraph_index": chunk.paragraph_index,
+        "sentence_start_index": chunk.sentence_start_index,
+        "sentence_end_index": chunk.sentence_end_index,
+        "detected_labels": list(chunk.detected_labels),
+        "neighbor_chunk_ids": list(chunk.neighbor_chunk_ids),
+        "chunker_version": chunk.chunker_version,
         "text_hash": chunk.text_hash,
         "hash_verified": hashlib.sha256(chunk.text.encode("utf-8")).hexdigest() == chunk.text_hash,
         "text_char_count": len(chunk.text),

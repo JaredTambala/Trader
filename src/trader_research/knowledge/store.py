@@ -15,6 +15,7 @@ from .domain import (
     KnowledgeIngestionReport,
     KnowledgeSourceManifest,
     MethodCard,
+    MethodCardSet,
     RichMethodCard,
 )
 from .embeddings import TOKEN_PATTERN, cosine_similarity
@@ -89,16 +90,16 @@ class KnowledgeStore(Protocol):
         """Return source manifests whose file hash matches the supplied digest for duplicates."""
 
     def replace_chunks(self, source_id: str, chunks: Sequence[KnowledgeChunk]) -> None:
-        """Replace the active chunk set associated with a registered source identifier."""
+        """Replace the active evidence-unit set associated with a registered source identifier."""
 
     def load_chunks(self, source_id: str) -> tuple[KnowledgeChunk, ...]:
-        """Load active chunks for one source in deterministic source order for retrieval."""
+        """Load active evidence units for one source in deterministic source order for retrieval."""
 
     def list_chunks(self, *, source_ids: Sequence[str] | None = None) -> tuple[KnowledgeChunk, ...]:
-        """List active chunks, optionally restricted to a set of source IDs."""
+        """List active evidence units, optionally restricted to a set of source IDs."""
 
     def load_chunks_by_ids(self, chunk_ids: Sequence[str]) -> tuple[KnowledgeChunk, ...]:
-        """Load active chunks by stable chunk ID while preserving requested order."""
+        """Load active evidence units by stable chunk ID while preserving requested order."""
 
     def index_embeddings(
         self,
@@ -110,6 +111,16 @@ class KnowledgeStore(Protocol):
 
     def save_ingestion_report(self, report: KnowledgeIngestionReport) -> None:
         """Persist an ingestion report for later status and audit queries by tools."""
+
+    def publish_ingestion(
+        self,
+        replacements: Mapping[str, Sequence[KnowledgeChunk]],
+        manifest: KnowledgeEmbeddingManifest,
+        indexed_chunks: Sequence[KnowledgeChunk],
+        embeddings: Sequence[StoredEmbedding],
+        report: KnowledgeIngestionReport,
+    ) -> None:
+        """Publish one complete evidence, embedding, and report generation."""
 
     def list_ingestion_reports(
         self,
@@ -158,6 +169,12 @@ class KnowledgeStore(Protocol):
     def list_persisted_rich_method_cards(self) -> tuple[RichMethodCard, ...]:
         """List persisted rich method cards with full nullable methodology fields."""
 
+    def save_method_card_set(self, method_card_set: MethodCardSet) -> None:
+        """Persist a stable method-card set summary for revision grouping."""
+
+    def list_method_card_sets(self) -> tuple[MethodCardSet, ...]:
+        """List stable method-card set summaries."""
+
     def save_method_contract(self, method: MethodRegistryEntry) -> None:
         """Persist a method contract using its maintained method identifier for registry lookup."""
 
@@ -196,6 +213,7 @@ class JsonKnowledgeStore:
             "knowledge_embedding_manifest": self.repository.embedding_path,
             "method_card_draft": self.repository.method_card_path,
             "method_card": self.repository.method_card_path,
+            "method_card_set": self.repository.method_card_set_path,
             "method_contract": self.repository.method_contract_path,
         }
         path_factory = path_by_type.get(artifact_type)
@@ -286,6 +304,7 @@ class JsonKnowledgeStore:
         for chunk in chunks:
             existing[chunk.chunk_id] = {
                 "chunk_id": chunk.chunk_id,
+                "evidence_unit_id": chunk.evidence_unit_id,
                 "source_id": chunk.source_id,
                 "ordinal": chunk.ordinal,
                 "text": chunk.text,
@@ -293,6 +312,14 @@ class JsonKnowledgeStore:
                 "locator": dict(chunk.locator),
                 "topics": list(chunk.topics),
                 "method_families": list(chunk.method_families),
+                "parent_section_id": chunk.parent_section_id,
+                "paragraph_index": chunk.paragraph_index,
+                "sentence_start_index": chunk.sentence_start_index,
+                "sentence_end_index": chunk.sentence_end_index,
+                "detected_labels": list(chunk.detected_labels),
+                "neighbor_chunk_ids": list(chunk.neighbor_chunk_ids),
+                "chunker_version": chunk.chunker_version,
+                "schema_version": chunk.schema_version,
                 "embedding": list(by_chunk_id[chunk.chunk_id]),
                 "embedding_provider": manifest.provider,
                 "embedding_model": manifest.model,
@@ -306,6 +333,20 @@ class JsonKnowledgeStore:
     def save_ingestion_report(self, report: KnowledgeIngestionReport) -> None:
         """Persist an ingestion report through the local JSON repository backend for status."""
         self.repository.save_ingestion_report(report)
+
+    def publish_ingestion(
+        self,
+        replacements: Mapping[str, Sequence[KnowledgeChunk]],
+        manifest: KnowledgeEmbeddingManifest,
+        indexed_chunks: Sequence[KnowledgeChunk],
+        embeddings: Sequence[StoredEmbedding],
+        report: KnowledgeIngestionReport,
+    ) -> None:
+        """Publish a complete generation through the JSON test/development backend."""
+        for source_id, chunks in replacements.items():
+            self.replace_chunks(source_id, chunks)
+        self.index_embeddings(manifest, indexed_chunks, embeddings)
+        self.save_ingestion_report(report)
 
     def list_ingestion_reports(
         self,
@@ -408,6 +449,14 @@ class JsonKnowledgeStore:
         """List rich method cards stored as local JSON artifacts."""
         return self.repository.list_persisted_rich_method_cards()
 
+    def save_method_card_set(self, method_card_set: MethodCardSet) -> None:
+        """Persist a stable method-card set through the local JSON repository backend."""
+        self.repository.save_method_card_set(method_card_set)
+
+    def list_method_card_sets(self) -> tuple[MethodCardSet, ...]:
+        """List stable method-card sets stored as local JSON artifacts."""
+        return self.repository.list_method_card_sets()
+
     def save_method_contract(self, method: MethodRegistryEntry) -> None:
         """Persist a method contract through the local JSON repository backend for lookup."""
         self.repository.save_method_contract(method)
@@ -453,10 +502,14 @@ class JsonKnowledgeStore:
             "source_status": entry.get("source_status"),
             "approved_source": entry.get("source_status") == "approved",
             "chunk_id": entry.get("chunk_id"),
+            "evidence_unit_id": entry.get("evidence_unit_id") or entry.get("chunk_id"),
             "locator": entry.get("locator"),
             "score": score,
             "excerpt": text[:360],
             "text_hash": entry.get("text_hash"),
+            "detected_labels": list(entry.get("detected_labels") or ()),
+            "neighbor_chunk_ids": list(entry.get("neighbor_chunk_ids") or ()),
+            "chunker_version": entry.get("chunker_version"),
         }
 
 

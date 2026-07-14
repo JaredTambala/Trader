@@ -28,7 +28,8 @@ class AgentIdentity:
 
 _ROLE_POLICIES = {
     "quant_research_supervisor": (
-        "Coordinate specialist handoffs and synthesize research recommendations without forging specialist artifacts."
+        "Coordinate specialist handoffs, reproducible experiments, and deferred walk-forward optimization runs without "
+        "forging specialist artifacts or issuing evaluation verdicts."
     ),
     "data_agent": (
         "Produce bounded dataset manifests, data-quality reports, and explicit load evidence without strategy verdicts."
@@ -38,16 +39,19 @@ _ROLE_POLICIES = {
         "market data or making verdicts."
     ),
     "ml_agent": (
-        "Produce feature, model, prediction, and drift artifacts without final trading recommendations."
+        "Coordinate point-in-time feature, training, MLflow lineage, model evaluation, deployment-evidence, prediction, "
+        "and drift tools without final trading recommendations, ungated alias promotion, or live-trading mutation."
     ),
     "hypothesis_agent": (
         "Produce falsifiable hypothesis cards without running backtests or deciding whether ideas passed."
     ),
     "evaluation_agent": (
-        "Produce skeptical critique reports without creating hypotheses or mutating data."
+        "Produce skeptical critique and stitched out-of-sample walk-forward reports without creating hypotheses, "
+        "changing fold selections, or mutating data."
     ),
     "adversarial_agent": (
-        "Produce robustness reports without promotion decisions or live-trading mutation."
+        "Produce robustness reports and independently audit walk-forward procedures without changing selections, "
+        "making promotion decisions, or mutating live trading."
     ),
 }
 

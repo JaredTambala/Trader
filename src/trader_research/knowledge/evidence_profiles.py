@@ -146,7 +146,7 @@ FAMILY_EVIDENCE_PROFILES: Mapping[str, MethodologyFamilyEvidenceProfile] = {
             EvidenceRoleProfile(
                 "formula_algorithm",
                 "Source provides formula, computation, or algorithm evidence.",
-                ("formula", "compute", "calculate", "average", "ratio", "sum", "indicator", "=", "moving"),
+                ("formula", "compute", "calculate", "average", "ratio", "sum", "=", "moving"),
                 (
                     ("core_fields", "method_specification", "algorithm_steps"),
                     ("core_fields", "method_specification", "equations"),
@@ -422,4 +422,3 @@ FAMILY_EVIDENCE_PROFILES: Mapping[str, MethodologyFamilyEvidenceProfile] = {
         },
     ),
 }
-

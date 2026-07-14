@@ -64,6 +64,8 @@ def test_register_and_validate_bollinger_from_persisted_method_card(tmp_path: Pa
     store.save_method_card(
         MethodCard(
             method_card_id=method_card_id,
+            method_card_set_id="method_card_set_bollinger_wma_band_rule_test",
+            revision_number=1,
             method_id="bollinger_wma_band_rule",
             title="Bollinger WMA band rule",
             family="indicator",
@@ -159,6 +161,8 @@ def test_register_and_validate_bollinger_action_signal_from_persisted_method_car
     store.save_method_card(
         MethodCard(
             method_card_id=method_card_id,
+            method_card_set_id="method_card_set_bollinger_bwma_action_signal_test",
+            revision_number=1,
             method_id="bollinger_bwma_action_signal",
             title="Bollinger BWMA action signal",
             family="signal",
@@ -218,6 +222,8 @@ def test_signal_fixtures_fail_on_insufficient_bars(tmp_path: Path) -> None:
     store.save_method_card(
         MethodCard(
             method_card_id=method_card_id,
+            method_card_set_id="method_card_set_bollinger_bwma_action_signal_test",
+            revision_number=1,
             method_id="bollinger_bwma_action_signal",
             title="Bollinger BWMA action signal",
             family="signal",
@@ -269,6 +275,8 @@ def test_register_rejects_runtime_contract_mismatch(tmp_path: Path) -> None:
     store.save_method_card(
         MethodCard(
             method_card_id=signal_card_id,
+            method_card_set_id="method_card_set_bollinger_bwma_action_signal_test",
+            revision_number=1,
             method_id="bollinger_bwma_action_signal",
             title="Bollinger BWMA action signal",
             family="signal",

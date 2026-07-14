@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import hashlib
 from pathlib import Path
+import re
 from typing import Any, Mapping, Sequence
 
 
-KNOWLEDGE_SCHEMA_VERSION = "1"
+KNOWLEDGE_SCHEMA_VERSION = "2"
 """Schema version for local knowledge artifacts."""
+
+KNOWLEDGE_EVIDENCE_UNIT_ARTIFACT_TYPE = "knowledge_evidence_unit"
+"""Canonical artifact marker for stored source evidence units."""
 
 SUPPORTED_SOURCE_EXTENSIONS = frozenset({".md", ".txt", ".pdf"})
 """File types accepted by the first knowledge-ingestion slice."""
@@ -36,6 +41,9 @@ METHODOLOGY_EVIDENCE_PACKET_STATUSES = frozenset({"assembled", "blocked"})
 
 METHOD_CARD_STATUSES = frozenset({"approved", "draft", "planned", "rejected", "superseded"})
 """Allowed lifecycle states for shallow and rich method-card records."""
+
+METHOD_CARD_SET_STATUSES = frozenset({"active", "retired", "needs_review"})
+"""Allowed lifecycle states for stable method-card aggregate records."""
 
 RICH_METHOD_CARD_FORMAT = "rich_method_card"
 """Payload marker for method-card artifacts carrying rich methodology fields."""
@@ -257,6 +265,124 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def default_method_card_set_id(
+    *,
+    method_id: str,
+    title: str,
+    family: str,
+    source_fingerprint: str | None = None,
+) -> str:
+    """Build a deterministic aggregate ID for new method-card revisions."""
+    slug = _slug_text(title or method_id or family)[:48] or "method"
+    payload = "|".join(
+        (
+            method_id.strip().lower(),
+            title.strip().lower(),
+            family.strip().lower(),
+            str(source_fingerprint or "").strip().lower(),
+        )
+    )
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+    return f"method_card_set_{slug}_{digest}"
+
+
+@dataclass(frozen=True)
+class MethodCardSet:
+    """Stable aggregate identity for method-card revisions.
+
+    `method_card_id` names one immutable draft or approved revision. A
+    `method_card_set_id` groups those revisions into the logical methodology card
+    operators see in pgAdmin and downstream tools.
+    """
+
+    method_card_set_id: str
+    method_id: str
+    family: str
+    canonical_title: str
+    status: str
+    source_fingerprint: str | None = None
+    current_approved_method_card_id: str | None = None
+    current_draft_method_card_id: str | None = None
+    card_ids: tuple[str, ...] = tuple()
+    revision_count: int = 0
+    latest_revision_number: int = 0
+    status_counts: Mapping[str, int] = field(default_factory=dict)
+    lineage: Mapping[str, Any] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=_utc_now)
+    updated_at: datetime = field(default_factory=_utc_now)
+    schema_version: str = KNOWLEDGE_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if not self.method_card_set_id.strip():
+            raise ValueError("method_card_set_id is required")
+        if not self.method_id.strip():
+            raise ValueError("method_id is required")
+        if not self.family.strip():
+            raise ValueError("family is required")
+        if not self.canonical_title.strip():
+            raise ValueError("canonical_title is required")
+        if self.status not in METHOD_CARD_SET_STATUSES:
+            raise ValueError(f"unsupported method-card set status: {self.status}")
+        if self.revision_count < 0:
+            raise ValueError("revision_count must be non-negative")
+        if self.latest_revision_number < 0:
+            raise ValueError("latest_revision_number must be non-negative")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize stable method-card set lineage and current pointers."""
+        return {
+            "artifact_type": "method_card_set",
+            "schema_version": self.schema_version,
+            "method_card_set_id": self.method_card_set_id,
+            "method_id": self.method_id,
+            "family": self.family,
+            "canonical_title": self.canonical_title,
+            "status": self.status,
+            "source_fingerprint": self.source_fingerprint,
+            "current_approved_method_card_id": self.current_approved_method_card_id,
+            "current_draft_method_card_id": self.current_draft_method_card_id,
+            "card_ids": list(self.card_ids),
+            "revision_count": self.revision_count,
+            "latest_revision_number": self.latest_revision_number,
+            "status_counts": dict(self.status_counts),
+            "lineage": _jsonable(self.lineage),
+            "created_at": _jsonable(self.created_at),
+            "updated_at": _jsonable(self.updated_at),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "MethodCardSet":
+        """Parse a stored stable method-card set summary."""
+        return cls(
+            method_card_set_id=str(payload.get("method_card_set_id") or ""),
+            method_id=str(payload.get("method_id") or ""),
+            family=str(payload.get("family") or ""),
+            canonical_title=str(payload.get("canonical_title") or payload.get("title") or ""),
+            status=str(payload.get("status") or "active"),
+            source_fingerprint=str(payload["source_fingerprint"])
+            if payload.get("source_fingerprint") is not None
+            else None,
+            current_approved_method_card_id=str(payload["current_approved_method_card_id"])
+            if payload.get("current_approved_method_card_id") is not None
+            else None,
+            current_draft_method_card_id=str(payload["current_draft_method_card_id"])
+            if payload.get("current_draft_method_card_id") is not None
+            else None,
+            card_ids=_string_tuple(payload.get("card_ids")),
+            revision_count=int(payload.get("revision_count") or 0),
+            latest_revision_number=int(payload.get("latest_revision_number") or 0),
+            status_counts={
+                str(key): int(value)
+                for key, value in _mapping(payload.get("status_counts")).items()
+                if str(key).strip()
+            },
+            lineage=_mapping(payload.get("lineage")),
+            created_at=_parse_datetime(payload.get("created_at")),
+            updated_at=_parse_datetime(payload.get("updated_at")),
+            schema_version=str(payload.get("schema_version") or KNOWLEDGE_SCHEMA_VERSION),
+        )
+
+
 @dataclass(frozen=True)
 class KnowledgeSourceManifest:
     """Persisted registration record for a curated knowledge source file.
@@ -353,13 +479,13 @@ class KnowledgeSourceManifest:
 
 @dataclass(frozen=True)
 class KnowledgeChunk:
-    """Citeable unit of source text stored in the knowledge index.
+    """Citeable evidence unit stored in the knowledge index.
 
-    A chunk stores exact text, a content hash, its source ID, ordinal position, and
-    locator metadata such as page, heading, or offsets. The validation contract
-    requires non-empty text and locator data so retrieval results can be
-    dereferenced and citation validation can prove which source span supports a
-    claim.
+    The public retrieval APIs still use `chunk_id` as the request field, but the
+    stored object is a schema-v2 evidence unit. It is intentionally smaller than
+    the earlier broad chunks and carries local ordering, section, label, and
+    neighbor metadata so methodology discovery can bind claims to one method
+    rather than a mixed source span.
     """
 
     chunk_id: str
@@ -370,26 +496,46 @@ class KnowledgeChunk:
     locator: Mapping[str, Any]
     topics: tuple[str, ...] = tuple()
     method_families: tuple[str, ...] = tuple()
+    parent_section_id: str | None = None
+    paragraph_index: int | None = None
+    sentence_start_index: int | None = None
+    sentence_end_index: int | None = None
+    detected_labels: tuple[str, ...] = tuple()
+    neighbor_chunk_ids: tuple[str, ...] = tuple()
+    chunker_version: str = "evidence-unit-v1"
+    schema_version: str = KNOWLEDGE_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
         if not self.chunk_id.strip():
-            raise ValueError("chunk_id is required")
+            raise ValueError("evidence unit chunk_id is required")
         if not self.source_id.strip():
             raise ValueError("source_id is required")
         if not self.text.strip():
-            raise ValueError("chunk text is required")
+            raise ValueError("evidence unit text is required")
         if not self.text_hash.strip():
-            raise ValueError("chunk text_hash is required")
+            raise ValueError("evidence unit text_hash is required")
         if not self.locator:
-            raise ValueError("chunk locator is required")
+            raise ValueError("evidence unit locator is required")
+        if self.schema_version != KNOWLEDGE_SCHEMA_VERSION:
+            raise ValueError(f"unsupported knowledge evidence unit schema_version: {self.schema_version}")
+        if not self.chunker_version.strip():
+            raise ValueError("chunker_version is required")
+
+    @property
+    def evidence_unit_id(self) -> str:
+        """Return the canonical schema-v2 evidence-unit identifier."""
+        return self.chunk_id
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize a citeable chunk with locator, topics, and exact text hash.
+        """Serialize a citeable evidence unit with locator and binding metadata.
 
         Locator metadata is normalized through `_jsonable`, while tuple fields are
-        emitted as lists so the chunk can be stored in JSON or Postgres payloads.
+        emitted as lists so the unit can be stored in JSON or Postgres payloads.
         """
         return {
+            "artifact_type": KNOWLEDGE_EVIDENCE_UNIT_ARTIFACT_TYPE,
+            "schema_version": self.schema_version,
+            "evidence_unit_id": self.evidence_unit_id,
             "chunk_id": self.chunk_id,
             "source_id": self.source_id,
             "ordinal": self.ordinal,
@@ -398,18 +544,31 @@ class KnowledgeChunk:
             "locator": _jsonable(self.locator),
             "topics": list(self.topics),
             "method_families": list(self.method_families),
+            "parent_section_id": self.parent_section_id,
+            "paragraph_index": self.paragraph_index,
+            "sentence_start_index": self.sentence_start_index,
+            "sentence_end_index": self.sentence_end_index,
+            "detected_labels": list(self.detected_labels),
+            "neighbor_chunk_ids": list(self.neighbor_chunk_ids),
+            "chunker_version": self.chunker_version,
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "KnowledgeChunk":
-        """Parse a chunk payload from storage into a validated domain object.
+        """Parse a schema-v2 evidence-unit payload into a validated domain object.
 
         Missing optional topics and method families become empty tuples, while
-        required source, text, hash, ordinal, and locator fields are validated by
-        the dataclass constructor.
+        required source, text, hash, ordinal, locator, and schema fields are
+        validated by the dataclass constructor. Legacy chunk payloads without the
+        schema-v2 marker fail closed and must be regenerated by reingesting the
+        source.
         """
+        schema_version = str(payload.get("schema_version") or "")
+        artifact_type = str(payload.get("artifact_type") or "")
+        if schema_version != KNOWLEDGE_SCHEMA_VERSION or artifact_type != KNOWLEDGE_EVIDENCE_UNIT_ARTIFACT_TYPE:
+            raise ValueError("knowledge evidence unit must be regenerated with schema_version 2")
         return cls(
-            chunk_id=str(payload.get("chunk_id") or ""),
+            chunk_id=str(payload.get("evidence_unit_id") or payload.get("chunk_id") or ""),
             source_id=str(payload.get("source_id") or ""),
             ordinal=int(payload.get("ordinal") or 0),
             text=str(payload.get("text") or ""),
@@ -417,6 +576,18 @@ class KnowledgeChunk:
             locator=_mapping(payload.get("locator")),
             topics=_string_tuple(payload.get("topics")),
             method_families=_string_tuple(payload.get("method_families")),
+            parent_section_id=str(payload["parent_section_id"]) if payload.get("parent_section_id") is not None else None,
+            paragraph_index=int(payload["paragraph_index"]) if payload.get("paragraph_index") is not None else None,
+            sentence_start_index=int(payload["sentence_start_index"])
+            if payload.get("sentence_start_index") is not None
+            else None,
+            sentence_end_index=int(payload["sentence_end_index"])
+            if payload.get("sentence_end_index") is not None
+            else None,
+            detected_labels=_string_tuple(payload.get("detected_labels")),
+            neighbor_chunk_ids=_string_tuple(payload.get("neighbor_chunk_ids")),
+            chunker_version=str(payload.get("chunker_version") or "evidence-unit-v1"),
+            schema_version=schema_version,
         )
 
 
@@ -507,6 +678,8 @@ class KnowledgeIngestionReport:
             "status": self.status,
             "chunks_created": self.chunks_created,
             "chunks_indexed": self.chunks_indexed,
+            "evidence_units_created": self.chunks_created,
+            "evidence_units_indexed": self.chunks_indexed,
             "embedding_manifest_id": self.embedding_manifest_id,
             "warnings": list(self.warnings),
             "blockers": list(self.blockers),
@@ -533,6 +706,76 @@ class KnowledgeIngestionReport:
 
 
 @dataclass(frozen=True)
+class EvidenceClaimSpan:
+    """Addressable source text supporting one methodology claim.
+
+    Evidence units remain reusable retrieval containers. This span identifies the
+    exact text within one unit that was selected for a role and target method, so
+    semantic validation does not infer ownership from the surrounding chunk.
+    """
+
+    span_id: str
+    start_char: int
+    end_char: int
+    text: str
+    text_hash: str
+    evidence_role: str
+    target_method: str
+    target_binding: str
+    matched_terms: tuple[str, ...] = tuple()
+    method_labels: tuple[str, ...] = tuple()
+    extraction_engine: str = "deterministic_claim_spans"
+    extraction_version: str = "1"
+
+    def __post_init__(self) -> None:
+        if not self.span_id.strip():
+            raise ValueError("claim span_id is required")
+        if self.start_char < 0 or self.end_char <= self.start_char:
+            raise ValueError("claim span offsets must identify non-empty text")
+        if not self.text:
+            raise ValueError("claim span text is required")
+        if hashlib.sha256(self.text.encode("utf-8")).hexdigest() != self.text_hash:
+            raise ValueError("claim span text_hash does not match text")
+        if not self.evidence_role.strip() or not self.target_method.strip():
+            raise ValueError("claim span evidence_role and target_method are required")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize exact span provenance for artifact persistence."""
+        return {
+            "span_id": self.span_id,
+            "start_char": self.start_char,
+            "end_char": self.end_char,
+            "text": self.text,
+            "text_hash": self.text_hash,
+            "evidence_role": self.evidence_role,
+            "target_method": self.target_method,
+            "target_binding": self.target_binding,
+            "matched_terms": list(self.matched_terms),
+            "method_labels": list(self.method_labels),
+            "extraction_engine": self.extraction_engine,
+            "extraction_version": self.extraction_version,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "EvidenceClaimSpan":
+        """Parse a persisted exact claim span."""
+        return cls(
+            span_id=str(payload.get("span_id") or ""),
+            start_char=int(payload.get("start_char") or 0),
+            end_char=int(payload.get("end_char") or 0),
+            text=str(payload.get("text") or ""),
+            text_hash=str(payload.get("text_hash") or ""),
+            evidence_role=str(payload.get("evidence_role") or ""),
+            target_method=str(payload.get("target_method") or ""),
+            target_binding=str(payload.get("target_binding") or ""),
+            matched_terms=_string_tuple(payload.get("matched_terms")),
+            method_labels=_string_tuple(payload.get("method_labels")),
+            extraction_engine=str(payload.get("extraction_engine") or "deterministic_claim_spans"),
+            extraction_version=str(payload.get("extraction_version") or "1"),
+        )
+
+
+@dataclass(frozen=True)
 class EvidenceReference:
     """Serializable citation pointer used by method cards and generated artifacts.
 
@@ -548,6 +791,7 @@ class EvidenceReference:
     locator: Mapping[str, Any] = field(default_factory=dict)
     method_card_id: str | None = None
     claim: str | None = None
+    claim_span: EvidenceClaimSpan | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize citation identifiers, locator details, and optional claim text.
@@ -562,6 +806,7 @@ class EvidenceReference:
             "locator": _jsonable(self.locator),
             "method_card_id": self.method_card_id,
             "claim": self.claim,
+            "claim_span": self.claim_span.to_dict() if self.claim_span is not None else None,
         }
 
     @classmethod
@@ -578,6 +823,11 @@ class EvidenceReference:
             locator=_mapping(payload.get("locator")),
             method_card_id=str(payload["method_card_id"]) if payload.get("method_card_id") is not None else None,
             claim=str(payload["claim"]) if payload.get("claim") is not None else None,
+            claim_span=(
+                EvidenceClaimSpan.from_dict(_mapping(payload.get("claim_span")))
+                if payload.get("claim_span") is not None
+                else None
+            ),
         )
 
 
@@ -648,6 +898,7 @@ class MethodologyCandidate:
     source_ids: tuple[str, ...] = tuple()
     chunk_ids: tuple[str, ...] = tuple()
     candidate_spans: tuple[Mapping[str, Any], ...] = tuple()
+    method_identity: Mapping[str, Any] = field(default_factory=dict)
     core_fields: Mapping[str, Mapping[str, EvidenceBackedField]] = field(default_factory=dict)
     extension_fields: Mapping[str, Mapping[str, EvidenceBackedField]] = field(default_factory=dict)
     lineage: Mapping[str, Any] = field(default_factory=dict)
@@ -695,6 +946,7 @@ class MethodologyCandidate:
             "source_ids": list(self.source_ids),
             "chunk_ids": list(self.chunk_ids),
             "candidate_spans": _jsonable(list(self.candidate_spans)),
+            "method_identity": _jsonable(self.method_identity),
             "core_fields": _serialize_methodology_field_groups(self.core_fields),
             "extension_fields": _serialize_methodology_field_groups(self.extension_fields),
             "lineage": _jsonable(self.lineage),
@@ -714,6 +966,7 @@ class MethodologyCandidate:
             source_ids=_string_tuple(payload.get("source_ids")),
             chunk_ids=_string_tuple(payload.get("chunk_ids")),
             candidate_spans=tuple(_mapping(item) for item in _sequence(payload.get("candidate_spans"))),
+            method_identity=_mapping(payload.get("method_identity")),
             core_fields=_mapping(payload.get("core_fields")),
             extension_fields=_mapping(payload.get("extension_fields")),
             lineage=_mapping(payload.get("lineage")),
@@ -829,6 +1082,9 @@ class RichMethodCard:
     evidence_refs: tuple[EvidenceReference, ...] = tuple()
     core_fields: Mapping[str, Mapping[str, EvidenceBackedField]] = field(default_factory=dict)
     extension_fields: Mapping[str, Mapping[str, EvidenceBackedField]] = field(default_factory=dict)
+    method_card_set_id: str | None = None
+    revision_number: int | None = None
+    supersedes_method_card_id: str | None = None
     source_methodology_candidate_id: str | None = None
     validation_refs: tuple[Mapping[str, Any], ...] = tuple()
     lineage: Mapping[str, Any] = field(default_factory=dict)
@@ -846,6 +1102,12 @@ class RichMethodCard:
             raise ValueError("method_id is required")
         if self.status not in METHOD_CARD_STATUSES:
             raise ValueError(f"unsupported method-card status: {self.status}")
+        if not str(self.method_card_set_id or "").strip():
+            raise ValueError("method_card_set_id is required")
+        if self.revision_number is None:
+            raise ValueError("revision_number is required")
+        if int(self.revision_number or 0) < 1:
+            raise ValueError("revision_number must be a positive integer")
         object.__setattr__(
             self,
             "core_fields",
@@ -883,6 +1145,9 @@ class RichMethodCard:
             outputs=self.outputs,
             failure_modes=self.failure_modes,
             evidence_refs=self.evidence_refs,
+            method_card_set_id=self.method_card_set_id,
+            revision_number=self.revision_number,
+            supersedes_method_card_id=self.supersedes_method_card_id,
             version=self.version,
             source_method_card_id=self.source_method_card_id,
             approved_by=self.approved_by,
@@ -903,6 +1168,9 @@ class RichMethodCard:
             "family": self.family,
             "status": self.status,
             "version": self.version,
+            "method_card_set_id": self.method_card_set_id,
+            "revision_number": self.revision_number,
+            "supersedes_method_card_id": self.supersedes_method_card_id,
             "assumptions": list(self.assumptions),
             "inputs": list(self.inputs),
             "outputs": list(self.outputs),
@@ -938,6 +1206,13 @@ class RichMethodCard:
             ),
             core_fields=_mapping(payload.get("core_fields")),
             extension_fields=_mapping(payload.get("extension_fields")),
+            method_card_set_id=str(payload["method_card_set_id"])
+            if payload.get("method_card_set_id") is not None
+            else None,
+            revision_number=int(payload["revision_number"]) if payload.get("revision_number") is not None else None,
+            supersedes_method_card_id=str(payload["supersedes_method_card_id"])
+            if payload.get("supersedes_method_card_id") is not None
+            else None,
             source_methodology_candidate_id=str(payload["source_methodology_candidate_id"])
             if payload.get("source_methodology_candidate_id") is not None
             else None,
@@ -1112,6 +1387,9 @@ class MethodCard:
     outputs: tuple[str, ...]
     failure_modes: tuple[str, ...]
     evidence_refs: tuple[EvidenceReference, ...] = tuple()
+    method_card_set_id: str | None = None
+    revision_number: int | None = None
+    supersedes_method_card_id: str | None = None
     version: int = 1
     source_method_card_id: str | None = None
     approved_by: str | None = None
@@ -1126,6 +1404,12 @@ class MethodCard:
             raise ValueError("method_id is required")
         if self.status not in METHOD_CARD_STATUSES:
             raise ValueError(f"unsupported method-card status: {self.status}")
+        if not str(self.method_card_set_id or "").strip():
+            raise ValueError("method_card_set_id is required")
+        if self.revision_number is None:
+            raise ValueError("revision_number is required")
+        if int(self.revision_number or 0) < 1:
+            raise ValueError("revision_number must be a positive integer")
 
     @property
     def approved(self) -> bool:
@@ -1148,6 +1432,9 @@ class MethodCard:
             "family": self.family,
             "status": self.status,
             "version": self.version,
+            "method_card_set_id": self.method_card_set_id,
+            "revision_number": self.revision_number,
+            "supersedes_method_card_id": self.supersedes_method_card_id,
             "assumptions": list(self.assumptions),
             "inputs": list(self.inputs),
             "outputs": list(self.outputs),
@@ -1178,6 +1465,13 @@ class MethodCard:
             outputs=_string_tuple(payload.get("outputs")),
             failure_modes=_string_tuple(payload.get("failure_modes")),
             evidence_refs=tuple(EvidenceReference.from_dict(_mapping(item)) for item in _sequence(payload.get("evidence_refs"))),
+            method_card_set_id=str(payload["method_card_set_id"])
+            if payload.get("method_card_set_id") is not None
+            else None,
+            revision_number=int(payload["revision_number"]) if payload.get("revision_number") is not None else None,
+            supersedes_method_card_id=str(payload["supersedes_method_card_id"])
+            if payload.get("supersedes_method_card_id") is not None
+            else None,
             version=int(payload.get("version") or 1),
             source_method_card_id=str(payload["source_method_card_id"])
             if payload.get("source_method_card_id") is not None
@@ -1379,6 +1673,10 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_jsonable(item) for item in value]
     return value
+
+
+def _slug_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", value.strip().lower()).strip("_")
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:

@@ -12,7 +12,9 @@ from trader_mcp.constants import (
     KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL,
     KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL,
     KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL,
+    KNOWLEDGE_GET_METHOD_CARD_SET_TOOL,
     KNOWLEDGE_INGEST_DOCUMENTS_TOOL,
+    KNOWLEDGE_LIST_METHOD_CARD_SETS_TOOL,
     KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL,
     KNOWLEDGE_REGISTER_SOURCE_TOOL,
     KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL,
@@ -128,6 +130,15 @@ def test_mcp_quant_methods_core_evidence_flow(tmp_path: Path) -> None:
                 "approve": True,
             },
         )
+        method_card_set_id = published.structuredContent["data"]["method_card"]["method_card_set_id"]
+        method_card_sets = await server.call_tool(
+            KNOWLEDGE_LIST_METHOD_CARD_SETS_TOOL,
+            {"method_id": "sma", "include_retired": True},
+        )
+        method_card_set = await server.call_tool(
+            KNOWLEDGE_GET_METHOD_CARD_SET_TOOL,
+            {"method_card_set_id": method_card_set_id},
+        )
         citations = await server.call_tool(
             KNOWLEDGE_VALIDATE_CITATIONS_TOOL,
             {
@@ -202,6 +213,8 @@ def test_mcp_quant_methods_core_evidence_flow(tmp_path: Path) -> None:
         assert config_tools[KNOWLEDGE_REGISTER_SOURCE_TOOL]["agent_owner"] == "Quantitative Methods Agent"
         assert config_tools[KNOWLEDGE_REGISTER_SOURCE_TOOL]["side_effect"] == "local_mutating"
         assert config_tools[KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL]["side_effect"] == "read_only"
+        assert config_tools[KNOWLEDGE_LIST_METHOD_CARD_SETS_TOOL]["side_effect"] == "read_only"
+        assert config_tools[KNOWLEDGE_GET_METHOD_CARD_SET_TOOL]["side_effect"] == "read_only"
         assert config_tools[KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL]["side_effect"] == "local_mutating"
         assert config_tools[KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL]["side_effect"] == "local_mutating"
         assert config_tools[KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL]["side_effect"] == "local_mutating"
@@ -227,6 +240,12 @@ def test_mcp_quant_methods_core_evidence_flow(tmp_path: Path) -> None:
         assert draft.structuredContent["data"]["method_card_draft"]["status"] == "draft"
         assert published.isError is False
         assert published.structuredContent["data"]["method_card"]["status"] == "approved"
+        assert method_card_sets.isError is False
+        assert method_card_set.isError is False
+        assert method_card_set.structuredContent["data"]["method_card_set"][
+            "current_approved_method_card_id"
+        ] == "method_card_persisted_sma_v1"
+        assert method_card_set.structuredContent["data"]["revision_count"] == 2
         assert registered_implementation.isError is False
         assert fixture_validation.isError is False
         assert method_package.isError is False
@@ -310,12 +329,19 @@ def test_mcp_methodology_candidate_discovery_extraction_validation_flow(tmp_path
             {"extraction_report_uri": extraction_ref["uri"]},
         )
         validation_ref = validated.structuredContent["artifacts"]["methodology_candidate_validation_report"]
-        rich_draft = await server.call_tool(
+        unsupported_override_draft = await server.call_tool(
             KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL,
             {
                 "methodology_candidate_validation_uri": validation_ref["uri"],
                 "method_id": "pairs_mean_reversion",
                 "title": "Pairs Mean Reversion",
+                "family": "statistical_arbitrage",
+            },
+        )
+        rich_draft = await server.call_tool(
+            KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL,
+            {
+                "methodology_candidate_validation_uri": validation_ref["uri"],
                 "family": "statistical_arbitrage",
             },
         )
@@ -361,6 +387,10 @@ def test_mcp_methodology_candidate_discovery_extraction_validation_flow(tmp_path
         report = validated.structuredContent["data"]["methodology_candidate_validation_report"]
         assert report["artifact_type"] == METHODOLOGY_CANDIDATE_VALIDATION_REPORT
         assert report["status"] == "passed"
+        assert unsupported_override_draft.isError is True
+        assert "title must be supported" in "\n".join(
+            error["message"] for error in unsupported_override_draft.structuredContent["errors"]
+        )
         assert rich_draft.isError is False
         assert rich_draft.structuredContent["data"]["method_card_draft"]["card_format"] == "rich_method_card"
         assert published.isError is False

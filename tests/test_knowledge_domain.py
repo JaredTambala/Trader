@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 
 import pytest
@@ -8,12 +9,14 @@ from trader_research.knowledge.chunking import chunk_sections
 from trader_research.knowledge.domain import (
     DEFAULT_SOURCE_TYPE,
     EvidenceBackedField,
+    EvidenceClaimSpan,
     EvidenceReference,
     KnowledgeChunk,
     KnowledgeEmbeddingManifest,
     KnowledgeIngestionReport,
     KnowledgeSourceManifest,
     MethodCard,
+    MethodCardSet,
     MethodologyCandidate,
     MethodologyCandidateValidationReport,
     MethodologyEvidencePacket,
@@ -36,6 +39,31 @@ def _evidence_ref() -> EvidenceReference:
 
 def _field(value: object) -> EvidenceBackedField:
     return EvidenceBackedField(value=value, evidence_refs=(_evidence_ref(),), confidence=0.8, quality="direct")
+
+
+def test_evidence_claim_span_round_trips_with_exact_hash() -> None:
+    text = "short average crosses long average from below"
+    span = EvidenceClaimSpan(
+        span_id="knowledge_claim_span_demo",
+        start_char=10,
+        end_char=10 + len(text),
+        text=text,
+        text_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        evidence_role="signal_logic",
+        target_method="Moving Average Oscillator",
+        target_binding="direct_label",
+        matched_terms=("cross",),
+    )
+    ref = EvidenceReference(
+        source_id="knowledge_source_demo",
+        chunk_id="knowledge_chunk_demo",
+        claim_span=span,
+    )
+
+    assert EvidenceReference.from_dict(ref.to_dict()) == ref
+
+    with pytest.raises(ValueError, match="text_hash"):
+        EvidenceClaimSpan.from_dict({**span.to_dict(), "text_hash": "stale"})
 
 
 def test_knowledge_artifacts_round_trip_json() -> None:
@@ -75,6 +103,8 @@ def test_knowledge_artifacts_round_trip_json() -> None:
     )
     method_card = MethodCard(
         method_card_id="method_card_demo",
+        method_card_set_id="method_card_set_sma_demo",
+        revision_number=1,
         method_id="sma",
         title="SMA",
         family="indicator",
@@ -85,6 +115,19 @@ def test_knowledge_artifacts_round_trip_json() -> None:
         failure_modes=("warmup",),
         evidence_refs=(EvidenceReference(source_id=source.source_id, chunk_id=chunk.chunk_id),),
     )
+    method_card_set = MethodCardSet(
+        method_card_set_id="method_card_set_sma_demo",
+        method_id="sma",
+        family="indicator",
+        canonical_title="SMA",
+        status="active",
+        source_fingerprint="source_fingerprint_demo",
+        current_approved_method_card_id=method_card.method_card_id,
+        card_ids=(method_card.method_card_id,),
+        revision_count=1,
+        latest_revision_number=1,
+        status_counts={"approved": 1},
+    )
 
     payload = {
         "source": source.to_dict(),
@@ -92,6 +135,7 @@ def test_knowledge_artifacts_round_trip_json() -> None:
         "embedding": embedding.to_dict(),
         "report": report.to_dict(),
         "method_card": method_card.to_dict(),
+        "method_card_set": method_card_set.to_dict(),
     }
 
     assert KnowledgeSourceManifest.from_dict(payload["source"]).to_dict()["source_id"] == source.source_id
@@ -99,6 +143,8 @@ def test_knowledge_artifacts_round_trip_json() -> None:
     assert KnowledgeEmbeddingManifest.from_dict(payload["embedding"]).to_dict()["dimension"] == 32
     assert KnowledgeIngestionReport.from_dict(payload["report"]).to_dict()["chunks_indexed"] == 1
     assert MethodCard.from_dict(payload["method_card"]).approved is True
+    assert MethodCard.from_dict(payload["method_card"]).method_card_set_id == method_card_set.method_card_set_id
+    assert MethodCardSet.from_dict(payload["method_card_set"]).current_approved_method_card_id == method_card.method_card_id
     json.dumps(payload)
 
 
@@ -132,6 +178,44 @@ def test_chunking_sanitizes_nul_bytes_before_hashing() -> None:
     assert chunks[0].text == "alpha beta"
     assert "\x00" not in chunks[0].text
     assert chunks[0].text_hash
+
+
+def test_chunking_creates_target_sized_evidence_units_with_labels_and_neighbors() -> None:
+    source = KnowledgeSourceManifest(
+        source_id="knowledge_source_adjacent_methods",
+        title="Adjacent Methods",
+        source_type="method_textbook",
+        path="tests/fixtures/knowledge/technical_notes.txt",
+        file_hash="abc123",
+        file_size_bytes=42,
+        method_families=("technical_indicators",),
+    )
+
+    chunks = chunk_sections(
+        source,
+        (
+            ExtractedSection(
+                text=(
+                    "Simple Moving Average (SMA): The simple moving average sums lagged prices. "
+                    "Exponentially Weighted Average (EWA): The exponentially weighted average gives more "
+                    "weight to recent prices."
+                ),
+                section="technical indicators",
+                heading="Page 181",
+            ),
+        ),
+    )
+
+    assert len(chunks) == 2
+    assert chunks[0].chunk_id.startswith("knowledge_evidence_unit_")
+    assert chunks[0].to_dict()["artifact_type"] == "knowledge_evidence_unit"
+    assert chunks[0].to_dict()["schema_version"] == "2"
+    assert chunks[0].detected_labels == ("Simple Moving Average", "SMA")
+    assert chunks[1].detected_labels == ("Exponentially Weighted Average", "EWA")
+    assert chunks[0].neighbor_chunk_ids == (chunks[1].chunk_id,)
+    assert chunks[1].neighbor_chunk_ids == (chunks[0].chunk_id,)
+    assert chunks[0].parent_section_id == chunks[1].parent_section_id
+    assert chunks[0].locator["parent_section_id"] == chunks[0].parent_section_id
 
 
 def test_methodology_candidate_round_trips_rich_nullable_fields() -> None:
@@ -208,6 +292,8 @@ def test_methodology_evidence_packet_round_trips_role_evidence() -> None:
 def test_rich_method_card_round_trips_and_projects_to_shallow_card() -> None:
     card = RichMethodCard(
         method_card_id="method_card_draft_pairs_demo",
+        method_card_set_id="method_card_set_pairs_demo",
+        revision_number=1,
         method_id="cointegration_pairs",
         title="Cointegration pairs trading",
         family="statistical_arbitrage",
@@ -241,6 +327,26 @@ def test_rich_method_card_round_trips_and_projects_to_shallow_card() -> None:
     assert shallow.to_dict()["method_card_id"] == card.method_card_id
     assert "core_fields" not in shallow.to_dict()
     json.dumps(payload)
+
+
+def test_method_cards_require_explicit_set_lineage() -> None:
+    payload = {
+        "method_card_id": "method_card_without_lineage",
+        "method_id": "sma",
+        "title": "SMA",
+        "family": "indicator",
+        "status": "draft",
+        "assumptions": ["ordered observations"],
+        "inputs": ["prices"],
+        "outputs": ["average"],
+        "failure_modes": ["warmup"],
+    }
+
+    with pytest.raises(ValueError, match="method_card_set_id is required"):
+        MethodCard.from_dict(payload)
+
+    with pytest.raises(ValueError, match="method_card_set_id is required"):
+        RichMethodCard.from_dict({**payload, "card_format": RICH_METHOD_CARD_FORMAT})
 
 
 def test_methodology_extraction_and_validation_reports_round_trip_json() -> None:
