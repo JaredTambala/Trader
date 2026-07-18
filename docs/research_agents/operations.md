@@ -215,6 +215,46 @@ selection, untouched-holdout Evaluation, Supervisor-executed variants, and an in
 durable ref must use `research://postgres/...`; canonical JSONB and typed pgAdmin projections must reconcile; no
 canonical filesystem path may be present.
 
+### 57L Postgres-Only Fixture Qualification
+
+57L qualifies the canonical execution core before the public MCP graph is attempted. It deliberately calls direct
+research services with `PostgresEventStore` and `PostgresResearchArtifactStore`; it does not use DuckDB, an in-memory
+artifact store, Optuna, MLflow, or filesystem artifact authority. This phase proves product behavior below the MCP
+transport boundary. 57M separately proves MCP registration, gates, envelopes, Evaluation, and Adversarial composition.
+
+The versioned fixture in `tests/support/realistic_optimization_fixture.py` contains three symbols, 48 hourly selection
+bars per symbol, and 32 hourly holdout bars per symbol. A 25-hour gap makes the regions chronologically disjoint and
+larger than the maximum five-bar lookback. Fixed timestamps, prices, fee/slippage assumptions, seed, source-code
+digests, bar-content digests, Data Agent manifest/quality digests, and grid order make drift observable. The manifest
+retains `source_filter=null` because canonical backtest specifications reject source-filtered manifests; the exact
+fixture source remains covered by the canonical bar-content digest and isolated database precondition.
+
+The Postgres qualification must prove all of the following in one test:
+
+1. Data Agent inventory and quality evidence exactly match the locked selection and holdout snapshots.
+2. Handwritten strategy, risk-manager, and objective implementations register and pass validation from persisted refs.
+3. Canonical strategy, ordered risk-stack, and selection backtest specifications pass validation and produce a real
+   portfolio run with buys and sells, at least two traded symbols, nonzero fees/slippage/exposure, and both risk
+   approvals and quantity-limit rejections.
+4. Built-in grid search executes lookbacks 2, 3, 4, and 5 as four canonical child backtests with distinct trade counts,
+   returns, and objective values, then persists one deterministic selected trial and its child refs.
+5. No holdout backtest exists before selection. The selected behavior is rebound to the disjoint holdout manifest only
+   after selection, and the resulting run retains `selection_origin_ref` without changing the selected optimisation.
+6. Canonical JSONB and representative typed projections reconcile for the optimisation run, every trial, and the
+   holdout backtest. The selection and holdout bar-content digests are unchanged after execution.
+
+Run it inside the controlled phase boundary with all Postgres verification variables set explicitly:
+
+```bash
+uv run python -m tests.support.postgres_verification begin --phase 57L
+uv run pytest tests/test_postgres_realistic_optimization_fixture.py -m postgres -q -W error
+uv run python -m tests.support.postgres_verification end --phase 57L --outcome passed
+```
+
+The test fixtures destructively clean runtime and research rows in the verification database before and after the test.
+The durable controlled-execution verdict remains in `verification_control.phase_runs`; no rows are copied into the
+operator database.
+
 Do not copy verification rows into the operator database. The final acceptance record must distinguish passed,
 failed, not run, and optional profile not qualified. Optional-provider failure leaves that provider gated off and does
 not invalidate a passing built-in core unless canonical Trader state was affected.

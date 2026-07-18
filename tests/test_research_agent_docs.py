@@ -235,8 +235,11 @@ def test_tracker_freezes_57i_surface_and_acceptance_matrix() -> None:
     for invariant in range(36, 62):
         assert f"| {invariant} |" in tracker
 
-    assert "Current graph is one-symbol, twelve-bar, empty-strategy smoke coverage" in tracker
-    assert "Planned / 57L fixture and 57M graph" in tracker
+    assert (
+        "current public MCP graph remains one-symbol, twelve-bar, empty-strategy smoke coverage"
+        in tracker
+    )
+    assert "Partial / 57L direct Postgres fixture and 57M MCP graph" in tracker
     assert "Planned / 57S" in tracker
 
 
@@ -268,6 +271,31 @@ def test_docs_define_57j_isolated_postgres_runtime() -> None:
     assert "They never read the legacy/operator `PG_HOST`" in normalized_readme
     assert "Product rows," in operations
     assert "passwords" in operations
+
+
+def test_docs_define_57l_as_postgres_only_direct_service_qualification() -> None:
+    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
+    tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(
+        encoding="utf-8"
+    )
+    combined = "\n".join((operations, tracker))
+
+    required_phrases = (
+        "57L Postgres-Only Fixture Qualification",
+        "PostgresEventStore",
+        "PostgresResearchArtifactStore",
+        "does not use DuckDB",
+        "48 hourly selection",
+        "32 hourly holdout",
+        "lookbacks 2, 3, 4, and 5",
+        "source_filter=null",
+        "tests/test_postgres_realistic_optimization_fixture.py",
+        "57M separately proves MCP registration",
+    )
+    for phrase in required_phrases:
+        assert phrase in combined
+
+    assert "| 57L. Realistic Deterministic Evidence Fixture | In progress |" in tracker
 
 
 def test_tracker_records_57k_remediation_and_rerun_boundary() -> None:
