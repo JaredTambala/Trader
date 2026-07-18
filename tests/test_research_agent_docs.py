@@ -295,7 +295,7 @@ def test_docs_define_57l_as_postgres_only_direct_service_qualification() -> None
     for phrase in required_phrases:
         assert phrase in combined
 
-    assert "| 57L. Realistic Deterministic Evidence Fixture | In progress |" in tracker
+    assert "| 57L. Realistic Deterministic Evidence Fixture | Done |" in tracker
 
 
 def test_tracker_records_57k_remediation_and_rerun_boundary() -> None:
