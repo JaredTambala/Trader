@@ -16,10 +16,13 @@ MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded 
 | Data Agent tools | `trader_research.data` |
 | Knowledge tools | `trader_research.knowledge` |
 | Quantitative Methods math tools | `trader_research.methods` |
-| Strategy candidate tools | `trader_research.strategy_candidates` |
-| Risk-manager candidate tools | `trader_research.risk_managers` |
+| Implementation registry | `trader_research.implementations` |
+| Immutable specifications | `trader_research.specifications` |
 | Backtest/result/comparison tools | `trader_research.backtests` |
+| Optimisation engines and ledger | `trader_research.optimization` |
+| Tracking projections | `trader_research.tracking` |
 | Evaluation tools | `trader_research.evaluation` |
+| Adversarial tools | `trader_research.adversarial` |
 | ML Agent tools (planned, not registered) | `trader_research.ml` plus an optional `trader_mlflow` integration adapter |
 
 ## Support Tools
@@ -71,6 +74,8 @@ MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded 
 | `math_generate_cpp_kernel` | `local_mutating` | C++ kernel manifest. |
 | `math_compile_kernel` | `local_mutating` | Compile/build evidence. |
 | `math_package_method_artifact` | `local_mutating` | Validated `method_package_manifest` or `research://postgres/...` ref. |
+| `research_register_optimization_objective` | `local_mutating` | Content-addressed closed-input objective implementation. |
+| `research_validate_optimization_objective` | `local_mutating` | Objective source/fixture validation report. |
 
 Quantitative Methods tools do not fetch market data, create strategies, run backtests, or promote strategies.
 
@@ -107,35 +112,55 @@ knowledge base. They are not currently being expanded toward autonomous book-sca
 | Tool | Side effect | Primary output | Notes |
 | --- | --- | --- | --- |
 | `research_list_strategy_templates` | `read_only` | Strategy template catalog. | Maintained template metadata only. |
-| `research_create_strategy_candidate` | `local_mutating` | Strategy candidate manifest and generated source refs. | Consumes validated signal method packages or, for bounded maintained templates such as `pairs_mean_reversion`, approved rich method cards. |
-| `research_validate_strategy_candidate` | `local_mutating` | Strategy candidate validation report. | Runs deterministic source/runtime smoke validation. |
-| `research_run_backtest` | `local_mutating` | Backtest run bundle and `backtest_run_ref`. | Execution requires `TRADER_MCP_ALLOW_BACKTESTS=true`. |
-| `research_run_portfolio_backtest` | `local_mutating` | Structured portfolio bundle and `portfolio_backtest_run_ref`. | Requires a passed strategy/risk stack validation report, configured research artifact store, and `TRADER_MCP_ALLOW_BACKTESTS=true`. |
-| `research_get_backtest_results` | `read_only` | Backtest result summary and artifact paths. | Reads persisted run bundles only. |
-| `research_compare_backtest_results` | `local_mutating` | `comparison_report`. | Compares explicit persisted run refs; does not execute backtests. |
-| `research_list_risk_manager_templates` | `read_only` | Risk-manager template catalog. | Generation targets for backtest-only risk managers. |
-| `research_create_risk_manager_candidate` | `local_mutating` | Risk-manager candidate manifest and generated source refs. | Backtest-only source artifact; approved rich risk cards may supply explicit threshold provenance. |
-| `research_validate_risk_manager_candidate` | `local_mutating` | Risk-manager candidate validation report. | Runs deterministic source/runtime smoke validation. |
-| `research_create_strategy_risk_stack` | `local_mutating` | Strategy/risk stack manifest. | Requires passed strategy and risk-manager validation reports. |
-| `research_validate_strategy_risk_stack` | `local_mutating` | Strategy/risk stack validation report. | Runs deterministic multi-asset fixture validation before portfolio backtests. |
+| `research_list_risk_manager_templates` | `read_only` | Risk-manager template catalog. | Metadata for optional code producers; not an execution identity. |
+| `research_register_strategy_implementation` | `local_mutating` | `implementation_version`. | Content-addressed source; methodology provenance is optional. |
+| `research_validate_strategy_implementation` | `local_mutating` | `implementation_validation_report`. | Static safety, interface, parameters, and deterministic fixture. |
+| `research_register_risk_manager_implementation` | `local_mutating` | `implementation_version`. | Same intake for supplied or produced risk code. |
+| `research_validate_risk_manager_implementation` | `local_mutating` | `implementation_validation_report`. | Backtest-only deterministic risk fixture. |
+| `research_create_strategy_specification` | `local_mutating` | `strategy_specification`. | Binds validated code and tunable parameters; forbids data scope. |
+| `research_validate_strategy_specification` | `local_mutating` | Strategy-spec validation report. | Rechecks version and source hash. |
+| `research_create_risk_stack_specification` | `local_mutating` | Ordered `risk_stack_specification`. | Pins explicit validated managers and thresholds. |
+| `research_validate_risk_stack_specification` | `local_mutating` | Risk-stack validation report. | Rechecks order, parameters, and hashes. |
+| `research_create_backtest_specification` | `local_mutating` | `backtest_specification`. | Binds one Data Agent scope, quality snapshot, costs, initial state, and seed. |
+| `research_validate_backtest_specification` | `local_mutating` | Backtest-spec validation report. | Fails closed on snapshot/upstream drift. |
+| `research_run_backtest_specification` | `local_mutating` | Canonical DB-backed `backtest_run`. | Requires `TRADER_MCP_ALLOW_BACKTESTS=true`. |
+| `research_get_backtest_results` | `read_only` | Canonical run payload and bundle. | Requires a DB run ID/URI; no path lookup. |
+| `research_compare_backtest_results` | `local_mutating` | `comparison_report`. | Compares explicit canonical run refs. |
+| `research_get_optimizer_runtime` | `read_only` | Built-in/optional engine profiles and health. | Does not initialize provider state. |
+| `research_create_parameter_optimization_plan` | `local_mutating` | Provider-neutral plan. | Pins selection spec, sealed holdout, objective, dimensions, constraints, seed, budget. |
+| `research_run_parameter_optimization` | `local_mutating` | Run plus complete trial ledger. | Requires backtest and optimisation gates; Optuna has additional gates. |
+| `research_get_parameter_optimization_results` | `read_only` | Canonical run and trials. | Works when optional provider is absent. |
+| `research_run_parameter_optimization_variants` | `local_mutating` | Immutable child optimisation runs. | Executes only Adversarial-requested optimisation variants. |
+| `research_project_experiment_tracking` | `external_research_mutating` | Non-authoritative projection report. | Derived, idempotent, and separately gated. |
 
-Supervisor tools consume specialist-owned artifacts but must not forge them. Portfolio backtests remain deterministic
-research artifacts and do not control brokers or live trading.
+Candidate/stack creation and loose `research_run_backtest` / `research_run_portfolio_backtest` request forms are not
+registered. Maintained or method-generated source is a producer input to the same implementation registry.
 
 ## Evaluation Tools
 
 | Tool | Side effect | Primary output | Notes |
 | --- | --- | --- | --- |
-| `evaluation_generate_performance_report` | `local_mutating` | `evaluation_report` with `report_kind="performance_report"`. | Reads persisted backtest bundles and optional data-quality evidence. |
+| `evaluation_generate_parameter_optimization_report` | `local_mutating` | Untouched-holdout optimisation Evaluation report. | Verifies selected specification, sealed holdout hash, and risk evidence. |
+
+## Adversarial Tools
+
+| Tool | Side effect | Primary output | Notes |
+| --- | --- | --- | --- |
+| `adversarial_create_parameter_optimization_audit_plan` | `local_mutating` | Immutable attack plan. | Declares attacks without executing or changing the baseline. |
+| `adversarial_generate_parameter_optimization_audit` | `local_mutating` | Robustness report. | Judges supplied variant/stress refs and cannot rewrite selection. |
 
 ## Capability Flags And Gates
 
 The config envelope reports static registration flags plus runtime policy:
 
 - Broker-mutating and raw SQL tools are not registered.
-- Data, knowledge, math, strategy, risk-manager, strategy/risk stack, backtest, and evaluation tool families are
-  registered.
+- Data, knowledge, math, implementation, specification, canonical backtest, optimisation, Evaluation, and Adversarial
+  tool families are registered.
 - Backtest execution is separately gated by `TRADER_MCP_ALLOW_BACKTESTS`.
+- Optimisation execution additionally requires `TRADER_MCP_ALLOW_OPTIMIZATION`.
+- Optuna writes require `TRADER_MCP_ALLOW_EXTERNAL_RESEARCH_WRITES` and `TRADER_MCP_ALLOW_OPTUNA_WRITES`.
+- Tracking projection requires `TRADER_MCP_ALLOW_EXTERNAL_RESEARCH_WRITES` and
+  `TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES`.
 - Data loading mutation is separately gated by `TRADER_MCP_ALLOW_DATA_LOADING`.
 - Provider-catalog symbol discovery is separately gated by symbol-provider discovery policy.
 - Mutating method/strategy/risk/portfolio/evaluation MCP flows require a configured or injected research artifact store.
@@ -144,17 +169,15 @@ The config envelope reports static registration flags plus runtime policy:
 ## Planned Tool Ownership
 
 The agent registry contains planned allowlist entries that are not all registered MCP tools yet, including hypothesis,
-ML, adversarial, attribution, recommendation, experiment-runner, broader evaluation critique, and portfolio/risk backtest
+ML, broader robustness, attribution, recommendation, and broader Evaluation critique
 surfaces. Treat this file's registered catalog as the
 current MCP availability source.
 
 The next planned tool work is not additional knowledge extraction. It is:
 
-- immutable registration and validation of handwritten or AI-produced strategy and risk-manager implementations
-- reproducible backtest specifications that consume validated implementation versions and Data Agent manifests
 - ML model-version lineage, including model hashes, feature/data refs, training-code and environment provenance,
   evaluation evidence, and lifecycle state
-- robustness/adversarial reports linked to immutable baseline backtests, including cost, perturbation, split, and
+- broader robustness variants linked to immutable baseline backtests, including cost, perturbation, split, and
   concentration attacks
 
 None of those future surfaces should execute prompt text directly. AI-produced code is supplied as an explicit source
@@ -167,7 +190,7 @@ adds agent orchestration only after they are proven.
 
 | Phase | Planned tools | Intended side effect and gate |
 | --- | --- | --- |
-| MLflow runtime | `ml_get_runtime`, `ml_health`, `ml_list_experiments` | `read_only`; one configured tracking/registry authority, no caller-supplied URI. |
+| MLflow runtime | `ml_get_runtime`, `ml_health`, `ml_list_training_experiments` | `read_only`; one configured ML training/registry authority, no caller-supplied URI. |
 | Feature engineering | `ml_create_feature_set`, `ml_validate_feature_set` | Trader DB mutation only; writes immutable feature specs and validation. |
 | Training data | `ml_create_training_dataset`, `ml_create_time_series_split_plan` | Trader DB mutation and bounded materialization; consumes explicit Data Agent refs. |
 | Training pipeline | `ml_register_training_pipeline`, `ml_validate_training_pipeline`, `ml_create_training_spec` | Trader DB mutation; source/package registration never executes prompt text. |
@@ -179,9 +202,9 @@ adds agent orchestration only after they are proven.
 | Deployment evidence | `ml_create_deployment_manifest`, `ml_validate_deployment` | Trader DB mutation; creates version-pinned backtest/paper configuration, not a live service change. |
 | Monitoring | `ml_summarize_predictions`, `ml_compute_drift_report` | Reads persisted prediction events and writes bounded ML-owned reports outside the hot path. |
 
-The side-effect vocabulary must be extended before MLflow-mutating tools are registered. `local_mutating` is accurate
-for Trader Postgres records but not for creating runs, model versions, tags, or aliases on an external MLflow instance.
-The planned contract uses an external research mutation class and separate default-off policy for MLflow writes,
+The side-effect vocabulary now includes `external_research_mutating`. `local_mutating` is accurate for Trader Postgres
+records but not for creating runs, model versions, tags, or aliases on an external MLflow instance. The planned ML
+contract uses that external class and separate default-off policy for MLflow writes,
 training execution, and alias promotion. Runtime deployment remains outside agent mutation authority.
 
 ## Deferred Walk-Forward Tool Universe

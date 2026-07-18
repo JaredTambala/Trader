@@ -119,18 +119,6 @@ MATH_PACKAGE_METHOD_ARTIFACT_TOOL: Final = "math_package_method_artifact"
 RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL: Final = "research_list_strategy_templates"
 """Tool name for listing maintained strategy templates."""
 
-RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL: Final = "research_create_strategy_candidate"
-"""Tool name for creating source-backed strategy candidate manifests."""
-
-RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL: Final = "research_validate_strategy_candidate"
-"""Tool name for validating strategy candidates before backtests."""
-
-RESEARCH_RUN_BACKTEST_TOOL: Final = "research_run_backtest"
-"""Tool name for running a data-scoped baseline research backtest."""
-
-RESEARCH_RUN_PORTFOLIO_BACKTEST_TOOL: Final = "research_run_portfolio_backtest"
-"""Tool name for running a risk-scoped portfolio research backtest."""
-
 RESEARCH_GET_BACKTEST_RESULTS_TOOL: Final = "research_get_backtest_results"
 """Tool name for reading a persisted baseline backtest result bundle."""
 
@@ -140,20 +128,34 @@ RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL: Final = "research_compare_backtest_resul
 RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL: Final = "research_list_risk_manager_templates"
 """Tool name for listing source-generatable risk-manager templates."""
 
-RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL: Final = "research_create_risk_manager_candidate"
-"""Tool name for creating source-backed risk-manager candidate manifests."""
-
-RESEARCH_VALIDATE_RISK_MANAGER_CANDIDATE_TOOL: Final = "research_validate_risk_manager_candidate"
-"""Tool name for validating source-backed risk-manager candidates."""
-
-RESEARCH_CREATE_STRATEGY_RISK_STACK_TOOL: Final = "research_create_strategy_risk_stack"
-"""Tool name for composing validated strategies and risk managers into a stack."""
-
-RESEARCH_VALIDATE_STRATEGY_RISK_STACK_TOOL: Final = "research_validate_strategy_risk_stack"
-"""Tool name for validating strategy/risk stacks before portfolio backtests."""
-
-EVALUATION_GENERATE_PERFORMANCE_REPORT_TOOL: Final = "evaluation_generate_performance_report"
-"""Tool name for generating Evaluation-owned backtest performance reports."""
+RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL: Final = "research_register_strategy_implementation"
+RESEARCH_VALIDATE_STRATEGY_IMPLEMENTATION_TOOL: Final = "research_validate_strategy_implementation"
+RESEARCH_REGISTER_RISK_MANAGER_IMPLEMENTATION_TOOL: Final = "research_register_risk_manager_implementation"
+RESEARCH_VALIDATE_RISK_MANAGER_IMPLEMENTATION_TOOL: Final = "research_validate_risk_manager_implementation"
+RESEARCH_REGISTER_OPTIMIZATION_OBJECTIVE_TOOL: Final = "research_register_optimization_objective"
+RESEARCH_VALIDATE_OPTIMIZATION_OBJECTIVE_TOOL: Final = "research_validate_optimization_objective"
+RESEARCH_CREATE_STRATEGY_SPECIFICATION_TOOL: Final = "research_create_strategy_specification"
+RESEARCH_VALIDATE_STRATEGY_SPECIFICATION_TOOL: Final = "research_validate_strategy_specification"
+RESEARCH_CREATE_RISK_STACK_SPECIFICATION_TOOL: Final = "research_create_risk_stack_specification"
+RESEARCH_VALIDATE_RISK_STACK_SPECIFICATION_TOOL: Final = "research_validate_risk_stack_specification"
+RESEARCH_CREATE_BACKTEST_SPECIFICATION_TOOL: Final = "research_create_backtest_specification"
+RESEARCH_VALIDATE_BACKTEST_SPECIFICATION_TOOL: Final = "research_validate_backtest_specification"
+RESEARCH_RUN_BACKTEST_SPECIFICATION_TOOL: Final = "research_run_backtest_specification"
+RESEARCH_GET_OPTIMIZER_RUNTIME_TOOL: Final = "research_get_optimizer_runtime"
+RESEARCH_CREATE_PARAMETER_OPTIMIZATION_PLAN_TOOL: Final = "research_create_parameter_optimization_plan"
+RESEARCH_RUN_PARAMETER_OPTIMIZATION_TOOL: Final = "research_run_parameter_optimization"
+RESEARCH_GET_PARAMETER_OPTIMIZATION_RESULTS_TOOL: Final = "research_get_parameter_optimization_results"
+RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS_TOOL: Final = "research_run_parameter_optimization_variants"
+RESEARCH_PROJECT_EXPERIMENT_TRACKING_TOOL: Final = "research_project_experiment_tracking"
+EVALUATION_GENERATE_PARAMETER_OPTIMIZATION_REPORT_TOOL: Final = (
+    "evaluation_generate_parameter_optimization_report"
+)
+ADVERSARIAL_CREATE_PARAMETER_OPTIMIZATION_AUDIT_PLAN_TOOL: Final = (
+    "adversarial_create_parameter_optimization_audit_plan"
+)
+ADVERSARIAL_GENERATE_PARAMETER_OPTIMIZATION_AUDIT_TOOL: Final = (
+    "adversarial_generate_parameter_optimization_audit"
+)
 
 SUPPORT_TOOL_NAMES: Final = (MCP_HEALTH_TOOL, MCP_CONFIG_TOOL)
 """Read-only support tool names exposed by the MCP server."""
@@ -200,27 +202,44 @@ MATH_TOOL_NAMES: Final = (
     MATH_GENERATE_CPP_KERNEL_TOOL,
     MATH_COMPILE_KERNEL_TOOL,
     MATH_PACKAGE_METHOD_ARTIFACT_TOOL,
+    RESEARCH_REGISTER_OPTIMIZATION_OBJECTIVE_TOOL,
+    RESEARCH_VALIDATE_OPTIMIZATION_OBJECTIVE_TOOL,
 )
 """Quant Methods math tool names exposed by the MCP server."""
 
 RESEARCH_TOOL_NAMES: Final = (
     RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL,
-    RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
-    RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL,
-    RESEARCH_RUN_BACKTEST_TOOL,
-    RESEARCH_RUN_PORTFOLIO_BACKTEST_TOOL,
+    RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL,
+    RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL,
+    RESEARCH_VALIDATE_STRATEGY_IMPLEMENTATION_TOOL,
+    RESEARCH_REGISTER_RISK_MANAGER_IMPLEMENTATION_TOOL,
+    RESEARCH_VALIDATE_RISK_MANAGER_IMPLEMENTATION_TOOL,
+    RESEARCH_CREATE_STRATEGY_SPECIFICATION_TOOL,
+    RESEARCH_VALIDATE_STRATEGY_SPECIFICATION_TOOL,
+    RESEARCH_CREATE_RISK_STACK_SPECIFICATION_TOOL,
+    RESEARCH_VALIDATE_RISK_STACK_SPECIFICATION_TOOL,
+    RESEARCH_CREATE_BACKTEST_SPECIFICATION_TOOL,
+    RESEARCH_VALIDATE_BACKTEST_SPECIFICATION_TOOL,
+    RESEARCH_RUN_BACKTEST_SPECIFICATION_TOOL,
     RESEARCH_GET_BACKTEST_RESULTS_TOOL,
     RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL,
-    RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL,
-    RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL,
-    RESEARCH_VALIDATE_RISK_MANAGER_CANDIDATE_TOOL,
-    RESEARCH_CREATE_STRATEGY_RISK_STACK_TOOL,
-    RESEARCH_VALIDATE_STRATEGY_RISK_STACK_TOOL,
+    RESEARCH_GET_OPTIMIZER_RUNTIME_TOOL,
+    RESEARCH_CREATE_PARAMETER_OPTIMIZATION_PLAN_TOOL,
+    RESEARCH_RUN_PARAMETER_OPTIMIZATION_TOOL,
+    RESEARCH_GET_PARAMETER_OPTIMIZATION_RESULTS_TOOL,
+    RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS_TOOL,
+    RESEARCH_PROJECT_EXPERIMENT_TRACKING_TOOL,
 )
 """Quant Research Supervisor tool names exposed by the MCP server."""
 
-EVALUATION_TOOL_NAMES: Final = (EVALUATION_GENERATE_PERFORMANCE_REPORT_TOOL,)
+EVALUATION_TOOL_NAMES: Final = (EVALUATION_GENERATE_PARAMETER_OPTIMIZATION_REPORT_TOOL,)
 """Evaluation Agent tool names exposed by the MCP server."""
+
+ADVERSARIAL_TOOL_NAMES: Final = (
+    ADVERSARIAL_CREATE_PARAMETER_OPTIMIZATION_AUDIT_PLAN_TOOL,
+    ADVERSARIAL_GENERATE_PARAMETER_OPTIMIZATION_AUDIT_TOOL,
+)
+"""Adversarial Agent tool names exposed by the MCP server."""
 
 REGISTERED_TOOL_NAMES: Final = (
     *SUPPORT_TOOL_NAMES,
@@ -229,6 +248,7 @@ REGISTERED_TOOL_NAMES: Final = (
     *MATH_TOOL_NAMES,
     *RESEARCH_TOOL_NAMES,
     *EVALUATION_TOOL_NAMES,
+    *ADVERSARIAL_TOOL_NAMES,
 )
 """All tool names currently exposed by the MCP server."""
 
@@ -294,31 +314,59 @@ MATH_TOOL_DESCRIPTIONS: Final = {
     MATH_GENERATE_CPP_KERNEL_TOOL: "Generate a template-restricted C++ kernel from a validated Python reference.",
     MATH_COMPILE_KERNEL_TOOL: "Compile a generated C++ kernel in an isolated local build directory.",
     MATH_PACKAGE_METHOD_ARTIFACT_TOOL: "Package a validated Python method implementation for strategy handoff.",
+    RESEARCH_REGISTER_OPTIMIZATION_OBJECTIVE_TOOL: (
+        "Register a versioned objective that receives only a closed OptimizationObservation."
+    ),
+    RESEARCH_VALIDATE_OPTIMIZATION_OBJECTIVE_TOOL: (
+        "Validate objective safety and deterministic closed-observation behavior."
+    ),
 }
 """Descriptions for Quant Methods method tools exposed by the MCP server."""
 
 RESEARCH_TOOL_DESCRIPTIONS: Final = {
-    RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL: "List maintained strategy templates and candidate parameter schemas.",
-    RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL: "Create a bounded source-backed strategy candidate manifest.",
-    RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL: "Validate a strategy candidate with maintained runtime builders.",
-    RESEARCH_RUN_BACKTEST_TOOL: "Run a baseline backtest over a Data Agent dataset manifest.",
-    RESEARCH_RUN_PORTFOLIO_BACKTEST_TOOL: "Run a risk-scoped portfolio backtest from a validated strategy/risk stack.",
-    RESEARCH_GET_BACKTEST_RESULTS_TOOL: "Read a persisted baseline backtest artifact bundle.",
-    RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL: "Compare persisted baseline backtest bundles and write a comparison report.",
-    RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL: "List source-generatable risk-manager templates.",
-    RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL: "Create a source-backed risk-manager candidate manifest.",
-    RESEARCH_VALIDATE_RISK_MANAGER_CANDIDATE_TOOL: "Validate a source-backed risk-manager candidate.",
-    RESEARCH_CREATE_STRATEGY_RISK_STACK_TOOL: "Compose a validated strategy candidate with validated risk managers.",
-    RESEARCH_VALIDATE_STRATEGY_RISK_STACK_TOOL: "Validate a strategy/risk stack with a deterministic fixture.",
+    RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL: "List maintained strategy-template metadata for optional code producers.",
+    RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL: "List maintained risk-template metadata for optional code producers.",
+    RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL: "Register a content-addressed strategy implementation version.",
+    RESEARCH_VALIDATE_STRATEGY_IMPLEMENTATION_TOOL: "Validate strategy source and deterministic runtime behavior.",
+    RESEARCH_REGISTER_RISK_MANAGER_IMPLEMENTATION_TOOL: (
+        "Register a content-addressed risk-manager implementation version."
+    ),
+    RESEARCH_VALIDATE_RISK_MANAGER_IMPLEMENTATION_TOOL: (
+        "Validate risk-manager source and deterministic runtime behavior."
+    ),
+    RESEARCH_CREATE_STRATEGY_SPECIFICATION_TOOL: "Create an immutable data-scope-free strategy specification.",
+    RESEARCH_VALIDATE_STRATEGY_SPECIFICATION_TOOL: "Validate a strategy specification and pinned implementation.",
+    RESEARCH_CREATE_RISK_STACK_SPECIFICATION_TOOL: "Create an immutable ordered risk-stack specification.",
+    RESEARCH_VALIDATE_RISK_STACK_SPECIFICATION_TOOL: "Validate a risk-stack specification and source hashes.",
+    RESEARCH_CREATE_BACKTEST_SPECIFICATION_TOOL: "Bind passed behavior to one Data Agent scope and cost policy.",
+    RESEARCH_VALIDATE_BACKTEST_SPECIFICATION_TOOL: "Validate a canonical backtest specification and snapshots.",
+    RESEARCH_RUN_BACKTEST_SPECIFICATION_TOOL: "Run one passed DB-backed backtest specification.",
+    RESEARCH_GET_BACKTEST_RESULTS_TOOL: "Read a canonical DB-backed backtest run.",
+    RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL: "Compare canonical DB-backed backtest runs.",
+    RESEARCH_GET_OPTIMIZER_RUNTIME_TOOL: "List optimizer profiles without initializing provider state.",
+    RESEARCH_CREATE_PARAMETER_OPTIMIZATION_PLAN_TOOL: "Create a provider-neutral bounded optimization plan.",
+    RESEARCH_RUN_PARAMETER_OPTIMIZATION_TOOL: "Run or resume a canonical parameter optimization ledger.",
+    RESEARCH_GET_PARAMETER_OPTIMIZATION_RESULTS_TOOL: "Read canonical optimization results without provider access.",
+    RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS_TOOL: "Execute immutable Adversarial-requested optimization variants.",
+    RESEARCH_PROJECT_EXPERIMENT_TRACKING_TOOL: "Project canonical run evidence to a configured analytical sink.",
 }
 """Descriptions for Quant Research Supervisor tools exposed by the MCP server."""
 
 EVALUATION_TOOL_DESCRIPTIONS: Final = {
-    EVALUATION_GENERATE_PERFORMANCE_REPORT_TOOL: (
-        "Generate an Evaluation-owned performance report from a persisted backtest bundle."
+    EVALUATION_GENERATE_PARAMETER_OPTIMIZATION_REPORT_TOOL: (
+        "Evaluate an optimization selection on its sealed untouched holdout."
     ),
 }
 """Descriptions for Evaluation Agent tools exposed by the MCP server."""
+
+ADVERSARIAL_TOOL_DESCRIPTIONS: Final = {
+    ADVERSARIAL_CREATE_PARAMETER_OPTIMIZATION_AUDIT_PLAN_TOOL: (
+        "Plan independent attacks against an immutable optimization procedure."
+    ),
+    ADVERSARIAL_GENERATE_PARAMETER_OPTIMIZATION_AUDIT_TOOL: (
+        "Judge supplied variant and stress evidence without changing the selection."
+    ),
+}
 
 CAPABILITY_REGISTRATION_FLAGS: Final = {
     "broker_mutating_tools_registered": False,
@@ -328,26 +376,12 @@ CAPABILITY_REGISTRATION_FLAGS: Final = {
     "knowledge_tools_registered": True,
     "methodology_candidate_tools_registered": True,
     "math_method_tools_registered": True,
-    "strategy_candidate_tools_registered": True,
-    "risk_manager_candidate_tools_registered": True,
-    "risk_manager_validation_tools_registered": True,
-    "strategy_risk_stack_tools_registered": True,
+    "implementation_registry_tools_registered": True,
+    "canonical_specification_tools_registered": True,
     "backtest_tools_registered": True,
+    "optimization_tools_registered": True,
+    "experiment_tracking_projection_tools_registered": True,
     "evaluation_tools_registered": True,
+    "adversarial_tools_registered": True,
 }
 """Safety flags for registered and intentionally unregistered tool families."""
-
-UNREGISTERED_CAPABILITY_FLAGS: Final = {
-    "broker_mutating_tools_registered": False,
-    "raw_sql_tools_registered": False,
-    "symbol_discovery_tools_registered": False,
-    "data_loading_tools_registered": False,
-    "methodology_candidate_tools_registered": False,
-    "strategy_candidate_tools_registered": False,
-    "risk_manager_candidate_tools_registered": False,
-    "risk_manager_validation_tools_registered": False,
-    "strategy_risk_stack_tools_registered": False,
-    "backtest_tools_registered": False,
-    "evaluation_tools_registered": False,
-}
-"""Historical pre-loading safety flags retained for older tests and docs."""

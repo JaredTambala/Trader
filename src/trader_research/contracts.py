@@ -21,12 +21,14 @@ class SideEffect(str, Enum):
     Attributes:
         READ_ONLY: Reads local/config/runtime state without writing.
         LOCAL_MUTATING: Writes bounded local artifacts or research records.
+        EXTERNAL_RESEARCH_MUTATING: Projects canonical research evidence to an external analytical system.
         BROKER_READ: Reads broker/operator state without mutation.
         BROKER_MUTATING: Mutates broker state; not allowed for research tools.
     """
 
     READ_ONLY = "read_only"
     LOCAL_MUTATING = "local_mutating"
+    EXTERNAL_RESEARCH_MUTATING = "external_research_mutating"
     BROKER_READ = "broker_read"
     BROKER_MUTATING = "broker_mutating"
 

@@ -144,6 +144,37 @@ def test_trader_research_does_not_import_mcp_or_langgraph_agent_packages() -> No
     assert offenders == []
 
 
+def test_canonical_experiment_packages_do_not_import_knowledge_or_candidate_domains() -> None:
+    roots = (
+        Path("src/trader_research/implementations"),
+        Path("src/trader_research/specifications"),
+        Path("src/trader_research/optimization"),
+        Path("src/trader_research/tracking"),
+        Path("src/trader_research/adversarial"),
+    )
+    files = [path for root in roots for path in root.rglob("*.py")]
+    files.extend(
+        (
+            Path("src/trader_research/backtests/execution.py"),
+            Path("src/trader_research/evaluation/optimization.py"),
+        )
+    )
+    forbidden = (
+        "trader_research.knowledge",
+        "trader_research.strategy_candidates",
+        "trader_research.risk_managers",
+        "trader_research.portfolio_stacks",
+        "trader_research.methods",
+    )
+    offenders: list[str] = []
+    for path in files:
+        for imported in _imported_modules(path):
+            if imported.startswith(forbidden):
+                offenders.append(f"{path}: imports {imported}")
+
+    assert offenders == []
+
+
 def test_trader_agents_do_not_import_data_platform_or_mcp_server_boundaries() -> None:
     forbidden = {
         "trader.event_store",

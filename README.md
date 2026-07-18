@@ -517,8 +517,13 @@ Run the Postgres integration subset against a local Docker-backed Postgres insta
 
 ```bash
 docker compose -f docker-compose.postgres.yml up -d
+export PG_TEST_DB=trader_test
+createdb -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$PG_TEST_DB"
 uv run pytest -m postgres
 ```
+
+Postgres tests require a `PG_TEST_DB` name ending in `_test` or `_testing` and truncate their fixture tables. They never
+fall back to the operator-facing `PG_DB` database.
 
 Targeted examples:
 

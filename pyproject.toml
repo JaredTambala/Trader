@@ -25,6 +25,8 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest>=7.4"]
 ui = ["reflex", "plotly>=5.20.0"]
+optimization = ["optuna>=4,<5"]
+ml = ["mlflow>=3,<4"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

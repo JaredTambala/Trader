@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from pypdf import PdfWriter
 
 from trader_research.knowledge.citation_validation import validate_citations
@@ -10,7 +11,8 @@ from trader_research.knowledge.embeddings import (
     EmbeddingRequestError,
     RuntimeConfiguredEmbeddingProvider,
 )
-from trader_research.knowledge.extractors import extract_text
+from trader_research.knowledge import extractors
+from trader_research.knowledge.extractors import ExtractedDocument, ExtractedSection, extract_text
 from trader_research.knowledge.ingestion import ingest_documents
 from trader_research.knowledge.retrieval import get_evidence_chunks, retrieve_evidence
 from trader_research.knowledge.sources import register_source
@@ -213,6 +215,28 @@ def test_pdf_extraction_reports_scanned_page_warning(tmp_path: Path) -> None:
 
     assert extracted.sections == tuple()
     assert extracted.warnings == ("page 1 has no extractable text; OCR is disabled",)
+
+
+def test_extraction_replaces_invalid_unicode_surrogates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_path = tmp_path / "invalid.txt"
+    source_path.write_text("placeholder", encoding="utf-8")
+    monkeypatch.setattr(
+        extractors,
+        "_extract_plain_text",
+        lambda _path: ExtractedDocument(
+            sections=(ExtractedSection(text="valid \ud835 text", section="invalid"),)
+        ),
+    )
+
+    extracted = extract_text(source_path)
+
+    assert extracted.sections[0].text == "valid \ufffd text"
+    assert extracted.warnings == (
+        "replaced 1 invalid Unicode surrogate code points during text extraction",
+    )
 
 
 def test_ingestion_requires_configured_real_embedding_provider_by_default(tmp_path: Path) -> None:

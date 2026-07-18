@@ -205,12 +205,17 @@ def test_config_output_includes_data_tools_and_excludes_unsafe_tools() -> None:
         assert DATA_GET_INVENTORY_TOOL in tool_names
         assert DATA_SUMMARIZE_QUALITY_TOOL in tool_names
         assert DATA_ENSURE_LOADED_TOOL in tool_names
-        assert "research_run_backtest" in tool_names
+        assert "research_run_backtest_specification" in tool_names
+        assert "research_run_backtest" not in tool_names
         assert data["safety"] == {
             **CAPABILITY_REGISTRATION_FLAGS,
             "symbol_provider_discovery_allowed": False,
             "data_loading_mutation_allowed": False,
             "backtest_execution_allowed": False,
+            "optimization_execution_allowed": False,
+            "external_research_writes_allowed": False,
+            "optuna_writes_allowed": False,
+            "experiment_tracking_writes_allowed": False,
         }
 
     anyio.run(_run)

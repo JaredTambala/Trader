@@ -13,7 +13,10 @@ from mcp.types import CallToolResult
 from trader.config import Config, build_config, load_yaml_config
 from trader.event_store import EventStore, NoOpEventStore, build_event_store
 from trader_mcp.adapters import envelope_to_mcp_result
+from trader_mcp.adversarial_tools import register_adversarial_tools
 from trader_mcp.constants import (
+    ADVERSARIAL_TOOL_DESCRIPTIONS,
+    ADVERSARIAL_TOOL_NAMES,
     CAPABILITY_REGISTRATION_FLAGS,
     DATA_DISCOVER_SYMBOLS_TOOL,
     DATA_ENSURE_LOADED_TOOL,
@@ -49,17 +52,16 @@ from trader_mcp.constants import (
     MATH_TOOL_DESCRIPTIONS,
     MATH_TOOL_NAMES,
     REGISTERED_TOOL_NAMES,
-    RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL,
-    RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL,
-    RESEARCH_CREATE_STRATEGY_RISK_STACK_TOOL,
-    RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
-    RESEARCH_RUN_BACKTEST_TOOL,
-    RESEARCH_RUN_PORTFOLIO_BACKTEST_TOOL,
+    RESEARCH_GET_BACKTEST_RESULTS_TOOL,
+    RESEARCH_GET_OPTIMIZER_RUNTIME_TOOL,
+    RESEARCH_GET_PARAMETER_OPTIMIZATION_RESULTS_TOOL,
+    RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL,
+    RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL,
+    RESEARCH_PROJECT_EXPERIMENT_TRACKING_TOOL,
+    RESEARCH_REGISTER_OPTIMIZATION_OBJECTIVE_TOOL,
+    RESEARCH_VALIDATE_OPTIMIZATION_OBJECTIVE_TOOL,
     RESEARCH_TOOL_DESCRIPTIONS,
     RESEARCH_TOOL_NAMES,
-    RESEARCH_VALIDATE_RISK_MANAGER_CANDIDATE_TOOL,
-    RESEARCH_VALIDATE_STRATEGY_RISK_STACK_TOOL,
-    RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL,
     SERVER_NAME,
     SUPPORT_TOOL_DESCRIPTIONS,
 )
@@ -86,8 +88,10 @@ from trader_research.knowledge.embeddings import EmbeddingProvider, embedding_ru
 from trader_research.knowledge.postgres_store import PostgresKnowledgeStore
 from trader_research.knowledge.store import KnowledgeStore, UnavailableKnowledgeStore
 from trader_research.methods.registry import save_bootstrap_method_contracts
+from trader_research.optimization import OptimizationEngineRegistry, OptunaOptimizationEngine
 from trader_research.postgres_artifact_store import PostgresResearchArtifactStore
 from trader_research.providers import AlpacaSymbolCatalogProvider
+from trader_research.tracking import ExperimentTrackingSinkRegistry, MLflowExperimentTrackingSink
 
 
 EventStoreProvider = Callable[[], EventStore]
@@ -120,8 +124,10 @@ def create_server(
     research_artifact_store_provider: ResearchArtifactStoreProvider | None = None,
     method_generation_llm_client: Any | None = None,
     backtest_config_provider: ToolConfigProvider | None = None,
+    optimizer_registry: OptimizationEngineRegistry | None = None,
+    tracking_sink_registry: ExperimentTrackingSinkRegistry | None = None,
 ) -> FastMCP:
-    """Create the MCP server and register read-only tools.
+    """Create the MCP server and register the configured bounded tool catalog.
 
     Args:
         environment: Optional resolved local MCP environment.
@@ -138,6 +144,24 @@ def create_server(
     resolved_knowledge_store_provider = knowledge_store_provider or build_knowledge_store_provider(local_env)
     resolved_research_artifact_store_provider = research_artifact_store_provider or build_research_artifact_store_provider(
         local_env
+    )
+    resolved_optimizer_registry = optimizer_registry or OptimizationEngineRegistry(
+        engines=[
+            OptunaOptimizationEngine(
+                storage_url=local_env.optuna_storage_url,
+                study_prefix=local_env.optuna_study_prefix,
+                schema_name=local_env.optuna_schema,
+                role_name=local_env.optuna_role,
+            )
+        ]
+    )
+    resolved_tracking_sink_registry = tracking_sink_registry or ExperimentTrackingSinkRegistry(
+        sinks=[
+            MLflowExperimentTrackingSink(
+                tracking_uri=local_env.mlflow_tracking_uri,
+                experiment_name=local_env.mlflow_optimization_experiment,
+            )
+        ]
     )
     resolved_data_loading_policy = data_loading_policy or DataEnsureLoadedPolicy(
         allow_data_loading=local_env.allow_data_loading,
@@ -366,9 +390,11 @@ def create_server(
         event_store_provider=data_event_store_provider,
         backtest_config_provider=resolved_backtest_config_provider,
         artifact_store_provider=resolved_research_artifact_store_provider,
-        knowledge_store_provider=resolved_knowledge_store_provider,
+        optimizer_registry=resolved_optimizer_registry,
+        tracking_sink_registry=resolved_tracking_sink_registry,
     )
     register_evaluation_tools(server, local_env, artifact_store_provider=resolved_research_artifact_store_provider)
+    register_adversarial_tools(server, artifact_store_provider=resolved_research_artifact_store_provider)
 
     return server
 
@@ -616,6 +642,8 @@ def build_config_envelope(
                 MATH_GENERATE_CPP_KERNEL_TOOL,
                 MATH_COMPILE_KERNEL_TOOL,
                 MATH_PACKAGE_METHOD_ARTIFACT_TOOL,
+                RESEARCH_REGISTER_OPTIMIZATION_OBJECTIVE_TOOL,
+                RESEARCH_VALIDATE_OPTIMIZATION_OBJECTIVE_TOOL,
             }
             else SideEffect.READ_ONLY.value,
             "description": MATH_TOOL_DESCRIPTIONS[tool_name],
@@ -626,20 +654,20 @@ def build_config_envelope(
         {
             "name": tool_name,
             "agent_owner": agent_owner_for_tool(tool_name),
-            "side_effect": SideEffect.LOCAL_MUTATING.value
-            if tool_name
-            in {
-                RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
-                RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL,
-                RESEARCH_RUN_BACKTEST_TOOL,
-                RESEARCH_RUN_PORTFOLIO_BACKTEST_TOOL,
-                RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL,
-                RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL,
-                RESEARCH_VALIDATE_RISK_MANAGER_CANDIDATE_TOOL,
-                RESEARCH_CREATE_STRATEGY_RISK_STACK_TOOL,
-                RESEARCH_VALIDATE_STRATEGY_RISK_STACK_TOOL,
-            }
-            else SideEffect.READ_ONLY.value,
+            "side_effect": (
+                SideEffect.EXTERNAL_RESEARCH_MUTATING.value
+                if tool_name == RESEARCH_PROJECT_EXPERIMENT_TRACKING_TOOL
+                else SideEffect.READ_ONLY.value
+                if tool_name
+                in {
+                    RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL,
+                    RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL,
+                    RESEARCH_GET_BACKTEST_RESULTS_TOOL,
+                    RESEARCH_GET_OPTIMIZER_RUNTIME_TOOL,
+                    RESEARCH_GET_PARAMETER_OPTIMIZATION_RESULTS_TOOL,
+                }
+                else SideEffect.LOCAL_MUTATING.value
+            ),
             "description": RESEARCH_TOOL_DESCRIPTIONS[tool_name],
         }
         for tool_name in RESEARCH_TOOL_NAMES
@@ -653,11 +681,24 @@ def build_config_envelope(
         }
         for tool_name in EVALUATION_TOOL_NAMES
     )
+    tool_metadata.extend(
+        {
+            "name": tool_name,
+            "agent_owner": agent_owner_for_tool(tool_name),
+            "side_effect": SideEffect.LOCAL_MUTATING.value,
+            "description": ADVERSARIAL_TOOL_DESCRIPTIONS[tool_name],
+        }
+        for tool_name in ADVERSARIAL_TOOL_NAMES
+    )
     safety = {
         **CAPABILITY_REGISTRATION_FLAGS,
         "symbol_provider_discovery_allowed": local_env.allow_symbol_provider_discovery,
         "data_loading_mutation_allowed": local_env.allow_data_loading,
         "backtest_execution_allowed": local_env.allow_backtests,
+        "optimization_execution_allowed": local_env.allow_optimization,
+        "optuna_writes_allowed": local_env.allow_optuna_writes,
+        "external_research_writes_allowed": local_env.allow_external_research_writes,
+        "experiment_tracking_writes_allowed": local_env.allow_experiment_tracking_writes,
     }
     return success_envelope(
         command=MCP_CONFIG_TOOL,
@@ -684,6 +725,17 @@ def build_config_envelope(
                 local_env,
                 provider_injected=research_artifact_store_provider_configured,
             ),
+            "optimizer_runtime": {
+                "canonical_store": "research_artifacts",
+                "built_in_profiles": ["builtin_grid", "builtin_random"],
+                "optuna_profile_configured": bool(local_env.optuna_storage_url),
+                "optuna_schema_authority": "sampler_state_only",
+            },
+            "experiment_tracking_runtime": {
+                "canonical_store": "research_artifacts",
+                "mlflow_profile_configured": bool(local_env.mlflow_tracking_uri),
+                "authority": "analytical_projection_only",
+            },
             "tool_count": len(tool_metadata),
             "tools": tool_metadata,
             "policy": local_env.policy_flags(),

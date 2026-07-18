@@ -7,17 +7,17 @@ source of truth is `src/trader_research/agents.py`; artifact ownership is regist
 
 | Agent | Mission | Current owned artifacts | Current MCP/tool access |
 | --- | --- | --- | --- |
-| Quant Research Supervisor Agent | Coordinate research workflows and synthesize specialist-owned evidence. | Experiment plans, research suites, strategy candidates, risk-manager candidates, strategy/risk stacks, baseline and portfolio backtest refs, comparison reports, planned walk-forward optimisation plans/runs, recommendation reports. | Supervisor `research_*` tools plus planned synthesis/experiment/optimisation tools. |
+| Quant Research Supervisor Agent | Coordinate research workflows and synthesize specialist-owned evidence. | Strategy/risk implementation versions, immutable strategy/risk/backtest specifications, canonical backtest runs, optimisation plans/runs/trials, tracking projection reports, comparisons, and planned walk-forward runs. | Registered implementation/specification/backtest/optimisation/projection `research_*` tools. |
 | Data Agent | Produce trustworthy bounded market-data manifests and quality evidence. | Symbol discovery reports, dataset manifests, data-quality reports, load result envelopes. | `mcp_health`, `mcp_get_config`, `data_discover_symbols`, `data_get_inventory`, `data_summarize_quality`, `data_ensure_loaded`. |
 | Quantitative Methods Agent | Produce auditable deterministic methods, method evidence, diagnostics, and statistical inference artifacts. | Knowledge manifests, methodology candidates, methodology evidence packets, methodology extraction/validation reports, legacy projections and canonical method cards, implementation manifests, validation reports, diagnostics, multiple-testing reports, method packages, optional kernel manifests. | `mcp_health`, `mcp_get_config`, `knowledge_*`, and current `math_*` tools. |
 | ML Agent | Coordinate point-in-time feature engineering, fitting, MLflow recording/registry, model evaluation, deployment evidence, predictions, and drift. | Planned feature-set specs, training datasets/splits/pipelines/specs, MLflow run refs, model evaluations and immutable version refs, promotion reports, deployment manifests, prediction artifacts, and drift reports. | Planned 39A-39J ML tools only; no ML tools are currently registered. |
 | Hypothesis Agent | Produce explicit falsifiable strategy hypothesis cards. | Hypothesis cards. | Planned `hypothesis_create_card`. |
-| Evaluation Agent | Produce skeptical critique and performance evidence from research artifacts. | Evaluation reports, including planned stitched out-of-sample walk-forward reports. | `evaluation_generate_performance_report` and planned broader critique/walk-forward tooling. |
-| Adversarial Agent | Produce robustness and stress-test evidence for candidate strategies and research procedures. | Robustness reports, including planned walk-forward optimisation audits. | Planned robustness and walk-forward audit tools only. |
+| Evaluation Agent | Produce skeptical critique and performance evidence from research artifacts. | Untouched-holdout optimisation reports and planned stitched out-of-sample walk-forward reports. | `evaluation_generate_parameter_optimization_report` plus planned broader critique/walk-forward tooling. |
+| Adversarial Agent | Produce robustness and stress-test evidence for strategies and research procedures. | Parameter-optimisation audit plans/reports and planned walk-forward audits. | Registered parameter-optimisation audit tools; broader robustness remains planned. |
 
 ## Handoff Rules
 
-- Every handoff includes `agent_owner`, artifact type, artifact path or payload, source inputs, parameters, side-effect
+- Every handoff includes `agent_owner`, artifact type, DB artifact URI or payload, source inputs, parameters, side-effect
   class, warnings, blockers, and provenance refs.
 - The supervisor can request more work, reject insufficient evidence, or mark a path blocked.
 - The supervisor must not rewrite specialist artifacts to make a strategy look better.
@@ -29,11 +29,11 @@ source of truth is `src/trader_research/agents.py`; artifact ownership is regist
   discovery, family-role evidence assembly, rich field extraction, candidate validation, rich method-card drafts, and
   method-card publishing.
 - The Quantitative Methods Agent does not create strategies, risk managers, portfolio backtests, or Evaluation reports.
-- The Quant Research Supervisor consumes approved rich method cards as provenance for bounded maintained strategy and
-  risk templates; it does not edit candidate fields or field-level evidence.
+- Approved rich method cards may be optional provenance for maintained implementation producers. The Supervisor does
+  not edit card evidence, and generated source still passes normal implementation validation.
 - The Data Agent remains the only owner of dataset manifests and quality reports. Rich method cards must not carry
   symbols, timeframes, date windows, source filters, or load decisions.
-- The Evaluation Agent consumes backtest and risk evidence after strategy/risk candidates are validated and executed; it
+- The Evaluation Agent consumes backtest and risk evidence after immutable specifications are validated and executed; it
   does not approve methods or repair missing rich-field citations.
 
 ## ML Lifecycle Ownership
@@ -43,7 +43,8 @@ source of truth is `src/trader_research/agents.py`; artifact ownership is regist
 - The Quantitative Methods Agent may own reusable mathematical feature implementations. The ML Agent owns feature-set
   composition, point-in-time availability rules, target construction, training datasets, folds, fitting, and ML model
   evidence.
-- MLflow owns experiment runs, logged model packages, registered-model versions, tags, and aliases. The ML Agent owns
+- MLflow owns ML training runs, logged model packages, registered-model versions, tags, and aliases. Generic parameter
+  optimisation plans, trials, selections, backtests, and audits remain canonical in Trader. The ML Agent owns
   Trader artifacts that reconcile and validate those external records against Data Agent, source, and environment refs.
 - The ML Agent may execute only registered, validated, bounded training pipelines through explicitly gated tools.
   Handwritten and AI-produced training code receive the same source-hash, dependency, interface, resource, and safety
@@ -58,6 +59,18 @@ source of truth is `src/trader_research/agents.py`; artifact ownership is regist
   path does not call MCP; the ML Agent consumes persisted prediction events later for monitoring and drift.
 
 ## Walk-Forward Optimisation Ownership
+
+The following split is already enforced for single-region parameter optimisation and is reused by later walk-forward
+work:
+
+- The Quant Research Supervisor owns provider-neutral plans, canonical trial ledgers, selections, and immutable variant
+  execution. It can use maintained grid/random engines or a configured optional engine through the same protocol.
+- The Quantitative Methods Agent owns versioned closed-input optimisation objectives and their validation reports.
+- The Evaluation Agent owns the matching sealed-holdout report and cannot change the selected specification.
+- The Adversarial Agent owns attack plans and final robustness judgment. It does not execute the original optimiser;
+  the Supervisor executes requested variants and returns immutable refs.
+- Tracking sinks own no product evidence. Their projection reports remain Supervisor-owned, non-authoritative Trader
+  records.
 
 - The Quant Research Supervisor owns the immutable optimisation plan and procedural run. It coordinates declared folds,
   candidate parameters/models, child specifications, selections, and out-of-sample backtests without issuing a
@@ -75,11 +88,13 @@ source of truth is `src/trader_research/agents.py`; artifact ownership is regist
 
 ## Current Versus Planned Status
 
-Current registered MCP surfaces include Data Agent tools, Quantitative Methods knowledge/math tools including rich
-method-card draft creation, Supervisor strategy, risk-manager, strategy/risk stack, baseline/portfolio backtest, and
-comparison tools, and the first Evaluation performance-report tool.
+Current registered MCP surfaces include Data Agent tools; Quantitative Methods knowledge/math and optimisation-objective
+tools; Supervisor implementation registration, immutable specifications, canonical backtests, grid/random/optional
+Optuna optimisation, result lookup, immutable variant execution, and tracking projection; untouched-holdout Evaluation;
+and parameter-optimisation Adversarial planning/judgment. Candidate/stack and loose baseline/portfolio backtest tools are
+not registered after the cutover.
 
-ML, Hypothesis, Adversarial, broader Evaluation critique, attribution, recommendation synthesis, experiment running,
+ML, Hypothesis, broader Adversarial/Evaluation critique, attribution, recommendation synthesis,
 and supervisor autonomy remain planned unless the MCP tool catalog marks them registered. The planned ML scope is the
 full 39A-39J MLflow lifecycle, not only model-card registration; task 40 remains deferred until those deterministic tools
 are proven.

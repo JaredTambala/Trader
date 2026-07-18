@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import hashlib
 import json
@@ -72,6 +72,10 @@ class DeterministicEmbeddingProvider:
             return tuple(vector)
         return tuple(value / norm for value in vector)
 
+    def embed_many(self, texts: Sequence[str]) -> tuple[tuple[float, ...], ...]:
+        """Embed a bounded text batch while preserving request order."""
+        return tuple(self.embed(text) for text in texts)
+
 
 @dataclass(frozen=True)
 class EmbeddingConfiguration:
@@ -131,6 +135,22 @@ class OpenAICompatibleEmbeddingProvider:
         )
         return _embedding_from_openai_compatible_response(response)
 
+    def embed_many(self, texts: Sequence[str]) -> tuple[tuple[float, ...], ...]:
+        """Embed a bounded batch through one OpenAI-compatible request."""
+        if not texts:
+            return ()
+        payload = {"model": self.config.model, "input": list(texts)}
+        headers = {"Content-Type": "application/json"}
+        if self.config.api_key:
+            headers["Authorization"] = f"Bearer {self.config.api_key}"
+        response = _post_json(
+            _join_url(self.config.base_url, "embeddings"),
+            payload,
+            headers=headers,
+            timeout_seconds=self.config.timeout_seconds,
+        )
+        return _embeddings_from_openai_compatible_response(response, expected_count=len(texts))
+
 
 @dataclass(frozen=True)
 class RuntimeConfiguredEmbeddingProvider:
@@ -165,6 +185,14 @@ class RuntimeConfiguredEmbeddingProvider:
         """Build the currently configured provider and delegate the embed request immediately."""
         provider = build_embedding_provider_from_env(self.env if self.env is not None else os.environ)
         return provider.embed(text)
+
+    def embed_many(self, texts: Sequence[str]) -> tuple[tuple[float, ...], ...]:
+        """Resolve the runtime provider once and embed a bounded text batch."""
+        provider = build_embedding_provider_from_env(self.env if self.env is not None else os.environ)
+        batch_embed = getattr(provider, "embed_many", None)
+        if callable(batch_embed):
+            return tuple(batch_embed(texts))
+        return tuple(provider.embed(text) for text in texts)
 
 
 def build_embedding_provider_from_env(env: Mapping[str, str] | None = None) -> EmbeddingProvider:
@@ -266,6 +294,10 @@ def _post_json(
     except error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise EmbeddingRequestError(f"Embedding backend returned HTTP {exc.code}: {detail}") from exc
+    except TimeoutError as exc:
+        raise EmbeddingRequestError(
+            f"Embedding backend request timed out after {timeout_seconds:g} seconds"
+        ) from exc
     except error.URLError as exc:
         raise EmbeddingRequestError(f"Embedding backend request failed: {exc.reason}") from exc
     try:
@@ -278,19 +310,40 @@ def _post_json(
 
 
 def _embedding_from_openai_compatible_response(response: Mapping[str, Any]) -> tuple[float, ...]:
+    return _embeddings_from_openai_compatible_response(response, expected_count=1)[0]
+
+
+def _embeddings_from_openai_compatible_response(
+    response: Mapping[str, Any],
+    *,
+    expected_count: int,
+) -> tuple[tuple[float, ...], ...]:
     data = response.get("data")
     if not isinstance(data, list) or not data:
         raise EmbeddingRequestError("Embedding response did not include data")
-    first = data[0]
-    if not isinstance(first, Mapping):
-        raise EmbeddingRequestError("Embedding response data item was not an object")
-    embedding = first.get("embedding")
-    if not isinstance(embedding, list) or not embedding:
-        raise EmbeddingRequestError("Embedding response did not include an embedding vector")
-    try:
-        return tuple(float(value) for value in embedding)
-    except (TypeError, ValueError) as exc:
-        raise EmbeddingRequestError("Embedding vector contained non-numeric values") from exc
+    if len(data) != expected_count:
+        raise EmbeddingRequestError(
+            f"Embedding response returned {len(data)} vectors for {expected_count} inputs"
+        )
+    ordered: list[tuple[float, ...] | None] = [None] * expected_count
+    for position, item in enumerate(data):
+        if not isinstance(item, Mapping):
+            raise EmbeddingRequestError("Embedding response data item was not an object")
+        index = item.get("index", position)
+        if not isinstance(index, int) or isinstance(index, bool) or index < 0 or index >= expected_count:
+            raise EmbeddingRequestError("Embedding response included an invalid vector index")
+        if ordered[index] is not None:
+            raise EmbeddingRequestError("Embedding response included a duplicate vector index")
+        embedding = item.get("embedding")
+        if not isinstance(embedding, list) or not embedding:
+            raise EmbeddingRequestError("Embedding response did not include an embedding vector")
+        try:
+            ordered[index] = tuple(float(value) for value in embedding)
+        except (TypeError, ValueError) as exc:
+            raise EmbeddingRequestError("Embedding vector contained non-numeric values") from exc
+    if any(vector is None for vector in ordered):
+        raise EmbeddingRequestError("Embedding response omitted one or more vector indexes")
+    return tuple(vector for vector in ordered if vector is not None)
 
 
 def _join_url(base_url: str, suffix: str) -> str:

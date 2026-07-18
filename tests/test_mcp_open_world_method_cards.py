@@ -9,7 +9,6 @@ import anyio
 
 from trader_mcp.constants import (
     KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL,
-    KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
     KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL,
     KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL,
     KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL,
@@ -19,7 +18,6 @@ from trader_mcp.constants import (
     KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL,
     KNOWLEDGE_REGISTER_SOURCE_TOOL,
     KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE_TOOL,
-    RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
 )
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
@@ -93,23 +91,6 @@ def test_mcp_open_world_methods_materialize_canonical_cards_and_fail_closed(tmp_
         await _assert_set_lineage(server, technical["published_card"])
         await _assert_set_lineage(server, stat_arb["published_card"])
 
-        strategy = await server.call_tool(
-            RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
-            {
-                "template_family": "pairs_mean_reversion",
-                "method_package_refs": [],
-                "rich_method_card_id": stat_arb["published_card"]["method_card_id"],
-            },
-        )
-        assert strategy.isError is False
-        strategy_methodology = strategy.structuredContent["data"]["strategy_candidate_manifest"][
-            "methodology_refs"
-        ][0]
-        assert strategy_methodology["metadata"]["method_card_set_id"] == stat_arb["published_card"][
-            "method_card_set_id"
-        ]
-
-        await _assert_shallow_card_rejected(server, stat_arb["candidate"])
         await _assert_missing_formula_role(server, technical_candidates[INCOMPLETE_METHOD])
         await _assert_cross_method_contamination_rejected(server, technical["candidate"], technical["packet"])
 
@@ -244,48 +225,6 @@ async def _assert_set_lineage(server: Any, published_card: dict[str, Any]) -> No
     assert data["method_card_set"]["current_approved_method_card_id"] == published_card["method_card_id"]
     assert data["revision_count"] == 2
     assert {item["status"] for item in data["revision_history"]} == {"draft", "approved"}
-
-
-async def _assert_shallow_card_rejected(server: Any, stat_arb_candidate: dict[str, Any]) -> None:
-    evidence = stat_arb_candidate["extension_fields"]["statistical_arbitrage"]["spread_definition"][
-        "evidence_refs"
-    ][0]
-    shallow = await server.call_tool(
-        KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
-        {
-            "method_id": "lattice_residual_coupling",
-            "title": "Lattice Residual Coupling",
-            "family": "statistical_arbitrage",
-            "assumptions": ["the spread remains stable"],
-            "inputs": ["paired prices"],
-            "outputs": ["spread signal"],
-            "failure_modes": ["relationship break"],
-            "evidence_refs": [evidence],
-        },
-    )
-    assert shallow.isError is False
-    shallow_id = shallow.structuredContent["data"]["method_card_draft"]["method_card_id"]
-    published = await server.call_tool(
-        KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL,
-        {
-            "draft_method_card_id": shallow_id,
-            "approved_method_card_id": "method_card_lattice_residual_coupling_shallow_v1",
-            "approved_by": "open-world-regression",
-            "approval_note": "legacy shallow rejection fixture",
-            "approve": True,
-        },
-    )
-    assert published.isError is False
-    strategy = await server.call_tool(
-        RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
-        {
-            "template_family": "pairs_mean_reversion",
-            "method_package_refs": [],
-            "rich_method_card_id": "method_card_lattice_residual_coupling_shallow_v1",
-        },
-    )
-    assert strategy.isError is True
-    assert "unknown rich method_card_id" in "\n".join(strategy.structuredContent["data"]["blockers"])
 
 
 async def _assert_missing_formula_role(server: Any, candidate_uri: str) -> None:

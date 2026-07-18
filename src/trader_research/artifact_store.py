@@ -18,7 +18,13 @@ from typing import Any, Mapping, Protocol, Sequence
 from urllib.parse import urlparse
 
 from trader_research.contracts import ArtifactReference, SCHEMA_VERSION
-from trader_research.domain import OWNER_BY_ARTIFACT_TYPE, SUPPORTED_ARTIFACT_TYPES
+from trader_research.domain import (
+    IMPLEMENTATION_VALIDATION_REPORT,
+    IMPLEMENTATION_VERSION,
+    OWNER_BY_ARTIFACT_TYPE,
+    QUANTITATIVE_METHODS_OWNER,
+    SUPPORTED_ARTIFACT_TYPES,
+)
 
 
 RESEARCH_ARTIFACT_URI_SCHEME = "research"
@@ -231,12 +237,21 @@ def build_artifact_record(
         artifact_type=artifact_type,
         artifact_id=artifact_id,
         payload=_json_safe_mapping(payload),
-        agent_owner=OWNER_BY_ARTIFACT_TYPE[artifact_type],
+        agent_owner=_artifact_owner(artifact_type, payload),
         status=status,
         metadata=_json_safe_mapping(metadata or {}),
         source_hash=source_hash,
         schema_version=str(payload.get("schema_version") or SCHEMA_VERSION),
     )
+
+
+def _artifact_owner(artifact_type: str, payload: Mapping[str, Any]) -> str:
+    """Resolve kind-specific ownership for shared implementation artifacts."""
+    if artifact_type in {IMPLEMENTATION_VERSION, IMPLEMENTATION_VALIDATION_REPORT}:
+        kind = str(payload.get("implementation_kind") or "").strip()
+        if kind in {"indicator", "signal", "optimization_objective"}:
+            return QUANTITATIVE_METHODS_OWNER
+    return OWNER_BY_ARTIFACT_TYPE[artifact_type]
 
 
 def research_artifact_uri(artifact_type: str, artifact_id: str) -> str:

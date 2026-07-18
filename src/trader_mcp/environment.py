@@ -25,6 +25,10 @@ class McpEnvironment:
         allow_symbol_provider_discovery: Whether provider catalog discovery may make read-only network calls.
         allow_data_loading: Whether data-loading MCP tools may be enabled.
         allow_backtests: Whether backtest MCP tools may be enabled.
+        allow_optimization: Whether generic optimization execution may be enabled.
+        allow_external_research_writes: Whether any external research projection is allowed.
+        allow_optuna_writes: Whether configured Optuna sampler state may be mutated.
+        allow_experiment_tracking_writes: Whether tracking sinks may be mutated.
     """
 
     environment: str
@@ -43,6 +47,16 @@ class McpEnvironment:
     embeddings_api_key: str
     embeddings_timeout_seconds: float
     knowledge_store: str
+    allow_optimization: bool = False
+    allow_external_research_writes: bool = False
+    allow_optuna_writes: bool = False
+    allow_experiment_tracking_writes: bool = False
+    optuna_storage_url: str = ""
+    optuna_study_prefix: str = "trader"
+    optuna_schema: str = "trader_optuna"
+    optuna_role: str = "trader_optuna_writer"
+    mlflow_tracking_uri: str = ""
+    mlflow_optimization_experiment: str = "trader-backtest-optimization"
 
     def policy_flags(self) -> dict[str, bool]:
         """Return environment policy flags.
@@ -56,6 +70,10 @@ class McpEnvironment:
             "allow_symbol_provider_discovery": self.allow_symbol_provider_discovery,
             "allow_data_loading": self.allow_data_loading,
             "allow_backtests": self.allow_backtests,
+            "allow_optimization": self.allow_optimization,
+            "allow_external_research_writes": self.allow_external_research_writes,
+            "allow_optuna_writes": self.allow_optuna_writes,
+            "allow_experiment_tracking_writes": self.allow_experiment_tracking_writes,
         }
 
     def embeddings_env(self) -> dict[str, str]:
@@ -114,6 +132,23 @@ def load_local_environment(env_path: str | Path | None = None) -> McpEnvironment
         embeddings_api_key=_optional_env("TRADER_RESEARCH_EMBEDDINGS_API_KEY", file_values),
         embeddings_timeout_seconds=_float_env("TRADER_RESEARCH_EMBEDDINGS_TIMEOUT_SECONDS", file_values, default=30.0),
         knowledge_store=_optional_env("TRADER_RESEARCH_KNOWLEDGE_STORE", file_values) or "postgres",
+        allow_optimization=_optional_bool_env("TRADER_MCP_ALLOW_OPTIMIZATION", file_values),
+        allow_external_research_writes=_optional_bool_env(
+            "TRADER_MCP_ALLOW_EXTERNAL_RESEARCH_WRITES", file_values
+        ),
+        allow_optuna_writes=_optional_bool_env("TRADER_MCP_ALLOW_OPTUNA_WRITES", file_values),
+        allow_experiment_tracking_writes=_optional_bool_env(
+            "TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES", file_values
+        ),
+        optuna_storage_url=_optional_env("TRADER_OPTUNA_STORAGE_URL", file_values),
+        optuna_study_prefix=_optional_env("TRADER_OPTUNA_STUDY_PREFIX", file_values) or "trader",
+        optuna_schema=_optional_env("TRADER_OPTUNA_SCHEMA", file_values) or "trader_optuna",
+        optuna_role=_optional_env("TRADER_OPTUNA_ROLE", file_values) or "trader_optuna_writer",
+        mlflow_tracking_uri=_optional_env("MLFLOW_TRACKING_URI", file_values),
+        mlflow_optimization_experiment=(
+            _optional_env("TRADER_MLFLOW_OPTIMIZATION_EXPERIMENT", file_values)
+            or "trader-backtest-optimization"
+        ),
     )
 
 
@@ -180,6 +215,18 @@ def _bool_env(name: str, file_values: Mapping[str, str]) -> bool:
         ValueError: If the value is missing or not a supported boolean token.
     """
     value = _required_env(name, file_values).lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"Invalid boolean local MCP env value for {name}: {value}")
+
+
+def _optional_bool_env(name: str, file_values: Mapping[str, str], *, default: bool = False) -> bool:
+    """Return an optional boolean environment value."""
+    value = os.environ.get(name, file_values.get(name, "")).strip().lower()
+    if not value:
+        return default
     if value in {"1", "true", "yes", "on"}:
         return True
     if value in {"0", "false", "no", "off"}:

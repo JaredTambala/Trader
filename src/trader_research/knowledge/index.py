@@ -11,6 +11,9 @@ from .embeddings import EmbeddingProvider
 from .store import KnowledgeStore, StoredEmbedding
 
 
+EMBEDDING_BATCH_SIZE = 16
+
+
 def index_chunks(
     store: KnowledgeStore,
     chunks: Sequence[KnowledgeChunk],
@@ -43,10 +46,21 @@ def build_embedding_index(
     """
     embeddings: list[StoredEmbedding] = []
     dimensions: set[int] = set()
-    for chunk in chunks:
-        embedding = provider.embed(chunk.text)
-        dimensions.add(len(embedding))
-        embeddings.append(StoredEmbedding(chunk_id=chunk.chunk_id, vector=embedding))
+    batch_embed: Any = getattr(provider, "embed_many", None)
+    if callable(batch_embed):
+        for offset in range(0, len(chunks), EMBEDDING_BATCH_SIZE):
+            chunk_batch = chunks[offset : offset + EMBEDDING_BATCH_SIZE]
+            vector_batch = tuple(batch_embed([chunk.text for chunk in chunk_batch]))
+            if len(vector_batch) != len(chunk_batch):
+                raise ValueError("embedding provider returned an inconsistent batch size")
+            for chunk, embedding in zip(chunk_batch, vector_batch, strict=True):
+                dimensions.add(len(embedding))
+                embeddings.append(StoredEmbedding(chunk_id=chunk.chunk_id, vector=embedding))
+    else:
+        for chunk in chunks:
+            embedding = provider.embed(chunk.text)
+            dimensions.add(len(embedding))
+            embeddings.append(StoredEmbedding(chunk_id=chunk.chunk_id, vector=embedding))
     if len(dimensions) > 1:
         raise ValueError("embedding provider returned inconsistent vector dimensions")
     dimension = next(iter(dimensions), 0)

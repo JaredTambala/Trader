@@ -79,7 +79,12 @@ trader_agents
 
 ## Current Repository Signals
 
-- `docs/research_agents/agents.md` defines a supervisor hierarchy. This plan should preserve that boundary: Data Agent tools produce dataset manifests and data-quality reports; Quantitative Methods tools produce deterministic method contracts, validation reports, signal diagnostics, multiple-testing reports, and method packages; Quant Research Supervisor tools consume those artifacts to create strategy candidates and run backtests; Evaluation tools produce performance reports and later skeptical critique reports; ML, Hypothesis, Adversarial, recommendation, and compiled-kernel acceleration work remain follow-on layers.
+- `docs/research_agents/agents.md` defines a supervisor hierarchy. The current Supervisor tools register and validate
+  implementation versions, create immutable strategy/risk/backtest specifications, run canonical DB-backed backtests,
+  orchestrate provider-neutral optimisation, and execute Adversarial-requested variants. Candidate-era execution tools
+  are removed. Data Agent and Quantitative Methods artifacts remain specialist-owned; Evaluation and Adversarial own
+  their independent reports; ML, Hypothesis, broader robustness, recommendation, and compiled-kernel acceleration
+  remain follow-on layers.
 - `src/trader/research.py` currently contains useful research helper behavior, but it is misplaced in the core platform package and should be moved or re-created under `src/trader_research/`.
 - `src/trader/tools/` currently contains useful tool-facing behavior, but it is also misplaced in the core platform package and should be moved or re-created under `src/trader_research/` or `src/trader_mcp/` depending on whether the code is research-domain logic or MCP transport logic.
 - Existing backtest entry points are centered on `trader.backtest.BacktestRunner`, `BacktestSpec`, `BacktestAssumptions`, and export helpers.
@@ -120,7 +125,7 @@ This plan follows `docs/research_agents/agents.md`: agents are implemented as La
 
 | Agent | First MCP responsibility in this plan | Owned artifacts |
 | --- | --- | --- |
-| Quant Research Supervisor Agent | Supervisor state, handoff ledger, strategy planning, risk-stack planning, validation, backtest orchestration, recommendations | strategy candidates, risk-manager candidates, strategy/risk stacks, experiment plans, suites, comparison reports, recommendation reports |
+| Quant Research Supervisor Agent | Supervisor state, implementation/specification coordination, backtest orchestration, recommendations | strategy/risk implementation versions and validations, strategy/risk/backtest specifications, experiment plans, runs, comparisons, recommendations; current candidate/stack artifacts retire in task 57A |
 | Data Agent | Symbol discovery/preflight, data inventory, data quality, explicit load/backfill | `symbol_discovery_report.json`, `dataset_manifest.json`, `data_quality_report.json`, load result envelopes |
 | Quantitative Methods Agent | Knowledge-backed method contract listing, validation, signal diagnostics, multiple-testing controls, and method packaging | source manifests, method cards, retrieval/citation reports, method contracts, validation reports, signal diagnostics, multiple-testing reports, method packages |
 | ML Agent | Feature/model artifact registration and summary | feature manifests, model cards, prediction artifacts, drift reports |
@@ -269,13 +274,13 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 33AA. Semantic Method-Card Validation And Draft Gates | Done | `uv run pytest tests/test_methodology_candidates.py tests/test_method_cards.py -q`; `uv run pytest tests/test_mcp_quant_methods_tools.py tests/test_mcp_rich_methodology_toolchain.py tests/test_research_agent_docs.py tests/test_tool_contracts.py -q`; `uv run pytest tests/test_strategy_candidates.py tests/test_risk_manager_candidates.py tests/test_package_boundaries.py -q`; `python -m compileall -q src/trader_research/knowledge src/trader/knowledge` | Validation now requires packet-backed method identity lineage, blocks packet-less candidates from passing semantic validation, rejects fields that cite rejected or competing-method packet refs, detects stale packet source/locator/text hashes, and emits target-bound readiness summaries. Canonical method-card draft materialization rejects caller `method_id`, `title`, or `family` overrides unless candidate identity/alias/family evidence supports them and the candidate lineage matches the validation packet. |
 | 33AB. Claim-Level Semantic Extraction And Ingestion Consistency | Done | `uv run pytest tests/test_knowledge_domain.py tests/test_knowledge_store.py tests/test_knowledge_services.py tests/test_postgres_knowledge_store.py tests/test_methodology_candidates.py tests/test_method_cards.py tests/test_mcp_quant_methods_tools.py tests/test_mcp_rich_methodology_toolchain.py tests/test_mcp_open_world_method_cards.py tests/test_research_agent_docs.py tests/test_tool_contracts.py tests/test_package_boundaries.py -q`; live Postgres MCP rerun for source `knowledge_source_0af8c59c04b6ddd2`, candidate `methodology_candidate_b62dc8ef3b7968e1`, packet `methodology_evidence_packet_b177f724cee389bc`, extraction `methodology_field_extraction_49c82571ffae047a`, validation `methodology_candidate_validation_b2e88f21980818aa` | Adds exact hashed claim spans inside reusable evidence units, target-conditioned local and cross-unit binding, field-specific semantic filters, bounded multi-span synthesis, and span-level validation. A shared unit can support multiple methods without exclusive ownership. The real book rerun removes Bollinger/RSI and overbought/oversold contamination from Moving Average Oscillator evidence, then correctly blocks implementation readiness because target-bound input evidence is missing. Ingestion stages embeddings before replacement and atomically publishes successful Postgres evidence, vector, manifest, and report generations. |
 | 33AC. Composite Methodology Architecture | Deferred | The architectural direction is documented in `docs/research_agents/architecture.md`; implementation is deliberately paused after the 33AB baseline. | Future work may replace the single-family, local-span methodology assumption with claim-relationship graphs and atomic/composite method boundaries without hardcoded known targets. Existing knowledge and bounded extraction tools remain maintained; composite methodology expansion is not on the current delivery path. |
-| 34. Supervisor Consumes Toolchain Artifacts | Not started |  | Add minimal supervisor handoff consumption for method packages, strategy candidates, backtest refs, and performance reports after the deterministic tools exist. |
+| 34. Supervisor Consumes Toolchain Artifacts | Not started |  | Add minimal supervisor handoff consumption after tasks 56-57 using implementation-version, strategy/risk/backtest specification, run, and performance-report refs. Method packages and rich cards remain optional specialist provenance, not Supervisor execution inputs. |
 | 35. Quantitative Methods Agent Graph | Not started |  | Deferred until the source-backed method-to-backtest MCP toolchain is useful; graph should orchestrate existing Quant Methods MCP tools only. |
 | 36. Supervisor LLM Control Loop | Not started |  | Deferred until the supervisor has useful method, strategy, backtest, and performance artifacts to assess. |
 | 37. Hypothesis Card Service and MCP Tool | Not started |  | Deferred; structured hypothesis cards should build on the working method/strategy/backtest loop. |
 | 38. Hypothesis Agent Graph and Handoff | Not started |  | Deferred until hypothesis cards are useful inputs to the proven toolchain. |
 | 39. MLflow Predictive-Model Lifecycle Tool Universe | Planned | Umbrella for 39A-39J after external strategy implementation intake and reproducible backtest specifications. | Coordinate point-in-time feature engineering, time-series fitting, MLflow tracking/registry, immutable model versions, evaluation, deployment evidence, strategy integration, predictions, and drift without granting live-trading authority. |
-| 39A. MLflow Runtime Adapter And Mutation Policy | Planned | First ML prerequisite. | Configure and health-check one approved MLflow tracking/registry instance, record client/server identity, add external research mutation side effects, and gate MLflow writes, training, and alias promotion independently. |
+| 39A. MLflow Runtime Adapter And Mutation Policy | Planned | Follows the provider-neutral 57H projection boundary. | Configure one approved MLflow instance for ML training telemetry, model packages, and Model Registry records; register the optional optimisation-projection sink; and gate projection writes, ML training writes, and alias promotion independently. MLflow is not canonical for generic studies or backtests. |
 | 39B. Feature-Set Engineering And Validation | Planned | Follows 39A. | Add immutable feature-set specifications with feature source hashes, lookbacks, event/availability times, schemas, preprocessing scope, and no-lookahead validation. |
 | 39C. Point-In-Time Training Datasets And Split Plans | Planned | Follows 39B. | Materialize Data-Agent-scoped training datasets and chronological walk-forward folds with target horizons, purge/embargo, dataset digests, and leakage reports. |
 | 39D. Training Pipeline Registration And Fitting | Planned | Follows 39C. | Register maintained or supplied training pipelines, create bounded training specs, execute gated fitting, and log parameters, metrics, datasets, source refs, environments, and model packages to MLflow. |
@@ -289,9 +294,9 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 41. Attribution Service and MCP Tool | Not started |  | Follow-on analysis after baseline backtests and performance reports exist. |
 | 42. Evaluation Critique Logic and MCP Tool | Not started |  | Extend beyond the first performance report into skeptical evaluation rules, data-quality blockers, cost sensitivity, and sample-size critique. |
 | 43. Evaluation Agent Graph and Handoff | Not started |  | Deferred until Evaluation-owned MCP reports are useful. |
-| 44. Adversarial Robustness Core and MCP Tool | Planned | Baseline and portfolio backtest/report artifacts now exist; implementation should follow reproducible external-strategy backtest specifications. | Add linked cost, split, concentration, parameter, and data-perturbation attacks over immutable baseline runs. |
+| 44. Adversarial Robustness Core and MCP Tool | Planned | Optimisation-specific audit planning/judgment is delivered in 57F; general backtest attacks remain. | Generalise the independent plan/execute/judge pattern to cost, split, concentration, parameter, and data perturbations over immutable canonical runs. Adversarial plans and judges; Supervisor executes variants. |
 | 45. Adversarial Agent Graph and Handoff | Not started |  | Deferred until robustness tools are useful. |
-| 46. Robustness Backtest Variants | Planned | Implement with or immediately after task 44. | Add reproducible fee, slippage, parameter, data-window, and perturbation variants that preserve baseline lineage and change only declared assumptions. |
+| 46. Robustness Backtest Variants | Planned | Implement with or immediately after task 44 using the 57F variant contract. | Add Supervisor-executed fee, slippage, parameter, data-window, provider/seed/budget/objective, and perturbation variants that preserve baseline lineage and change only declared assumptions. |
 | 47. Recommendation Renderer and MCP Tool | Not started |  | Deferred until performance, critique, and robustness artifacts can be consumed. |
 | 48. Quant Research Supervisor Synthesis Graph | Not started |  | Deferred synthesis layer over proven specialist artifacts. |
 | 49. Experiment Runner and MCP Tool | Not started |  | Last-mile orchestrator; compose earlier tools rather than becoming the first proof of the workflow. |
@@ -299,10 +304,32 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 51. Import Boundary Tests | Not started |  | Keep architectural separation executable as new strategy/backtest/report services are added. |
 | 52. MCP, Toolchain, and LangGraph Contract Tests | Not started |  | Expand contract tests around tool names, schemas, side effects, envelope shapes, owners, and later graph boundaries. |
 | 53. Iterative Documentation | Done | `uv run pytest tests/test_research_agent_docs.py -q`; `rg -n "backtest tools are not registered yet|No backtest tool is exposed|Planned:" docs/research_agents --glob '!history/**'`; `uv run pytest tests/test_agent_identities.py tests/test_mcp_server.py tests/test_research_domain.py -q`; `uv run ruff check tests`; `python -m compileall -q src/trader_research src/trader_mcp src/trader_agents` | Research-agent docs are restructured into canonical current docs for architecture, agents, MCP tools, workflows, and operations. Superseded docs moved under `docs/research_agents/history/`; current docs are checked against registered MCP tools and agent identities. |
-| 55. Verification Pass | Not started |  | Run focused tests, mypy for touched modules if configured, and the end-to-end sample-data toolchain once it exists. |
-| 56. External Strategy And Risk Implementation Intake | Planned | First active implementation-to-evidence task. | Register immutable handwritten or AI-produced indicator, strategy, and risk-manager implementations with source hashes, provenance, entrypoints, declared interfaces/parameters, optional methodology refs, dependency metadata, and backtest-only safety assumptions; validate them without requiring template-generated source. |
-| 57. Reproducible Backtest Specifications For Registered Implementations | Planned | Follows task 56 and precedes ML/robustness expansion. | Create immutable backtest specifications that bind passed implementation versions, optional validated risk stacks, one Data Agent dataset manifest, quality evidence, assumptions, seeds, costs, and runtime configuration before invoking existing baseline or portfolio runners. |
-| 58. Walk-Forward Optimisation Core | Deferred | Implement only after task 57, model-backed strategy integration through 39I, and robustness primitives 44/46. | Create immutable walk-forward plans and runs over declared strategy parameters or ML training/model choices. Each fold locks its selected parameters/model before untouched out-of-sample execution and preserves every child specification/run ref. |
+| 56. Implementation Registry And Method-Card Decoupling | Done | Implemented with the 57A-C atomic cutover. | Canonical execution begins at immutable implementation versions. Methodology refs are optional generic provenance and candidate artifacts are not registered execution inputs. |
+| 56A. Canonical Implementation-Version Domain | Done | `src/trader_research/implementations/` plus Postgres projections. | Adds content-addressed DB-backed implementation versions for indicator, signal, strategy, risk-manager, and optimisation-objective kinds without knowledge-domain imports. |
+| 56B. Strategy And Risk Implementation Registration And Validation | Done | Registered MCP intake and deterministic validation. | Handwritten, AI-produced, maintained, or method-generated source uses the same hash/interface/parameter/resource/no-live-trading checks; no methodology ref is required. |
+| 56C. Maintained And Method-Generated Producer Adapters | Done | Producer-neutral registration accepts `authoring_origin` and generic `provenance_refs`. | Producers submit source to the same registry; origin affects lineage only and cannot change downstream eligibility. |
+| 56D. Remove Method-Card Execution Coupling | Done | Atomic no-compatibility cutover. | Candidate create/validate, candidate stack, and candidate backtest tools are no longer registered or supported artifact types. Canonical execution packages do not import knowledge types. |
+| 57. Reproducible Strategy, Risk, Backtest, And Optimisation Specifications | In progress | Implementation tasks 57A-H and freeze task 57I are done; controlled qualification tasks 57J-S are planned. | Immutable Postgres specifications, runs, trial ledgers, projections, Evaluation, and Adversarial refs compose without provider authority or filesystem identity; the slice is complete only after mandatory verification passes. |
+| 57A. Strategy And Risk Specifications | Done | Canonical DB-backed services and MCP tools. | Adds data-scope-free strategy and ordered risk-stack specifications over passed implementation validations. |
+| 57B. Reproducible Backtest Specifications | Done | Canonical DB-backed services and MCP tools. | Binds passed behavior to exactly one Data Agent manifest, quality snapshot, costs, assumptions, seed, limits, and lineage before execution. |
+| 57C. DB-First Specification Execution And Evaluation | Done | Canonical specification runner and result services. | Executes only passed specifications and stores complete baseline/portfolio result evidence in `backtest_run`; no canonical filesystem bundle or candidate request form remains. |
+| 57D. Provider-Neutral Optimisation Ledger And Protocols | Done | `src/trader_research/optimization/contracts.py` and typed Postgres projections. | Adds `OptimizationEngine`, `OptimizationTrialExecutor`, and `ExperimentTrackingSink`; canonical plans/runs/trials pin engine identity while provider state remains operational only. |
+| 57E. Validated Optimisation Objectives | Done | Quantitative Methods registration/validation tools. | Adds `optimization_objective` implementation versions and the closed `OptimizationObservation`; objective code has no artifact, database, filesystem, network, raw-event, or tool input. |
+| 57F. Deterministic Optimisation Execution And Independent Review | Done | Grid/random execution, MCP services, Evaluation, and Adversarial tools. | Persists every proposal, attempt, failure, observation, objective result, child ref, selection, and tie-break; holdout Evaluation and Adversarial audit remain separate and cannot rewrite selections. |
+| 57G. Optional Optuna Adapter | Done | Lazy optional adapter and runtime profile. | Adds seeded sequential single-objective TPE behind the provider-neutral protocol, dedicated schema/role checks, canonical reconciliation, no pruning, and fail-closed provider loss/drift. |
+| 57H. Provider-Neutral Experiment Tracking Projection | Done | Explicit `research_project_experiment_tracking`. | Derives an idempotent, non-authoritative projection from canonical evidence. The optional MLflow sink is independently gated and deletion/unavailability cannot affect Trader reads. |
+| 57I. Freeze Revision And Build Acceptance Matrix | Done | `verification-57i-freeze`; focused 56/57 suite: 55 passed; Ruff, compileall, and `git diff --check` passed. | Frozen inventory enumerates the complete changed worktree, 24 canonical MCP tools, 16 canonical artifact/projection pairs, provider protocols/profiles, independent gates, retired contracts, and invariants 36-61 with named evidence and explicit downstream gaps. |
+| 57J. Provision Isolated Verification Runtime | Planned | Requires 57I. | Use a dedicated `*_test` Trader database, isolated Optuna schema/role when qualified, disposable tracking namespace, explicit policy gates, and before/after operator-database fingerprints. Refuse any destructive fixture operation without the test-database suffix guard. |
+| 57K. Static, Contract, And Regression Gate | Planned | Requires 57J. | Run formatting/diff, Ruff, compileall, mypy, full non-Postgres pytest, MCP/docs/domain/package/SQL boundary suites, and test-coverage inventory. Undeclared skips, warnings promoted to failures, or stale candidate-era contracts block progression. |
+| 57L. Realistic Deterministic Evidence Fixture | Planned | Requires 57K. | Add a bounded multi-asset chronological dataset and handwritten strategy/risk/objective implementations that produce actual trades, nonzero exposure and costs, parameter-sensitive results, and both risk approvals and rejections across disjoint selection and holdout regions. |
+| 57M. Postgres-Native MCP Evidence Graph | Planned | Requires 57L. | Execute the full implementation -> specification -> selection backtest -> objective -> optimisation -> selected specification -> sealed holdout -> Evaluation -> Adversarial variants/report chain through MCP with only `research://postgres/...` canonical refs. |
+| 57N. Determinism, Integrity, And Leakage Tests | Planned | Requires 57M. | Repeat clean runs and verify stable IDs, trial order, observations, tie-breaks, and selection; prove complete failed-trial evidence, immutable selections, source/config drift rejection, distinct selection/holdout hashes, and no holdout access during optimisation. |
+| 57O. Restart, Resume, And Fault-Injection Tests | Planned | Requires 57N. | Interrupt after persisted phase boundaries, recreate service processes, resume without duplicate trials, exercise bounded retry/timeout/provider-loss paths, and prove partial or blocked runs remain inspectable and cannot be silently continued under changed configuration. |
+| 57P. Provider Independence And Adapter Qualification | Planned | Requires 57O. | Prove built-in grid/random and canonical reads with Optuna/MLflow unavailable; separately qualify Optuna schema isolation/reconciliation and each tracking sink's idempotence, deletion tolerance, and non-authority before enabling that profile. |
+| 57Q. Policy, Security, And Resource-Boundary Tests | Planned | Requires 57O; may run in parallel with profile-specific 57P checks. | Verify independent gates, closed objective inputs, forbidden filesystem/network/database/tool access, immutable dataset/implementation/cost/holdout boundaries, run budgets/timeouts, SQL/package boundaries, and absence of canonical filesystem artifacts. |
+| 57R. Projection, Operator, And Bounded-Scale Checks | Planned | Requires 57M, 57N, and 57Q. | Reconcile canonical JSONB with every typed pgAdmin projection, run bounded multi-symbol grid/random loads within declared resource limits, inspect query/storage behavior, and prove cleanup affects only the verification database/provider namespace. |
+| 57S. Acceptance Record And Release Decision | Planned | Final verification task; requires all mandatory profiles and every provider profile intended for use. | Record the exact revision, environment/profile digests, commands, results, skips, evidence refs, row counts, operator DB fingerprints, defects, and residual risks. Mark task 57 done only when mandatory blockers are empty; optional profiles receive independent qualified/not-qualified status. |
+| 58. Walk-Forward Optimisation Core | Deferred | Implement after model-backed strategy integration through 39I and general robustness primitives 44/46. | Compose the same provider-neutral optimisation protocol inside each immutable fold; lock each selected parameter/model before untouched out-of-sample execution and preserve every child specification/run ref. |
 | 59. Walk-Forward Evaluation And Adversarial Audit | Deferred | Follows task 58 and consumes completed walk-forward runs. | Evaluation aggregates stitched out-of-sample evidence; Adversarial independently audits fold-boundary sensitivity, parameter/model instability, neighboring choices, costs, concentration, degradation, and selection bias. Neither tool changes the selected implementation or promotes it. |
 | 60. Calendar-Aware Data Quality | Not started | AMD 12-month `1Min` MCP run exposed wall-clock gap overcounting in `artifacts/research/amd_12mo_1min_data_agent_quality_full_2026-05-28.json` | Later backlog item: add market-calendar/session-aware expected-bar and gap classification for stocks so nights, weekends, holidays, early closes, and feed/session windows are not reported as missing data. Preserve warnings for true intra-session gaps and coverage edges. |
 
@@ -312,16 +339,18 @@ Knowledge-base creation and bounded method extraction are pinned at the 33AB bas
 supported, Postgres-first product surfaces, but new composite-method and autonomous semantic-extraction work is deferred
 under 33AC. Data Agent inventory, quality, manifest, and gated loading tools also remain maintained dependencies.
 
-The active implementation order is:
+The completed foundation and active implementation order are:
 
-1. `56`: register and validate immutable handwritten or AI-produced strategy, indicator, and risk-manager
-   implementations without requiring the platform to generate their source.
-2. `57`: persist reproducible backtest specifications that bind validated implementation versions to Data Agent scope,
-   risk controls, costs, assumptions, and seeds before execution.
-3. `39A-39J`: add the MLflow lifecycle from point-in-time feature engineering and gated fitting through immutable model
+1. `57I-57S`: freeze and qualify the implementation-complete 56/57 cutover through the controlled core/Postgres acceptance profile;
+   keep Optuna and each tracking sink disabled until its independent adapter profile passes.
+2. `56A-56D` and `57A-57H` are implementation-complete: implementation/specification intake, canonical backtests,
+   provider-neutral optimisation, independent review, and disposable tracking projection form the system under test.
+3. `44` and `46`: generalise the delivered optimisation audit split so Adversarial plans and judges attacks while the
+   Supervisor executes immutable backtest and optimisation variants.
+4. `39A-39J`: add the MLflow lifecycle from point-in-time feature engineering and gated fitting through immutable model
    versions, deployment manifests, strategy integration, prediction events, and drift.
-4. `44` and `46`: produce adversarial reports and reproducible robustness variants linked to immutable baseline runs.
-5. `58` and `59`: add walk-forward optimisation and its independent Evaluation/Adversarial audit only after the
+5. `58` and `59`: compose the provider-neutral optimisation protocol inside each fold and add independent
+   Evaluation/Adversarial interpretation only after the
    implementation, ML, and robustness foundations are proven.
 6. `41` and `42`: deepen attribution and skeptical Evaluation once the new baseline/variant evidence is available.
 
@@ -335,7 +364,7 @@ entry point for strategy evidence.
 src/trader_research/
   __init__.py
   agents.py             # Agent/tool ownership metadata from agents.md
-  domain.py              # ExperimentPlan, Experiment, StrategyCandidate, reports, verdicts
+  domain.py              # Shared experiment, report, verdict, and artifact-reference types
   contracts.py           # ToolEnvelope, side-effect declarations, shared JSON helpers
   data.py                # Data Agent inventory, manifests, quality, and loading wrappers
   math_domain.py         # Quantitative Methods artifact schemas and validation
@@ -360,6 +389,20 @@ src/trader_research/
     citation_validation.py # Source/locator/method-card coverage checks
     method_cards.py      # Draft and publish method-card workflow
     ingestion.py         # End-to-end ingestion orchestration
+  implementations/
+    __init__.py          # Canonical implementation registration and validation exports
+    domain.py            # Immutable implementation versions and validation reports
+    registration.py      # Postgres-first source/package registration
+    validation.py        # Interface, fixture, dependency, resource, and safety validation
+  specifications/
+    __init__.py          # Canonical strategy/risk/backtest specification exports
+    strategy.py          # Implementation version plus validated strategy parameters/behavior
+    risk.py              # Ordered risk implementation versions and explicit policy parameters
+    backtest.py          # Data Agent scope, costs, assumptions, seeds, and runtime policy
+  backtests/
+    __init__.py          # Specification-only execution, result lookup, and comparison exports
+    execution.py         # Baseline/risk-scoped BacktestRunner adapter
+    results.py           # DB-backed run payloads, sidecars, retrieval, and comparison
   ml/
     __init__.py          # Canonical ML lifecycle service exports
     domain.py            # Feature, dataset, split, training, run, model, deployment, prediction, and drift artifacts
@@ -372,8 +415,6 @@ src/trader_research/
     deployment.py        # Version-pinned inference/deployment manifests and validation
     monitoring.py        # Prediction summaries and drift analysis
   hypotheses.py          # Hypothesis-card creation and validation
-  strategies.py          # Template listing and candidate validation
-  backtests.py           # Baseline backtest wrapper and result lookup
   attribution.py         # Return attribution summaries
   robustness.py          # Robustness suite and concentration checks
   evaluation.py          # Evaluation Agent critique logic
@@ -481,7 +522,7 @@ These are the Data Agent tools that prove MCP functionality before broader Quant
 | `math_compile_kernel` | Quantitative Methods Agent | `local_mutating` | Compile an approved kernel locally and return build evidence. |
 | `math_package_method_artifact` | Quantitative Methods Agent | `local_mutating` | Bundle source-backed validated Python indicator/signal implementations, contracts, validation reports, and provenance for handoff. |
 | `math_run_cpp_conformance` | Quantitative Methods Agent | `local_mutating` | Deferred: check contract-first C++ implementation conformance/equivalence only when compiled acceleration becomes valuable. |
-| `ml_get_runtime`, `ml_health`, `ml_list_experiments` | ML Agent | `read_only` | Inspect the one configured MLflow tracking/registry authority without accepting caller-supplied connection targets. |
+| `ml_get_runtime`, `ml_health`, `ml_list_training_experiments` | ML Agent | `read_only` | Inspect the configured ML training/registry runtime without accepting caller-supplied connection targets. The old generic list name is not retained. |
 | `ml_create_feature_set`, `ml_validate_feature_set` | ML Agent | `local_mutating` | Write and validate immutable point-in-time feature specifications with source hashes and runtime schema. |
 | `ml_create_training_dataset`, `ml_create_time_series_split_plan` | ML Agent | `local_mutating` | Bind Data Agent refs to point-in-time targets, chronological folds, purge/embargo, dataset digests, and leakage reports. |
 | `ml_register_training_pipeline`, `ml_validate_training_pipeline`, `ml_create_training_spec` | ML Agent | `local_mutating` | Register immutable trainer code and bounded fitting configuration without executing prompts or unvalidated packages. |
@@ -609,13 +650,13 @@ Backward-compatible aliases may be retained initially:
 | 33AA. Semantic Method-Card Validation And Draft Gates | Block semantically contaminated method cards before canonical draft materialization or approval. | `src/trader_research/knowledge/methodology_extraction.py`, `src/trader_research/knowledge/method_cards.py`, docs, tests | Done. Validation enforces one source-backed target method identity per candidate, requires packet lineage for passed semantic validation, checks field refs against accepted target-bound packet refs, blocks fields sourced from rejected competing-method chunks, detects stale evidence-unit hashes/locators/source IDs, and reports target-bound readiness. Canonical method-card draft materialization rejects caller-provided `method_id`, `title`, or `family` overrides unless candidate identity, aliases, abbreviations, and validated families support them, and requires candidate lineage to match the validation packet. Direct and MCP tests cover unsupported overrides, packet-less validation, stale hashes, contaminated Bollinger->EWA evidence, internal-note source policy through the packet-backed path, and successful canonical rich-card publication/strategy use. |
 | 33AB. Claim-Level Semantic Extraction And Ingestion Consistency | Close the semantic-attribution and transactional gaps exposed by a real technical-method source. | `src/trader_research/knowledge/claim_spans.py`, `src/trader_research/knowledge/domain.py`, `src/trader_research/knowledge/evidence_assembly.py`, `src/trader_research/knowledge/methodology_extraction.py`, `src/trader_research/knowledge/ingestion.py`, `src/trader_research/knowledge/index.py`, Postgres knowledge storage, `docs/research_agents/semantic_extraction.md`, tests | Done. Evidence units remain reusable and non-exclusive. `EvidenceClaimSpan` records stable IDs, exact offsets/text/hashes, roles, target methods, binding modes, matched terms, local labels, and engine versions. Packet assembly selects accepted/rejected spans within each unit and uses generic inline labels plus bounded source context without granting chunk ownership. Packet-backed extraction rebuilds derived fields, applies field-specific semantic filters, performs bounded multi-span synthesis, and preserves every contributing ref. Validation re-slices stored text and checks span hashes, packet roles, target identity, accepted binding, and specialized field semantics. Regressions cover one unit supporting Bollinger and Moving Average Oscillator independently, malformed real-PDF-style neighboring claims, stale re-extraction cleanup, and multi-unit synthesis. Embeddings are staged before replacement; Postgres publication wraps evidence replacement, vectors, manifest, and report in one transaction. The canonical semantic-extraction document is linked from active references. The live book rerun now fails closed on missing Moving Average Oscillator input evidence rather than publishing semantically contaminated fields. |
 | 33AC. Composite Methodology Architecture | Generalize methodology representation beyond one primary family and locally identifiable method span. | `docs/research_agents/architecture.md`, methodology claim/relationship domain, MCP contracts, tests | Deferred. The architecture records source-backed claim graphs, typed relationships, inferred atomic/composite boundaries, ordered component refs, multi-valued post-assembly classification, and aggregated readiness as the future direction. Existing Postgres knowledge creation and bounded extraction remain maintained at the 33AB baseline; implementation is paused while tasks 56-57, 39, 44, and 46 build a more direct trading-evidence path. |
-| 34. Supervisor Consumes Toolchain Artifacts | Add minimal supervisor consumption for the proven deterministic toolchain. | `src/trader_agents/quant_research.py`, `tests/test_supervisor_toolchain_handoff.py` | Supervisor accepts method packages, strategy candidates, backtest refs, and performance reports; rejects wrong owner, missing provenance, unresolved blockers, unvalidated strategy candidates, or failed backtests; preserves refs and public status only. |
+| 34. Supervisor Consumes Toolchain Artifacts | Add minimal supervisor consumption for the proven deterministic toolchain. | `src/trader_agents/quant_research.py`, `tests/test_supervisor_toolchain_handoff.py` | Implement after tasks 56-57. Supervisor accepts validated implementation-version, strategy/risk/backtest specification, run, and performance-report refs; rejects wrong owner, unresolved blockers, invalid versions/specifications, or failed runs; preserves refs and public status only. Method packages and method cards may be linked provenance but are never required execution handoffs. |
 | 35. Quantitative Methods Agent Graph | Add knowledge-aware LangGraph identity, state, policy, and tool allowlist for the Quantitative Methods Agent after the method-to-backtest toolchain exists. | `src/trader_agents/quant_methods_agent.py`, `src/trader_agents/quant_methods_policy.py`, `src/trader_agents/state.py`, `tests/test_quant_methods_agent.py`, `tests/test_langgraph_agents.py` | Graph has distinct identity and state; may call only knowledge and Quantitative Methods MCP tools; cannot fetch data, create strategies, train models, run backtests, call evaluation tools, or promote strategies; returns method package refs, retrieval refs, citation-validation refs, and blockers; no raw prompts, hidden reasoning, or scratchpads are persisted. |
-| 36. Supervisor LLM Control Loop | Add the LLM-backed supervisor policy node after method packages, strategy candidates, backtests, and performance reports are useful. | `src/trader_agents/supervisor_policy.py`, `src/trader_agents/quant_research.py`, tests | Supervisor assesses bounded state and artifact summaries, then emits typed decisions such as `request_specialist`, `call_tool`, `retry_with_changes`, `accept_artifact`, `block`, or `finish`. Deterministic routing validates schema, allowlist, ownership, side effects, loop budget, early block/finish behavior, and no raw prompt/scratchpad persistence. |
+| 36. Supervisor LLM Control Loop | Add the LLM-backed supervisor policy node after implementation/specification, backtest, and performance-report tools are useful. | `src/trader_agents/supervisor_policy.py`, `src/trader_agents/quant_research.py`, tests | Supervisor assesses bounded state and artifact summaries, then emits typed decisions such as `request_specialist`, `call_tool`, `retry_with_changes`, `accept_artifact`, `block`, or `finish`. Deterministic routing validates schema, allowlist, ownership, side effects, loop budget, early block/finish behavior, and no raw prompt/scratchpad persistence. |
 | 37. Hypothesis Card Service and MCP Tool | Implement `hypothesis_create_card` from structured inputs and available ingredient references after the basic toolchain works. | `src/trader_research/hypotheses.py`, `src/trader_mcp/server.py`, tests | Hypothesis cards require mechanism, data requirements, required features/method packages, strategy intent, falsification criteria, and known caveats. MCP returns a Hypothesis Agent envelope with `hypothesis_card.json` payload/path. |
 | 38. Hypothesis Agent Graph and Handoff | Add Hypothesis Agent identity and supervisor handoff consumption once hypothesis cards are useful inputs. | `src/trader_agents/hypothesis_agent.py`, `src/trader_agents/quant_research.py`, tests | Hypothesis graph can read ingredient refs and produce hypothesis-card handoffs without running backtests. Supervisor can convert accepted hypothesis refs into planning state and reject incomplete cards. |
-| 39. MLflow Predictive-Model Lifecycle Tool Universe | Coordinate engineering, fitting, recording, versioning, deployment evidence, and monitoring for time-series predictive models. | `src/trader_research/ml/`, optional MLflow integration package, core prediction contracts, `src/trader_standard/`, `src/trader_mcp/`, Postgres research artifacts, docs, tests | Planned umbrella after task 57. MLflow owns experiments, runs, model packages, registered versions, tags, and aliases. Trader owns dataset/feature/training/deployment specs, validation/promotion decisions, strategy/backtest lineage, and immutable resolved model refs. Tasks 39A-39J must be complete before the ML Agent graph is considered useful. |
-| 39A. MLflow Runtime Adapter And Mutation Policy | Establish the configured MLflow authority and safe MCP side-effect model. | MLflow client adapter, MCP environment/config, tool contracts, tests | Add runtime configuration for tracking and registry URIs, authentication references, namespaces, timeouts, artifact access, and client/server compatibility checks. Add read-only health/list/get operations. Extend side-effect metadata beyond `local_mutating` for writes to an external research service, with separate default-off gates for MLflow writes, training execution, and alias promotion. Require an approved configured instance; callers cannot supply arbitrary tracking URIs or credentials per request. |
+| 39. MLflow Predictive-Model Lifecycle Tool Universe | Coordinate engineering, fitting, recording, versioning, deployment evidence, and monitoring for time-series predictive models. | `src/trader_research/ml/`, optional MLflow integration package, core prediction contracts, `src/trader_standard/`, `src/trader_mcp/`, Postgres research artifacts, docs, tests | Planned umbrella after task 57H. MLflow owns ML training telemetry, model packages, registered model versions, tags, and aliases. Trader owns generic optimisation plans/trials/selections, backtests, dataset/feature/training/deployment specs, validation/promotion decisions, lineage, and immutable resolved model refs. Tasks 39A-39J must be complete before the ML Agent graph is considered useful. |
+| 39A. MLflow Runtime Adapter And Mutation Policy | Establish the optional MLflow runtime and safe MCP side-effect model. | MLflow tracking sink, ML client adapter, MCP environment/config, tool contracts, tests | Reuse `ExperimentTrackingSink` for disposable generic run projections, then add configured training/registry URIs, authentication references, namespaces, timeouts, artifact access, and client/server compatibility checks. Add `ml_list_training_experiments` with no old-name alias. Keep projection writes, ML training writes, and alias promotion independently gated. |
 | 39B. Feature-Set Engineering And Validation | Make feature definitions immutable, point-in-time aware, and reusable offline and online. | `src/trader_research/ml/features.py`, feature implementation refs, Postgres projections, MCP tools, tests | Add `ml_create_feature_set` and `ml_validate_feature_set`. Specifications record feature names/types, source implementations and hashes, parameters, lookbacks, event time, availability time, warmup, missing/stale policy, preprocessing fit scope, dependencies, output schema, and optional Quantitative Methods refs. Validation checks no-lookahead semantics, deterministic fixtures, schema stability, and online/offline computability without fetching undeclared data. |
 | 39C. Point-In-Time Training Datasets And Split Plans | Bind feature/target construction to Data Agent evidence and trading-time chronology. | `src/trader_research/ml/datasets.py`, Data Agent manifests, Postgres projections, MCP tools, tests | Add `ml_create_training_dataset` and `ml_create_time_series_split_plan`. Consume exactly one or more explicit compatible Data Agent manifests, never loose hidden scope. Record point-in-time joins, target formula/horizon/availability, symbol-universe policy, training/validation/calibration/test windows, expanding/rolling/anchored folds, purge/embargo, cross-sectional holdouts, row/fold profiles, quality refs, and dataset digest. Random splitting is rejected by default. Emit leakage and sufficiency blockers before fitting. |
 | 39D. Training Pipeline Registration And Fitting | Execute bounded, reproducible model training and record it in MLflow. | `src/trader_research/ml/training.py`, registered trainer implementations, MLflow adapter, MCP tools, tests | Add `ml_register_training_pipeline`, `ml_validate_training_pipeline`, `ml_create_training_spec`, and gated `ml_run_training`. Pipelines may be maintained, handwritten, or AI-produced but must be supplied as immutable validated source/package artifacts; prompt text is never executable. Specs bind dataset/split refs, framework and MLflow flavor, parameter schema, hyperparameters, resources, seeds, dependency lock/environment, code hash, experiment identity, timeout, and output contract. Fitting logs parameters, metrics, dataset inputs, source refs, artifacts, signature, input example, and packaged model to MLflow. |
@@ -629,9 +670,9 @@ Backward-compatible aliases may be retained initially:
 | 41. Attribution Service and MCP Tool | Add return attribution after baseline backtest artifacts exist. | `src/trader_research/attribution.py`, `src/trader_mcp/server.py`, tests | `research_analyze_return_attribution` summarizes PnL by symbol, period, side if available, and top trades using trade/equity artifacts without LLM interpretation. |
 | 42. Evaluation Critique Logic and MCP Tool | Extend performance reporting into stronger skeptical evaluation. | `src/trader_research/evaluation/performance.py`, `src/trader_mcp/server.py`, tests | `evaluation_generate_report` consumes data quality, backtest, performance, attribution, warning, cost, and sample-size evidence; weak baselines, missing data-quality reports, unexplained warnings, destroyed edge under costs, or thin samples produce blockers in `evaluation_report.json`. |
 | 43. Evaluation Agent Graph and Handoff | Add Evaluation Agent identity and supervisor handoff consumption once Evaluation-owned MCP reports are useful. | `src/trader_agents/evaluation_agent.py`, `src/trader_agents/quant_research.py`, tests | Evaluation graph consumes evidence artifacts and cannot create hypotheses, mutate data, or run backtests. Supervisor preserves blockers, caveats, and verdicts before recommendation synthesis. |
-| 44. Adversarial Robustness Core and MCP Tool | Produce skeptical, reproducible attacks against immutable baseline backtests. | `src/trader_research/robustness/`, `src/trader_mcp/`, Postgres research artifacts, docs, tests | Planned after task 57. `adversarial_run_robustness` should cover fee/slippage sensitivity, chronological and regime splits, parameter perturbation, symbol/trade/period concentration, missing-data sensitivity, and execution assumptions where artifacts permit. Reports must link every attack to the baseline implementation version, backtest specification, dataset, changed assumptions, and variant run refs. |
+| 44. Adversarial Robustness Core and MCP Tool | Produce skeptical, reproducible attacks against immutable baseline backtests. | `src/trader_research/robustness/`, `src/trader_mcp/`, Postgres research artifacts, docs, tests | Optimisation-specific audit planning/judgment now exists in 57F. Generalise it so Adversarial declares attacks and judges immutable evidence while Supervisor executes variants. Cover fee/slippage, chronology/regimes, parameter/provider/seed/budget/objective sensitivity, concentration, missing data, and multiple-testing risk. |
 | 45. Adversarial Agent Graph and Handoff | Add Adversarial Agent identity and supervisor handoff consumption after robustness tools exist. | `src/trader_agents/adversarial_agent.py`, `src/trader_agents/quant_research.py`, tests | Adversarial graph can call robustness tools but cannot produce recommendations or promotion decisions. Supervisor can block promotion readiness on robustness failures without modifying Adversarial artifacts. |
-| 46. Robustness Backtest Variants | Add explicit backtest variants for cost, parameter, scope, and data perturbations. | `src/trader_research/robustness/`, existing backtest runners, tests | Planned with task 44. Variants are immutable child specifications/runs linked to one baseline; each variant changes only declared assumptions such as 2x/5x slippage, elevated fees, parameter neighborhoods, start/end boundaries, symbol holdouts, delayed signals, or bounded data perturbations. Variant generation must not mutate implementation source or baseline artifacts. |
+| 46. Robustness Backtest Variants | Add explicit Supervisor-executed variants for cost, parameter, scope, provider, and data perturbations. | `src/trader_research/robustness/`, canonical optimisation/backtest services, tests | Planned with task 44 using `research_run_parameter_optimization_variants` as the first delivered pattern. Variants are immutable child plans/specifications/runs linked to one baseline and change only declared dimensions. Variant generation cannot mutate implementation source, baseline artifacts, selections, or Adversarial reports. |
 | 47. Recommendation Renderer and MCP Tool | Generate Quant Research recommendation reports after performance, critique, and robustness artifacts exist. | `src/trader_research/reports.py`, `src/trader_mcp/server.py`, tests | `research_generate_recommendation` consumes experiment, performance, evaluation, and robustness artifacts when available; paper-promotion readiness is blocked without required critique artifacts. |
 | 48. Quant Research Supervisor Synthesis Graph | Extend the supervisor graph to synthesize specialist artifacts into recommendation state. | `src/trader_agents/quant_research.py`, tests | Supervisor synthesizes Data, Quantitative Methods, Hypothesis, optional ML, Evaluation, and Adversarial artifacts without bypassing specialist graphs or MCP tools. |
 | 49. Experiment Runner and MCP Tool | Implement the high-level experiment runner last. | `src/trader_research/runner.py`, `src/trader_mcp/server.py`, tests | `research_run_experiment` composes earlier tools and returns recommendation paths, verdict, and warnings. It must not be the first proof of strategy, backtest, performance, or agent correctness. |
@@ -640,10 +681,32 @@ Backward-compatible aliases may be retained initially:
 | 52. MCP, Toolchain, and LangGraph Contract Tests | Add tests that call MCP tool functions directly, exercise the end-to-end toolchain, and later exercise LangGraph agent allowlists/state transitions. | `tests/test_mcp_tools.py`, `tests/test_mcp_research_toolchain.py`, `tests/test_langgraph_agents.py` | Tool names, required schemas, side effects, envelope shapes, agent owners, artifact refs, toolchain ordering, and graph boundaries are stable incrementally. |
 | 53. Iterative Documentation | Update bounded-context docs in the same change as each implementation slice. | `docs/research_agents/architecture.md`, `docs/research_agents/agents.md`, `docs/research_agents/mcp_tools.md`, `docs/research_agents/workflows.md`, `docs/research_agents/operations.md`, `tests/test_research_agent_docs.py` | Done for the research-agent/MCP documentation restructure. Current docs describe architecture, agent identities, MCP tools, workflows, operations, detailed contracts, safe usage boundaries, and package-boundary rules; historical notes live under `docs/research_agents/history/`. |
 | 54. `trader_research` Capability Packaging And Docstring Standardization | Move broad research services into bounded packages and enforce canonical imports. | `src/trader_research/data/`, `src/trader_research/methods/`, `src/trader_research/strategy_candidates/`, `src/trader_research/risk_managers/`, `src/trader_research/backtests/`, `src/trader_research/evaluation/`, `tests/test_package_boundaries.py`, docs | Package-level public surfaces are canonical. Old flat modules such as `math_tools.py`, `strategies.py`, `strategy_validation.py`, and `method_packages.py` are removed; no compatibility shims are added. Boundary tests assert the broad flat modules no longer exist and repo code uses canonical capability packages. |
-| 55. Verification Pass | Run focused tests, mypy for touched modules if configured, and the sample end-to-end MCP toolchain once it exists. | Test suite and sample artifacts | Relevant tests pass; any unavailable integration dependencies are called out; the toolchain can be reproduced from checked-in sample data or a bounded local artifact setup. |
-| 56. External Strategy And Risk Implementation Intake | Make independently authored trading code a first-class, versioned research input. | strategy/risk implementation domain and Postgres projections, `src/trader_research/strategy_candidates/`, `src/trader_research/risk_managers/`, `src/trader_mcp/`, docs, tests | Planned first. Add MCP/direct services to register and validate immutable handwritten or AI-produced indicator, strategy, and risk-manager source artifacts. Record source hashes, authoring origin, optional generator/model metadata, repository/commit or source URI, entrypoints, interfaces, declared parameters, dependencies, optional bespoke methodology refs, and no-live-trading assumptions. Validation must enforce package boundaries, allowed imports, platform interfaces, deterministic fixtures, source-hash consistency, and backtest-only execution. Do not persist hidden reasoning or execute prompt text. |
-| 57. Reproducible Backtest Specifications For Registered Implementations | Decouple backtest construction from maintained-template source generation. | `src/trader_research/backtests/`, strategy/risk validation, Postgres research artifacts, `src/trader_mcp/`, docs, tests | Planned second. Add immutable backtest specifications that consume passed implementation validation refs, optional ordered risk-manager validation refs, exactly one Data Agent dataset manifest, quality evidence, initial portfolio state, costs/slippage, execution assumptions, random seeds where relevant, and runtime parameters. Validate and persist the specification before using existing baseline/portfolio runners; deterministic IDs and child-run lineage must allow ML and robustness artifacts to cite the exact implementation and experimental conditions. |
-| 58. Walk-Forward Optimisation Core | Run a reproducible sequence of in-sample selection and locked out-of-sample strategy/model tests. | `src/trader_research/optimization/`, task 57 backtest specifications, `src/trader_research/ml/`, Postgres research artifacts, `src/trader_mcp/`, docs, tests | Deferred until task 57, 39I, 44, and 46 are proven. Add `research_create_walk_forward_plan`, `research_run_walk_forward_optimization`, and `research_get_walk_forward_results`. A plan pins the implementation/deployment version, base backtest specification, Data Agent scope, rolling/expanding window schedule, training/selection/test boundaries, purge/embargo, bounded parameter or model search space, objective, costs, seeds, resource budget, and stop/resume policy. Each fold may use strategy parameter child specifications or 39C-39G ML fitting/version refs, but selection uses only declared in-sample/validation evidence. Parameters and model version are locked before the untouched out-of-sample child backtest. Runs persist every candidate, score, rejection, selected ref, child specification/run, and deterministic fold lineage; they produce no promotion verdict. |
+| 56. Implementation Registry And Method-Card Decoupling | Invert the current dependency so methodology extraction is an encapsulated optional producer, not an execution prerequisite. | `src/trader_research/implementations/`, Postgres research artifacts/projections, producer-neutral lineage, `src/trader_mcp/`, docs, tests | Done. The canonical downstream input is immutable `implementation_version`; rich cards, packages, candidates, templates, and authoring workflows are not execution identities. Optional generic provenance records origin without changing eligibility. |
+| 56A. Canonical Implementation-Version Domain | Define the stable boundary consumed by every later strategy, risk, ML, robustness, and backtest service. | `src/trader_research/implementations/domain.py`, storage adapters, Postgres schema/projections, artifact registry, package-boundary tests | Add immutable `implementation_version` and `implementation_validation_report` schemas for `indicator`, `signal`, `strategy`, and `risk_manager` kinds. Record version ID, kind, authoring origin, canonical source/package payload and SHA-256, entrypoint, platform interface, parameter schema, dependency lock/environment, declared capabilities, portfolio/runtime requirements, resource bounds, source/repository metadata, optional generic provenance refs, and no-live-trading policy. Canonical source and manifests live in Postgres; validation may materialize bounded temporary files but no filesystem path is product identity or durable authority. The domain must not import `trader_research.knowledge`, rich method cards, strategy candidates, or risk-manager candidates. Quantitative Methods retains ownership of indicator/signal evidence; the Supervisor owns strategy/risk implementation versions. |
+| 56B. Strategy And Risk Implementation Registration And Validation | Make independently authored executable research code a first-class MCP input. | `src/trader_research/implementations/registration.py`, `validation.py`, MCP adapters/constants/config, Postgres projections, docs, tests | Add `research_register_strategy_implementation`, `research_validate_strategy_implementation`, `research_register_risk_manager_implementation`, and `research_validate_risk_manager_implementation`. Registration accepts explicit bounded source/package content or an approved content-addressed source ref, never prompt text or arbitrary server filesystem paths. Validation checks source hash, imports, dependency declarations, platform interface, entrypoint/factory, parameter schema, deterministic fixture behavior, order/risk bounds, timeout/resource policy, and no broker/raw-SQL/live mutation. A strategy or risk implementation with no methodology, method-card, or method-package refs must be fully valid and backtest-eligible. AI-produced code receives no weaker trust treatment than handwritten code. |
+| 56C. Maintained And Method-Generated Producer Adapters | Make every existing producer terminate at the same registration boundary. | maintained strategy/risk catalogs, Quant Methods packaging/generation, implementation registration service, lineage tests | Maintained template builders, validated Quant Methods packages, and method-card-generated code submit source plus metadata through the implementation registration/validation services and receive normal implementation-version refs. Method-card IDs, evidence refs, package refs, template identity, generator/model metadata, and prompts hashes where applicable are optional generic provenance only. Downstream behavior cannot vary by producer origin. Retiring or superseding a method card does not mutate an already registered immutable implementation version; consumers may report provenance status separately. No adapter exposes rich-card fields to the implementation domain. |
+| 56D. Remove Method-Card Execution Coupling | Delete the candidate-centric admission model once implementation registration and the 57A specification replacement land. | MCP registration/constants, artifact registry, Postgres cleanup/reset, boundary tests | Done without aliases, compatibility readers, schema translation, or dual writes. Candidate tools and artifact types are retired from canonical surfaces; old development rows/tables are reset rather than translated. |
+| 57. Reproducible Strategy, Risk, Backtest, And Optimisation Specifications | Separate executable code identity, configured behavior, experimental scope, provider operation, and evidence. | specification/backtest/optimisation/tracking domains, Postgres projections, `src/trader_mcp/`, docs, tests | Implementation is done through 57H. Tasks 57I-S qualify the complete 56/57 cutover before task 57 is marked done. |
+| 57A. Strategy And Risk Specifications | Bind validated code versions to explicit configured behavior without binding market-data scope. | `src/trader_research/specifications/strategy.py`, `risk.py`, Postgres projections, MCP tools, docs, tests | Add `research_create_strategy_specification`, `research_validate_strategy_specification`, `research_create_risk_stack_specification`, and `research_validate_risk_stack_specification`. A strategy specification pins one passed strategy implementation version, scalar parameters, portfolio mode, sizing/allocation policy, required runtime context, and execution assumptions. A risk-stack specification pins ordered passed risk-manager implementation versions and explicit thresholds/parameters. Symbols, timeframe, source, and date windows are forbidden. Deterministic IDs include immutable version refs and normalized configuration. These tools replace candidate and candidate-stack contracts; no old request form remains registered. |
+| 57B. Reproducible Backtest Specifications | Make the complete experimental configuration immutable before execution. | `src/trader_research/specifications/backtest.py`, Data Agent artifact resolution, Postgres projections, MCP tools, docs, tests | Add `research_create_backtest_specification` and `research_validate_backtest_specification`. Bind exactly one passed strategy specification, optional passed ordered risk-stack specification, exactly one Data Agent dataset manifest, matching quality evidence, initial portfolio state, fees/slippage, benchmark, execution assumptions, deterministic seeds where relevant, runtime limits, and logging policy. Reject loose symbols/timeframes/windows/source filters, unresolved or mutable refs, missing quality evidence, implementation hash drift, parameter grids, and hidden defaults that affect results. Persist the normalized specification before any runner invocation; its ID is the parent for baseline, robustness, ML, and walk-forward child runs. |
+| 57C. DB-First Specification Execution And Evaluation | Run only validated specifications and make structured storage the complete research authority. | `src/trader_research/backtests/`, Evaluation/comparison services, MCP tools, ResearchArtifactStore/Postgres schema, docs, tests | Done. `research_run_backtest_specification` writes complete baseline/portfolio evidence to `backtest_run`; lookup/comparison consume canonical refs; candidate request forms and canonical filesystem bundles are gone. |
+| 57D. Provider-Neutral Optimisation Ledger And Protocols | Separate canonical experiment evidence from proposal and projection providers. | `src/trader_research/optimization/contracts.py`, artifact registry, Postgres projections, tests | Done. Defines `OptimizationEngine`, `OptimizationTrialExecutor`, and `ExperimentTrackingSink`; plans/runs/trials pin the resolved provider profile, version, configuration digest, capabilities, and seed. No core optimisation module imports Optuna, MLflow, knowledge, method cards, or ML packages. |
+| 57E. Validated Optimisation Objectives | Admit custom scalar objectives through the same implementation boundary. | implementation registry, closed observation contract, Quant Methods MCP tools, tests | Done. `research_register_optimization_objective` and `research_validate_optimization_objective` bind hash-validated code to `OptimizationObservation`; code receives bounded plain data and cannot access stores, files, networks, events, or tools. |
+| 57F. Deterministic Optimisation Execution And Independent Review | Execute bounded studies while retaining complete trial and review evidence. | grid/random engines, executor/services, Evaluation, Adversarial, MCP, Postgres projections, tests | Done. Adds runtime/create/run/get/variant tools, deterministic resume/tie-breaks, complete failed-attempt evidence, sealed holdout Evaluation, and Adversarial plan/judgment. Promotion readiness requires both independent reports. |
+| 57G. Optional Optuna Adapter | Add adaptive sampling without making Optuna a platform dependency or evidence store. | optional adapter, environment/config health, dedicated Postgres schema/role, conformance tests | Done. Optuna loads lazily, uses seeded sequential TPE with no pruning, authenticates to a non-public dedicated schema/role, and reconciles terminal provider state against Trader trials before resume. Provider loss leaves canonical evidence readable and the run partial/blocked. |
+| 57H. Provider-Neutral Experiment Tracking Projection | Project completed canonical evidence to optional analytical tracking systems. | `src/trader_research/tracking/`, MCP/config gates, optional MLflow sink, tests | Done. `research_project_experiment_tracking` derives an idempotent payload from canonical run/trials; callers cannot submit metrics/tags. Projection writes require generic external-research and sink-specific gates and are explicitly non-authoritative. |
+| 57I. Freeze Revision And Build Acceptance Matrix | Establish exactly what is being tested and prevent a moving worktree from invalidating conclusions. | Git checkpoint, `git status --short`, `git diff --stat`, registered-tool/config/artifact/projection inventories, invariant-to-test matrix | Done. The `verification-57i-freeze` tag identifies the checkpoint. The frozen matrix enumerates the full worktree and 56/57 public/persistence/provider/policy/retirement surfaces, maps invariants 36-61 to named tests, and distinguishes existing, partial, and planned evidence across core, Postgres, Optuna, and tracking profiles. Any later change invalidates its phase and downstream evidence. |
+| 57J. Provision Isolated Verification Runtime | Make destructive and external integration tests safe, repeatable, and visibly separate from operator state. | `tests/conftest.py`, dedicated Trader verification DB, optional dedicated Optuna schema/role, disposable tracking experiment, environment manifest | Require `PG_TEST_DB` ending `_test` or `_testing`; never fall back to `PG_DB`; use a least-privilege verification role where practical; pin locale/timezone/dependency versions/seeds and record credential-free config digests. Capture operator DB table counts and stable content fingerprints before and after every Postgres phase. Default all mutation gates off and enable only the gate needed by the current profile. A guard failure or operator fingerprint change is an immediate stop condition. |
+| 57K. Static, Contract, And Regression Gate | Establish that the frozen revision is internally consistent before spending time on integration evidence. | Ruff, compileall, mypy, non-Postgres pytest, MCP/docs/domain/package/SQL boundary suites, `git diff --check` | Run `uv run ruff check src tests`, `python -m compileall -q src/trader_research src/trader_mcp src/trader_agents src/trader_standard src/trader`, `uv run mypy`, `uv run pytest -m 'not postgres' -q`, focused MCP/docs/domain/package/SQL suites, and `git diff --check`. Inventory deleted candidate-era tests against replacement coverage. Treat unexpected skips, collection warnings, import-time optional-provider failures, stale registered tools, compatibility aliases/readers, and package-boundary regressions as blockers. Save exact commands and summaries against the frozen revision. |
+| 57L. Realistic Deterministic Evidence Fixture | Replace the toy empty-strategy smoke graph as the acceptance fixture while keeping it bounded and reproducible. | `tests/support/` fixture builder or checked-in fixture data, realistic strategy/risk/objective sources, fixture assertions | Use at least three symbols and enough chronological bars for warm-up, multiple entries/exits, selection, and untouched holdout. Pin timestamps, prices, source hashes, quality snapshots, costs, seed, and expected scope. The handwritten strategy must place both buy and sell orders and produce parameter-sensitive outcomes; the risk manager must approve and reject observable orders; fees/slippage and final exposure must be nonzero where expected. Selection and holdout windows must be disjoint with different manifest/content hashes. Assert fixture semantics directly so a no-trade or constant-objective run cannot pass the graph accidentally. |
+| 57M. Postgres-Native MCP Evidence Graph | Prove the public tool boundary produces complete, visible, realistic product evidence. | `tests/test_postgres_optimization_evidence_graph.py`, `PostgresResearchArtifactStore`, typed projections | Call MCP tools, not service internals, for strategy/risk implementation registration and validation; strategy/risk/backtest specification creation and validation; selection backtest; objective registration/validation; plan creation; built-in-grid execution/results; selected holdout specification/run; Evaluation report; Adversarial plan; Supervisor variants; and Adversarial report. Require real trades, nonzero exposure/costs, risk decisions, 4-8 materially distinct trials, and a deterministic selection. Every durable ref must be `research://postgres/{artifact_type}/{id}` and every canonical artifact must be visible through both `research_artifacts` and its typed pgAdmin projection. Evaluation and Adversarial must not mutate the selected trial/specification. No canonical filesystem path may appear in a response or row. |
+| 57N. Determinism, Integrity, And Leakage Tests | Prove that reproducibility and holdout claims survive independent repetition and hostile state changes. | Repeated clean-DB graph runs, mutation/tamper cases, lineage assertions | Run the same graph twice from clean verification databases and compare IDs, trial sequence, suggestions, observations, objective values, tie-break diagnostics, selection, and report lineage. Verify seeded-random order independently. Persist every rejected/failed attempt and exception. Tamper with implementation source/hash, validation payload, parameters, dataset/quality snapshot, costs, provider digest, trial order, and selected ref; loaders must fail closed. Instrument the trial executor/artifact reads to prove holdout rows and metrics are never read during proposal, child execution, objective evaluation, or selection. Evaluation may access the holdout only after selection is immutable. |
+| 57O. Restart, Resume, And Fault-Injection Tests | Verify canonical Postgres state is sufficient for recovery and that partial work is never misrepresented as complete. | Subprocess/service-recreation tests, injected executor/provider/store failures, resume assertions | Stop after plan persistence, after suggestions, after a child backtest, after a failed objective, and before final selection; recreate MCP/services with only canonical configuration and resume. Confirm completed trials are not duplicated, sequence numbers remain stable, retries are bounded and fully recorded, and deterministic selection matches an uninterrupted run. Exercise child timeout, invalid objective result, unavailable metric, artifact-store write failure, Optuna loss, and provider/configuration drift. Terminal evidence remains readable; unsafe resume yields explicit partial/blocked status and requires a new run rather than engine switching or state repair. |
+| 57P. Provider Independence And Adapter Qualification | Separate proof of the core product from proof of optional provider adapters. | Core no-provider environment, Optuna conformance/integration profile, tracking-sink profile | In a minimal environment where importing Optuna and MLflow fails, start MCP, run grid and seeded-random optimisation, resume, and read all canonical results. For Optuna qualification, use its dedicated non-`public` schema and writer role, seeded sequential TPE, no pruning, and reconcile provider terminal states to canonical Trader trials; test package absence, DB loss, stale/mismatched study state, and forbidden public-schema credentials. For each tracking sink, project only completed supported canonical runs, call twice to prove idempotence, reject caller metrics/tags/URIs, delete or disable the external record, and prove Trader plans/trials/selections/reports remain readable and unchanged. Optional profile failure does not fail core acceptance but leaves that profile not qualified and gated off. |
+| 57Q. Policy, Security, And Resource-Boundary Tests | Challenge the admission and execution boundaries directly rather than inferring safety from happy paths. | MCP gate matrix, malicious objective/implementation fixtures, limit tests, SQL/package-boundary tests | Exercise backtest, optimisation, generic external-write, Optuna-write, and tracking-write gates independently and inspect `mcp_get_config`. Reject objective code attempting direct or indirect filesystem, network, database, subprocess, import, builtin, raw-event, artifact-store, or tool access. Reject undeclared observation fields/metrics, non-finite scores, dataset/implementation/cost/provider/holdout/fold changes, loose data scope, and undeclared tunables. Enforce trial/retry/time/resource limits and bounded error payloads. Confirm agents have no direct SQL or broker mutation path, core packages do not import research/provider packages, and temporary validation materialization is cleaned without becoming product identity. |
+| 57R. Projection, Operator, And Bounded-Scale Checks | Prove that operators can inspect and operate the feature without relying on test-only internals. | SQL reconciliation queries, pgAdmin-visible row checks, bounded load profile, cleanup log | For each artifact in the graph, reconcile ID, type, status, parent/child lineage, selected refs, trial counts, and payload hashes between canonical JSONB and typed projections. Run a declared bounded profile such as 3-10 symbols, 1,000-10,000 bars per symbol, 64 grid trials, and 100 seeded-random trials; record wall time, peak memory where available, database growth, and result-query timing against declared run resource limits rather than a machine-specific universal threshold. Verify sequential execution/no pruning assumptions, deterministic cleanup, indexes used for principal lookup paths, and unchanged operator DB/knowledge corpus/provider namespaces. |
+| 57S. Acceptance Record And Release Decision | Make the outcome auditable and prevent a partial green run from being described as system verification. | Tracker evidence update plus CI/test logs and DB evidence-ref inventory | Record the exact Git revision, UTC time, dependency lock hash, environment/profile digests, test database and provider namespaces, commands/results/durations, skips, warnings, evidence refs, projection row counts, operator before/after fingerprints, discovered defects/fixes, rerun scope, and residual risks. Core acceptance requires 57I-57O and 57Q-57R with zero blockers. Optuna and each tracking sink have separate qualified/not-qualified decisions from 57P. After any fix, rerun that phase and all dependent phases before marking task 57 done. Do not copy verification-database rows into the operator database or treat disposable provider state as canonical evidence. |
+| 58. Walk-Forward Optimisation Core | Run a reproducible sequence of in-sample selection and locked out-of-sample strategy/model tests. | `src/trader_research/optimization/`, task 57 backtest specifications, `src/trader_research/ml/`, Postgres research artifacts, `src/trader_mcp/`, docs, tests | Deferred until 39I, 44, and 46 are proven. Compose the existing `OptimizationEngine` and `OptimizationTrialExecutor` protocols inside each fold; do not create a WFO-specific optimiser/provider contract. A plan pins implementation/deployment version, base specification, Data Agent scope, fold boundaries, purge/embargo, objective, costs, seed, budget, and stop/resume policy. Each fold locks its selected parameter/model before untouched out-of-sample execution and preserves the complete child ledger without producing a promotion verdict. |
 | 59. Walk-Forward Evaluation And Adversarial Audit | Separate out-of-sample interpretation from attacks on the optimisation procedure. | `src/trader_research/evaluation/`, `src/trader_research/robustness/`, Postgres research artifacts, `src/trader_mcp/`, docs, tests | Deferred until task 58. Add `evaluation_generate_walk_forward_report` and `adversarial_audit_walk_forward`. Evaluation stitches out-of-sample fold returns without in-sample contamination and reports aggregate performance, coverage, turnover, costs, fold dispersion, and blockers. Adversarial tests fold-boundary/window sensitivity, objective changes, neighboring parameters/models, selection instability, in-sample to out-of-sample degradation, fee/slippage stress, symbol/period concentration, search-budget sensitivity, multiple-testing/selection-bias evidence, and nested-procedure risk. Reports preserve the baseline plan/run and variant refs, cannot rewrite selections, and cannot promote a strategy or model. |
 
 ## Incremental Build Slices
@@ -1041,27 +1104,285 @@ Acceptance requires links from `docs/research_agents/README.md`, `architecture.m
 contract appendix; terminology must match the implemented artifacts; and docs tests must fail when the canonical link or
 required invariants disappear.
 
-### Slice 11D: Direct Implementation-To-Evidence Tools
+### Slice 11D: Canonical Implementation-To-Evidence Decoupling
 
-Implement tasks 56-57 next. This slice accepts immutable strategy and risk implementations written by a human or
-produced by an external AI workflow, validates them under the same platform and backtest-only constraints, and creates a
-reproducible backtest specification before execution. It does not require knowledge extraction, a generated strategy
-candidate, or a maintained method target, though validated methodology refs may be attached as provenance.
+Implement tasks 56A-56C first, then land 56D and 57A-57C as one cutover. This slice replaces the candidate-centric
+execution boundary; it does not add a parallel route. Immutable strategy and risk implementations written by a human,
+produced by an external AI workflow, supplied by maintained code, or generated from Quant Methods evidence all enter
+the same registration and validation services. Knowledge extraction, method cards, method packages, template identity,
+and generator metadata are optional provenance and are never required for technical backtest eligibility.
+
+The cutover order is:
+
+1. Define the knowledge-independent implementation-version domain and Postgres storage.
+2. Register and validate independently authored strategy and risk implementations.
+3. Route maintained and method-generated producers through the same registration boundary.
+4. Add strategy/risk specifications over validated implementation versions.
+5. Add immutable backtest specifications over strategy/risk and Data Agent refs.
+6. Switch execution, retrieval, comparison, and Evaluation to specification/run refs stored in Postgres.
+7. Remove candidate-based MCP contracts, readers, artifact types, filesystem authorities, and obsolete development rows.
+
+There is no compatibility interval in which canonical consumers accept both candidate refs and implementation/spec refs.
+The branch may build the replacement incrementally, but the merged cutover must expose one contract.
 
 Evidence target:
 
 ```text
-supplied implementation source
-  -> immutable implementation manifest and source hash
+supplied strategy implementation source with no methodology refs
+  -> immutable implementation version and source hash
   -> interface, dependency, fixture, and safety validation
-  -> reproducible backtest specification
+  -> immutable strategy specification
+  -> validated backtest specification
   -> Data Agent dataset and quality refs
-  -> baseline or risk-scoped portfolio backtest
+  -> DB-backed baseline backtest
   -> Evaluation report
 ```
 
+Additional mandatory evidence targets are:
+
+```text
+independently supplied strategy + independently supplied risk manager
+  -> separate implementation versions and validations
+  -> strategy specification + ordered risk-stack specification
+  -> validated backtest specification
+  -> DB-backed risk-scoped portfolio run and Evaluation report
+```
+
+```text
+approved method card or maintained template
+  -> optional generated implementation producer
+  -> normal implementation registration and validation
+  -> the identical strategy/backtest specification path
+```
+
 This becomes the foundation for model-version lineage and robustness variants. AI-produced source is never executed
-from prompt text and receives no weaker trust treatment than handwritten source.
+from prompt text and receives no weaker trust treatment than handwritten source. A later method-card status change may
+be reported as provenance state but cannot mutate an immutable implementation, specification, or completed run.
+
+### Slice 11E: Provider-Neutral Optimisation And Independent Audit
+
+Tasks 57D-57H build on Slice 11D without changing its implementation, specification, or backtest contracts. Trader
+Postgres is the only product authority. Built-in grid/random and optional Optuna engines propose parameters through the
+same protocol; tracking systems receive only explicit derived projections; Evaluation judges sealed holdout results;
+and Adversarial independently plans and judges attacks that the Supervisor executes as immutable variants.
+
+Evidence target:
+
+```text
+validated implementation and selection-region backtest specification
+  -> validated closed-input objective
+  -> provider-neutral optimisation plan with sealed chronological holdout
+  -> deterministic grid/random or optional Optuna trial ledger
+  -> exploratory selected child specification
+  -> untouched holdout backtest
+  -> Evaluation holdout report
+  -> Adversarial attack plan
+  -> Supervisor-executed immutable variants
+  -> Adversarial robustness report
+  -> optional idempotent non-authoritative tracking projection
+```
+
+Optuna and MLflow may both be absent without affecting built-in execution, MCP startup, or canonical result reads.
+Optuna may use only its dedicated schema/role for sampler resumability, and MLflow remains authoritative only for the
+ML training/model-registry responsibilities introduced by task 39.
+
+### Slice 11F: Controlled 56/57 Verification And Acceptance
+
+Tasks 57I-57S qualify Slice 11D/11E before further architecture is built on it. Verification is a phased procedure over
+one frozen Git revision, not an informal collection of commands. Each phase records its inputs and evidence. A code,
+fixture, schema, dependency-lock, or policy change invalidates that phase and every downstream phase that consumed it.
+
+#### 57I Frozen Surface Inventory
+
+The checkpoint revision is identified by the annotated Git tag `verification-57i-freeze` on branch
+`experiment/agentic-build`. The tag is created only after the inventory, matrix, documentation regression, and
+checkpoint commit are complete. Later verification records use the commit resolved by that tag, not a moving branch
+name. The pre-cutover parent is `40ade24` (`Complete semantic extraction and research roadmap`).
+
+Every changed or untracked path at the freeze belongs to one of these declared surfaces:
+
+| Surface | Paths and disposition |
+|---|---|
+| Implementation registry | `src/trader_research/implementations/`, generic implementation artifacts/domain ownership, registration/validation MCP adapters; canonical new execution intake |
+| Specifications and execution | `src/trader_research/specifications/`, `src/trader_research/backtests/execution.py`, backtest result lookup/comparison, MCP adapters; canonical replacement for candidate requests and filesystem bundles |
+| Optimisation, tracking, and independent review | `src/trader_research/optimization/`, `tracking/`, `evaluation/optimization.py`, `adversarial/`, and corresponding MCP adapters; provider-neutral new surface |
+| Structured persistence | `artifact_store.py`, `postgres_artifact_store.py`, research domain/contracts; canonical JSONB and typed projections |
+| Ownership, configuration, and documentation | agent identities, MCP constants/environment/server, README, active research-agent docs, tracker, dependency extras/lock |
+| Verification tests | new optimisation, MCP graph, gate, Postgres projection, package/SQL/domain/docs tests and the destructive-test database suffix guard |
+| Retired candidate test surface | Deleted candidate, candidate-validation, candidate-stack, candidate-backtest, portfolio-sidecar, and old performance-report tests; replaced by canonical implementation/specification/optimisation tests, not retained as compatibility tests |
+| Knowledge recovery hardening | Batched embedding, extractor/index normalization, and their tests; retained because they were required to restore the operator knowledge corpus after the Postgres test-isolation incident |
+
+No `local.env`, credentials, operator database contents, generated research artifacts, or unrelated application changes
+are part of the checkpoint.
+
+The complete 56/57 MCP surface under test is:
+
+| Owner / side effect | Tools |
+|---|---|
+| Quantitative Methods / `local_mutating` | `research_register_optimization_objective`, `research_validate_optimization_objective` |
+| Supervisor implementation intake / `local_mutating` | `research_register_strategy_implementation`, `research_validate_strategy_implementation`, `research_register_risk_manager_implementation`, `research_validate_risk_manager_implementation` |
+| Supervisor specification / `local_mutating` | `research_create_strategy_specification`, `research_validate_strategy_specification`, `research_create_risk_stack_specification`, `research_validate_risk_stack_specification`, `research_create_backtest_specification`, `research_validate_backtest_specification` |
+| Supervisor execution / `local_mutating` | `research_run_backtest_specification`, `research_compare_backtest_results`, `research_create_parameter_optimization_plan`, `research_run_parameter_optimization`, `research_run_parameter_optimization_variants` |
+| Supervisor reads / `read_only` | `research_get_backtest_results`, `research_get_optimizer_runtime`, `research_get_parameter_optimization_results` |
+| Supervisor projection / `external_research_mutating` | `research_project_experiment_tracking` |
+| Evaluation / `local_mutating` | `evaluation_generate_parameter_optimization_report` |
+| Adversarial / `local_mutating` | `adversarial_create_parameter_optimization_audit_plan`, `adversarial_generate_parameter_optimization_audit` |
+
+Maintained strategy/risk template listing remains a read-only producer helper and is not a canonical execution identity.
+The artifact/projection inventory is closed for this slice:
+
+| Owner | Canonical artifact types | Typed Postgres projections |
+|---|---|---|
+| Supervisor or kind-specific Quant Methods implementation owner | `implementation_version`, `implementation_validation_report` | `research_implementation_versions`, `research_implementation_validations` |
+| Supervisor | `strategy_specification`, `strategy_specification_validation_report` | `research_strategy_specifications`, `research_strategy_specification_validations` |
+| Supervisor | `risk_stack_specification`, `risk_stack_specification_validation_report` | `research_risk_stack_specifications`, `research_risk_stack_specification_validations` |
+| Supervisor | `backtest_specification`, `backtest_specification_validation_report`, `backtest_run` | `research_backtest_specifications`, `research_backtest_specification_validations`, `research_backtest_runs` |
+| Supervisor | `parameter_optimization_plan`, `parameter_optimization_run`, `parameter_optimization_trial` | `research_parameter_optimization_plans`, `research_parameter_optimization_runs`, `research_parameter_optimization_trials` |
+| Supervisor | `experiment_tracking_projection_report` | `research_experiment_tracking_projections` |
+| Evaluation | `parameter_optimization_evaluation_report` | `research_parameter_optimization_evaluations` |
+| Adversarial | `parameter_optimization_audit_plan`, `parameter_optimization_robustness_report` | `research_parameter_optimization_audit_plans`, `research_parameter_optimization_robustness_reports` |
+
+All rows also exist in canonical `research_artifacts`; a typed projection is inspectable metadata, not a second
+authority. The provider protocols are `OptimizationEngine`, `OptimizationTrialExecutor`, and
+`ExperimentTrackingSink`. Built-in profiles are `builtin_grid` and `builtin_random`; optional profiles are
+`optuna_tpe` and the configured MLflow backtest-optimisation projection sink.
+
+The independent policy gates under test are:
+
+| Gate | Required relationship |
+|---|---|
+| `TRADER_MCP_ALLOW_BACKTESTS` | Required for canonical backtest execution and any optimisation trial execution |
+| `TRADER_MCP_ALLOW_OPTIMIZATION` | Additionally required for optimisation and variant execution |
+| `TRADER_MCP_ALLOW_EXTERNAL_RESEARCH_WRITES` | Master gate for any optional external provider mutation |
+| `TRADER_MCP_ALLOW_OPTUNA_WRITES` | Additionally required only for Optuna sampler-state writes |
+| `TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES` | Additionally required only for tracking projections |
+| `TRADER_MCP_ALLOW_BROKER_MUTATION`, `TRADER_MCP_ALLOW_RAW_SQL` | Remain false and have no registered 56/57 tools |
+
+Retired canonical inputs are strategy/risk candidates and validations, strategy/risk stack manifests and validations,
+`backtest_run_ref`, `portfolio_backtest_run_ref`, and candidate-era Evaluation sidecars. Retired MCP names include
+`research_create_strategy_candidate`, `research_validate_strategy_candidate`,
+`research_create_risk_manager_candidate`, `research_validate_risk_manager_candidate`,
+`research_create_strategy_risk_stack`, `research_validate_strategy_risk_stack`, `research_run_backtest`,
+`research_run_portfolio_backtest`, and `evaluation_generate_performance_report`. Retired projection tables are
+`research_strategy_candidates`, `research_strategy_validations`, `research_risk_manager_candidates`,
+`research_risk_manager_validations`, `research_strategy_risk_stacks`, `research_stack_validations`,
+`research_backtest_sidecars`, and `research_evaluation_reports`. Core runtime `experiments`/`experiment_runs` tables may
+still support unrelated operator workflows, but no 56/57 research service may use them as canonical study state.
+
+#### 57I Acceptance Matrix
+
+Profile codes are **C** core, **P** Trader Postgres, **O** Optuna, and **T** tracking sink. `Existing` means a named test
+is present at the freeze; it does not pre-judge the controlled run. `Partial` identifies evidence that must be expanded
+by the named downstream task. `Planned` means no acceptance-grade test exists yet.
+
+| Invariant | Profile | Acceptance assertion | Named evidence at freeze | Status / completing task |
+|---|---|---|---|---|
+| 36 | C | Canonical experiment packages do not import knowledge/candidate domains; package direction remains one-way. | `test_canonical_experiment_packages_do_not_import_knowledge_or_candidate_domains`, `test_trader_package_does_not_depend_on_research_agent_packages` | Existing / 57K rerun |
+| 37 | C,P | Handwritten, AI, maintained, and method-generated origins enter one immutable implementation contract with equal eligibility. | `test_mcp_optimization_holdout_and_adversarial_evidence_graph` proves handwritten intake only. | Partial / 57M adds origin-equivalence cases |
+| 38 | C | Candidate IDs/cards/packages are rejected as canonical strategy/risk/backtest inputs. | `test_mcp_exposes_decoupled_tools_and_independent_write_gates`, canonical package-boundary test | Existing / 57K rerun and 57M fail-closed calls |
+| 39 | C,P | Candidate MCP schemas, aliases, compatibility readers, and dual writes are absent. | `test_mcp_exposes_decoupled_tools_and_independent_write_gates`, `test_quant_research_supervisor_owns_canonical_experiment_tools`, retired-table schema assertions | Existing / 57K and 57M |
+| 40 | P | Retired development projections are absent and no legacy rows are translated. | `test_research_schema_has_canonical_optimization_tables_without_retired_projections` | Existing schema evidence / 57J clean DB and 57R inspection |
+| 41 | P | Backtests, comparisons, sidecars, and Evaluation are complete Postgres artifacts with no durable filesystem authority. | In-memory MCP graph plus `test_optimization_artifacts_have_typed_pgadmin_visible_projections` | Partial / 57M canonical graph and 57R reconciliation |
+| 42 | C,P | Methodology provenance status cannot mutate completed implementations/specifications/runs. | Content-addressed loaders exist; no direct immutable-lineage attack test. | Partial / 57N |
+| 43 | C | Core imports provider-neutral contracts; MCP/grid/random work with Optuna and MLflow unavailable. | Package-boundary test and built-in engine unit tests; optional packages are installed in the current environment. | Partial / 57P minimal-environment profile |
+| 44 | C,P | Runs pin engine identity/version/configuration/capabilities/seed/executor and never switch engines. | `test_grid_resume_selection_projection_evaluation_and_audit_are_separate`, `test_seeded_random_retry_evidence_and_base_snapshot_drift_are_deterministic` | Existing / 57N and 57O restart expansion |
+| 45 | C | Objectives are content-addressed, closed-input, finite scalar implementations with no ambient capabilities. | `test_closed_observation_and_plan_reject_undeclared_inputs`, `test_objective_validation_rejects_filesystem_and_indirect_builtin_access` | Existing / 57Q attack expansion |
+| 46 | C,P | Plans seal selection/holdout/quality/objective/search/constraint/seed/budget/resource inputs. | Closed-plan unit test and MCP smoke graph | Partial / 57M real scopes and 57N tamper matrix |
+| 47 | C,P | Every suggestion, attempt, failure, child ref, observation, score, and tie-break is canonical evidence. | Grid/resume and seeded-random/retry unit tests | Partial / 57M Postgres ledger and 57O failures |
+| 48 | O,P | Optuna uses only isolated sampler state; loss/mismatch cannot replace Trader evidence. | `test_optuna_adapter_requires_isolated_postgres_and_reconciles_canonical_trials` | Partial / 57P live adapter profile |
+| 49 | C,T | Tracking projection is explicit/idempotent/derived/non-authoritative; MLflow deletion cannot affect Trader reads. | Recording/failing sink cases in `test_grid_resume_selection_projection_evaluation_and_audit_are_separate` | Partial / 57P real sink deletion/unavailability profile |
+| 50 | C,P | Holdout Evaluation and Adversarial audit are separately owned and cannot rewrite selection. | Direct grid test and `test_mcp_optimization_holdout_and_adversarial_evidence_graph` | Existing smoke evidence / 57M and 57N immutable-selection proof |
+| 51 | C,O,T | Backtest, optimisation, external, Optuna, and tracking gates are independent and reported by config. | All three tests in `test_mcp_optimization_tools.py` | Existing / 57Q full gate matrix |
+| 52 | C,P | Canonical loaders recompute identities and fail closed on source/config/snapshot/lineage drift. | Seeded-random/base-snapshot drift test and content-addressed service loaders | Partial / 57N full tamper matrix |
+| 53 | C | Evidence is tied to one frozen revision and downstream phases rerun after changes. | This inventory/matrix, checkpoint commit, annotated `verification-57i-freeze` tag | Existing / 57I complete |
+| 54 | P | Tests require explicit `*_test` DB and leave operator runtime/research/knowledge unchanged. | `tests/conftest.py` suffix guard; operator fingerprints not automated. | Partial / 57J |
+| 55 | P | Mandatory graph is multi-asset and produces parameter-sensitive trades, costs, exposure, approvals, and rejections. | Current graph is one-symbol, twelve-bar, empty-strategy smoke coverage. | Planned / 57L fixture and 57M graph |
+| 56 | P | Selection and holdout are disjoint by time/hash and holdout is unread before selection. | Current smoke graph separates times but has no access instrumentation. | Planned / 57N |
+| 57 | C,P | Two clean runs reproduce IDs/order/observations/scores/tie-break/selection/reports. | Component-level deterministic tests only. | Planned / 57N |
+| 58 | P,O | Process restart/faults preserve partial evidence, avoid duplicates, and reject changed-config resume. | Same-process partial resume and Optuna count mismatch unit cases only. | Planned / 57O |
+| 59 | C,O,T | Built-ins/startup/reads survive missing optional packages; each adapter is separately qualified. | Lazy runtime profile and unit adapters exist; no package-absent execution profile. | Planned / 57P |
+| 60 | P | Every acceptance artifact reconciles between canonical JSONB and its typed projection. | Schema test and plan/run/trial projection integration test only. | Partial / 57M graph and 57R full reconciliation |
+| 61 | C,P,O,T | Final record separates pass/fail/not-run/not-qualified and never promotes disposable evidence. | Acceptance record contract only. | Planned / 57S |
+
+Execution profiles are independent:
+
+| Profile | Required evidence | Release effect |
+|---|---|---|
+| Core | Static/type/contract/non-Postgres regression, realistic deterministic fixture, grid/random behavior, security boundaries | Mandatory |
+| Trader Postgres | Real MCP graph, canonical/projection reconciliation, restart/resume, operator isolation, bounded scale | Mandatory |
+| Optuna | Optional-package conformance plus dedicated-schema integration, loss/reconciliation/resume behavior | Required only before `optuna_tpe` is enabled |
+| Tracking sink | Explicit projection, idempotence, input closure, external deletion/unavailability, canonical-read independence | Required separately for each configured sink before writes are enabled |
+
+The phase dependency graph is:
+
+```text
+57I frozen revision and matrix
+  -> 57J isolated runtime
+  -> 57K static/regression gate
+  -> 57L realistic fixture
+  -> 57M Postgres MCP evidence graph
+  -> 57N determinism/integrity/leakage
+  -> 57O restart/resume/fault injection
+       -> 57P optional-provider profiles
+       -> 57Q policy/security/resource boundaries
+  -> 57R projections/operator/scale
+  -> 57S acceptance record
+```
+
+The mandatory evidence graph is deliberately more demanding than
+`tests/test_mcp_optimization_evidence_graph.py`, which remains a fast transport/orchestration smoke test. Acceptance
+uses `PostgresResearchArtifactStore`, a multi-asset fixture, order-producing strategy code, observable risk approvals
+and rejections, nonzero costs/exposure, materially different trial outcomes, disjoint selection and holdout content,
+and public MCP calls throughout:
+
+```text
+handwritten strategy and risk implementation versions
+  -> passed implementation validations
+  -> passed strategy/risk/backtest specifications over selection data
+  -> real selection backtest evidence
+  -> validated closed-input objective
+  -> provider-neutral optimisation plan with sealed holdout
+  -> complete built-in-grid trial ledger and immutable selected specification
+  -> untouched holdout backtest
+  -> Evaluation report
+  -> Adversarial audit plan
+  -> Supervisor-executed immutable variants
+  -> Adversarial report
+```
+
+Mandatory graph assertions:
+
+1. Every durable identity is a `research://postgres/{artifact_type}/{artifact_id}` ref and has canonical JSONB plus a
+   matching typed projection; no canonical filesystem path is returned or stored.
+2. The strategy executes buys and sells, final/intermediate exposure is nonzero, transaction costs are observable, and
+   the risk stack records at least one approval and one rejection.
+3. The optimisation ledger contains every suggestion, attempt, exception, child ref, observation, objective result,
+   and tie-break diagnostic. Parameter changes produce materially different evidence rather than constant no-trade
+   scores.
+4. Selection and holdout manifests/content hashes differ and their time ranges do not overlap. Instrumented reads show
+   no holdout access before the selected specification is immutable.
+5. Two clean executions produce the same content-addressed IDs, trial order, selected trial, and reports. Evaluation,
+   Adversarial, tracking, and provider reconciliation cannot rewrite the selection.
+6. The operator database and knowledge corpus have identical before/after fingerprints. Destructive cleanup is confined
+   to the explicit verification database and optional-provider namespace.
+
+Suggested command order for the frozen revision is:
+
+```bash
+git status --short
+git diff --check
+uv run ruff check src tests
+python -m compileall -q src/trader_research src/trader_mcp src/trader_agents src/trader_standard src/trader
+uv run mypy
+uv run pytest -m 'not postgres' -q
+PG_TEST_DB=trader_verification_test uv run pytest -m postgres -q
+PG_TEST_DB=trader_verification_test uv run pytest tests/test_postgres_optimization_evidence_graph.py -q
+```
+
+The last command is planned by 57M and does not exist until that task is implemented. Provider-profile commands must
+name their isolated schema/namespace explicitly and run only after the core/Postgres graph passes. The acceptance record
+must distinguish a test that passed, an optional integration that was not run, and an integration that failed; these are
+not interchangeable outcomes.
 
 ### Slice 12: Minimal Supervisor Toolchain Handoff
 
@@ -1139,27 +1460,40 @@ verification should be updated at every evidence checkpoint rather than saved fo
 
 ## First Release Acceptance Criteria
 
-1. The MCP server exposes data inventory, data quality, bounded data-loading, source-backed method, rich methodology, method-package, strategy-candidate, risk-manager-candidate, strategy/risk stack, backtest, result-lookup, and performance-report tools through shared envelopes.
+1. The MCP server exposes data inventory, data quality, bounded data-loading, source-backed method, rich methodology,
+   method-package, implementation registration/validation, strategy/risk specification, backtest specification/run,
+   result-lookup, comparison, and performance-report tools through shared envelopes.
 2. The Data Agent workflow can be exercised against sample or existing data: health -> discovery -> inventory -> quality -> ensure/load -> quality.
 3. Quant Methods Knowledge Base ingestion produces source, evidence-unit, embedding, lexical-index, vector-index, ingestion, retrieval, evidence-packet, method-card, and citation-validation artifacts before method contracts depend on retrieved evidence; coarse legacy chunks are not sufficient for methodology extraction after 33X.
 4. Ingestion does not imply approval: draft method cards are not executable, shallow cards are legacy/projection records, and sophisticated methods require approved canonical method-card references plus passing citation/readiness validation.
 5. Methodology candidates can be discovered from ingested sources without hardcoded known targets, and can populate nullable method fields only when each populated field has target-bound source/evidence-unit evidence tied to a family-level evidence role.
 6. Canonical method cards can represent technical, statistical, options/derivatives, portfolio, risk, sentiment/alternative-data, and fundamental methodologies with field-level citations, validation blockers, explicit draft/approval lineage, and derived shallow summaries for compatibility.
 7. Rich methodology schemas use common core fields plus nullable domain extension blocks, while family evidence profiles define role contracts and readiness requirements for technical indicators, statistical arbitrage, options/derivatives, fundamental valuation, sentiment/alternative data, portfolio construction, risk models, and execution methods.
-8. Strategy and risk candidate generation can consume approved canonical method cards only when required readiness gates such as algorithm steps, parameters, signal rules, entry/exit rules, sizing, risk controls, and validation requirements are passed.
+8. Method-card or maintained-template generation may produce strategy/risk source only through the canonical
+   implementation registration boundary. Readiness gates protect provenance claims but never make a method card a
+   prerequisite for registering independently authored code.
 9. Documentation explains the upgraded source registration, full-document ingestion, retrieval, open-world methodology discovery, evidence assembly, rich field extraction, canonical method-card approval, domain extension blocks, readiness gates, and strategy-generation flow with operator examples.
 10. Validated Python indicator/signal implementations can be packaged into `method_package_manifest.json` without requiring compiled kernels.
-11. Strategy candidates include an importable Python strategy source artifact implementing `trader.strategies.Strategy`
-   and are validated before any backtest run.
-12. Multi-asset strategy candidates can be generated and validated without baking symbols, timeframe, or date windows into the strategy source; the Data Agent dataset manifest remains the data-scope authority.
-13. Risk-manager candidates include importable Python source artifacts implementing the platform risk-manager contract and are validated before any risk-scoped portfolio backtest.
-14. Strategy/risk stack artifacts can compose one validated strategy with one or more validated risk managers and preserve their ordering, source hashes, validation reports, and no-live-trading constraints.
-15. Baseline and risk-scoped portfolio backtest artifacts include reproducible config/provenance, dataset manifest references, data-quality report references when available, strategy/risk refs, result summaries, equity curves, symbol-level metrics, exposure/risk summaries, and trade exports when available.
+11. Immutable strategy implementation versions contain importable source/packages implementing
+   `trader.strategies.Strategy`, pass source/interface/fixture/safety validation, and require no methodology refs.
+12. Strategy specifications pin one validated implementation version and explicit parameters without baking symbols,
+   timeframe, source, or date windows into code or configuration; the Data Agent manifest remains scope authority.
+13. Immutable risk-manager implementation versions implement `trader.risk.RiskManager`, pass independent validation,
+   and require no method-card, method-package, or maintained-template provenance.
+14. Risk-stack specifications compose ordered validated risk implementation versions with explicit parameters and
+   thresholds while preserving source hashes, validation refs, and no-live-trading constraints.
+15. Validated backtest specifications bind strategy/risk specifications, Data Agent and quality refs, initial state,
+   costs, assumptions, seeds, and runtime policy before execution. Baseline and risk-scoped runs persist results,
+   curves, trades, positions, symbol metrics, exposure, risk decisions/breaches, and provenance canonically in Postgres.
 16. Performance reports include practical metrics, assumptions, warnings, blockers, caveats, multi-asset attribution summaries where available, exposure/concentration evidence, and risk-manager evidence linked to the backtest and data-quality artifacts.
-17. One end-to-end MCP test proves: source-backed method package -> strategy candidate -> validated strategy -> baseline backtest -> performance report.
-18. A follow-on end-to-end MCP test proves: source-backed method package -> multi-asset strategy candidate -> risk-manager candidate(s) -> validated strategy/risk stack -> risk-scoped portfolio backtest -> portfolio/risk evaluation report.
-19. A rich-methodology MCP test proves: full-document book ingestion -> candidate discovery -> field-level extraction -> rich card -> generated strategy/risk candidate -> risk-scoped portfolio backtest -> Evaluation report.
-20. The Quant Research Supervisor can consume method package, rich methodology, strategy candidate, risk-manager candidate, strategy/risk stack, backtest, and performance-report refs without rewriting or forging specialist artifacts.
+17. One end-to-end MCP test proves: handwritten strategy with no methodology refs -> implementation registration ->
+   validation -> strategy/backtest specifications -> DB-backed baseline run -> performance report.
+18. A second end-to-end MCP test proves: independently supplied strategy and risk manager -> separate implementation
+   versions/validations -> strategy and ordered risk-stack specifications -> DB-backed risk-scoped run -> Evaluation.
+19. A rich-methodology MCP test proves: full-document ingestion -> rich card -> optional generated implementation ->
+   normal implementation registration/validation -> the identical specification/run path used by handwritten code.
+20. The Quant Research Supervisor consumes implementation, strategy/risk specification, backtest specification/run,
+   and performance-report refs without requiring or forging specialist methodology artifacts.
 21. LangGraph agent identities and supervisor LLM control are follow-on orchestration layers over the deterministic toolchain, not prerequisites for the first meaningful suite.
 22. Every tool returns the shared JSON envelope and declares its side-effect class.
 23. Every tool declares the owning agent and returns/links the artifact owned by that agent.
@@ -1185,6 +1519,59 @@ verification should be updated at every evidence checkpoint rather than saved fo
     execution, records all searched candidates and child runs, and never uses out-of-sample results to revise that fold.
 35. Walk-forward optimisation, stitched out-of-sample Evaluation, and Adversarial audit are separate artifacts with
     separate owners; the optimiser cannot produce its own robustness verdict or promote a strategy/model.
+36. Canonical implementation, strategy/risk specification, backtest, Evaluation, ML, and robustness packages have no
+    imports from knowledge or method-card domain modules; package-boundary tests enforce this dependency direction.
+37. Maintained, handwritten, AI-produced, and method-generated source converge on the same immutable implementation
+    schema and validation services. Producer origin changes provenance only, never execution eligibility or contracts.
+38. Candidate IDs, candidate validation refs, method-package refs, and rich method cards are rejected as canonical
+    strategy/risk/backtest execution inputs after the task-57 cutover.
+39. Candidate-based MCP tools and request schemas are removed when specification tools register. No aliases,
+    compatibility readers, dual writes, or inferred legacy implementation versions remain.
+40. Obsolete development candidate/validation/stack rows are explicitly reset at cutover; canonical Postgres rows are
+    never silently translated from old payloads.
+41. Baseline and portfolio runs, sidecars, comparisons, and Evaluation reports use structured Postgres artifacts as
+    canonical state. Durable filesystem bundle paths are neither required nor returned.
+42. Retiring or superseding optional methodology provenance cannot mutate an immutable implementation version,
+    specification, or completed run; downstream reports may expose provenance status as separate evidence.
+43. Core optimisation imports only provider-neutral contracts; grid/random execution and MCP startup work with Optuna
+    and MLflow uninstalled.
+44. Every optimisation run pins engine profile/provider/algorithm version, credential-free configuration digest,
+    capabilities, seed, and executor kind; one run cannot switch engines or provider authority.
+45. Custom objectives are content-addressed, Quantitative Methods-owned implementations that receive only a validated
+    `OptimizationObservation` and return finite scalar evidence without file, network, database, tool, or raw-event
+    access.
+46. Optimisation plans seal the selection specification, chronological holdout and quality snapshots, objective,
+    direction, explicitly tunable dimensions, constraints, seed, budget, retries, and resource bounds before execution.
+47. Every suggestion, attempt, exception, rejected/failed/passed trial, child specification/run ref, closed observation,
+    objective diagnostic/value, and deterministic tie-break remains canonical Trader evidence.
+48. Optuna is a lazy optional adapter using a dedicated non-`public` PostgreSQL schema and writer role only for sampler
+    state; provider loss or reconciliation mismatch cannot invalidate or replace Trader evidence.
+49. Experiment tracking is an explicit idempotent derived projection. MLflow is non-authoritative for backtest
+    optimisation and remains authoritative only for the planned ML training/model-registry lifecycle.
+50. Untouched-holdout Evaluation and Adversarial optimisation audit are separate owner artifacts, cannot rewrite the
+    selected trial, and are both required before promotion readiness.
+51. Backtest, generic optimisation, external research writes, Optuna writes, and tracking projections have independent
+    default-off gates reported by `mcp_get_config`.
+52. Canonical loaders recompute content-addressed implementation/specification/validation/plan IDs and fail closed on
+    source, parameter, order, snapshot, lineage, or provider-configuration drift.
+53. Acceptance evidence is generated from one frozen Git revision in an explicit isolated environment; any defect fix
+    reruns its phase and all downstream phases that consumed the changed behavior.
+54. Postgres verification requires an explicit database name ending `_test` or `_testing`, never falls back to the
+    operator `PG_DB`, and leaves operator runtime, research, and knowledge fingerprints unchanged.
+55. The mandatory MCP graph uses Postgres canonical storage and a deterministic multi-asset fixture whose strategy
+    trades, incurs costs, carries exposure, responds to tuned parameters, and produces risk approvals and rejections.
+56. Selection and holdout scopes are chronologically disjoint with different content hashes, and instrumented access
+    proves holdout data/evidence is unavailable to trials, objectives, and selection.
+57. Repeated clean executions preserve content-addressed IDs, suggestions, trial order, observations, objective values,
+    deterministic tie-breaks, selected refs, and report lineage.
+58. Process restart and injected failures preserve complete partial evidence, do not duplicate terminal trials, and
+    never switch engines, repair provider state silently, or resume under a changed configuration identity.
+59. Built-in grid/random execution, MCP startup, resume, and canonical reads pass without Optuna or MLflow installed;
+    each optional adapter is independently qualified before its write gates may be enabled.
+60. Typed Postgres projections reconcile to canonical JSONB for every implementation, validation, specification,
+    backtest, optimisation, Evaluation, Adversarial, and tracking artifact produced by the acceptance graph.
+61. The final acceptance record distinguishes mandatory pass/fail, optional profile not-run, and optional profile
+    failed/not-qualified; no skipped or disposable-provider evidence is represented as canonical product success.
 
 ## Open Decisions
 
@@ -1207,10 +1594,10 @@ verification should be updated at every evidence checkpoint rather than saved fo
   `trader` to MLflow, and backtest/runtime parity remains mandatory.
 - Natural-language planning: both the Data Agent and Quant Research Supervisor need real LLM-backed control. Add the Data
   Agent LLM loop first because its provider-aware tool surface is already complete and bounded. Add the Quant Research
-  Supervisor LLM loop later after method packages, strategy candidates, backtest refs, and performance reports exist,
+  Supervisor LLM loop later after implementation/specification, backtest-run, and performance-report refs exist,
   because its job is to orchestrate useful artifacts rather than compensate for missing deterministic tools. Both must
   use structured output, deterministic routing validation, allowlists, and loop limits; MCP tools remain deterministic.
-- Generated strategy and risk-manager code: strategy source generation exists for maintained templates. The next
-  boundary is source-backed risk-manager generation and strategy/risk stack validation for backtesting only; do not
-  expose arbitrary prompt-authored runtime code or live risk controls.
+- Supplied strategy and risk-manager code: independently authored, AI-produced, maintained, and method-generated source
+  all enter the task-56 implementation registry. Do not execute prompt text, accept unvalidated runtime code, or expose
+  live risk controls. Producer origin is provenance, not a separate execution contract.
 - Transport: stdio for the server skeleton; HTTP/SSE later only if another client requires it.

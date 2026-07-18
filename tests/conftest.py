@@ -9,15 +9,18 @@ import psycopg
 from trader.event_store import PostgresEventStore
 from trader_research.knowledge.postgres_store import PostgresKnowledgeStore
 from trader_research.knowledge.store import KnowledgeVectorExtensionUnavailable
+from trader_research.postgres_artifact_store import PostgresResearchArtifactStore
 
 
 def _postgres_settings_from_env() -> dict[str, object] | None:
     host = os.getenv("PG_HOST")
     port = os.getenv("PG_PORT")
-    db = os.getenv("PG_DB")
+    db = os.getenv("PG_TEST_DB")
     user = os.getenv("PG_USER")
     password = os.getenv("PG_PASSWORD")
     if not all([host, port, db, user, password]):
+        return None
+    if not str(db).lower().endswith(("_test", "_testing")):
         return None
     return {
         "host": host,
@@ -68,11 +71,46 @@ def _truncate_knowledge_tables(store: PostgresKnowledgeStore) -> None:
     )
 
 
+def _truncate_research_artifact_tables(store: PostgresResearchArtifactStore) -> None:
+    connection = store.connection()
+    connection.execute(
+        """
+        TRUNCATE TABLE
+            research_parameter_optimization_robustness_reports,
+            research_parameter_optimization_audit_plans,
+            research_parameter_optimization_evaluations,
+            research_experiment_tracking_projections,
+            research_parameter_optimization_trials,
+            research_parameter_optimization_runs,
+            research_parameter_optimization_plans,
+            research_backtest_runs,
+            research_backtest_specification_validations,
+            research_backtest_specifications,
+            research_risk_stack_specification_validations,
+            research_risk_stack_specifications,
+            research_strategy_specification_validations,
+            research_strategy_specifications,
+            research_implementation_validations,
+            research_implementation_versions,
+            research_methodology_validations,
+            research_methodology_evidence_packets,
+            research_methodology_field_extractions,
+            research_methodology_candidates,
+            research_artifacts
+        CASCADE
+        """
+    )
+
+
 @pytest.fixture
 def postgres_settings() -> dict[str, object]:
     settings = _postgres_settings_from_env()
     if settings is None:
-        pytest.skip("Postgres test env vars missing (PG_HOST/PG_PORT/PG_DB/PG_USER/PG_PASSWORD)")
+        pytest.skip(
+            "Postgres test env vars missing "
+            "(PG_HOST/PG_PORT/PG_TEST_DB/PG_USER/PG_PASSWORD), or PG_TEST_DB does not end in "
+            "_test/_testing; PG_DB is never used by tests"
+        )
     return settings
 
 
@@ -108,4 +146,17 @@ def postgres_knowledge_store(postgres_settings: dict[str, object]) -> Iterator[P
         yield store
     finally:
         _truncate_knowledge_tables(store)
+        store.close()
+
+
+@pytest.fixture
+def postgres_research_artifact_store(
+    postgres_settings: dict[str, object],
+) -> Iterator[PostgresResearchArtifactStore]:
+    store = PostgresResearchArtifactStore(**postgres_settings)
+    _truncate_research_artifact_tables(store)
+    try:
+        yield store
+    finally:
+        _truncate_research_artifact_tables(store)
         store.close()

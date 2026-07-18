@@ -16,19 +16,18 @@ from trader_mcp.constants import (
     DATA_ENSURE_LOADED_TOOL,
     DATA_GET_INVENTORY_TOOL,
     DATA_SUMMARIZE_QUALITY_TOOL,
-    EVALUATION_GENERATE_PERFORMANCE_REPORT_TOOL,
+    EVALUATION_GENERATE_PARAMETER_OPTIMIZATION_REPORT_TOOL,
     MCP_CONFIG_TOOL,
     MCP_HEALTH_TOOL,
     MCP_SERVER_OWNER,
     REGISTERED_TOOL_NAMES,
     RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL,
-    RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL,
-    RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
+    RESEARCH_CREATE_PARAMETER_OPTIMIZATION_PLAN_TOOL,
     RESEARCH_GET_BACKTEST_RESULTS_TOOL,
     RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL,
     RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL,
-    RESEARCH_RUN_BACKTEST_TOOL,
-    RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL,
+    RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL,
+    RESEARCH_RUN_BACKTEST_SPECIFICATION_TOOL,
 )
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
@@ -47,6 +46,10 @@ def test_local_env_loads_portable_configuration() -> None:
         "allow_symbol_provider_discovery": False,
         "allow_data_loading": False,
         "allow_backtests": False,
+        "allow_optimization": False,
+        "allow_external_research_writes": False,
+        "allow_optuna_writes": False,
+        "allow_experiment_tracking_writes": False,
     }
 
 
@@ -176,23 +179,24 @@ def test_config_tool_excludes_broker_raw_sql_and_gates_backtest_execution() -> N
         quality_tool = next(tool for tool in data["tools"] if tool["name"] == DATA_SUMMARIZE_QUALITY_TOOL)
         ensure_tool = next(tool for tool in data["tools"] if tool["name"] == DATA_ENSURE_LOADED_TOOL)
         template_tool = next(tool for tool in data["tools"] if tool["name"] == RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL)
-        create_candidate_tool = next(
-            tool for tool in data["tools"] if tool["name"] == RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL
+        implementation_tool = next(
+            tool for tool in data["tools"] if tool["name"] == RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL
         )
-        validate_candidate_tool = next(
-            tool for tool in data["tools"] if tool["name"] == RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL
+        run_backtest_tool = next(
+            tool for tool in data["tools"] if tool["name"] == RESEARCH_RUN_BACKTEST_SPECIFICATION_TOOL
         )
-        run_backtest_tool = next(tool for tool in data["tools"] if tool["name"] == RESEARCH_RUN_BACKTEST_TOOL)
         get_backtest_tool = next(tool for tool in data["tools"] if tool["name"] == RESEARCH_GET_BACKTEST_RESULTS_TOOL)
         compare_tool = next(tool for tool in data["tools"] if tool["name"] == RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL)
         risk_template_tool = next(
             tool for tool in data["tools"] if tool["name"] == RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL
         )
-        create_risk_tool = next(
-            tool for tool in data["tools"] if tool["name"] == RESEARCH_CREATE_RISK_MANAGER_CANDIDATE_TOOL
+        optimization_tool = next(
+            tool for tool in data["tools"] if tool["name"] == RESEARCH_CREATE_PARAMETER_OPTIMIZATION_PLAN_TOOL
         )
         performance_tool = next(
-            tool for tool in data["tools"] if tool["name"] == EVALUATION_GENERATE_PERFORMANCE_REPORT_TOOL
+            tool
+            for tool in data["tools"]
+            if tool["name"] == EVALUATION_GENERATE_PARAMETER_OPTIMIZATION_REPORT_TOOL
         )
         assert inventory_tool["agent_owner"] == "Data Agent"
         assert inventory_tool["side_effect"] == "read_only"
@@ -200,8 +204,7 @@ def test_config_tool_excludes_broker_raw_sql_and_gates_backtest_execution() -> N
         assert ensure_tool["side_effect"] == "local_mutating"
         assert template_tool["agent_owner"] == "Quant Research Supervisor Agent"
         assert template_tool["side_effect"] == "read_only"
-        assert create_candidate_tool["side_effect"] == "local_mutating"
-        assert validate_candidate_tool["side_effect"] == "local_mutating"
+        assert implementation_tool["side_effect"] == "local_mutating"
         assert run_backtest_tool["agent_owner"] == "Quant Research Supervisor Agent"
         assert run_backtest_tool["side_effect"] == "local_mutating"
         assert get_backtest_tool["side_effect"] == "read_only"
@@ -209,16 +212,27 @@ def test_config_tool_excludes_broker_raw_sql_and_gates_backtest_execution() -> N
         assert compare_tool["side_effect"] == "local_mutating"
         assert risk_template_tool["agent_owner"] == "Quant Research Supervisor Agent"
         assert risk_template_tool["side_effect"] == "read_only"
-        assert create_risk_tool["agent_owner"] == "Quant Research Supervisor Agent"
-        assert create_risk_tool["side_effect"] == "local_mutating"
+        assert optimization_tool["agent_owner"] == "Quant Research Supervisor Agent"
+        assert optimization_tool["side_effect"] == "local_mutating"
         assert performance_tool["agent_owner"] == "Evaluation Agent"
         assert performance_tool["side_effect"] == "local_mutating"
+        assert {
+            "research_create_strategy_candidate",
+            "research_validate_strategy_candidate",
+            "research_create_risk_manager_candidate",
+            "research_run_backtest",
+            "evaluation_generate_performance_report",
+        }.isdisjoint(tool_names)
         assert data["policy"] == local_env.policy_flags()
         assert data["safety"] == {
             **CAPABILITY_REGISTRATION_FLAGS,
             "symbol_provider_discovery_allowed": local_env.allow_symbol_provider_discovery,
             "data_loading_mutation_allowed": local_env.allow_data_loading,
             "backtest_execution_allowed": local_env.allow_backtests,
+            "optimization_execution_allowed": local_env.allow_optimization,
+            "external_research_writes_allowed": local_env.allow_external_research_writes,
+            "optuna_writes_allowed": local_env.allow_optuna_writes,
+            "experiment_tracking_writes_allowed": local_env.allow_experiment_tracking_writes,
         }
 
     anyio.run(_run)

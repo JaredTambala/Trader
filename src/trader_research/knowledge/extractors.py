@@ -50,12 +50,41 @@ def extract_text(path: str | Path) -> ExtractedDocument:
     source_path = Path(path)
     suffix = source_path.suffix.lower()
     if suffix == ".md":
-        return _extract_markdown(source_path)
-    if suffix == ".txt":
-        return _extract_plain_text(source_path)
-    if suffix == ".pdf":
-        return _extract_pdf(source_path)
-    raise ValueError(f"unsupported source file type: {suffix}")
+        document = _extract_markdown(source_path)
+    elif suffix == ".txt":
+        document = _extract_plain_text(source_path)
+    elif suffix == ".pdf":
+        document = _extract_pdf(source_path)
+    else:
+        raise ValueError(f"unsupported source file type: {suffix}")
+    return _replace_invalid_unicode_surrogates(document)
+
+
+def _replace_invalid_unicode_surrogates(document: ExtractedDocument) -> ExtractedDocument:
+    replacement_count = 0
+    sections: list[ExtractedSection] = []
+    for section in document.sections:
+        characters: list[str] = []
+        for character in section.text:
+            if 0xD800 <= ord(character) <= 0xDFFF:
+                characters.append("\ufffd")
+                replacement_count += 1
+            else:
+                characters.append(character)
+        sections.append(
+            ExtractedSection(
+                text="".join(characters),
+                page=section.page,
+                section=section.section,
+                heading=section.heading,
+                start_offset=section.start_offset,
+                end_offset=section.end_offset,
+            )
+        )
+    if replacement_count == 0:
+        return document
+    warning = f"replaced {replacement_count} invalid Unicode surrogate code points during text extraction"
+    return ExtractedDocument(sections=tuple(sections), warnings=(*document.warnings, warning))
 
 
 def _extract_plain_text(path: Path) -> ExtractedDocument:

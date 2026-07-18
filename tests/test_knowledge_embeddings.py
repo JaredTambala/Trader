@@ -2,15 +2,28 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 from unittest.mock import patch
+from urllib import request
 
 import pytest
 
+from trader_research.knowledge import embeddings
 from trader_research.knowledge.embeddings import (
     EmbeddingConfigurationError,
     EmbeddingRequestError,
     build_embedding_provider_from_env,
     embedding_runtime_summary,
 )
+
+
+def test_embedding_backend_timeout_is_normalized() -> None:
+    with patch.object(request, "urlopen", side_effect=TimeoutError):
+        with pytest.raises(EmbeddingRequestError, match="timed out after 12 seconds"):
+            embeddings._post_json(
+                "http://localhost:11434/v1/embeddings",
+                {"model": "model", "input": "text"},
+                headers={"Content-Type": "application/json"},
+                timeout_seconds=12,
+            )
 
 
 def test_build_embedding_provider_from_env_requires_real_runtime_config() -> None:
@@ -65,6 +78,30 @@ def test_openai_embedding_provider_uses_embeddings_endpoint() -> None:
     assert calls[0]["payload"] == {"model": "text-embedding-3-small", "input": "rank information coefficient"}
     assert calls[0]["headers"]["Authorization"] == "Bearer secret"
     assert calls[0]["timeout_seconds"] == 11.0
+
+
+def test_openai_embedding_provider_batches_and_restores_response_order() -> None:
+    provider = build_embedding_provider_from_env(
+        {
+            "TRADER_RESEARCH_EMBEDDINGS_PROVIDER": "openai_compatible",
+            "TRADER_RESEARCH_EMBEDDINGS_MODEL": "embedding-model",
+            "TRADER_RESEARCH_EMBEDDINGS_BASE_URL": "http://localhost:9999/v1",
+        }
+    )
+    response = {
+        "data": [
+            {"index": 1, "embedding": [0.0, 1.0]},
+            {"index": 0, "embedding": [1.0, 0.0]},
+        ]
+    }
+    with patch("trader_research.knowledge.embeddings._post_json", return_value=response) as post:
+        vectors = provider.embed_many(["first", "second"])
+
+    assert vectors == ((1.0, 0.0), (0.0, 1.0))
+    assert post.call_args.args[1] == {
+        "model": "embedding-model",
+        "input": ["first", "second"],
+    }
 
 
 def test_embedding_runtime_summary_omits_secrets() -> None:

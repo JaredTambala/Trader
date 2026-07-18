@@ -34,8 +34,6 @@ from trader_mcp.constants import (
     MATH_VALIDATE_METHOD_CONTRACT_TOOL,
     MCP_CONFIG_TOOL,
     REGISTERED_TOOL_NAMES,
-    RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
-    RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL,
 )
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
@@ -356,21 +354,6 @@ def test_mcp_methodology_candidate_discovery_extraction_validation_flow(tmp_path
                 "approve": True,
             },
         )
-        strategy = await server.call_tool(
-            RESEARCH_CREATE_STRATEGY_CANDIDATE_TOOL,
-            {
-                "template_family": "pairs_mean_reversion",
-                "method_package_refs": [],
-                "rich_method_card_id": "method_card_pairs_mean_reversion_mcp_v1",
-                "parameters": {"lookback_period": 20, "entry_zscore": 1.5, "exit_zscore": 0.5, "max_pairs": 1},
-            },
-        )
-        strategy_manifest = strategy.structuredContent["data"]["strategy_candidate_manifest"]
-        strategy_validation = await server.call_tool(
-            RESEARCH_VALIDATE_STRATEGY_CANDIDATE_TOOL,
-            {"strategy_candidate_manifest": strategy_manifest},
-        )
-
         assert registered.isError is False
         assert ingested.isError is False
         assert discovered.isError is False
@@ -395,11 +378,6 @@ def test_mcp_methodology_candidate_discovery_extraction_validation_flow(tmp_path
         assert rich_draft.structuredContent["data"]["method_card_draft"]["card_format"] == "rich_method_card"
         assert published.isError is False
         assert published.structuredContent["data"]["method_card"]["status"] == "approved"
-        assert strategy.isError is False
-        assert strategy_manifest["template_family"] == "pairs_mean_reversion"
-        assert strategy_manifest["methodology_refs"][0]["artifact_id"] == "method_card_pairs_mean_reversion_mcp_v1"
-        assert strategy_validation.isError is False
-        assert strategy_validation.structuredContent["data"]["strategy_candidate_validation_report"]["status"] == "passed"
         artifact_types = {record.artifact_type for record in artifact_store.list_artifacts()}
         assert {
             METHODOLOGY_CANDIDATE,

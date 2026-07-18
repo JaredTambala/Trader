@@ -118,11 +118,126 @@ def test_docs_pin_knowledge_baseline_and_identify_next_delivery_focus() -> None:
 
     assert "The knowledge-base and methodology work is now a maintained subsystem" in readme
     assert "The implemented subsystem is pinned at the 33AB baseline" in semantic_doc
-    assert "no registered tool currently accepts an arbitrary handwritten" in contracts
-    assert "This chain is not fully implemented" in workflows
+    assert "execution begins with content-addressed implementation versions" in contracts
+    assert "Handwritten code and AI-produced code" in workflows
     assert "| 33AC. Composite Methodology Architecture | Deferred |" in tracker
-    assert "| 56. External Strategy And Risk Implementation Intake | Planned |" in tracker
-    assert "| 57. Reproducible Backtest Specifications For Registered Implementations | Planned |" in tracker
+    assert "| 56. Implementation Registry And Method-Card Decoupling | Done |" in tracker
+    assert "| 56A. Canonical Implementation-Version Domain | Done |" in tracker
+    assert "| 56D. Remove Method-Card Execution Coupling | Done |" in tracker
+    assert "| 57. Reproducible Strategy, Risk, Backtest, And Optimisation Specifications | In progress |" in tracker
+    assert "| 57C. DB-First Specification Execution And Evaluation | Done |" in tracker
+    assert "| 57D. Provider-Neutral Optimisation Ledger And Protocols | Done |" in tracker
+    assert "| 57H. Provider-Neutral Experiment Tracking Projection | Done |" in tracker
+    assert "research_register_strategy_implementation" in tracker
+    assert "A strategy or risk implementation with no methodology" in tracker
+    assert "There is no compatibility interval" in tracker
+    assert "Durable filesystem bundle paths are neither required nor returned" in tracker
+
+
+def test_docs_define_provider_neutral_optimization_and_independent_review() -> None:
+    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
+    agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
+    catalog = (DOC_ROOT / "mcp_tools.md").read_text(encoding="utf-8")
+    contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
+    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
+    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
+    combined = "\n".join((architecture, agents, catalog, contracts, operations, workflows))
+
+    required_phrases = (
+        "OptimizationEngine",
+        "OptimizationTrialExecutor",
+        "ExperimentTrackingSink",
+        "research_create_parameter_optimization_plan",
+        "research_project_experiment_tracking",
+        "TRADER_MCP_ALLOW_OPTIMIZATION",
+        "TRADER_MCP_ALLOW_OPTUNA_WRITES",
+        "dedicated non-`public` schema",
+        "non-authoritative",
+        "sealed holdout",
+        "Adversarial",
+    )
+    for phrase in required_phrases:
+        assert phrase in combined
+
+    assert "MLflow is authoritative for ML lifecycle records only" in architecture
+    assert "Trader never queries that" in architecture
+    assert "ml_list_experiments" not in combined
+    assert "ml_list_training_experiments" in combined
+
+
+def test_docs_define_controlled_verification_profiles_and_stop_conditions() -> None:
+    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
+    normalized_operations = " ".join(operations.split())
+    tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(
+        encoding="utf-8"
+    )
+
+    for task in (
+        "57I. Freeze Revision And Build Acceptance Matrix",
+        "57J. Provision Isolated Verification Runtime",
+        "57K. Static, Contract, And Regression Gate",
+        "57L. Realistic Deterministic Evidence Fixture",
+        "57M. Postgres-Native MCP Evidence Graph",
+        "57N. Determinism, Integrity, And Leakage Tests",
+        "57O. Restart, Resume, And Fault-Injection Tests",
+        "57P. Provider Independence And Adapter Qualification",
+        "57Q. Policy, Security, And Resource-Boundary Tests",
+        "57R. Projection, Operator, And Bounded-Scale Checks",
+        "57S. Acceptance Record And Release Decision",
+    ):
+        assert task in tracker
+
+    required_phrases = (
+        "one frozen Git revision",
+        "Core:",
+        "Trader Postgres:",
+        "Optuna:",
+        "Tracking sink:",
+        "fallback to `PG_DB`",
+        "stop condition",
+        "PostgresResearchArtifactStore",
+        "risk approvals and rejections",
+        "no canonical filesystem path",
+    )
+    for phrase in required_phrases:
+        assert phrase in normalized_operations
+
+
+def test_tracker_freezes_57i_surface_and_acceptance_matrix() -> None:
+    tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(
+        encoding="utf-8"
+    )
+
+    required_inventory = (
+        "#### 57I Frozen Surface Inventory",
+        "`verification-57i-freeze`",
+        "`research_register_strategy_implementation`",
+        "`research_register_optimization_objective`",
+        "`research_run_backtest_specification`",
+        "`research_run_parameter_optimization`",
+        "`research_project_experiment_tracking`",
+        "`evaluation_generate_parameter_optimization_report`",
+        "`adversarial_generate_parameter_optimization_audit`",
+        "`parameter_optimization_trial`",
+        "`research_parameter_optimization_trials`",
+        "`TRADER_MCP_ALLOW_BACKTESTS`",
+        "`TRADER_MCP_ALLOW_OPTIMIZATION`",
+        "`TRADER_MCP_ALLOW_OPTUNA_WRITES`",
+        "`TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES`",
+        "`research_create_strategy_candidate`",
+        "`research_run_portfolio_backtest`",
+        "`research_evaluation_reports`",
+        "#### 57I Acceptance Matrix",
+    )
+    for phrase in required_inventory:
+        assert phrase in tracker
+
+    for invariant in range(36, 62):
+        assert f"| {invariant} |" in tracker
+
+    assert "Current graph is one-symbol, twelve-bar, empty-strategy smoke coverage" in tracker
+    assert "Planned / 57L fixture and 57M graph" in tracker
+    assert "Planned / 57S" in tracker
 
 
 def test_docs_define_complete_planned_mlflow_lifecycle_and_runtime_boundary() -> None:

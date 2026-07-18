@@ -9,7 +9,7 @@ Research agents produce deterministic artifacts for inspection and backtesting; 
 | --- | --- | --- |
 | `trader` | Core runtime platform: market data, event store, brokers, portfolio, strategy/risk interfaces, runtime service, backtesting, metrics, operator primitives. | Research services, MCP schemas, LangGraph agents. |
 | `trader_standard` | Maintained implementations of core interfaces: indicators, signals, strategies, and risk managers. | Experiment orchestration, MCP adapters, agent state. |
-| `trader_research` | Deterministic research services, tool envelopes, domain schemas, artifact contracts, method packages, strategy/risk candidates, diagnostics, backtests, reports. | MCP transport, live broker control. |
+| `trader_research` | Deterministic research services, implementation/specification registries, canonical backtests, optimisation ledgers, tracking projections, diagnostics, and reports. | MCP transport, live broker control. |
 | `trader_mcp` | MCP server, tool registration, JSON adapters, server policy/config metadata, dependency injection into research services. | Research business logic, agent decision state. |
 | `trader_agents` | LangGraph identities, state schemas, policy routing, tool allowlists, and handoff wiring over MCP tools. | Direct platform mutation or bypassing MCP when a tool exists. |
 
@@ -23,10 +23,13 @@ reintroduced.
 | --- | --- |
 | `trader_research.data` | Data Agent discovery, inventory, quality, provider context, and explicit loading services. |
 | `trader_research.methods` | Quantitative Methods contracts, registry access, fixtures, diagnostics, multiple testing, kernels, and method-package handoffs. |
-| `trader_research.strategy_candidates` | Maintained strategy template catalog, source-backed and rich-card-backed candidate generation, and candidate validation. |
-| `trader_research.risk_managers` | Risk-manager template catalog and source-backed/rich-card-provenanced candidate generation. |
-| `trader_research.backtests` | Data-scoped baseline backtest execution, result lookup, and comparison reports. |
+| `trader_research.implementations` | Content-addressed strategy, risk-manager, and optimisation-objective versions plus source/runtime validation. |
+| `trader_research.specifications` | Immutable strategy, ordered risk-stack, and Data Agent-scoped backtest specifications. |
+| `trader_research.backtests` | Canonical specification execution, DB-backed result lookup, and comparison reports. |
+| `trader_research.optimization` | Provider-neutral plans, grid/random engines, trial execution, canonical ledgers, and optional Optuna adapter. |
+| `trader_research.tracking` | Explicit non-authoritative projections of canonical evidence to optional tracking sinks. |
 | `trader_research.evaluation` | Evaluation-owned report services over persisted research evidence. |
+| `trader_research.adversarial` | Independent optimisation audit plans and robustness judgments. |
 | `trader_research.knowledge` | Knowledge-source registration, ingestion, indexing, retrieval, methodology candidates, method cards, and citation validation. |
 | `trader_research.method_implementations` | Python method implementation registration, quarantine generation, and deterministic fixtures. |
 
@@ -45,11 +48,10 @@ must not prevent MCP server startup.
 MCP is the deterministic tool boundary. MCP tools accept bounded JSON-compatible inputs, call deterministic services,
 and return stable envelopes plus artifact refs.
 
-MCP research artifact persistence is DB-first. Mutating methodology, method, strategy, risk-manager, portfolio-backtest,
-and evaluation tools store canonical records in the configured Postgres research artifact store and return
+MCP research artifact persistence is DB-first. Mutating methodology, implementation, specification, backtest,
+optimisation, Evaluation, and Adversarial tools store canonical records in the configured Postgres research artifact store and return
 `research://postgres/{artifact_type}/{artifact_id}` refs. Rich method cards are persisted as canonical knowledge-store
-method-card payloads with shallow projections for older method-card search and citation paths. Filesystem exports remain
-only for legacy direct-service fallbacks and backtest result artifacts that have not yet moved into structured storage.
+method-card payloads. Canonical execution has no filesystem fallback and never uses a path as product identity.
 
 LangGraph is the agent identity and orchestration layer. Agent graphs decide which MCP tools are allowed, how state is
 retained, how specialist handoffs are routed, and which artifact must be produced. Agent code should call MCP tools
@@ -307,11 +309,12 @@ The Quantitative Methods Agent cannot:
 
 The Quant Research Supervisor can:
 
-- consume approved method cards and validated method packages
-- create bounded strategy/risk candidates from maintained templates
-- validate strategy/risk candidates and stacks
-- run gated backtests over Data Agent scopes
-- pass backtest evidence to Evaluation
+- register and validate independently authored, maintained, AI-produced, or method-generated strategy/risk source
+- create immutable strategy, risk-stack, and backtest specifications
+- run gated canonical backtests over Data Agent scopes
+- create and execute provider-neutral optimisation plans and Adversarial-requested immutable variants
+- project completed canonical evidence to configured analytical tracking sinks
+- pass untouched-holdout evidence to Evaluation and variant evidence to Adversarial
 - preserve specialist artifact ownership in handoffs
 
 The Quant Research Supervisor cannot:
@@ -409,8 +412,8 @@ generation as the default handoff:
    Unsupported semantics must block rather than being translated into generated code.
 3. Validate mathematical behavior, required inputs, warmup, state transitions, order semantics, risk thresholds, and
    source-to-parameter provenance with deterministic fixtures.
-4. Compose validated strategy and risk-manager implementations through the existing strategy/risk stack tools.
-5. Run portfolio backtests over Data Agent scopes and pass the resulting method, implementation, risk-decision, and
+4. Compose validated strategy and risk-manager versions through immutable strategy and ordered risk-stack specifications.
+5. Run canonical backtest specifications over Data Agent scopes and pass the resulting implementation, risk-decision, and
    performance evidence to Evaluation.
 
 This route is intentionally narrower than arbitrary prompt-to-code generation, but it produces stronger evidence
@@ -435,17 +438,17 @@ Tracker item 33AC records composite methodology representation as a deferred arc
 The ML Agent target is broader than model-card storage. It coordinates the research lifecycle for predictive
 time-series models: feature engineering, point-in-time dataset construction, fitting, experiment recording, evaluation,
 model registration, version selection, deployment evidence, prediction monitoring, and drift analysis. MLflow is the
-configured experiment-tracking and model-registry service; Trader remains the authority for trading-specific lineage,
-safety decisions, backtest evidence, and runtime configuration.
+configured ML-training telemetry and model-registry service. Trader remains authoritative for generic research plans,
+trials, selections, backtests, trading-specific lineage, safety decisions, and runtime configuration.
 
 ### Authority Boundary
 
 MLflow and Trader must not become competing stores for the same responsibility.
 
-MLflow is authoritative for:
+MLflow is authoritative for ML lifecycle records only:
 
-- experiments and training runs
-- run parameters, metrics, tags, and logged artifacts
+- ML training experiments and training runs
+- training parameters, predictive metrics, tags, and logged training artifacts
 - packaged MLflow models, model signatures, and environment metadata
 - registered-model names and immutable model versions
 - model-version tags and mutable aliases used to identify candidates such as `champion` or `challenger`
@@ -462,6 +465,10 @@ Trader Postgres research artifacts are authoritative for:
 Trader should store MLflow references and independently verifiable hashes, not copy model binaries into generic research
 JSON payloads. MLflow should receive Trader dataset IDs, feature-set IDs, training-spec IDs, and source hashes as tags or
 dataset lineage, not become the authority for market-data scope or trading approvals.
+
+Backtest optimisation may be projected to MLflow for exploratory charts. Such runs are disposable analytical mirrors:
+deleting MLflow must not prevent Trader from reading the canonical plan, trial ledger, selected specification, or
+reports, and an MLflow record can never repair or override missing Trader evidence.
 
 Model aliases are mutable control-plane pointers. Any alias accepted by a planning or deployment request must be
 resolved to an immutable registered-model version before validation, backtesting, or runtime startup. The resolved
@@ -571,6 +578,90 @@ manifest into strategy/backtest artifacts. Evaluation and Adversarial agents jud
 
 Tracker tasks 39A-39J implement this deterministic tool universe before task 40 adds an ML Agent graph.
 
+## Experiment Tracking And Optimisation Architecture
+
+Parameter optimisation is a procedure for proposing configured child specifications and observing their completed
+evidence. It is not a database, an Evaluation report, or a robustness verdict. Three provider-neutral contracts enforce
+that separation:
+
+- `OptimizationEngine` owns deterministic `ask`/`tell` parameter proposals and a bounded provider-state snapshot.
+- `OptimizationTrialExecutor` materializes each proposal through an owning domain service. The current executor creates
+  immutable strategy/risk/backtest child specifications and canonical backtest runs; later ML execution can implement
+  the same protocol while preserving ML Agent ownership of training artifacts.
+- `ExperimentTrackingSink` receives a derived snapshot of an already persisted canonical run. It cannot accept caller
+  metrics/tags, propose parameters, rewrite a trial, or become promotion evidence.
+
+The authority matrix is intentionally asymmetric:
+
+| State | Canonical authority | Optional operational/projection state |
+| --- | --- | --- |
+| Plan, search space, constraints, seed, budget | Trader `research_artifacts` and typed projections | None |
+| Suggestions, rejected/failed/passed trials, child refs, observations, objective values | Trader | Optuna study state may support sampler resumability only |
+| Selected exploratory specification | Trader | Tracking projections may visualize it |
+| Backtest results, holdout Evaluation, audit plans/reports | Trader | No provider may override these records |
+| ML training telemetry, logged model package, Model Registry version | MLflow for the ML lifecycle | Trader stores reconciled immutable refs and trading lineage |
+
+Canonical optimisation never writes to or reads from the legacy `experiments` or `experiment_runs` research path. A
+plan pins one passed selection-region backtest specification, a sealed later chronological holdout manifest and quality
+snapshot, one passed objective implementation, typed search dimensions, constraints, seed, budget, and resource limits.
+Dataset identity, implementation identity, costs, provider settings, holdout boundaries, and fold boundaries are not
+tunable decision dimensions. Explicit strategy parameters, risk thresholds, sizing fields, and later model-training
+parameters are tunable only when their owning specification declares them.
+
+The objective receives a versioned `OptimizationObservation`, not a store or runtime object. Its top-level fields are
+closed to scalar metrics, counts, costs, exposure/risk summaries, quality, constraints, and lineage labels. Registration
+blocks filesystem/network/database imports and unsafe dynamic calls; validation executes a deterministic fixture. An
+unavailable requested metric blocks that trial rather than becoming zero, `NaN`, or an invented substitute.
+
+Every run pins the resolved engine profile name, provider/algorithm version, configuration digest, capabilities, seed,
+and executor kind. `builtin_grid` and `builtin_random` are maintained, deterministic, and require no optional packages.
+Grid enumerates a finite declared space; random uses a seeded duplicate-free permutation. Optuna TPE is a lazy optional
+adapter implementing the same protocol: sequential, seeded, single-objective, bounded, and without pruning in its first
+slice. Its PostgreSQL study uses a dedicated non-`public` schema and dedicated writer role. Trader never queries that
+schema as product evidence. Provider loss leaves a canonical run partial/blocked; canonical results remain readable,
+and a separate built-in run may consume the same provider-neutral plan. An engine profile never changes inside one run.
+Provider configuration digests include credential-free endpoint/database identity, schema, role, and namespace data so
+changing an Optuna or tracking authority cannot masquerade as the same configured profile.
+
+Content-addressed implementation, specification, validation, snapshot, and optimisation-plan loaders recompute their
+stable IDs before use. A persisted payload cannot retain an earlier validation merely by keeping its old ID; source,
+parameter, ordering, dataset, quality, or lineage drift fails closed before a trial or backtest starts.
+
+The execution graph is:
+
+```text
+validated implementation -> immutable strategy/risk specification
+  -> passed selection backtest specification + sealed chronological holdout
+  -> validated closed-input objective -> provider-neutral optimisation plan
+  -> engine suggestion -> immutable child specification -> canonical selection backtest
+  -> closed observation -> objective result -> complete canonical trial ledger
+  -> deterministically selected exploratory specification
+  -> separately created sealed-holdout backtest
+  -> Evaluation-owned holdout report
+  -> Adversarial-owned audit plan
+  -> Supervisor-executed immutable variants/stresses
+  -> Adversarial-owned robustness report
+```
+
+Selection tie-breaking is deterministic and every suggestion, retry attempt, exception, rejection, child ref, and
+objective diagnostic remains visible. The optimiser cannot issue a recommendation or deployment decision. Promotion
+readiness requires both a matching passed untouched-holdout Evaluation report and a passed Adversarial report.
+
+Adversarial ownership is procedural, not an embedded optimiser option. Adversarial declares attacks over seed/provider,
+budget, search boundaries, alternate validated objectives, neighboring parameters, costs, windows, concentration, and
+multiple-testing risk. The Supervisor executes only the immutable variants requested by that plan. Adversarial then
+judges supplied evidence and cannot alter the baseline run or its selection.
+
+Tracking projection is explicit and independently gated. `research_project_experiment_tracking` derives its complete
+payload from a supported canonical run, uses a configured sink profile, and writes an idempotent
+`experiment_tracking_projection_report` with `authoritative=false`. If the sink is unavailable or deleted, the report
+blocks without damaging canonical evidence. The optional MLflow sink is therefore an analytical convenience for
+backtest optimisation, separate from MLflow's authoritative role for ML training telemetry and model packages.
+
+Walk-forward optimisation in task 58 composes these same contracts inside each immutable fold. It does not introduce a
+second optimiser abstraction or fold robustness attacks into selection. Task 59 remains the separate stitched
+out-of-sample Evaluation and Adversarial audit layer.
+
 ## Walk-Forward Validation And Optimisation
 
 Walk-forward validation and walk-forward optimisation are related but belong at different delivery stages.
@@ -639,16 +730,19 @@ candidate identity, aliases, abbreviations, and validated families support them.
 payload while exposing summary projections used by existing method search, citation validation, method contracts,
 implementation registration, and method packaging.
 
-Approved rich cards can become provenance for maintained strategy and risk templates. The Quant Research Supervisor
-still owns strategy and risk candidates, and Data Agent manifests still own symbols, timeframes, date windows, source
-filters, and market-data quality. Rich methodology cards describe how a method works; they do not define a backtest data
-scope or grant live-trading authority.
+Approved rich cards can remain provenance for maintained implementation producers. Produced source receives no special
+eligibility: it must enter the same content-addressed implementation registration, validation, specification, and
+backtest path as handwritten source. Data Agent manifests still own symbols, timeframes, date windows, source filters,
+and market-data quality. Rich methodology cards do not define execution identity or a concrete backtest scope.
 
 ## Safety Boundaries
 
 - Research-agent tools do not submit broker orders, clear halt state, reconcile broker state, start live trading, or
   expose raw SQL.
 - Backtest execution is local-mutating and policy-gated by `TRADER_MCP_ALLOW_BACKTESTS=true`.
+- Optimisation execution additionally requires `TRADER_MCP_ALLOW_OPTIMIZATION=true`.
+- Optuna sampler writes require the generic external-research-write gate and the separate Optuna write gate.
+- Experiment-tracking projections require the generic external-research-write gate and tracking write gate.
 - Data loading is local-mutating and policy-gated by `TRADER_MCP_ALLOW_DATA_LOADING=true`.
 - Provider-catalog symbol discovery requires explicit provider discovery policy.
 - Generated code is source-backed and validation-gated before use in later workflows.

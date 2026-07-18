@@ -117,40 +117,43 @@ def test_quantitative_methods_tool_owner_and_identity_use_method_contract_tools(
     assert agent_owner_for_tool("math_list_indicator_contracts") == "Quantitative Methods Agent"
 
 
-def test_quant_research_supervisor_owns_strategy_candidate_creation() -> None:
+def test_quant_research_supervisor_owns_canonical_experiment_tools() -> None:
     identity = build_agent_identity("Quant Research Supervisor Agent")
 
     assert "research_list_strategy_templates" in identity.tool_allowlist
-    assert "research_create_strategy_candidate" in identity.tool_allowlist
-    assert "research_validate_strategy_candidate" in identity.tool_allowlist
-    assert "research_run_backtest" in identity.tool_allowlist
+    assert "research_register_strategy_implementation" in identity.tool_allowlist
+    assert "research_validate_strategy_implementation" in identity.tool_allowlist
+    assert "research_create_strategy_specification" in identity.tool_allowlist
+    assert "research_validate_strategy_specification" in identity.tool_allowlist
+    assert "research_create_risk_stack_specification" in identity.tool_allowlist
+    assert "research_validate_risk_stack_specification" in identity.tool_allowlist
+    assert "research_create_backtest_specification" in identity.tool_allowlist
+    assert "research_validate_backtest_specification" in identity.tool_allowlist
+    assert "research_run_backtest_specification" in identity.tool_allowlist
     assert "research_get_backtest_results" in identity.tool_allowlist
     assert "research_compare_backtest_results" in identity.tool_allowlist
-    assert "research_list_risk_manager_templates" in identity.tool_allowlist
-    assert "research_create_risk_manager_candidate" in identity.tool_allowlist
-    assert "research_validate_risk_manager_candidate" in identity.tool_allowlist
-    assert "research_create_strategy_risk_stack" in identity.tool_allowlist
-    assert "research_validate_strategy_risk_stack" in identity.tool_allowlist
-    assert "strategy_implementation.py" in identity.output_artifacts
-    assert "strategy_candidate_manifest.json" in identity.output_artifacts
-    assert "strategy_candidate_validation_report.json" in identity.output_artifacts
-    assert "risk_manager_implementation.py" in identity.output_artifacts
-    assert "risk_manager_candidate_manifest.json" in identity.output_artifacts
-    assert "risk_manager_candidate_validation_report.json" in identity.output_artifacts
-    assert "strategy_risk_stack_manifest.json" in identity.output_artifacts
-    assert "strategy_risk_stack_validation_report.json" in identity.output_artifacts
-    assert "portfolio_backtest_run_ref.json" in identity.output_artifacts
-    assert "backtest_run_ref.json" in identity.output_artifacts
-    assert agent_owner_for_tool("research_create_strategy_candidate") == "Quant Research Supervisor Agent"
-    assert agent_owner_for_tool("research_validate_strategy_candidate") == "Quant Research Supervisor Agent"
-    assert agent_owner_for_tool("research_run_backtest") == "Quant Research Supervisor Agent"
+    assert "research_create_parameter_optimization_plan" in identity.tool_allowlist
+    assert "research_run_parameter_optimization" in identity.tool_allowlist
+    assert "research_project_experiment_tracking" in identity.tool_allowlist
+    assert "implementation_version.json" in identity.output_artifacts
+    assert "strategy_specification.json" in identity.output_artifacts
+    assert "risk_stack_specification.json" in identity.output_artifacts
+    assert "backtest_specification.json" in identity.output_artifacts
+    assert "backtest_run.json" in identity.output_artifacts
+    assert "parameter_optimization_run.json" in identity.output_artifacts
+    assert {
+        "research_create_strategy_candidate",
+        "research_validate_strategy_candidate",
+        "research_create_risk_manager_candidate",
+        "research_create_strategy_risk_stack",
+        "research_run_backtest",
+    }.isdisjoint(identity.tool_allowlist)
+    assert agent_owner_for_tool("research_register_strategy_implementation") == "Quant Research Supervisor Agent"
+    assert agent_owner_for_tool("research_create_strategy_specification") == "Quant Research Supervisor Agent"
+    assert agent_owner_for_tool("research_run_backtest_specification") == "Quant Research Supervisor Agent"
     assert agent_owner_for_tool("research_get_backtest_results") == "Quant Research Supervisor Agent"
     assert agent_owner_for_tool("research_compare_backtest_results") == "Quant Research Supervisor Agent"
-    assert agent_owner_for_tool("research_list_risk_manager_templates") == "Quant Research Supervisor Agent"
-    assert agent_owner_for_tool("research_create_risk_manager_candidate") == "Quant Research Supervisor Agent"
-    assert agent_owner_for_tool("research_validate_risk_manager_candidate") == "Quant Research Supervisor Agent"
-    assert agent_owner_for_tool("research_create_strategy_risk_stack") == "Quant Research Supervisor Agent"
-    assert agent_owner_for_tool("research_validate_strategy_risk_stack") == "Quant Research Supervisor Agent"
+    assert agent_owner_for_tool("research_run_parameter_optimization") == "Quant Research Supervisor Agent"
 
 
 def test_walk_forward_tool_ownership_separates_optimization_evaluation_and_audit() -> None:
@@ -209,11 +212,13 @@ def test_ml_agent_identity_covers_planned_mlflow_lifecycle_without_trading_mutat
         assert agent_owner_for_tool(tool_name) == "ML Agent"
 
 
-def test_evaluation_agent_owns_performance_report_tool() -> None:
+def test_evaluation_agent_owns_parameter_optimization_report_tool() -> None:
     identity = build_agent_identity("Evaluation Agent")
 
-    assert "evaluation_generate_performance_report" in identity.tool_allowlist
+    assert "evaluation_generate_parameter_optimization_report" in identity.tool_allowlist
     assert "evaluation_generate_report" in identity.tool_allowlist
     assert "evaluation_report.json" in identity.output_artifacts
-    assert agent_owner_for_tool("evaluation_generate_performance_report") == "Evaluation Agent"
+    assert "parameter_optimization_evaluation_report.json" in identity.output_artifacts
+    assert "evaluation_generate_performance_report" not in identity.tool_allowlist
+    assert agent_owner_for_tool("evaluation_generate_parameter_optimization_report") == "Evaluation Agent"
     assert agent_owner_for_tool("evaluation_generate_report") == "Evaluation Agent"

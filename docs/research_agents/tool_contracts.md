@@ -18,17 +18,16 @@ request fields, envelope shapes, artifact payloads, and validation behavior.
 
 ## Functional Status Boundary
 
-This appendix contains both implemented contracts and planned contract names. Only tools listed as registered in
-[mcp_tools.md](mcp_tools.md) and returned by `mcp_get_config` are callable. In particular:
+Only tools listed as registered in [mcp_tools.md](mcp_tools.md) and returned by `mcp_get_config` are callable. The
+implementation/specification cutover is complete: strategy/risk candidates, candidate stacks, loose baseline/portfolio
+backtest requests, filesystem run identities, and `evaluation_generate_performance_report` are not registered. Current
+execution begins with content-addressed implementation versions and immutable specifications. Provider-neutral
+parameter optimisation, explicit tracking projection, sealed-holdout Evaluation, and independent Adversarial audit are
+registered. ML feature/training/model lifecycle tools and broader robustness remain planned.
 
-- current strategy/risk candidate contracts are maintained-template and generated-source contracts;
-- no registered tool currently accepts an arbitrary handwritten or externally AI-produced strategy/risk package as a
-  first-class versioned implementation;
-- no registered immutable backtest-specification tool exists independently of the current candidate/stack inputs;
-- ML feature/model versioning, broader Evaluation critique, attribution, robustness/adversarial, recommendation, and
-  experiment-runner names in this appendix are planned rather than registered;
-- tasks 56-57 define the next implementation intake and backtest-specification contracts, followed by task 39 model
-  versioning and tasks 44/46 robustness work.
+Canonical loaders recompute content-addressed IDs and validation lineage at use time. Optimisation startup rechecks the
+pinned base specification, implementation hashes, dataset/quality snapshots, objective source, and provider profile;
+payload or configuration drift blocks before a trial executes.
 
 Knowledge-base and bounded methodology contracts remain implemented and maintained at the 33AB baseline. Composite
 methodology expansion is deferred under 33AC.
@@ -142,9 +141,9 @@ Fields:
 - `warnings`: non-fatal issues.
 - `errors`: structured fatal errors when `ok=false`.
 
-Canonical MCP research artifact refs use `research://postgres/{artifact_type}/{artifact_id}` when the structured
-research artifact store is configured. `ArtifactReference.path` remains for fallback direct-service exports and legacy
-baseline bundles; MCP clients should prefer `uri` when present.
+Canonical MCP research artifact refs use `research://postgres/{artifact_type}/{artifact_id}`. New implementation,
+specification, backtest, optimisation, Evaluation, and Adversarial services require the structured store and have no
+filesystem authority or fallback.
 
 ## Side Effects
 
@@ -152,13 +151,12 @@ baseline bundles; MCP clients should prefer `uri` when present.
 | --- | --- | --- |
 | `read_only` | Reads config, event-store data, local artifacts, or broker/operator snapshots without writing. | Inventory, data quality summary, result lookup. |
 | `local_mutating` | Writes local artifacts or bounded research records; never submits broker orders. | Dataset manifest, quality report, sample load, backtest artifact, robustness report. |
-| `external_research_mutating` | Future class for mutating an approved external research service without broker or live-runtime mutation. | MLflow run creation, model registration, tags, and aliases. Not implemented in the current enum. |
+| `external_research_mutating` | Mutates an approved external research service without broker or live-runtime mutation. | Explicit tracking projection now; later ML training/registry writes. |
 | `broker_read` | Reads broker state through operator-owned surfaces. | Future read-only operator context tools. |
 | `broker_mutating` | Mutates broker state. | Not allowed for research-agent MCP tools. |
 
-Adding `external_research_mutating` requires an implementation change to the shared side-effect enum, MCP metadata,
-agent policy, tests, and documentation before any MLflow-writing tool is registered. Training execution and alias
-promotion also require independent policy gates even though both use the external research mutation class.
+External writes require a generic default-off gate plus a purpose-specific gate. Training execution and alias
+promotion will require additional independent gates even though both use the external research mutation class.
 
 No research-agent tool may start `TraderService`, submit orders, clear halt state, reconcile broker state, run raw SQL,
 or bypass core platform validation.
@@ -207,7 +205,7 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | `math_compile_kernel` | Quantitative Methods Agent | local compiled-kernel build evidence |
 | `math_package_method_artifact` | Quantitative Methods Agent | source-backed `method_package_manifest.json` for validated Python indicator/signal implementations |
 | `math_run_cpp_conformance` | Quantitative Methods Agent | deferred compiled-kernel conformance/equivalence report |
-| `ml_get_runtime`, `ml_health`, `ml_list_experiments` | ML Agent | planned configured MLflow runtime/health metadata |
+| `ml_get_runtime`, `ml_health`, `ml_list_training_experiments` | ML Agent | planned configured MLflow training runtime/health metadata |
 | `ml_create_feature_set`, `ml_validate_feature_set` | ML Agent | planned `ml_feature_set_spec` and validation report |
 | `ml_create_training_dataset`, `ml_create_time_series_split_plan` | ML Agent | planned point-in-time dataset and chronological split artifacts |
 | `ml_register_training_pipeline`, `ml_validate_training_pipeline`, `ml_create_training_spec`, `ml_run_training` | ML Agent | planned training pipeline/spec and MLflow fitting evidence |
@@ -219,26 +217,100 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | `hypothesis_create_card` | Hypothesis Agent | `hypothesis_card.json` |
 | `research_create_plan` | Quant Research Supervisor Agent | experiment plan |
 | `research_list_strategy_templates` | Quant Research Supervisor Agent | strategy template catalog |
-| `research_create_strategy_candidate` | Quant Research Supervisor Agent | `strategy_candidate_manifest.json` and strategy source |
-| `research_validate_strategy_candidate` | Quant Research Supervisor Agent | strategy candidate validation report |
-| `research_run_backtest` | Quant Research Supervisor Agent | `backtest_run_ref.json` plus backtest artifact bundle |
-| `research_run_portfolio_backtest` | Quant Research Supervisor Agent | `portfolio_backtest_run_ref.json` plus risk-scoped portfolio backtest bundle |
-| `research_get_backtest_results` | Quant Research Supervisor Agent | result summary and artifact paths |
-| `research_compare_backtest_results` | Quant Research Supervisor Agent | `comparison_report.json` over explicit backtest refs |
 | `research_list_risk_manager_templates` | Quant Research Supervisor Agent | risk-manager template catalog |
-| `research_create_risk_manager_candidate` | Quant Research Supervisor Agent | `risk_manager_candidate_manifest.json` and risk-manager source |
-| `research_validate_risk_manager_candidate` | Quant Research Supervisor Agent | `risk_manager_candidate_validation_report.json` |
-| `research_create_strategy_risk_stack` | Quant Research Supervisor Agent | `strategy_risk_stack_manifest.json` |
-| `research_validate_strategy_risk_stack` | Quant Research Supervisor Agent | `strategy_risk_stack_validation_report.json` |
+| `research_register_strategy_implementation`, `research_validate_strategy_implementation` | Quant Research Supervisor Agent | strategy implementation version and validation report |
+| `research_register_risk_manager_implementation`, `research_validate_risk_manager_implementation` | Quant Research Supervisor Agent | risk implementation version and validation report |
+| `research_register_optimization_objective`, `research_validate_optimization_objective` | Quantitative Methods Agent | objective implementation version and validation report |
+| `research_create_strategy_specification`, `research_validate_strategy_specification` | Quant Research Supervisor Agent | immutable strategy spec and validation |
+| `research_create_risk_stack_specification`, `research_validate_risk_stack_specification` | Quant Research Supervisor Agent | immutable ordered risk spec and validation |
+| `research_create_backtest_specification`, `research_validate_backtest_specification` | Quant Research Supervisor Agent | Data Agent-scoped canonical backtest spec and validation |
+| `research_run_backtest_specification`, `research_get_backtest_results`, `research_compare_backtest_results` | Quant Research Supervisor Agent | canonical DB run and comparison refs |
+| `research_get_optimizer_runtime`, `research_create_parameter_optimization_plan`, `research_run_parameter_optimization`, `research_get_parameter_optimization_results` | Quant Research Supervisor Agent | engine health and canonical plan/run/trial ledger |
+| `research_run_parameter_optimization_variants` | Quant Research Supervisor Agent | Adversarial-requested immutable child runs |
+| `research_project_experiment_tracking` | Quant Research Supervisor Agent | non-authoritative tracking projection report |
 | `research_create_walk_forward_plan`, `research_run_walk_forward_optimization`, `research_get_walk_forward_results` | Quant Research Supervisor Agent | deferred walk-forward plan/run/result artifacts |
-| `evaluation_generate_performance_report` | Evaluation Agent | first practical `evaluation_report.json` from backtest/data-quality artifacts |
+| `evaluation_generate_parameter_optimization_report` | Evaluation Agent | sealed untouched-holdout Evaluation report |
 | `evaluation_generate_walk_forward_report` | Evaluation Agent | deferred stitched out-of-sample walk-forward Evaluation report |
 | `evaluation_generate_report` | Evaluation Agent | later skeptical critique report |
-| `adversarial_run_robustness` | Adversarial Agent | `robustness_report.json` |
+| `adversarial_create_parameter_optimization_audit_plan`, `adversarial_generate_parameter_optimization_audit` | Adversarial Agent | immutable attack plan and robustness report |
+| `adversarial_run_robustness` | Adversarial Agent | planned broader `robustness_report.json` |
 | `adversarial_audit_walk_forward` | Adversarial Agent | deferred walk-forward robustness report |
 | `research_analyze_return_attribution` | Quant Research Supervisor Agent | attribution report |
 | `research_generate_recommendation` | Quant Research Supervisor Agent | recommendation report |
-| `research_run_experiment` | Quant Research Supervisor Agent | composed experiment output |
+
+## Canonical Implementation, Specification, And Optimisation Contracts
+
+Implementation registration accepts `name`, `version`, complete `source_code`, `factory_name`, optional `class_name`, a
+bounded parameter schema, dependency declarations, authoring origin, capabilities, resource/runtime requirements,
+optional generic provenance refs, and metadata. IDs are content-addressed over normalized identity and source hash.
+Validation accepts exactly one implementation ID, URI, or inline payload and writes an
+`implementation_validation_report` after import/call safety checks, kind-specific interface construction, parameter
+validation, and a deterministic fixture. Strategy/risk implementations are Supervisor-owned; optimisation objectives
+are Quantitative Methods-owned. Method cards and packages are not eligibility requirements.
+
+`research_create_strategy_specification` consumes one passed strategy implementation validation and explicit
+parameters, sizing, portfolio mode, runtime context, assumptions, tunable-field declarations, and optional provenance.
+Symbols, dates, timeframe, source, and live/broker/raw-SQL permissions are forbidden. The validation tool resolves the
+exact source hash again. Risk-stack creation similarly consumes an ordered non-empty array of passed risk implementation
+validations with explicit parameters and tunable fields, then revalidates order and every source hash.
+
+`research_create_backtest_specification` consumes a passed strategy-spec validation, optional passed risk-stack
+validation, exactly one complete Data Agent manifest, matching complete quality report, costs/assumptions, initial
+cash/positions, benchmark, deterministic seed, run/logging limits, and optional immutable parent/selection/variant
+lineage. It embeds and hashes the normalized Data/quality payloads. The validator re-resolves all upstream validations
+and fails on hash or scope drift. Loose scope and filesystem refs are not accepted.
+
+`research_run_backtest_specification` accepts only a passed backtest-spec validation ref and requires
+`TRADER_MCP_ALLOW_BACKTESTS=true`. It chooses no-risk or ordered-risk execution from the specification and writes one
+canonical `backtest_run` containing summary metrics, complete result, curves, trades, positions, symbol metrics,
+exposure, risk decisions/breaches/measures, warnings, blockers, and full implementation/specification/dataset lineage.
+`research_get_backtest_results` accepts exactly one run ID or DB URI. Comparison accepts 2-50 canonical run refs plus a
+numeric ranking metric/order. No new execution service reads or returns a durable filesystem path.
+
+An optimisation plan consumes a passed selection-region backtest-spec validation, a sealed chronological holdout Data
+Agent manifest and matching quality report, one passed `optimization_objective` validation, direction, typed finite
+search dimensions, constraints, seed, trial budget, and bounded sequential resource limits. Every dimension path must be
+explicitly declared tunable by the owning strategy/risk spec. Costs, datasets, implementations, provider settings,
+holdout/fold boundaries, and undeclared fields are rejected.
+
+The objective receives only this closed object:
+
+```json
+{
+  "schema_version": "1.0",
+  "status": "passed",
+  "metrics": {},
+  "counts": {},
+  "costs": {},
+  "exposure": {},
+  "risk": {},
+  "quality": {},
+  "constraints": {},
+  "lineage": {}
+}
+```
+
+Unknown top-level fields, non-scalar metrics/costs, invalid counts, unsupported runtime imports/calls, and unavailable
+objective metrics block. An engine receives only search dimensions, seed, prior canonical trial outcomes, direction,
+and budget. A run pins engine profile/version/configuration digest/capabilities, seed, and executor kind. It never changes
+engine in place. Each canonical trial stores the suggestion, retry attempts, exceptions, child specs/runs, closed
+observation, constraints, objective result, diagnostics, warnings, and blockers. Selection is deterministic and remains
+exploratory.
+
+`builtin_grid` and `builtin_random` are always available without Optuna or MLflow. `optuna_tpe` is lazy and requires its
+dedicated configured non-public schema/role plus both external-write and Optuna-write gates. Provider loss blocks or
+leaves a run partial; `research_get_parameter_optimization_results` reads canonical Trader evidence without the provider.
+
+`research_project_experiment_tracking` accepts only a supported canonical run ref and configured profile. It derives
+all metrics/tags, calls the sink at most once per canonical digest/profile, and writes an idempotent
+`experiment_tracking_projection_report` with `authoritative=false`. It accepts no arbitrary metrics, tags, URI, or
+credentials. The generic external-write and experiment-tracking-write gates are both required.
+
+Evaluation accepts an optimisation run and a matching sealed-holdout `backtest_run`. It verifies completed selection,
+holdout dataset hash, selected strategy specification, selection lineage, and required risk telemetry before writing its
+own report. Adversarial plan creation freezes a baseline digest and declared attacks. The Supervisor executes immutable
+requested optimisation variants; cost/window stresses use immutable child backtest specs. Adversarial judgment consumes
+those refs, cannot rewrite the baseline/selection, and blocks missing required evidence or observed instability.
 
 ## Method Package Artifacts
 
@@ -266,7 +338,10 @@ failed, blocked, mismatched, or the wrong report type. C++ refs are optimization
 uncompiled, mismatched, or otherwise invalid C++ refs produce warnings and are excluded without blocking a valid Python
 package.
 
-## Strategy Candidate Catalog And Builder
+## Retired Pre-Cutover Strategy Candidate Contract
+
+This section documents historical 33-series behavior only. These candidate tools and payloads are not registered,
+accepted by canonical consumers, translated, or dual-written after the implementation/specification cutover.
 
 Task 25 implements the deterministic `trader_research.strategy_candidates.list_strategy_templates` service for the
 `research_list_strategy_templates` command. Task 26 implements the deterministic
@@ -394,7 +469,7 @@ read market data, touch brokers, mutate SQL, run backtests, or clear runtime/ris
 execution after candidate validation passes. Strategy candidates remain data-free; the backtest data scope is supplied
 only by a Data Agent `dataset_manifest`.
 
-## Risk Manager Candidate Catalog And Builder
+## Retired Pre-Cutover Risk Manager Contract
 
 `research_list_risk_manager_templates` is a Quant Research Supervisor read-only tool and direct service. It returns
 source-generatable risk-manager template metadata; it does not dynamically import risk code, touch brokers, read market
@@ -521,7 +596,7 @@ Task 33D registers `research_validate_risk_manager_candidate`, `research_create_
 `research_validate_strategy_risk_stack` through MCP. It does not run portfolio backtests or generate portfolio/risk
 evaluation reports; those remain later task-33 slices.
 
-## Data-Scoped Baseline Backtests
+## Retired Pre-Cutover Baseline Backtest Contract
 
 `research_run_backtest` is a Quant Research Supervisor local-mutating tool and direct service. It runs one baseline
 backtest through the platform `BacktestRunner` with `NoOpRiskManager` and a generated strategy source file from a
@@ -599,7 +674,7 @@ touching the event store or runtime config. `research_get_backtest_results` is r
 `research_compare_backtest_results` is not gated by `TRADER_MCP_ALLOW_BACKTESTS` because it compares persisted bundles
 only.
 
-## Risk-Scoped Portfolio Backtests
+## Retired Pre-Cutover Portfolio Backtest Contract
 
 `research_run_portfolio_backtest` is a Quant Research Supervisor local-mutating tool and direct service. It runs one
 portfolio backtest through the platform `BacktestRunner` with a strategy and ordered risk managers from a passed
@@ -643,7 +718,7 @@ portfolio backtest warning evidence; Evaluation decides whether the omission blo
 MCP exposes `research_run_portfolio_backtest` with `agent_owner="Quant Research Supervisor Agent"` and
 `side_effect="local_mutating"`. It is gated by `TRADER_MCP_ALLOW_BACKTESTS=true`, like `research_run_backtest`.
 
-## Evaluation Performance Reports
+## Retired Pre-Cutover Performance Report Contract
 
 `evaluation_generate_performance_report` is an Evaluation Agent local-mutating tool and direct service. It reads one
 persisted baseline or portfolio backtest bundle and writes a descriptive `evaluation_report`; it does not run
@@ -1025,8 +1100,8 @@ Minimal allowlists:
 | Quantitative Methods Agent | `knowledge_*` retrieval/ingestion/citation tools, `math_list_method_contracts`, `math_validate_method_contract`, fixture, diagnostic, multiple-testing, method-packaging, and optional kernel tools |
 | ML Agent | Planned 39A-39J `ml_*` lifecycle tools only; none are registered yet. |
 | Hypothesis Agent | Ingredient artifact reads, `hypothesis_create_card` |
-| Evaluation Agent | Data/backtest artifact reads, `evaluation_generate_performance_report`, later `evaluation_generate_report` |
-| Adversarial Agent | Baseline artifact reads, `adversarial_run_robustness` |
+| Evaluation Agent | Canonical backtest reads, `evaluation_generate_parameter_optimization_report`, later broader reports |
+| Adversarial Agent | Canonical plan/run reads and registered parameter-optimisation audit tools |
 
 LangGraph state may store artifact references, status, public messages, and structured decisions. It must not persist
 hidden reasoning or raw LLM scratchpads as product records.

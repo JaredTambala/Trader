@@ -13,12 +13,13 @@ implementation-to-evidence chain:
 handwritten or AI-produced indicator / strategy / risk-manager source
   -> immutable implementation registration and provenance
   -> interface, import, source-hash, fixture, and safety validation
-  -> reproducible backtest specification
   -> Data Agent dataset manifest and quality report
-  -> baseline or risk-scoped portfolio backtest
+  -> immutable strategy/risk and backtest specifications
+  -> canonical baseline or risk-scoped backtest
+  -> optional provider-neutral parameter optimisation over selection data
+  -> sealed untouched-holdout backtest
   -> ML model-version refs when the strategy uses a model
-  -> Evaluation report
-  -> robustness and adversarial variants
+  -> Evaluation and independent Adversarial report
 ```
 
 The implementation intake must not depend on the platform generating the source. Handwritten code and AI-produced code
@@ -26,9 +27,8 @@ are both untrusted supplied artifacts; both must satisfy the same platform inter
 gates. Bespoke method-card or source refs may be attached as provenance when available, but knowledge extraction is not
 a prerequisite for testing an explicitly supplied implementation.
 
-This chain is not fully implemented. Current strategy candidates are maintained-template driven, ML versioning tools
-are not registered, and robustness/adversarial tools are not registered. The tracker identifies implementation intake
-and backtest specification work as the first dependencies before those evaluation layers.
+Implementation intake, specifications, canonical backtests, parameter optimisation, holdout Evaluation, and
+optimisation audit are implemented. ML versioning and broader cost/data perturbation tooling remain planned.
 
 ## Data Agent Workflow
 
@@ -74,8 +74,8 @@ Training specs record Data Agent refs, point-in-time target construction, chrono
 environment hashes, hyperparameters, resources, seeds, and the configured MLflow experiment. Maintained, handwritten,
 or AI-produced trainer code must be registered and validated before execution.
 
-MLflow is authoritative for experiment runs, logged model packages, registered-model versions, tags, and aliases.
-Trader artifacts preserve the trading-specific lineage and policy evidence. A request may name an alias such as
+MLflow is authoritative for ML training telemetry, logged model packages, registered-model versions, tags, and aliases.
+Trader remains authoritative for generic optimisation and trading-specific lineage. A request may name an alias such as
 `champion`, but backtests and runtime deployments pin the immutable version resolved at validation time. Alias movement
 cannot alter an active run.
 
@@ -87,6 +87,28 @@ limited to backtest and paper environments; live runtime changes remain explicit
 Model evaluation and strategy evaluation remain separate. The ML Agent can establish predictive performance,
 calibration, stability, and leakage status. Only downstream strategy backtests and Evaluation reports can establish
 whether those predictions produce useful trading evidence after costs and risk controls.
+
+## Parameter Optimisation And Independent Audit
+
+```text
+passed selection-region backtest specification
+  -> sealed later holdout manifest and quality report
+  -> validated closed-input objective
+  -> provider-neutral optimisation plan
+  -> grid, seeded-random, or configured optional Optuna suggestions
+  -> immutable child specifications and canonical selection runs
+  -> complete trial ledger and deterministic exploratory selection
+  -> separately created holdout backtest using the selected strategy specification
+  -> evaluation_generate_parameter_optimization_report
+  -> adversarial_create_parameter_optimization_audit_plan
+  -> Supervisor-executed immutable optimisation variants and backtest stresses
+  -> adversarial_generate_parameter_optimization_audit
+```
+
+Optuna only proposes parameters and stores resumable sampler state in its dedicated schema. Built-in engines and
+canonical result reads do not import it. `research_project_experiment_tracking` may mirror a completed canonical run to
+a configured sink, but that report is explicitly non-authoritative and is not a prerequisite for Evaluation or audit.
+The selected specification is exploratory until its sealed holdout Evaluation and Adversarial audit both pass.
 
 ## Deferred Walk-Forward Optimisation Workflow
 
@@ -126,25 +148,22 @@ approved source evidence
   -> methodology candidate validation
   -> rich method-card draft
   -> approved method card
-  -> validated indicator or signal implementation
-  -> method package manifest
-  -> strategy candidate manifest and source
-  -> strategy validation report
-  -> Data Agent dataset manifest
-  -> baseline backtest run bundle
-  -> evaluation performance report
+  -> optional maintained or external implementation producer
+  -> normal content-addressed implementation registration and validation
+  -> immutable strategy/risk specifications
+  -> Data Agent-scoped backtest specification
+  -> canonical backtest run
 ```
 
-This remains a supported MCP toolchain, but it is no longer the active expansion focus. Strategy candidates are
-source-backed, but data scope is supplied by the backtest through a Data Agent `dataset_manifest`.
+Knowledge and method cards remain supported, but candidate artifacts are no longer an execution boundary. Produced
+source enters the same registry as handwritten source, and data scope is supplied only by the backtest specification.
 
 For statistical-arbitrage evidence, an approved rich method card can also drive the maintained
 `pairs_mean_reversion` strategy template directly. The resulting strategy candidate records rich method-card provenance
 and remains data-free; symbols, timeframe, and date windows still come from Data Agent scope.
 
-The 33N MCP regression proves the representative pairs/cointegration route end to end: generated book-style source
-registration, full-document ingestion, candidate discovery, field extraction, validation, rich-card approval,
-rich-card-driven strategy generation, risk stack validation, two-leg portfolio backtest execution, and Evaluation.
+The historical 33N regression remains methodology evidence; its candidate/stack handoff is superseded by the canonical
+implementation/specification path.
 
 ## Rich Methodology Operator Workflow
 
@@ -242,10 +261,10 @@ Operator examples:
 ## Backtest Result Review
 
 ```text
-backtest_run_ref
+canonical backtest_run ID or URI
   -> research_get_backtest_results
   -> research_compare_backtest_results, for explicit run refs
-  -> evaluation_generate_performance_report
+  -> sealed-holdout Evaluation when the run is an optimisation selection
 ```
 
 Comparison reports warn when runs are not like-for-like. Evaluation reports are descriptive and skeptical; missing or
@@ -254,18 +273,15 @@ incomplete data-quality evidence blocks the report status.
 ## Portfolio Risk Toolchain
 
 ```text
-method packages
-  -> multi-asset strategy candidate
-  -> risk-manager candidate(s)
-  -> validated strategy/risk stack
-  -> risk-scoped portfolio backtest
-  -> portfolio and risk evaluation report
+validated strategy and risk implementation versions
+  -> strategy specification and ordered risk-stack specification
+  -> one Data Agent-scoped backtest specification
+  -> canonical risk-scoped backtest
+  -> exposure, decision, breach, and risk-measure evidence
 ```
 
-The first risk-manager tools list generation targets and create backtest-only source-backed candidates. Risk-manager
-validation, stack composition, risk-scoped portfolio backtests, exposure telemetry, and portfolio/risk Evaluation
-reports are now deterministic MCP surfaces. VaR/CVaR values are pass-through evidence in this slice; Evaluation blocks
-when a portfolio backtest omits required risk telemetry.
+Risk limits must be explicit in validated implementation/spec parameters. VaR/CVaR values are never invented from
+prose; Evaluation blocks when required risk telemetry is absent.
 
 ## Handoff And Blockers
 
