@@ -124,7 +124,7 @@ def test_docs_pin_knowledge_baseline_and_identify_next_delivery_focus() -> None:
     assert "| 56. Implementation Registry And Method-Card Decoupling | Done |" in tracker
     assert "| 56A. Canonical Implementation-Version Domain | Done |" in tracker
     assert "| 56D. Remove Method-Card Execution Coupling | Done |" in tracker
-    assert "| 57. Reproducible Strategy, Risk, Backtest, And Optimisation Specifications | In progress |" in tracker
+    assert "| 57. Reproducible Strategy, Risk, Backtest, And Optimisation Specifications | Blocked |" in tracker
     assert "| 57C. DB-First Specification Execution And Evaluation | Done |" in tracker
     assert "| 57D. Provider-Neutral Optimisation Ledger And Protocols | Done |" in tracker
     assert "| 57H. Provider-Neutral Experiment Tracking Projection | Done |" in tracker
@@ -265,6 +265,24 @@ def test_docs_define_57j_isolated_postgres_runtime() -> None:
     assert "They never read the legacy/operator `PG_HOST`" in normalized_readme
     assert "Product rows," in operations
     assert "passwords" in operations
+
+
+def test_tracker_records_57k_blockers_and_rerun_boundary() -> None:
+    tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(encoding="utf-8")
+    normalized_tracker = " ".join(tracker.split())
+
+    required_phrases = (
+        "| 57K. Static, Contract, And Regression Gate | Blocked |",
+        "#### 57K Execution Evidence And Blockers",
+        "The candidate-era retirement is incomplete.",
+        "Warnings-as-errors does not collect the suite.",
+        "691 tests",
+        "zero skips",
+        "Do not start 57L from the current revision.",
+        "create a new 57I freeze",
+    )
+    for phrase in required_phrases:
+        assert phrase in normalized_tracker
 
 
 def test_docs_define_complete_planned_mlflow_lifecycle_and_runtime_boundary() -> None:

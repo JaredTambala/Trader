@@ -309,7 +309,7 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 56B. Strategy And Risk Implementation Registration And Validation | Done | Registered MCP intake and deterministic validation. | Handwritten, AI-produced, maintained, or method-generated source uses the same hash/interface/parameter/resource/no-live-trading checks; no methodology ref is required. |
 | 56C. Maintained And Method-Generated Producer Adapters | Done | Producer-neutral registration accepts `authoring_origin` and generic `provenance_refs`. | Producers submit source to the same registry; origin affects lineage only and cannot change downstream eligibility. |
 | 56D. Remove Method-Card Execution Coupling | Done | Atomic no-compatibility cutover. | Candidate create/validate, candidate stack, and candidate backtest tools are no longer registered or supported artifact types. Canonical execution packages do not import knowledge types. |
-| 57. Reproducible Strategy, Risk, Backtest, And Optimisation Specifications | In progress | Implementation tasks 57A-H and controlled-verification tasks 57I-J are done; qualification tasks 57K-S remain planned. | Immutable Postgres specifications, runs, trial ledgers, projections, Evaluation, and Adversarial refs compose without provider authority or filesystem identity; the slice is complete only after mandatory verification passes. |
+| 57. Reproducible Strategy, Risk, Backtest, And Optimisation Specifications | Blocked | Implementation tasks 57A-H and controlled-verification tasks 57I-J are done. 57K found stale candidate-era compatibility surfaces and warnings-as-errors failures; product remediation must be followed by a new 57I freeze and rerun of 57J-K before 57L. | Immutable Postgres specifications, runs, trial ledgers, projections, Evaluation, and Adversarial refs compose without provider authority or filesystem identity; the slice is complete only after mandatory verification passes. |
 | 57A. Strategy And Risk Specifications | Done | Canonical DB-backed services and MCP tools. | Adds data-scope-free strategy and ordered risk-stack specifications over passed implementation validations. |
 | 57B. Reproducible Backtest Specifications | Done | Canonical DB-backed services and MCP tools. | Binds passed behavior to exactly one Data Agent manifest, quality snapshot, costs, assumptions, seed, limits, and lineage before execution. |
 | 57C. DB-First Specification Execution And Evaluation | Done | Canonical specification runner and result services. | Executes only passed specifications and stores complete baseline/portfolio result evidence in `backtest_run`; no canonical filesystem bundle or candidate request form remains. |
@@ -320,7 +320,7 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 57H. Provider-Neutral Experiment Tracking Projection | Done | Explicit `research_project_experiment_tracking`. | Derives an idempotent, non-authoritative projection from canonical evidence. The optional MLflow sink is independently gated and deletion/unavailability cannot affect Trader reads. |
 | 57I. Freeze Revision And Build Acceptance Matrix | Done | `verification-57i-freeze`; focused 56/57 suite: 55 passed; Ruff, compileall, and `git diff --check` passed. | Frozen inventory enumerates the complete changed worktree, 24 canonical MCP tools, 16 canonical artifact/projection pairs, provider protocols/profiles, independent gates, retired contracts, and invariants 36-61 with named evidence and explicit downstream gaps. |
 | 57J. Provision Isolated Verification Runtime | Done | Harness `fd4b384`; `trader_verification_test`; 4 Postgres guard tests passed; operator before/after fingerprint `73c3e970eca95f589c71ac477a2e1f3db9b48ede0c0b3c16c2ee161add498190` matched. | Dedicated marked `*_test` database, distinct non-superuser Trader/Optuna roles, pinned locale/UTC, isolated provider namespaces, credential-free manifest, fail-closed truncate guards, and control-schema fingerprints are active. All mutation gates remained false. |
-| 57K. Static, Contract, And Regression Gate | Planned | Requires 57J. | Run formatting/diff, Ruff, compileall, mypy, full non-Postgres pytest, MCP/docs/domain/package/SQL boundary suites, and test-coverage inventory. Undeclared skips, warnings promoted to failures, or stale candidate-era contracts block progression. |
+| 57K. Static, Contract, And Regression Gate | Blocked | Ruff, compileall, mypy, 691 non-Postgres tests, 60 focused contract tests, and diff checks passed; operator fingerprints matched. Strict warnings and retired-surface audits failed. | Remove candidate-era domain models/direct services/readers/current docs/tests, add absence regressions, replace deprecated FastAPI/Pydantic calls, resolve or explicitly isolate the Alpaca/websockets import warning, then repeat 57I-J-K. 57L must not begin against the current freeze. |
 | 57L. Realistic Deterministic Evidence Fixture | Planned | Requires 57K. | Add a bounded multi-asset chronological dataset and handwritten strategy/risk/objective implementations that produce actual trades, nonzero exposure and costs, parameter-sensitive results, and both risk approvals and rejections across disjoint selection and holdout regions. |
 | 57M. Postgres-Native MCP Evidence Graph | Planned | Requires 57L. | Execute the full implementation -> specification -> selection backtest -> objective -> optimisation -> selected specification -> sealed holdout -> Evaluation -> Adversarial variants/report chain through MCP with only `research://postgres/...` canonical refs. |
 | 57N. Determinism, Integrity, And Leakage Tests | Planned | Requires 57M. | Repeat clean runs and verify stable IDs, trial order, observations, tie-breaks, and selection; prove complete failed-trial evidence, immutable selections, source/config drift rejection, distinct selection/holdout hashes, and no holdout access during optimisation. |
@@ -1277,10 +1277,10 @@ by the named downstream task. `Planned` means no acceptance-grade test exists ye
 
 | Invariant | Profile | Acceptance assertion | Named evidence at freeze | Status / completing task |
 |---|---|---|---|---|
-| 36 | C | Canonical experiment packages do not import knowledge/candidate domains; package direction remains one-way. | `test_canonical_experiment_packages_do_not_import_knowledge_or_candidate_domains`, `test_trader_package_does_not_depend_on_research_agent_packages` | Existing / 57K rerun |
+| 36 | C | Canonical experiment packages do not import knowledge/candidate domains; package direction remains one-way. | `test_canonical_experiment_packages_do_not_import_knowledge_or_candidate_domains`, `test_trader_package_does_not_depend_on_research_agent_packages` | Passed / 57K |
 | 37 | C,P | Handwritten, AI, maintained, and method-generated origins enter one immutable implementation contract with equal eligibility. | `test_mcp_optimization_holdout_and_adversarial_evidence_graph` proves handwritten intake only. | Partial / 57M adds origin-equivalence cases |
 | 38 | C | Candidate IDs/cards/packages are rejected as canonical strategy/risk/backtest inputs. | `test_mcp_exposes_decoupled_tools_and_independent_write_gates`, canonical package-boundary test | Existing / 57K rerun and 57M fail-closed calls |
-| 39 | C,P | Candidate MCP schemas, aliases, compatibility readers, and dual writes are absent. | `test_mcp_exposes_decoupled_tools_and_independent_write_gates`, `test_quant_research_supervisor_owns_canonical_experiment_tools`, retired-table schema assertions | Existing / 57K and 57M |
+| 39 | C,P | Candidate MCP schemas, aliases, compatibility readers, and dual writes are absent. | MCP registration and retired-table assertions passed, but candidate-era domain models, direct services/readers, and current docs remain. | Blocked / 57K |
 | 40 | P | Retired development projections are absent and no legacy rows are translated. | `test_research_schema_has_canonical_optimization_tables_without_retired_projections` | Existing schema evidence / 57J clean DB and 57R inspection |
 | 41 | P | Backtests, comparisons, sidecars, and Evaluation are complete Postgres artifacts with no durable filesystem authority. | In-memory MCP graph plus `test_optimization_artifacts_have_typed_pgadmin_visible_projections` | Partial / 57M canonical graph and 57R reconciliation |
 | 42 | C,P | Methodology provenance status cannot mutate completed implementations/specifications/runs. | Content-addressed loaders exist; no direct immutable-lineage attack test. | Partial / 57N |
@@ -1362,6 +1362,49 @@ uv run python -m tests.support.postgres_verification end --phase 57J
   stored in `verification_control`; source text, vectors, payloads, and credentials were not copied.
 - One third-party `websockets.legacy` deprecation warning was observed. It does not affect the isolation result and is
   carried into 57K's warnings review rather than being silently discarded.
+
+#### 57K Execution Evidence And Blockers
+
+- Executed the fingerprinted phase from 2026-07-18 14:46:58-14:48:20 UTC against product freeze
+  `09b0b5ebf538d80de935bde52bebf77a099d2449` and harness revision
+  `697452f957d28aff62682078377ed1b4c1db4535`. The credential-free configuration digest was
+  `f7b485ec5afa2f53556ac25df33f6b0c923f909c0bd355a10ad530ad302ea2a8`.
+- `uv run ruff check src tests`, compileall over all five source packages, `uv run mypy`, and `git diff --check` passed.
+  Mypy checked its configured 22-source-file surface with no issues.
+- `uv run pytest -o addopts='' -m 'not postgres' -q -ra` passed 691 tests with 18 intentionally deselected Postgres
+  tests, zero skips, and 12 warnings in 64.55 seconds. A separate collection audit confirmed that all 18 deselections
+  were tests explicitly marked `postgres`; the complete collection contained 709 tests.
+- The focused MCP registration, MCP optimisation, evidence-graph, docs, research-domain, agent-identity,
+  package-boundary, and SQL-boundary command passed 60 tests with one warning in 9.12 seconds. Public MCP assertions
+  confirmed that retired candidate/backtest/Evaluation tool names are not registered, and the schema assertion
+  confirmed that retired research projection tables are not recreated.
+- The read-only operator fingerprint remained
+  `73c3e970eca95f589c71ac477a2e1f3db9b48ede0c0b3c16c2ee161add498190` before and after. The control-schema
+  `isolation_status=passed` means the command phase did not mutate operator state; it does not override the blocked
+  release-gate verdict below.
+
+57K is blocked by two independent defect groups:
+
+1. **The candidate-era retirement is incomplete.** `src/trader_research/domain.py` still defines the retired candidate,
+   candidate-validation, strategy/risk-stack, `backtest_run_ref`, and `portfolio_backtest_run_ref` constants and models.
+   Old creation/validation/read paths remain in `strategy_candidates/services.py`,
+   `strategy_candidates/validation.py`, `risk_managers/services.py`, `risk_managers/validation.py`,
+   `portfolio_stacks/services.py`, `backtests/services.py`, and `evaluation/performance.py`; `portfolio_stacks/__init__.py`
+   still exports the retired stack services. Active `tool_contracts.md` and `mcp_tools.md` still describe retired request
+   forms. Candidate-named test files were deleted, but `test_research_domain.py` still positively tests retired schemas,
+   and the current boundary test checks only that new canonical packages do not import them. This contradicts 56D and
+   the 57I retired-surface inventory even though MCP registration and Postgres projection cutover tests pass.
+2. **Warnings-as-errors does not collect the suite.** Unfiltered `pytest --collect-only -W error` exits 4 while importing
+   Alpaca because `websockets.legacy` is deprecated. Allowing only that third-party warning reaches a second collection
+   failure at `src/trader/web/api.py:145`, where `FastAPI.on_event` is deprecated. The normal regression run also emits
+   a direct Pydantic V2 warning at `src/trader/web/api.py:178` for `request.dict()`. The product API must use a lifespan
+   handler and `model_dump()`; the dependency/import warning must be upgraded, isolated, or narrowly justified before
+   strict warning qualification can pass.
+
+Required remediation is a product change and therefore invalidates the current freeze. Remove the retired code,
+models, readers, active documentation, and positive compatibility tests; add explicit absence/boundary regressions;
+resolve the warning failures; then create a new 57I freeze, reprovision/re-run 57J, and rerun all of 57K. Do not start
+57L from the current revision.
 
 Execution profiles are independent:
 
