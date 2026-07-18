@@ -309,7 +309,7 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 56B. Strategy And Risk Implementation Registration And Validation | Done | Registered MCP intake and deterministic validation. | Handwritten, AI-produced, maintained, or method-generated source uses the same hash/interface/parameter/resource/no-live-trading checks; no methodology ref is required. |
 | 56C. Maintained And Method-Generated Producer Adapters | Done | Producer-neutral registration accepts `authoring_origin` and generic `provenance_refs`. | Producers submit source to the same registry; origin affects lineage only and cannot change downstream eligibility. |
 | 56D. Remove Method-Card Execution Coupling | Done | Atomic no-compatibility cutover. | Candidate create/validate, candidate stack, and candidate backtest tools are no longer registered or supported artifact types. Canonical execution packages do not import knowledge types. |
-| 57. Reproducible Strategy, Risk, Backtest, And Optimisation Specifications | In progress | Implementation tasks 57A-H and freeze task 57I are done; isolated-runtime task 57J is in progress and qualification tasks 57K-S remain planned. | Immutable Postgres specifications, runs, trial ledgers, projections, Evaluation, and Adversarial refs compose without provider authority or filesystem identity; the slice is complete only after mandatory verification passes. |
+| 57. Reproducible Strategy, Risk, Backtest, And Optimisation Specifications | In progress | Implementation tasks 57A-H and controlled-verification tasks 57I-J are done; qualification tasks 57K-S remain planned. | Immutable Postgres specifications, runs, trial ledgers, projections, Evaluation, and Adversarial refs compose without provider authority or filesystem identity; the slice is complete only after mandatory verification passes. |
 | 57A. Strategy And Risk Specifications | Done | Canonical DB-backed services and MCP tools. | Adds data-scope-free strategy and ordered risk-stack specifications over passed implementation validations. |
 | 57B. Reproducible Backtest Specifications | Done | Canonical DB-backed services and MCP tools. | Binds passed behavior to exactly one Data Agent manifest, quality snapshot, costs, assumptions, seed, limits, and lineage before execution. |
 | 57C. DB-First Specification Execution And Evaluation | Done | Canonical specification runner and result services. | Executes only passed specifications and stores complete baseline/portfolio result evidence in `backtest_run`; no canonical filesystem bundle or candidate request form remains. |
@@ -319,7 +319,7 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 57G. Optional Optuna Adapter | Done | Lazy optional adapter and runtime profile. | Adds seeded sequential single-objective TPE behind the provider-neutral protocol, dedicated schema/role checks, canonical reconciliation, no pruning, and fail-closed provider loss/drift. |
 | 57H. Provider-Neutral Experiment Tracking Projection | Done | Explicit `research_project_experiment_tracking`. | Derives an idempotent, non-authoritative projection from canonical evidence. The optional MLflow sink is independently gated and deletion/unavailability cannot affect Trader reads. |
 | 57I. Freeze Revision And Build Acceptance Matrix | Done | `verification-57i-freeze`; focused 56/57 suite: 55 passed; Ruff, compileall, and `git diff --check` passed. | Frozen inventory enumerates the complete changed worktree, 24 canonical MCP tools, 16 canonical artifact/projection pairs, provider protocols/profiles, independent gates, retired contracts, and invariants 36-61 with named evidence and explicit downstream gaps. |
-| 57J. Provision Isolated Verification Runtime | In progress | Strict test-only connection/marker/truncate guards, provisioning, credential-free manifests, operator fingerprints, and runtime tests are implemented; live isolated provisioning remains. | Use a dedicated `*_test` Trader database, isolated Optuna schema/role when qualified, disposable tracking namespace, explicit policy gates, and before/after operator-database fingerprints. Refuse any destructive fixture operation without the test-database suffix guard. |
+| 57J. Provision Isolated Verification Runtime | Done | Harness `fd4b384`; `trader_verification_test`; 4 Postgres guard tests passed; operator before/after fingerprint `73c3e970eca95f589c71ac477a2e1f3db9b48ede0c0b3c16c2ee161add498190` matched. | Dedicated marked `*_test` database, distinct non-superuser Trader/Optuna roles, pinned locale/UTC, isolated provider namespaces, credential-free manifest, fail-closed truncate guards, and control-schema fingerprints are active. All mutation gates remained false. |
 | 57K. Static, Contract, And Regression Gate | Planned | Requires 57J. | Run formatting/diff, Ruff, compileall, mypy, full non-Postgres pytest, MCP/docs/domain/package/SQL boundary suites, and test-coverage inventory. Undeclared skips, warnings promoted to failures, or stale candidate-era contracts block progression. |
 | 57L. Realistic Deterministic Evidence Fixture | Planned | Requires 57K. | Add a bounded multi-asset chronological dataset and handwritten strategy/risk/objective implementations that produce actual trades, nonzero exposure and costs, parameter-sensitive results, and both risk approvals and rejections across disjoint selection and holdout regions. |
 | 57M. Postgres-Native MCP Evidence Graph | Planned | Requires 57L. | Execute the full implementation -> specification -> selection backtest -> objective -> optimisation -> selected specification -> sealed holdout -> Evaluation -> Adversarial variants/report chain through MCP with only `research://postgres/...` canonical refs. |
@@ -1295,7 +1295,7 @@ by the named downstream task. `Planned` means no acceptance-grade test exists ye
 | 51 | C,O,T | Backtest, optimisation, external, Optuna, and tracking gates are independent and reported by config. | All three tests in `test_mcp_optimization_tools.py` | Existing / 57Q full gate matrix |
 | 52 | C,P | Canonical loaders recompute identities and fail closed on source/config/snapshot/lineage drift. | Seeded-random/base-snapshot drift test and content-addressed service loaders | Partial / 57N full tamper matrix |
 | 53 | C | Evidence is tied to one frozen revision and downstream phases rerun after changes. | This inventory/matrix, checkpoint commit, annotated `verification-57i-freeze` tag | Existing / 57I complete |
-| 54 | P | Tests require explicit `*_test` DB and leave operator runtime/research/knowledge unchanged. | `tests/conftest.py` suffix guard; operator fingerprints not automated. | Partial / 57J |
+| 54 | P | Tests require explicit `*_test` DB and leave operator runtime/research/knowledge unchanged. | Server/marker/role/locale checks before store construction and every truncate; `verification_control.operator_fingerprints`; 57J before/after digest match. | Existing / 57J complete |
 | 55 | P | Mandatory graph is multi-asset and produces parameter-sensitive trades, costs, exposure, approvals, and rejections. | Current graph is one-symbol, twelve-bar, empty-strategy smoke coverage. | Planned / 57L fixture and 57M graph |
 | 56 | P | Selection and holdout are disjoint by time/hash and holdout is unread before selection. | Current smoke graph separates times but has no access instrumentation. | Planned / 57N |
 | 57 | C,P | Two clean runs reproduce IDs/order/observations/scores/tie-break/selection/reports. | Component-level deterministic tests only. | Planned / 57N |
@@ -1336,6 +1336,32 @@ uv run python -m tests.support.postgres_verification begin --phase 57J
 TRADER_VERIFICATION_MODE=true uv run pytest tests/test_postgres_verification_runtime.py -m postgres -q
 uv run python -m tests.support.postgres_verification end --phase 57J
 ```
+
+#### 57J Execution Evidence
+
+- Executed 2026-07-18 14:28:30-14:28:33 UTC against frozen product revision
+  `09b0b5ebf538d80de935bde52bebf77a099d2449` (`verification-57i-freeze`) and harness revision
+  `fd4b3848443fa8ee38860fbdd7b7a10fc713bc67`. Product paths were byte-identical to the freeze and the worktree was
+  clean.
+- Provisioned `trader_verification_test` on Postgres 16.11 with UTC, UTF-8, `LC_COLLATE=en_US.utf8`, and
+  `LC_CTYPE=en_US.utf8`. `trader_verification_runner` and `trader_verification_optuna_writer` were distinct
+  non-superuser roles without create-database or create-role authority.
+- `trader_verification_optuna_writer` owns only the isolated `trader_optuna_verification` provider schema in the test
+  database. The disposable tracking namespace was `trader-verification-09b0b5e`; no Optuna or tracking write was
+  attempted.
+- The credential-free configuration digest was
+  `2c0d93f78b1c643ffa7487d0e9f9076955b4b3cfeed4b5485bc7b89be1ffe56a`; all eight mutation gates in the runtime
+  manifest were false.
+- `uv run pytest tests/test_postgres_verification_runtime.py -m postgres -q` passed all 4 tests. The suite verified the
+  server marker and manifest, role separation/operator-table DML denial, Optuna schema ownership, and a destructive
+  fixture round trip confined to the verification database.
+- The read-only operator fingerprint was
+  `73c3e970eca95f589c71ac477a2e1f3db9b48ede0c0b3c16c2ee161add498190` before and after. Its count evidence remained
+  16 knowledge sources, 43,039 chunks, 43,039 embeddings, 16 embedding indexes, 17 ingestion runs, 1 method-card set,
+  0 method cards, 9 method contracts, 0 canonical research artifacts, and 0 runtime rows. Only hashes and counts were
+  stored in `verification_control`; source text, vectors, payloads, and credentials were not copied.
+- One third-party `websockets.legacy` deprecation warning was observed. It does not affect the isolation result and is
+  carried into 57K's warnings review rather than being silently discarded.
 
 Execution profiles are independent:
 
