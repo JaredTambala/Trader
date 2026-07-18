@@ -517,13 +517,17 @@ Run the Postgres integration subset against a local Docker-backed Postgres insta
 
 ```bash
 docker compose -f docker-compose.postgres.yml up -d
-export PG_TEST_DB=trader_test
-createdb -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$PG_TEST_DB"
+uv run python -m tests.support.postgres_verification provision --reset
+uv run python -m tests.support.postgres_verification begin --phase 57J
 uv run pytest -m postgres
+uv run python -m tests.support.postgres_verification end --phase 57J
 ```
 
-Postgres tests require a `PG_TEST_DB` name ending in `_test` or `_testing` and truncate their fixture tables. They never
-fall back to the operator-facing `PG_DB` database.
+First configure the explicit `PG_ADMIN_*`, `PG_OPERATOR_*`, `PG_TEST_*`, and `PG_OPTUNA_TEST_*` connection profiles,
+`PG_TEST_LOCALE`, and the verification namespace variables documented in
+[research-agent operations](docs/research_agents/operations.md#controlled-verification-procedure). Postgres tests
+truncate fixture tables and therefore require a provisioned `PG_TEST_DB` ending in `_test` or `_testing`. They never
+read the legacy/operator `PG_HOST`, `PG_USER`, or `PG_PASSWORD` variables as test credentials.
 
 Targeted examples:
 

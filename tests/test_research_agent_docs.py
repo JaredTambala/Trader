@@ -240,6 +240,33 @@ def test_tracker_freezes_57i_surface_and_acceptance_matrix() -> None:
     assert "Planned / 57S" in tracker
 
 
+def test_docs_define_57j_isolated_postgres_runtime() -> None:
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
+    tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(encoding="utf-8")
+    combined = "\n".join((readme, operations, tracker))
+    normalized_readme = " ".join(readme.split())
+
+    required_phrases = (
+        "#### 57J Isolated Runtime Contract",
+        "PG_TEST_HOST",
+        "PG_OPERATOR_HOST",
+        "PG_OPTUNA_TEST_HOST",
+        "PG_TEST_LOCALE",
+        "verification_control.runtime_marker",
+        "verification_control.operator_fingerprints",
+        "tests.support.postgres_verification provision --reset",
+        "before every `TRUNCATE`",
+        "byte-identical to `verification-57i-freeze`",
+    )
+    for phrase in required_phrases:
+        assert phrase in combined
+
+    assert "They never read the legacy/operator `PG_HOST`" in normalized_readme
+    assert "Product rows," in operations
+    assert "passwords" in operations
+
+
 def test_docs_define_complete_planned_mlflow_lifecycle_and_runtime_boundary() -> None:
     architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
     agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")

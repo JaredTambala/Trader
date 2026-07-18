@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Iterator
 
 import pytest
@@ -10,29 +9,30 @@ from trader.event_store import PostgresEventStore
 from trader_research.knowledge.postgres_store import PostgresKnowledgeStore
 from trader_research.knowledge.store import KnowledgeVectorExtensionUnavailable
 from trader_research.postgres_artifact_store import PostgresResearchArtifactStore
+from tests.support.postgres_verification import (
+    VerificationConfigurationError,
+    assert_connection_targets_verification_database,
+    assert_verification_database,
+    load_test_settings,
+    verification_mode_enabled,
+)
 
 
 def _postgres_settings_from_env() -> dict[str, object] | None:
-    host = os.getenv("PG_HOST")
-    port = os.getenv("PG_PORT")
-    db = os.getenv("PG_TEST_DB")
-    user = os.getenv("PG_USER")
-    password = os.getenv("PG_PASSWORD")
-    if not all([host, port, db, user, password]):
+    try:
+        settings = load_test_settings()
+    except VerificationConfigurationError as exc:
+        if verification_mode_enabled():
+            raise pytest.UsageError(str(exc)) from exc
         return None
-    if not str(db).lower().endswith(("_test", "_testing")):
-        return None
-    return {
-        "host": host,
-        "port": int(port),
-        "dbname": db,
-        "user": user,
-        "password": password,
-    }
+    return settings.connect_kwargs() if settings is not None else None
 
 
-def _truncate_runtime_tables(store: PostgresEventStore) -> None:
+def _truncate_runtime_tables(
+    store: PostgresEventStore, settings: dict[str, object]
+) -> None:
     connection = store.connection()
+    assert_connection_targets_verification_database(connection, settings)
     connection.execute(
         """
         TRUNCATE TABLE
@@ -54,8 +54,11 @@ def _truncate_runtime_tables(store: PostgresEventStore) -> None:
     )
 
 
-def _truncate_knowledge_tables(store: PostgresKnowledgeStore) -> None:
+def _truncate_knowledge_tables(
+    store: PostgresKnowledgeStore, settings: dict[str, object]
+) -> None:
     connection = store.connection()
+    assert_connection_targets_verification_database(connection, settings)
     connection.execute(
         """
         TRUNCATE TABLE
@@ -65,14 +68,18 @@ def _truncate_knowledge_tables(store: PostgresKnowledgeStore) -> None:
             knowledge_chunks,
             knowledge_sources,
             knowledge_method_cards,
+            knowledge_method_card_sets,
             knowledge_method_contracts
         CASCADE
         """
     )
 
 
-def _truncate_research_artifact_tables(store: PostgresResearchArtifactStore) -> None:
+def _truncate_research_artifact_tables(
+    store: PostgresResearchArtifactStore, settings: dict[str, object]
+) -> None:
     connection = store.connection()
+    assert_connection_targets_verification_database(connection, settings)
     connection.execute(
         """
         TRUNCATE TABLE
@@ -108,20 +115,26 @@ def postgres_settings() -> dict[str, object]:
     if settings is None:
         pytest.skip(
             "Postgres test env vars missing "
-            "(PG_HOST/PG_PORT/PG_TEST_DB/PG_USER/PG_PASSWORD), or PG_TEST_DB does not end in "
-            "_test/_testing; PG_DB is never used by tests"
+            "(PG_TEST_HOST/PG_TEST_PORT/PG_TEST_DB/PG_TEST_USER/PG_TEST_PASSWORD); "
+            "legacy PG_HOST/PG_USER variables are never used by tests"
         )
+    try:
+        assert_verification_database(settings)
+    except VerificationConfigurationError as exc:
+        raise pytest.UsageError(str(exc)) from exc
     return settings
 
 
 @pytest.fixture
-def postgres_event_store(postgres_settings: dict[str, object]) -> Iterator[PostgresEventStore]:
+def postgres_event_store(
+    postgres_settings: dict[str, object],
+) -> Iterator[PostgresEventStore]:
     store = PostgresEventStore(**postgres_settings)
-    _truncate_runtime_tables(store)
+    _truncate_runtime_tables(store, postgres_settings)
     try:
         yield store
     finally:
-        _truncate_runtime_tables(store)
+        _truncate_runtime_tables(store, postgres_settings)
         store.close()
 
 
@@ -136,16 +149,18 @@ def postgres_listener_connection(postgres_settings: dict[str, object]) -> Iterat
 
 
 @pytest.fixture
-def postgres_knowledge_store(postgres_settings: dict[str, object]) -> Iterator[PostgresKnowledgeStore]:
+def postgres_knowledge_store(
+    postgres_settings: dict[str, object],
+) -> Iterator[PostgresKnowledgeStore]:
     try:
         store = PostgresKnowledgeStore(**postgres_settings)
     except KnowledgeVectorExtensionUnavailable as exc:
         pytest.skip(str(exc))
-    _truncate_knowledge_tables(store)
+    _truncate_knowledge_tables(store, postgres_settings)
     try:
         yield store
     finally:
-        _truncate_knowledge_tables(store)
+        _truncate_knowledge_tables(store, postgres_settings)
         store.close()
 
 
@@ -154,9 +169,9 @@ def postgres_research_artifact_store(
     postgres_settings: dict[str, object],
 ) -> Iterator[PostgresResearchArtifactStore]:
     store = PostgresResearchArtifactStore(**postgres_settings)
-    _truncate_research_artifact_tables(store)
+    _truncate_research_artifact_tables(store, postgres_settings)
     try:
         yield store
     finally:
-        _truncate_research_artifact_tables(store)
+        _truncate_research_artifact_tables(store, postgres_settings)
         store.close()

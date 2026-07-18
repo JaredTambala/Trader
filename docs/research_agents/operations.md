@@ -154,8 +154,56 @@ Use separate acceptance profiles:
 
 Before a Postgres phase, capture stable counts/fingerprints for the operator runtime, research, and knowledge tables.
 Run verification only against an explicit `PG_TEST_DB` ending `_test` or `_testing`, then compare the operator
-fingerprints again. A missing suffix, fallback to `PG_DB`, unexpected operator change, unexplained dirty file,
+fingerprints again. A missing suffix, legacy-variable fallback, unexpected operator change, unexplained dirty file,
 undeclared skip, or provider write outside its isolated namespace is a stop condition, not a warning.
+Any fallback to `PG_DB` is specifically forbidden.
+
+### Isolated Postgres Runtime
+
+The controlled harness accepts four explicit connection profiles. It never derives test credentials from `.env`
+operator names:
+
+| Profile | Variables | Authority |
+|---|---|---|
+| Provisioning admin | `PG_ADMIN_HOST`, `PG_ADMIN_PORT`, `PG_ADMIN_DB`, `PG_ADMIN_USER`, `PG_ADMIN_PASSWORD` | Creates only the named verification roles/database and the `vector` extension. |
+| Operator fingerprint | `PG_OPERATOR_HOST`, `PG_OPERATOR_PORT`, `PG_OPERATOR_DB`, `PG_OPERATOR_USER`, `PG_OPERATOR_PASSWORD` | Opens an explicit read-only, repeatable-read transaction; never writes verification evidence here. |
+| Trader verification | `PG_TEST_HOST`, `PG_TEST_PORT`, `PG_TEST_DB`, `PG_TEST_USER`, `PG_TEST_PASSWORD` | Owns the disposable `*_test` database and product test schemas. |
+| Optuna verification | `PG_OPTUNA_TEST_HOST`, `PG_OPTUNA_TEST_PORT`, `PG_OPTUNA_TEST_DB`, `PG_OPTUNA_TEST_USER`, `PG_OPTUNA_TEST_PASSWORD` | Targets the same test database and owns only `TRADER_OPTUNA_SCHEMA`. |
+
+Set `PG_TEST_LOCALE` to a locale installed by the Postgres server. Provisioning creates the database from `template0`
+with UTF-8 encoding and pins both `LC_COLLATE` and `LC_CTYPE` to that value. Set `TZ=UTC`, `PYTHONHASHSEED=0`, and
+`TRADER_VERIFICATION_MODE=true`. Use a distinct non-superuser for each test writer and a disposable
+`TRADER_OPTUNA_STUDY_PREFIX` and `TRADER_MLFLOW_OPTIMIZATION_EXPERIMENT` tied to the frozen revision.
+
+Keep every mutation gate false while provisioning 57J:
+
+```bash
+export TRADER_MCP_ALLOW_BROKER_MUTATION=false
+export TRADER_MCP_ALLOW_RAW_SQL=false
+export TRADER_MCP_ALLOW_DATA_LOADING=false
+export TRADER_MCP_ALLOW_BACKTESTS=false
+export TRADER_MCP_ALLOW_OPTIMIZATION=false
+export TRADER_MCP_ALLOW_EXTERNAL_RESEARCH_WRITES=false
+export TRADER_MCP_ALLOW_OPTUNA_WRITES=false
+export TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES=false
+```
+
+With a clean worktree whose product paths are byte-identical to `verification-57i-freeze`, execute:
+
+```bash
+uv run python -m tests.support.postgres_verification provision --reset
+uv run python -m tests.support.postgres_verification begin --phase 57J
+uv run pytest tests/test_postgres_verification_runtime.py -m postgres -q
+uv run python -m tests.support.postgres_verification end --phase 57J
+```
+
+`provision --reset` terminates sessions and drops only the validated `PG_TEST_DB`; it cannot accept the operator
+database name or an unsafe suffix. The fixture guard verifies the live database, role, UTC setting, pinned locale, and
+`verification_control.runtime_marker` before constructing a store and again immediately before each `TRUNCATE`.
+`begin` stores a credential-free runtime manifest in `verification_control.phase_runs` and the operator `before`
+fingerprint in `verification_control.operator_fingerprints`; `end` stores the `after` fingerprint and blocks the phase
+if the digests differ. Product rows, source text, vectors, artifact payloads, passwords, and external provider state are
+not copied into verification evidence.
 
 The mandatory acceptance graph is not the existing in-memory empty-strategy smoke test. It must use
 `PostgresResearchArtifactStore`, call public MCP tools throughout, and produce real multi-asset orders, exposure, costs,
@@ -187,9 +235,9 @@ For a broader MCP registration check:
 uv run pytest tests/test_mcp_tools.py tests/test_mcp_data_workflow.py tests/test_mcp_quant_methods_tools.py tests/test_mcp_optimization_tools.py -q
 ```
 
-Postgres integration tests destructively reset their fixture tables and therefore require an explicit `PG_TEST_DB`
-whose name ends in `_test` or `_testing`. The test harness never falls back to the operator-facing `PG_DB`. Create and
-target a dedicated database before running them, for example `PG_TEST_DB=trader_test uv run pytest -m postgres`.
+Postgres integration tests destructively reset their fixture tables and therefore require the provisioned runtime
+marker plus all five `PG_TEST_*` values. The test harness ignores legacy `PG_HOST`, `PG_PORT`, `PG_USER`, and
+`PG_PASSWORD` variables. Run each Postgres phase between the fingerprinting `begin` and `end` commands above.
 
 ## Operational Safety
 

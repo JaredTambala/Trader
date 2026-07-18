@@ -309,7 +309,7 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 56B. Strategy And Risk Implementation Registration And Validation | Done | Registered MCP intake and deterministic validation. | Handwritten, AI-produced, maintained, or method-generated source uses the same hash/interface/parameter/resource/no-live-trading checks; no methodology ref is required. |
 | 56C. Maintained And Method-Generated Producer Adapters | Done | Producer-neutral registration accepts `authoring_origin` and generic `provenance_refs`. | Producers submit source to the same registry; origin affects lineage only and cannot change downstream eligibility. |
 | 56D. Remove Method-Card Execution Coupling | Done | Atomic no-compatibility cutover. | Candidate create/validate, candidate stack, and candidate backtest tools are no longer registered or supported artifact types. Canonical execution packages do not import knowledge types. |
-| 57. Reproducible Strategy, Risk, Backtest, And Optimisation Specifications | In progress | Implementation tasks 57A-H and freeze task 57I are done; controlled qualification tasks 57J-S are planned. | Immutable Postgres specifications, runs, trial ledgers, projections, Evaluation, and Adversarial refs compose without provider authority or filesystem identity; the slice is complete only after mandatory verification passes. |
+| 57. Reproducible Strategy, Risk, Backtest, And Optimisation Specifications | In progress | Implementation tasks 57A-H and freeze task 57I are done; isolated-runtime task 57J is in progress and qualification tasks 57K-S remain planned. | Immutable Postgres specifications, runs, trial ledgers, projections, Evaluation, and Adversarial refs compose without provider authority or filesystem identity; the slice is complete only after mandatory verification passes. |
 | 57A. Strategy And Risk Specifications | Done | Canonical DB-backed services and MCP tools. | Adds data-scope-free strategy and ordered risk-stack specifications over passed implementation validations. |
 | 57B. Reproducible Backtest Specifications | Done | Canonical DB-backed services and MCP tools. | Binds passed behavior to exactly one Data Agent manifest, quality snapshot, costs, assumptions, seed, limits, and lineage before execution. |
 | 57C. DB-First Specification Execution And Evaluation | Done | Canonical specification runner and result services. | Executes only passed specifications and stores complete baseline/portfolio result evidence in `backtest_run`; no canonical filesystem bundle or candidate request form remains. |
@@ -319,7 +319,7 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 57G. Optional Optuna Adapter | Done | Lazy optional adapter and runtime profile. | Adds seeded sequential single-objective TPE behind the provider-neutral protocol, dedicated schema/role checks, canonical reconciliation, no pruning, and fail-closed provider loss/drift. |
 | 57H. Provider-Neutral Experiment Tracking Projection | Done | Explicit `research_project_experiment_tracking`. | Derives an idempotent, non-authoritative projection from canonical evidence. The optional MLflow sink is independently gated and deletion/unavailability cannot affect Trader reads. |
 | 57I. Freeze Revision And Build Acceptance Matrix | Done | `verification-57i-freeze`; focused 56/57 suite: 55 passed; Ruff, compileall, and `git diff --check` passed. | Frozen inventory enumerates the complete changed worktree, 24 canonical MCP tools, 16 canonical artifact/projection pairs, provider protocols/profiles, independent gates, retired contracts, and invariants 36-61 with named evidence and explicit downstream gaps. |
-| 57J. Provision Isolated Verification Runtime | Planned | Requires 57I. | Use a dedicated `*_test` Trader database, isolated Optuna schema/role when qualified, disposable tracking namespace, explicit policy gates, and before/after operator-database fingerprints. Refuse any destructive fixture operation without the test-database suffix guard. |
+| 57J. Provision Isolated Verification Runtime | In progress | Strict test-only connection/marker/truncate guards, provisioning, credential-free manifests, operator fingerprints, and runtime tests are implemented; live isolated provisioning remains. | Use a dedicated `*_test` Trader database, isolated Optuna schema/role when qualified, disposable tracking namespace, explicit policy gates, and before/after operator-database fingerprints. Refuse any destructive fixture operation without the test-database suffix guard. |
 | 57K. Static, Contract, And Regression Gate | Planned | Requires 57J. | Run formatting/diff, Ruff, compileall, mypy, full non-Postgres pytest, MCP/docs/domain/package/SQL boundary suites, and test-coverage inventory. Undeclared skips, warnings promoted to failures, or stale candidate-era contracts block progression. |
 | 57L. Realistic Deterministic Evidence Fixture | Planned | Requires 57K. | Add a bounded multi-asset chronological dataset and handwritten strategy/risk/objective implementations that produce actual trades, nonzero exposure and costs, parameter-sensitive results, and both risk approvals and rejections across disjoint selection and holdout regions. |
 | 57M. Postgres-Native MCP Evidence Graph | Planned | Requires 57L. | Execute the full implementation -> specification -> selection backtest -> objective -> optimisation -> selected specification -> sealed holdout -> Evaluation -> Adversarial variants/report chain through MCP with only `research://postgres/...` canonical refs. |
@@ -1303,6 +1303,39 @@ by the named downstream task. `Planned` means no acceptance-grade test exists ye
 | 59 | C,O,T | Built-ins/startup/reads survive missing optional packages; each adapter is separately qualified. | Lazy runtime profile and unit adapters exist; no package-absent execution profile. | Planned / 57P |
 | 60 | P | Every acceptance artifact reconciles between canonical JSONB and its typed projection. | Schema test and plan/run/trial projection integration test only. | Partial / 57M graph and 57R full reconciliation |
 | 61 | C,P,O,T | Final record separates pass/fail/not-run/not-qualified and never promotes disposable evidence. | Acceptance record contract only. | Planned / 57S |
+
+#### 57J Isolated Runtime Contract
+
+Verification commits after `verification-57i-freeze` may change only tests, active docs, and the tracker. The controlled
+runtime records both the frozen product SHA and current harness SHA; any change under `src/`, `pyproject.toml`, `uv.lock`,
+or `env.template` blocks execution and requires a new 57I freeze.
+
+Destructive tests use only `PG_TEST_HOST`, `PG_TEST_PORT`, `PG_TEST_DB`, `PG_TEST_USER`, and `PG_TEST_PASSWORD`. They do
+not read `PG_HOST`, `PG_USER`, or other operator variables. `PG_TEST_DB` must end `_test` or `_testing`, differ from
+`PG_OPERATOR_DB`, be owned by a distinct non-superuser role, report the expected database/role from the server, use UTC,
+pin UTF-8 `LC_COLLATE`/`LC_CTYPE` from explicit `PG_TEST_LOCALE`, and contain a
+`verification_control.runtime_marker` row pinned to the frozen SHA. The guard runs before any store constructor and
+again immediately before every `TRUNCATE`.
+
+The test database contains a separate `verification_control` schema with the marker, credential-free runtime manifests,
+phase status, and before/after operator fingerprints. Fingerprints are computed through an explicit read-only,
+repeatable-read operator connection over runtime row hashes, knowledge source/chunk/embedding identities and content
+hashes, and canonical/projection research rows. Raw source text, vectors, payloads, and credentials are never stored in
+verification evidence. A mismatch records a blocked phase and stops execution.
+
+Optuna receives a separate non-superuser role and non-`public` schema in the verification database. The MLflow profile
+receives only a disposable experiment name at this stage. All broker, SQL, data-loading, backtest, optimisation,
+external-write, Optuna-write, and tracking-write gates remain false during 57J. Provider mutation remains deferred to
+57P.
+
+The test-only command surface is:
+
+```bash
+uv run python -m tests.support.postgres_verification provision --reset
+uv run python -m tests.support.postgres_verification begin --phase 57J
+TRADER_VERIFICATION_MODE=true uv run pytest tests/test_postgres_verification_runtime.py -m postgres -q
+uv run python -m tests.support.postgres_verification end --phase 57J
+```
 
 Execution profiles are independent:
 
