@@ -275,9 +275,11 @@ def test_tracker_records_57k_remediation_and_rerun_boundary() -> None:
     normalized_tracker = " ".join(tracker.split())
 
     required_phrases = (
-        "| 57K. Static, Contract, And Regression Gate | Blocked |",
+        "| 57K. Static, Contract, And Regression Gate | Done |",
+        "| 57K-R. Candidate Retirement And Warning Remediation | Done |",
         "#### Initial 57K Execution Evidence And Blockers",
         "#### 57K-R Candidate Retirement And Warning Remediation",
+        "#### Replacement 57I-57K Execution Evidence",
         "The candidate-era retirement is incomplete.",
         "Warnings-as-errors does not collect the suite.",
         "691 tests",
@@ -286,6 +288,9 @@ def test_tracker_records_57k_remediation_and_rerun_boundary() -> None:
         "create a new 57I freeze",
         "verification-57i-freeze-v2",
         "qualification_status",
+        "700 tests",
+        "58 tests",
+        "767511c4af43ad276f0955b296442474b37a7552",
     )
     for phrase in required_phrases:
         assert phrase in normalized_tracker

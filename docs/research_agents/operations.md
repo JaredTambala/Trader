@@ -199,7 +199,8 @@ uv run python -m tests.support.postgres_verification end --phase 57J --outcome p
 `provision --reset` terminates sessions and drops only the validated `PG_TEST_DB`; it cannot accept the operator
 database name or an unsafe suffix. The fixture guard verifies the live database, role, UTC setting, pinned locale, and
 `verification_control.runtime_marker` before constructing a store and again immediately before each `TRUNCATE`.
-`begin` stores a credential-free runtime manifest, the executed harness revision, and the operator `before` fingerprint.
+`begin` stores a credential-free runtime manifest, the executed harness revision, and the operator `before` fingerprint
+in `verification_control.operator_fingerprints`.
 `end` requires an explicit `--outcome passed|blocked`; blocked outcomes require one or more `--blocker` values. The
 phase row records `isolation_status`, `qualification_status`, blockers, the executed harness revision, and the verdict
 revision independently. An operator fingerprint or harness mismatch always blocks both isolation and qualification,
