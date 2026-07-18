@@ -21,7 +21,7 @@ from psycopg.types.json import Jsonb
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FREEZE_TAG = "verification-57i-freeze"
+FREEZE_TAG = "verification-57i-freeze-v2"
 VERIFICATION_MARKER_ID = "trader_verification"
 VERIFICATION_SCHEMA = "verification_control"
 TEST_DATABASE_SUFFIXES = ("_test", "_testing")
@@ -266,7 +266,7 @@ def assert_frozen_product() -> Mapping[str, str]:
     )
     if result.returncode != 0:
         raise VerificationConfigurationError(
-            "Product paths differ from verification-57i-freeze; repeat 57I before continuing."
+            f"Product paths differ from {FREEZE_TAG}; repeat 57I before continuing."
         )
     return {
         "freeze_tag": FREEZE_TAG,
@@ -348,7 +348,7 @@ def assert_connection_targets_verification_database(
         )
     if marker_freeze != expected_freeze:
         raise VerificationConfigurationError(
-            "Verification marker freeze revision does not match verification-57i-freeze."
+            f"Verification marker freeze revision does not match {FREEZE_TAG}."
         )
     if lc_collate != marker_locale or lc_ctype != marker_locale:
         raise VerificationConfigurationError(
@@ -600,12 +600,16 @@ def begin_phase(phase: str) -> Mapping[str, Any]:
         connection.execute(
             """
             INSERT INTO verification_control.phase_runs (
-                phase, freeze_revision, harness_revision, status, manifest,
+                phase, freeze_revision, executed_harness_revision, verdict_revision,
+                isolation_status, qualification_status, blockers, manifest,
                 operator_before_digest, operator_after_digest, started_at, finished_at
-            ) VALUES (%s, %s, %s, 'running', %s, %s, NULL, now(), NULL)
+            ) VALUES (%s, %s, %s, NULL, 'running', 'running', '[]'::jsonb, %s, %s, NULL, now(), NULL)
             ON CONFLICT (phase, freeze_revision) DO UPDATE SET
-                harness_revision = EXCLUDED.harness_revision,
-                status = 'running',
+                executed_harness_revision = EXCLUDED.executed_harness_revision,
+                verdict_revision = NULL,
+                isolation_status = 'running',
+                qualification_status = 'running',
+                blockers = '[]'::jsonb,
                 manifest = EXCLUDED.manifest,
                 operator_before_digest = EXCLUDED.operator_before_digest,
                 operator_after_digest = NULL,
@@ -636,9 +640,16 @@ def begin_phase(phase: str) -> Mapping[str, Any]:
     }
 
 
-def end_phase(phase: str) -> Mapping[str, Any]:
-    """Capture and compare the operator fingerprint after a phase."""
+def end_phase(
+    phase: str,
+    *,
+    outcome: str,
+    blockers: Sequence[str] = (),
+) -> Mapping[str, Any]:
+    """Record a qualification verdict and verify operator isolation."""
     _validate_phase(phase)
+    normalized_outcome = _validate_outcome(outcome, blockers)
+    normalized_blockers = _normalize_blockers(blockers)
     revisions = assert_frozen_product()
     test = _required_settings("PG_TEST")
     after = fingerprint_operator_database()
@@ -649,7 +660,7 @@ def end_phase(phase: str) -> Mapping[str, Any]:
             connection, test, freeze_revision=revisions["freeze_revision"]
         )
         phase_run = connection.execute(
-            "SELECT operator_before_digest, harness_revision "
+            "SELECT operator_before_digest, executed_harness_revision "
             "FROM verification_control.phase_runs "
             "WHERE phase = %s AND freeze_revision = %s",
             [phase, revisions["freeze_revision"]],
@@ -659,24 +670,40 @@ def end_phase(phase: str) -> Mapping[str, Any]:
                 f"No begin fingerprint exists for phase {phase!r}."
             )
         before_digest = str(phase_run["operator_before_digest"])
-        harness_matched = phase_run["harness_revision"] == revisions["harness_revision"]
+        harness_matched = (
+            phase_run["executed_harness_revision"] == revisions["harness_revision"]
+        )
         operator_matched = before_digest == after["digest"]
-        matched = harness_matched and operator_matched
+        isolation_passed = harness_matched and operator_matched
+        recorded_blockers = list(normalized_blockers)
+        if not harness_matched:
+            recorded_blockers.append(
+                "verification harness revision changed between phase begin and end"
+            )
+        if not operator_matched:
+            recorded_blockers.append(
+                "operator database fingerprint changed during verification"
+            )
+        qualification_status = normalized_outcome if isolation_passed else "blocked"
         _save_fingerprint(
             connection, phase, revisions["freeze_revision"], "after", after
         )
         connection.execute(
-            "UPDATE verification_control.phase_runs SET status = %s, "
+            "UPDATE verification_control.phase_runs SET isolation_status = %s, "
+            "qualification_status = %s, blockers = %s, verdict_revision = %s, "
             "operator_after_digest = %s, finished_at = now() "
             "WHERE phase = %s AND freeze_revision = %s",
             [
-                "passed" if matched else "blocked",
+                "passed" if isolation_passed else "blocked",
+                qualification_status,
+                Jsonb(recorded_blockers),
+                revisions["harness_revision"],
                 after["digest"],
                 phase,
                 revisions["freeze_revision"],
             ],
         )
-    if not matched:
+    if not isolation_passed:
         if not harness_matched:
             raise VerificationConfigurationError(
                 "Verification harness revision changed between phase begin and end."
@@ -689,7 +716,9 @@ def end_phase(phase: str) -> Mapping[str, Any]:
         "stage": "after",
         "freeze_revision": revisions["freeze_revision"],
         "operator_fingerprint": after["digest"],
-        "matched": True,
+        "isolation_status": "passed",
+        "qualification_status": normalized_outcome,
+        "blockers": normalized_blockers,
     }
 
 
@@ -764,6 +793,32 @@ def _initialize_product_schemas(settings: PostgresConnectionSettings) -> None:
 
 def _ensure_control_schema(connection: psycopg.Connection[Any]) -> None:
     connection.execute("CREATE SCHEMA IF NOT EXISTS verification_control")
+    phase_columns = {
+        row[0]
+        for row in connection.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = 'verification_control' "
+            "AND table_name = 'phase_runs'"
+        ).fetchall()
+    }
+    expected_phase_columns = {
+        "phase",
+        "freeze_revision",
+        "executed_harness_revision",
+        "verdict_revision",
+        "isolation_status",
+        "qualification_status",
+        "blockers",
+        "manifest",
+        "operator_before_digest",
+        "operator_after_digest",
+        "started_at",
+        "finished_at",
+    }
+    if phase_columns and phase_columns != expected_phase_columns:
+        raise VerificationConfigurationError(
+            "verification control schema is incompatible; run provision --reset"
+        )
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS verification_control.runtime_marker (
@@ -782,8 +837,15 @@ def _ensure_control_schema(connection: psycopg.Connection[Any]) -> None:
         CREATE TABLE IF NOT EXISTS verification_control.phase_runs (
             phase TEXT NOT NULL,
             freeze_revision TEXT NOT NULL,
-            harness_revision TEXT NOT NULL,
-            status TEXT NOT NULL,
+            executed_harness_revision TEXT NOT NULL,
+            verdict_revision TEXT,
+            isolation_status TEXT NOT NULL CHECK (
+                isolation_status IN ('running', 'passed', 'blocked')
+            ),
+            qualification_status TEXT NOT NULL CHECK (
+                qualification_status IN ('running', 'passed', 'blocked')
+            ),
+            blockers JSONB NOT NULL,
             manifest JSONB NOT NULL,
             operator_before_digest TEXT NOT NULL,
             operator_after_digest TEXT,
@@ -948,6 +1010,38 @@ def _validate_phase(phase: str) -> None:
         )
 
 
+def _validate_outcome(outcome: str, blockers: Sequence[str]) -> str:
+    normalized = str(outcome).strip().lower()
+    if normalized not in {"passed", "blocked"}:
+        raise VerificationConfigurationError("outcome must be passed or blocked")
+    normalized_blockers = _normalize_blockers(blockers)
+    if normalized == "passed" and normalized_blockers:
+        raise VerificationConfigurationError(
+            "a passed qualification cannot record blockers"
+        )
+    if normalized == "blocked" and not normalized_blockers:
+        raise VerificationConfigurationError(
+            "a blocked qualification must record at least one blocker"
+        )
+    return normalized
+
+
+def _normalize_blockers(blockers: Sequence[str]) -> list[str]:
+    if len(blockers) > 20:
+        raise VerificationConfigurationError("at most 20 blockers may be recorded")
+    normalized: list[str] = []
+    for blocker in blockers:
+        value = str(blocker).strip()
+        if not value:
+            raise VerificationConfigurationError("blockers must not be empty")
+        if len(value) > 500:
+            raise VerificationConfigurationError(
+                "each blocker must be at most 500 characters"
+            )
+        normalized.append(value)
+    return normalized
+
+
 def _is_harness_path(path: str) -> bool:
     return path in _HARNESS_PATHS or any(
         path.startswith(prefix) for prefix in _HARNESS_PATH_PREFIXES
@@ -1024,6 +1118,11 @@ def _build_parser() -> argparse.ArgumentParser:
             command, help=f"{command.title()} a fingerprinted phase."
         )
         phase.add_argument("--phase", required=True)
+        if command == "end":
+            phase.add_argument(
+                "--outcome", choices=("passed", "blocked"), required=True
+            )
+            phase.add_argument("--blocker", action="append", default=[])
     return parser
 
 
@@ -1036,7 +1135,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "begin":
             result = begin_phase(str(args.phase))
         else:
-            result = end_phase(str(args.phase))
+            result = end_phase(
+                str(args.phase), outcome=str(args.outcome), blockers=args.blocker
+            )
     except VerificationConfigurationError as exc:
         raise SystemExit(f"verification failed: {exc}") from exc
     print(json.dumps(result, sort_keys=True))

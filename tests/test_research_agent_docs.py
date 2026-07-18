@@ -124,7 +124,7 @@ def test_docs_pin_knowledge_baseline_and_identify_next_delivery_focus() -> None:
     assert "| 56. Implementation Registry And Method-Card Decoupling | Done |" in tracker
     assert "| 56A. Canonical Implementation-Version Domain | Done |" in tracker
     assert "| 56D. Remove Method-Card Execution Coupling | Done |" in tracker
-    assert "| 57. Reproducible Strategy, Risk, Backtest, And Optimisation Specifications | Blocked |" in tracker
+    assert "| 57. Reproducible Strategy, Risk, Backtest, And Optimisation Specifications | In progress |" in tracker
     assert "| 57C. DB-First Specification Execution And Evaluation | Done |" in tracker
     assert "| 57D. Provider-Neutral Optimisation Ledger And Protocols | Done |" in tracker
     assert "| 57H. Provider-Neutral Experiment Tracking Projection | Done |" in tracker
@@ -210,7 +210,7 @@ def test_tracker_freezes_57i_surface_and_acceptance_matrix() -> None:
 
     required_inventory = (
         "#### 57I Frozen Surface Inventory",
-        "`verification-57i-freeze`",
+        "`verification-57i-freeze-v2`",
         "`research_register_strategy_implementation`",
         "`research_register_optimization_objective`",
         "`research_run_backtest_specification`",
@@ -257,7 +257,10 @@ def test_docs_define_57j_isolated_postgres_runtime() -> None:
         "verification_control.operator_fingerprints",
         "tests.support.postgres_verification provision --reset",
         "before every `TRUNCATE`",
-        "byte-identical to `verification-57i-freeze`",
+        "byte-identical to `verification-57i-freeze-v2`",
+        "isolation_status",
+        "qualification_status",
+        "--outcome passed",
     )
     for phrase in required_phrases:
         assert phrase in combined
@@ -267,19 +270,22 @@ def test_docs_define_57j_isolated_postgres_runtime() -> None:
     assert "passwords" in operations
 
 
-def test_tracker_records_57k_blockers_and_rerun_boundary() -> None:
+def test_tracker_records_57k_remediation_and_rerun_boundary() -> None:
     tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(encoding="utf-8")
     normalized_tracker = " ".join(tracker.split())
 
     required_phrases = (
         "| 57K. Static, Contract, And Regression Gate | Blocked |",
-        "#### 57K Execution Evidence And Blockers",
+        "#### Initial 57K Execution Evidence And Blockers",
+        "#### 57K-R Candidate Retirement And Warning Remediation",
         "The candidate-era retirement is incomplete.",
         "Warnings-as-errors does not collect the suite.",
         "691 tests",
         "zero skips",
         "Do not start 57L from the current revision.",
         "create a new 57I freeze",
+        "verification-57i-freeze-v2",
+        "qualification_status",
     )
     for phrase in required_phrases:
         assert phrase in normalized_tracker

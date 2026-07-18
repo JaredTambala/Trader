@@ -35,7 +35,15 @@ def api_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         "market_data": {"symbols": "AAPL", "asset_class": "stocks"},
         "database": {"event_store": "noop"},
         "broker": {"type": "noop"},
-        "logging": {"persist": {"signals": False, "indicators": False, "orders": False, "fills": False, "positions": False}},
+        "logging": {
+            "persist": {
+                "signals": False,
+                "indicators": False,
+                "orders": False,
+                "fills": False,
+                "positions": False,
+            }
+        },
     }
     cfg_file = tmp_path / "test_config.yaml"
     cfg_file.write_text(yaml.dump(config))
@@ -51,15 +59,25 @@ def api_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
             "percent": 50.0,
             "last_ts": request.start.isoformat(),
         }
-        state["result"] = {"run_id": run_id, "strategy_performance": {"total_return": 0.0}}
+        state["result"] = {
+            "run_id": run_id,
+            "strategy_performance": {"total_return": 0.0},
+        }
         state["status"] = "completed"
         state["progress"]["percent"] = 100.0
         state["progress"]["processed"] = 1
 
-    monkeypatch.setattr(api, "Thread", lambda *, target, args, daemon: _ImmediateThread(target=target, args=args, daemon=daemon))
+    monkeypatch.setattr(
+        api,
+        "Thread",
+        lambda *, target, args, daemon: _ImmediateThread(
+            target=target, args=args, daemon=daemon
+        ),
+    )
     monkeypatch.setattr(api, "_run_backtest_worker", fake_worker)
 
-    yield TestClient(api.app)
+    with TestClient(api.app) as client:
+        yield client
 
 
 def test_post_backtest_returns_run_id(api_client: TestClient) -> None:

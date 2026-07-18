@@ -158,9 +158,9 @@ approved source evidence
 Knowledge and method cards remain supported, but candidate artifacts are no longer an execution boundary. Produced
 source enters the same registry as handwritten source, and data scope is supplied only by the backtest specification.
 
-For statistical-arbitrage evidence, an approved rich method card can also drive the maintained
-`pairs_mean_reversion` strategy template directly. The resulting strategy candidate records rich method-card provenance
-and remains data-free; symbols, timeframe, and date windows still come from Data Agent scope.
+For statistical-arbitrage evidence, an external or maintained producer may use an approved rich method card to author
+source based on the `pairs_mean_reversion` template. That source still enters the normal implementation registry;
+method-card lineage is optional provenance, while symbols, timeframe, and dates remain Data Agent scope.
 
 The historical 33N regression remains methodology evidence; its candidate/stack handoff is superseded by the canonical
 implementation/specification path.
@@ -184,10 +184,11 @@ source registration
   -> methodology candidate validation
   -> rich method-card draft
   -> explicit publish approval
-  -> method package, strategy candidate, or risk-manager candidate
-  -> validation
-  -> backtest or portfolio backtest
-  -> Evaluation report
+  -> optional implementation producer
+  -> content-addressed implementation registration and validation
+  -> immutable strategy/risk/backtest specifications
+  -> canonical backtest
+  -> Evaluation or Adversarial report
 ```
 
 Registration and ingestion are deliberately separate. Registration records the source reference, type, file hash, and

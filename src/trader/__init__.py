@@ -26,7 +26,6 @@ from .market_data import (
     StaticMarketDataSource,
 )
 from .market_data.backfill import MarketDataBackfillRunner
-from .market_data.stream import MarketDataStreamRunner
 from .backtest import (
     BacktestAssumptions,
     BacktestResult,
@@ -108,3 +107,12 @@ __all__ = [
     "TraderService",
     "load_sample_market_data_csv",
 ]
+
+
+def __getattr__(name: str) -> object:
+    """Load the optional live-stream adapter only when explicitly requested."""
+    if name == "MarketDataStreamRunner":
+        from .market_data.stream import MarketDataStreamRunner
+
+        return MarketDataStreamRunner
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

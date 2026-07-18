@@ -112,7 +112,7 @@ knowledge base. They are not currently being expanded toward autonomous book-sca
 | Tool | Side effect | Primary output | Notes |
 | --- | --- | --- | --- |
 | `research_list_strategy_templates` | `read_only` | Strategy template catalog. | Maintained template metadata only. |
-| `research_list_risk_manager_templates` | `read_only` | Risk-manager template catalog. | Metadata for optional code producers; not an execution identity. |
+| `research_list_risk_manager_templates` | `read_only` | Risk-manager template catalog. | Real maintained entrypoints and parameter metadata; not an execution identity. |
 | `research_register_strategy_implementation` | `local_mutating` | `implementation_version`. | Content-addressed source; methodology provenance is optional. |
 | `research_validate_strategy_implementation` | `local_mutating` | `implementation_validation_report`. | Static safety, interface, parameters, and deterministic fixture. |
 | `research_register_risk_manager_implementation` | `local_mutating` | `implementation_version`. | Same intake for supplied or produced risk code. |
@@ -133,8 +133,10 @@ knowledge base. They are not currently being expanded toward autonomous book-sca
 | `research_run_parameter_optimization_variants` | `local_mutating` | Immutable child optimisation runs. | Executes only Adversarial-requested optimisation variants. |
 | `research_project_experiment_tracking` | `external_research_mutating` | Non-authoritative projection report. | Derived, idempotent, and separately gated. |
 
-Candidate/stack creation and loose `research_run_backtest` / `research_run_portfolio_backtest` request forms are not
-registered. Maintained or method-generated source is a producer input to the same implementation registry.
+The catalog tools expose neutral metadata from `trader_research.implementations`; they do not expose method-card gates,
+candidate validators, source generators, or filesystem identities. Candidate/stack creation and loose
+`research_run_backtest` / `research_run_portfolio_backtest` request forms are not registered or implemented.
+Maintained or externally produced source enters the same implementation registry.
 
 ## Evaluation Tools
 

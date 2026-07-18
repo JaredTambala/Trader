@@ -127,12 +127,11 @@ filesystem artifacts. Typed projection tables expose stable IDs/status/lineage i
 JSONB remains canonical. Optuna uses its separately provisioned schema/role only for sampler state; Trader does not query
 it for evidence. MLflow projections are disposable and never dual-write canonical state.
 
-The 56D/57C development cutover has no data migration. Before starting a database that still contains
-`research_strategy_candidates`, `research_risk_manager_candidates`, `research_strategy_risk_stacks`, old backtest
-sidecars, or old Evaluation projections, an operator must drop those retired projection tables and delete their retired
-artifact rows. Re-run `PostgresResearchArtifactStore.ensure_schema()` to create only the canonical implementation,
-specification, backtest, optimisation, tracking, Evaluation, and Adversarial projections. Do not synthesize new refs from
-old candidate IDs or retain compatibility readers.
+The 56D/57C/57K-R cutover has no data migration or compatibility reader. A database containing candidate-era research
+tables or artifacts is unsupported and must be recreated or reset as a clean database before use. Schema initialization
+then creates only canonical implementation, specification, backtest, optimisation, tracking, Evaluation, and
+Adversarial projections. Do not translate old rows, synthesize new refs from candidate IDs, or selectively preserve
+candidate-era research data.
 
 ## Controlled Verification Procedure
 
@@ -188,22 +187,25 @@ export TRADER_MCP_ALLOW_OPTUNA_WRITES=false
 export TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES=false
 ```
 
-With a clean worktree whose product paths are byte-identical to `verification-57i-freeze`, execute:
+With a clean worktree whose product paths are byte-identical to `verification-57i-freeze-v2`, execute:
 
 ```bash
 uv run python -m tests.support.postgres_verification provision --reset
 uv run python -m tests.support.postgres_verification begin --phase 57J
 uv run pytest tests/test_postgres_verification_runtime.py -m postgres -q
-uv run python -m tests.support.postgres_verification end --phase 57J
+uv run python -m tests.support.postgres_verification end --phase 57J --outcome passed
 ```
 
 `provision --reset` terminates sessions and drops only the validated `PG_TEST_DB`; it cannot accept the operator
 database name or an unsafe suffix. The fixture guard verifies the live database, role, UTC setting, pinned locale, and
 `verification_control.runtime_marker` before constructing a store and again immediately before each `TRUNCATE`.
-`begin` stores a credential-free runtime manifest in `verification_control.phase_runs` and the operator `before`
-fingerprint in `verification_control.operator_fingerprints`; `end` stores the `after` fingerprint and blocks the phase
-if the digests differ. Product rows, source text, vectors, artifact payloads, passwords, and external provider state are
-not copied into verification evidence.
+`begin` stores a credential-free runtime manifest, the executed harness revision, and the operator `before` fingerprint.
+`end` requires an explicit `--outcome passed|blocked`; blocked outcomes require one or more `--blocker` values. The
+phase row records `isolation_status`, `qualification_status`, blockers, the executed harness revision, and the verdict
+revision independently. An operator fingerprint or harness mismatch always blocks both isolation and qualification,
+even when the caller supplied `--outcome passed`. The control schema is disposable and is recreated by
+`provision --reset`; it has no migration path from the first verification schema. Product rows, source text, vectors,
+artifact payloads, passwords, and external provider state are not copied into verification evidence.
 
 The mandatory acceptance graph is not the existing in-memory empty-strategy smoke test. It must use
 `PostgresResearchArtifactStore`, call public MCP tools throughout, and produce real multi-asset orders, exposure, costs,

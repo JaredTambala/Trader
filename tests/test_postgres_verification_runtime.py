@@ -16,6 +16,7 @@ from tests.support.postgres_verification import (
     assert_verification_database,
     build_runtime_manifest,
     _is_harness_path,
+    _validate_outcome,
     load_operator_settings,
     load_optuna_test_settings,
     load_test_settings,
@@ -86,6 +87,15 @@ def test_test_database_contract_rejects_operator_identity() -> None:
         load_test_settings(values, required=True)
 
 
+def test_phase_outcome_contract_requires_explicit_consistent_blockers() -> None:
+    assert _validate_outcome("passed", ()) == "passed"
+    assert _validate_outcome("blocked", ("strict test failed",)) == "blocked"
+    with pytest.raises(VerificationConfigurationError, match="at least one blocker"):
+        _validate_outcome("blocked", ())
+    with pytest.raises(VerificationConfigurationError, match="cannot record blockers"):
+        _validate_outcome("passed", ("contradiction",))
+
+
 @pytest.mark.postgres
 def test_verification_database_has_server_checked_marker_and_manifest(
     postgres_settings: dict[str, object],
@@ -99,7 +109,7 @@ def test_verification_database_has_server_checked_marker_and_manifest(
     assert identity["lc_collate"] == os.environ["PG_TEST_LOCALE"]
     assert identity["lc_ctype"] == os.environ["PG_TEST_LOCALE"]
     assert manifest["database_identity"] == identity
-    assert manifest["freeze"]["freeze_tag"] == "verification-57i-freeze"
+    assert manifest["freeze"]["freeze_tag"] == "verification-57i-freeze-v2"
     assert manifest["test_database"]["dbname"] == postgres_settings["dbname"]
     assert all(manifest["policy_gates"][name] is False for name in MUTATION_GATE_NAMES)
     serialized = json.dumps(manifest, sort_keys=True).lower()
@@ -109,11 +119,17 @@ def test_verification_database_has_server_checked_marker_and_manifest(
     settings = settings_from_mapping(postgres_settings)
     with psycopg.connect(settings.conninfo(), row_factory=dict_row) as connection:
         phase = connection.execute(
-            "SELECT status, operator_before_digest, manifest "
+            "SELECT isolation_status, qualification_status, blockers, "
+            "executed_harness_revision, verdict_revision, "
+            "operator_before_digest, manifest "
             "FROM verification_control.phase_runs WHERE phase = '57J'"
         ).fetchone()
     assert phase is not None
-    assert phase["status"] == "running"
+    assert phase["isolation_status"] == "running"
+    assert phase["qualification_status"] == "running"
+    assert phase["blockers"] == []
+    assert phase["executed_harness_revision"]
+    assert phase["verdict_revision"] is None
     assert phase["operator_before_digest"]
     assert phase["manifest"]["configuration_digest"] == manifest["configuration_digest"]
 

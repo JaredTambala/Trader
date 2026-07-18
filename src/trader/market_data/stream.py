@@ -6,11 +6,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import logging
 import signal
-from typing import Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Mapping, Sequence
+import warnings
 
-from alpaca.data.enums import CryptoFeed, DataFeed
-from alpaca.data.live.crypto import CryptoDataStream
-from alpaca.data.live.stock import StockDataStream
 from ..config import Config
 from ..event_store import EventStore, build_event_store
 from ..runtime.notifications import notify_market_data
@@ -18,6 +16,11 @@ from .domain import CryptoBarEvent, StockBarEvent
 
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from alpaca.data.enums import CryptoFeed, DataFeed
+    from alpaca.data.live.crypto import CryptoDataStream
+    from alpaca.data.live.stock import StockDataStream
 
 
 @dataclass(frozen=True)
@@ -148,7 +151,11 @@ class MarketDataStreamRunner:
             logger.exception("Failed to notify market data bar: %s", exc)
             notified = False
         if notified:
-            logger.debug("Market data notify sent symbol=%s ts=%s", event.symbol, event.ts.isoformat())
+            logger.debug(
+                "Market data notify sent symbol=%s ts=%s",
+                event.symbol,
+                event.ts.isoformat(),
+            )
         logger.info(
             "Market data streamed symbol=%s ts=%s close=%s volume=%s source=%s",
             event.symbol,
@@ -159,7 +166,9 @@ class MarketDataStreamRunner:
         )
 
 
-def _build_stream(config: Config, asset_class: str) -> StockDataStream | CryptoDataStream:
+def _build_stream(
+    config: Config, asset_class: str
+) -> StockDataStream | CryptoDataStream:
     """Construct the Alpaca websocket stream client.
 
     Args:
@@ -174,18 +183,21 @@ def _build_stream(config: Config, asset_class: str) -> StockDataStream | CryptoD
     asset_class = asset_class.lower()
     if not config.alpaca_api_key or not config.alpaca_secret_key:
         raise ValueError("Alpaca API key and secret are required for streaming")
+    stock_stream_type, crypto_stream_type, crypto_feed_type, data_feed_type = (
+        _load_alpaca_live_types()
+    )
     if asset_class in {"stocks", "stock"}:
-        feed = _normalize_stock_feed(config.market_data_stock_feed)
-        return StockDataStream(
+        feed = _normalize_stock_feed(config.market_data_stock_feed, data_feed_type)
+        return stock_stream_type(
             api_key=config.alpaca_api_key,
             secret_key=config.alpaca_secret_key,
             feed=feed,
         )
     if asset_class in {"crypto", "cryptocurrency"}:
-        return CryptoDataStream(
+        return crypto_stream_type(
             api_key=config.alpaca_api_key,
             secret_key=config.alpaca_secret_key,
-            feed=CryptoFeed.US,
+            feed=crypto_feed_type.US,
         )
     raise ValueError(f"Unsupported asset class: {config.market_data_asset_class}")
 
@@ -199,6 +211,7 @@ def _install_signal_handlers(stream: object) -> None:
     Raises:
         None.
     """
+
     def _handle_signal(signum: int, _frame: object) -> None:
         """Translate process signals into stream stop/close calls."""
         logger.info("Shutdown signal received (%s); stopping stream", signum)
@@ -209,7 +222,9 @@ def _install_signal_handlers(stream: object) -> None:
     signal.signal(signal.SIGTERM, _handle_signal)
 
 
-def _build_bar_event(context: StreamContext, bar: object) -> StockBarEvent | CryptoBarEvent | None:
+def _build_bar_event(
+    context: StreamContext, bar: object
+) -> StockBarEvent | CryptoBarEvent | None:
     """Convert a websocket bar payload into a bar event.
 
     Args:
@@ -226,7 +241,15 @@ def _build_bar_event(context: StreamContext, bar: object) -> StockBarEvent | Cry
     low_value = _bar_value(bar, "l", ("l", "low"))
     close_value = _bar_value(bar, "c", ("c", "close", "price"))
     volume_value = _bar_value(bar, "v", ("v", "volume"))
-    if None in (symbol, ts_value, open_value, high_value, low_value, close_value, volume_value):
+    if None in (
+        symbol,
+        ts_value,
+        open_value,
+        high_value,
+        low_value,
+        close_value,
+        volume_value,
+    ):
         return None
 
     trade_count = _optional_float(_bar_value(bar, "n", ("n", "trade_count")))
@@ -310,21 +333,49 @@ def _optional_float(value: object) -> float | None:
     return float(value)
 
 
-def _normalize_stock_feed(feed: str | None) -> DataFeed:
+def _normalize_stock_feed(feed: str | None, data_feed_type: Any) -> DataFeed:
     """Normalize stock feed configuration for Alpaca streams.
 
     Args:
         feed: Feed identifier string.
+        data_feed_type: Lazily loaded Alpaca `DataFeed` enum type.
 
     Returns:
         DataFeed enum (defaults to IEX).
     """
     if not feed:
-        return DataFeed.IEX
+        return data_feed_type.IEX
     feed_value = feed.strip().lower()
     if feed_value == "sip":
-        return DataFeed.SIP
-    return DataFeed.IEX
+        return data_feed_type.SIP
+    return data_feed_type.IEX
+
+
+def _load_alpaca_live_types() -> tuple[
+    type[StockDataStream],
+    type[CryptoDataStream],
+    type[CryptoFeed],
+    type[DataFeed],
+]:
+    """Load Alpaca live types behind the live-stream adapter boundary."""
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"websockets\.legacy is deprecated; see .*",
+            category=DeprecationWarning,
+            module=r"websockets\.legacy",
+        )
+        from alpaca.data.enums import CryptoFeed as AlpacaCryptoFeed
+        from alpaca.data.enums import DataFeed as AlpacaDataFeed
+        from alpaca.data.live.crypto import CryptoDataStream as AlpacaCryptoDataStream
+        from alpaca.data.live.stock import StockDataStream as AlpacaStockDataStream
+
+    return (
+        AlpacaStockDataStream,
+        AlpacaCryptoDataStream,
+        AlpacaCryptoFeed,
+        AlpacaDataFeed,
+    )
 
 
 def _parse_symbols_value(value: object | None) -> list[str] | None:
@@ -332,10 +383,14 @@ def _parse_symbols_value(value: object | None) -> list[str] | None:
     if value is None:
         return None
     if isinstance(value, str):
-        symbols = [symbol.strip().upper() for symbol in value.split(",") if symbol.strip()]
+        symbols = [
+            symbol.strip().upper() for symbol in value.split(",") if symbol.strip()
+        ]
         return symbols or None
     if isinstance(value, (list, tuple)):
-        symbols = [str(symbol).strip().upper() for symbol in value if str(symbol).strip()]
+        symbols = [
+            str(symbol).strip().upper() for symbol in value if str(symbol).strip()
+        ]
         return symbols or None
     raise ValueError("stream.symbols must be a string or list")
 

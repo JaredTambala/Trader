@@ -9,8 +9,10 @@ import json
 from typing import Any, Mapping, Sequence
 
 from trader_research.research import apply_parameter_overrides
-from trader_research.strategy_candidates import SUPPORTED_STRATEGY_FAMILIES as _SUPPORTED_STRATEGY_FAMILIES
-from trader_research.strategy_candidates import normalize_strategy_family
+from trader_research.implementations import (
+    SUPPORTED_STRATEGY_FAMILIES as _SUPPORTED_STRATEGY_FAMILIES,
+)
+from trader_research.implementations import normalize_strategy_family
 
 
 SUPPORTED_STRATEGY_FAMILIES = _SUPPORTED_STRATEGY_FAMILIES
@@ -71,11 +73,15 @@ def build_suite_members(
     strategy_cfg_by_family = _suite_strategy_config(suite_cfg)
 
     for family in families:
-        parameter_grid = _family_parameter_grid(strategy_cfg_by_family.get(family, {}), family)
+        parameter_grid = _family_parameter_grid(
+            strategy_cfg_by_family.get(family, {}), family
+        )
         for parameters in parameter_grid:
             if len(members) >= max_runs:
                 raise ValueError(f"research suite expands beyond max_runs={max_runs}")
-            member_config = _member_config(config_data, family, symbols, asset_class, timeframe, parameters)
+            member_config = _member_config(
+                config_data, family, symbols, asset_class, timeframe, parameters
+            )
             member_payload = {
                 "suite_id": suite_id,
                 "strategy_family": family,
@@ -120,7 +126,11 @@ def suggest_follow_up_suite(recommendations: Mapping[str, Any]) -> dict[str, Any
         if isinstance(candidate, Mapping)
         and any(
             reason in set(candidate.get("reasons", []))
-            for reason in {"data_quality_missing_gaps", "excessive_turnover", "failed_run"}
+            for reason in {
+                "data_quality_missing_gaps",
+                "excessive_turnover",
+                "failed_run",
+            }
         )
     ]
     return {
@@ -131,7 +141,9 @@ def suggest_follow_up_suite(recommendations: Mapping[str, Any]) -> dict[str, Any
     }
 
 
-def _suite_strategy_config(suite_cfg: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
+def _suite_strategy_config(
+    suite_cfg: Mapping[str, Any],
+) -> dict[str, Mapping[str, Any]]:
     strategies = suite_cfg.get("strategies", [])
     result: dict[str, Mapping[str, Any]] = {}
     if not isinstance(strategies, list):
@@ -144,12 +156,16 @@ def _suite_strategy_config(suite_cfg: Mapping[str, Any]) -> dict[str, Mapping[st
     return result
 
 
-def _family_parameter_grid(entry: Mapping[str, Any], family: str) -> list[dict[str, Any]]:
+def _family_parameter_grid(
+    entry: Mapping[str, Any], family: str
+) -> list[dict[str, Any]]:
     parameters = entry.get("parameters")
     if parameters is None:
         return [{}]
     if not isinstance(parameters, Mapping):
-        raise ValueError(f"research.suite.strategies.{family}.parameters must be a mapping")
+        raise ValueError(
+            f"research.suite.strategies.{family}.parameters must be a mapping"
+        )
     keys = sorted(str(key) for key in parameters.keys())
     values_by_key: list[list[Any]] = []
     for key in keys:

@@ -8,6 +8,8 @@ can survive process restarts.
 from __future__ import annotations
 
 from argparse import ArgumentParser
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from threading import Thread
 from typing import Any, Mapping
@@ -19,7 +21,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-from ..backtest import BacktestRunner, BacktestSpec, persist_backtest_result, serialize_backtest_result
+from ..backtest import (
+    BacktestRunner,
+    BacktestSpec,
+    persist_backtest_result,
+    serialize_backtest_result,
+)
 from ..event_store import build_event_store
 from ..config import build_config, load_yaml_config
 from ..identifiers import deterministic_run_session_id
@@ -62,19 +69,36 @@ class BacktestResponse(BaseModel):
 
 
 load_dotenv(".env")
-app = FastAPI(title="Trader backend")
+BACKEND_CONFIG_PATH: str | None = os.environ.get("BACKEND_CONFIG_PATH")
+BACKEND_CONFIG_DATA: Mapping[str, Any] | None = None
+BACKEND_CONFIG: object | None = None
+BACKTEST_RUNS: dict[str, dict[str, Any]] = {}
+
+
+def _load_config() -> None:
+    """Load the configured backend state before serving requests."""
+    global BACKEND_CONFIG_PATH, BACKEND_CONFIG_DATA, BACKEND_CONFIG
+    if not BACKEND_CONFIG_PATH:
+        raise RuntimeError("BACKEND_CONFIG_PATH must be set before startup")
+    data = load_yaml_config(BACKEND_CONFIG_PATH)
+    BACKEND_CONFIG_DATA = data
+    BACKEND_CONFIG = build_config(data)
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Initialize process-local backend state for the application lifetime."""
+    _load_config()
+    yield
+
+
+app = FastAPI(title="Trader backend", lifespan=_lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Shared runtime state
-BACKEND_CONFIG_PATH: str | None = os.environ.get("BACKEND_CONFIG_PATH")
-BACKEND_CONFIG_DATA: Mapping[str, Any] | None = None
-BACKEND_CONFIG: object | None = None
-BACKTEST_RUNS: dict[str, dict[str, Any]] = {}
 
 
 def _sanitize_serializable(value: Any) -> Any:
@@ -86,6 +110,7 @@ def _sanitize_serializable(value: Any) -> Any:
     if isinstance(value, list) or isinstance(value, tuple):
         return [_sanitize_serializable(v) for v in value]
     return value
+
 
 def _run_backtest_worker(run_id: str, request: BacktestRequest) -> None:
     """Execute one requested backtest and update shared run state.
@@ -114,8 +139,12 @@ def _run_backtest_worker(run_id: str, request: BacktestRequest) -> None:
             symbols=request.symbols,
             asset_class=request.asset_class,
             initial_cash=request.initial_cash,
-            config_snapshot={"payload": request.dict(), "base_config": BACKEND_CONFIG_DATA},
+            config_snapshot={
+                "payload": request.model_dump(),
+                "base_config": BACKEND_CONFIG_DATA,
+            },
         )
+
         # Attach progress callback to update run state
         def _progress(processed: int, total: int, last_ts: datetime | None) -> None:
             percent = 100.0 if total == 0 else min(100.0, (processed / total * 100))
@@ -142,23 +171,6 @@ def _run_backtest_worker(run_id: str, request: BacktestRequest) -> None:
         state["error"] = str(exc)
 
 
-@app.on_event("startup")
-def _load_config() -> None:
-    """Load backend config once during FastAPI startup.
-
-    The config path must be provided through `BACKEND_CONFIG_PATH`. The parsed
-    YAML data is retained for provenance, while the typed config object is used
-    by workers and persisted-result lookups.
-    """
-    global BACKEND_CONFIG_PATH, BACKEND_CONFIG_DATA, BACKEND_CONFIG
-    if not BACKEND_CONFIG_PATH:
-        raise RuntimeError("BACKEND_CONFIG_PATH must be set before startup")
-    data = load_yaml_config(BACKEND_CONFIG_PATH)
-    config = build_config(data)
-    BACKEND_CONFIG_DATA = data
-    BACKEND_CONFIG = config
-
-
 @app.post("/backtest", response_model=BacktestResponse)
 def start_backtest(request: BacktestRequest) -> BacktestResponse:
     """Validate a request, register run progress, and start a worker thread.
@@ -175,7 +187,7 @@ def start_backtest(request: BacktestRequest) -> BacktestResponse:
     BACKTEST_RUNS[run_id] = {
         "status": "queued",
         "started_at": datetime.now(timezone.utc),
-        "request": _sanitize_serializable(request.dict()),
+        "request": _sanitize_serializable(request.model_dump()),
         "result": None,
         "error": None,
         "progress": {"processed": 0, "total": 0, "percent": 0.0, "last_ts": None},
@@ -266,7 +278,6 @@ def get_backtest_result(run_id: str) -> Mapping[str, Any]:
     }
 
 
-
 def main() -> None:
     """Parse server options, set the config path, and launch uvicorn.
 
@@ -276,7 +287,9 @@ def main() -> None:
     parser = ArgumentParser(description="Run the Trader backtest API.")
     parser.add_argument("config", help="Path to the YAML configuration.")
     parser.add_argument("--host", default="0.0.0.0", help="Host for the HTTP server.")
-    parser.add_argument("--port", type=int, default=8000, help="Port for the HTTP server.")
+    parser.add_argument(
+        "--port", type=int, default=8000, help="Port for the HTTP server."
+    )
     args = parser.parse_args()
     os.environ["BACKEND_CONFIG_PATH"] = args.config
     import uvicorn

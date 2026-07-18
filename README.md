@@ -520,7 +520,7 @@ docker compose -f docker-compose.postgres.yml up -d
 uv run python -m tests.support.postgres_verification provision --reset
 uv run python -m tests.support.postgres_verification begin --phase 57J
 uv run pytest -m postgres
-uv run python -m tests.support.postgres_verification end --phase 57J
+uv run python -m tests.support.postgres_verification end --phase 57J --outcome passed
 ```
 
 First configure the explicit `PG_ADMIN_*`, `PG_OPERATOR_*`, `PG_TEST_*`, and `PG_OPTUNA_TEST_*` connection profiles,

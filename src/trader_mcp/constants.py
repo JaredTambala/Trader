@@ -56,19 +56,29 @@ KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL: Final = "knowledge_retrieve_evidence"
 KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL: Final = "knowledge_get_evidence_chunks"
 """Tool name for dereferencing citeable evidence chunks into stored text."""
 
-KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL: Final = "knowledge_discover_methodology_candidates"
+KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL: Final = (
+    "knowledge_discover_methodology_candidates"
+)
 """Tool name for discovering methodology candidates from ingested source chunks."""
 
-KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL: Final = "knowledge_assemble_methodology_evidence"
+KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL: Final = (
+    "knowledge_assemble_methodology_evidence"
+)
 """Tool name for assembling role-labeled methodology evidence packets."""
 
-KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL: Final = "knowledge_extract_methodology_fields"
+KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL: Final = (
+    "knowledge_extract_methodology_fields"
+)
 """Tool name for extracting rich methodology fields from a candidate."""
 
-KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE_TOOL: Final = "knowledge_validate_methodology_candidate"
+KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE_TOOL: Final = (
+    "knowledge_validate_methodology_candidate"
+)
 """Tool name for validating extracted methodology candidates before draft-card creation."""
 
-KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL: Final = "knowledge_create_rich_method_card_draft"
+KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL: Final = (
+    "knowledge_create_rich_method_card_draft"
+)
 """Tool name for promoting a validated methodology candidate into a rich method-card draft."""
 
 KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL: Final = "knowledge_create_method_card_draft"
@@ -120,33 +130,67 @@ RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL: Final = "research_list_strategy_templates
 """Tool name for listing maintained strategy templates."""
 
 RESEARCH_GET_BACKTEST_RESULTS_TOOL: Final = "research_get_backtest_results"
-"""Tool name for reading a persisted baseline backtest result bundle."""
+"""Tool name for reading a canonical persisted backtest run."""
 
 RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL: Final = "research_compare_backtest_results"
-"""Tool name for comparing persisted baseline backtest result bundles."""
+"""Tool name for comparing canonical persisted backtest runs."""
 
-RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL: Final = "research_list_risk_manager_templates"
-"""Tool name for listing source-generatable risk-manager templates."""
+RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL: Final = (
+    "research_list_risk_manager_templates"
+)
+"""Tool name for listing maintained risk-manager implementations."""
 
-RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL: Final = "research_register_strategy_implementation"
-RESEARCH_VALIDATE_STRATEGY_IMPLEMENTATION_TOOL: Final = "research_validate_strategy_implementation"
-RESEARCH_REGISTER_RISK_MANAGER_IMPLEMENTATION_TOOL: Final = "research_register_risk_manager_implementation"
-RESEARCH_VALIDATE_RISK_MANAGER_IMPLEMENTATION_TOOL: Final = "research_validate_risk_manager_implementation"
-RESEARCH_REGISTER_OPTIMIZATION_OBJECTIVE_TOOL: Final = "research_register_optimization_objective"
-RESEARCH_VALIDATE_OPTIMIZATION_OBJECTIVE_TOOL: Final = "research_validate_optimization_objective"
-RESEARCH_CREATE_STRATEGY_SPECIFICATION_TOOL: Final = "research_create_strategy_specification"
-RESEARCH_VALIDATE_STRATEGY_SPECIFICATION_TOOL: Final = "research_validate_strategy_specification"
-RESEARCH_CREATE_RISK_STACK_SPECIFICATION_TOOL: Final = "research_create_risk_stack_specification"
-RESEARCH_VALIDATE_RISK_STACK_SPECIFICATION_TOOL: Final = "research_validate_risk_stack_specification"
-RESEARCH_CREATE_BACKTEST_SPECIFICATION_TOOL: Final = "research_create_backtest_specification"
-RESEARCH_VALIDATE_BACKTEST_SPECIFICATION_TOOL: Final = "research_validate_backtest_specification"
+RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL: Final = (
+    "research_register_strategy_implementation"
+)
+RESEARCH_VALIDATE_STRATEGY_IMPLEMENTATION_TOOL: Final = (
+    "research_validate_strategy_implementation"
+)
+RESEARCH_REGISTER_RISK_MANAGER_IMPLEMENTATION_TOOL: Final = (
+    "research_register_risk_manager_implementation"
+)
+RESEARCH_VALIDATE_RISK_MANAGER_IMPLEMENTATION_TOOL: Final = (
+    "research_validate_risk_manager_implementation"
+)
+RESEARCH_REGISTER_OPTIMIZATION_OBJECTIVE_TOOL: Final = (
+    "research_register_optimization_objective"
+)
+RESEARCH_VALIDATE_OPTIMIZATION_OBJECTIVE_TOOL: Final = (
+    "research_validate_optimization_objective"
+)
+RESEARCH_CREATE_STRATEGY_SPECIFICATION_TOOL: Final = (
+    "research_create_strategy_specification"
+)
+RESEARCH_VALIDATE_STRATEGY_SPECIFICATION_TOOL: Final = (
+    "research_validate_strategy_specification"
+)
+RESEARCH_CREATE_RISK_STACK_SPECIFICATION_TOOL: Final = (
+    "research_create_risk_stack_specification"
+)
+RESEARCH_VALIDATE_RISK_STACK_SPECIFICATION_TOOL: Final = (
+    "research_validate_risk_stack_specification"
+)
+RESEARCH_CREATE_BACKTEST_SPECIFICATION_TOOL: Final = (
+    "research_create_backtest_specification"
+)
+RESEARCH_VALIDATE_BACKTEST_SPECIFICATION_TOOL: Final = (
+    "research_validate_backtest_specification"
+)
 RESEARCH_RUN_BACKTEST_SPECIFICATION_TOOL: Final = "research_run_backtest_specification"
 RESEARCH_GET_OPTIMIZER_RUNTIME_TOOL: Final = "research_get_optimizer_runtime"
-RESEARCH_CREATE_PARAMETER_OPTIMIZATION_PLAN_TOOL: Final = "research_create_parameter_optimization_plan"
+RESEARCH_CREATE_PARAMETER_OPTIMIZATION_PLAN_TOOL: Final = (
+    "research_create_parameter_optimization_plan"
+)
 RESEARCH_RUN_PARAMETER_OPTIMIZATION_TOOL: Final = "research_run_parameter_optimization"
-RESEARCH_GET_PARAMETER_OPTIMIZATION_RESULTS_TOOL: Final = "research_get_parameter_optimization_results"
-RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS_TOOL: Final = "research_run_parameter_optimization_variants"
-RESEARCH_PROJECT_EXPERIMENT_TRACKING_TOOL: Final = "research_project_experiment_tracking"
+RESEARCH_GET_PARAMETER_OPTIMIZATION_RESULTS_TOOL: Final = (
+    "research_get_parameter_optimization_results"
+)
+RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS_TOOL: Final = (
+    "research_run_parameter_optimization_variants"
+)
+RESEARCH_PROJECT_EXPERIMENT_TRACKING_TOOL: Final = (
+    "research_project_experiment_tracking"
+)
 EVALUATION_GENERATE_PARAMETER_OPTIMIZATION_REPORT_TOOL: Final = (
     "evaluation_generate_parameter_optimization_report"
 )
@@ -324,8 +368,8 @@ MATH_TOOL_DESCRIPTIONS: Final = {
 """Descriptions for Quant Methods method tools exposed by the MCP server."""
 
 RESEARCH_TOOL_DESCRIPTIONS: Final = {
-    RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL: "List maintained strategy-template metadata for optional code producers.",
-    RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL: "List maintained risk-template metadata for optional code producers.",
+    RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL: "List neutral metadata for maintained strategy implementations.",
+    RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL: "List neutral metadata for maintained risk implementations.",
     RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL: "Register a content-addressed strategy implementation version.",
     RESEARCH_VALIDATE_STRATEGY_IMPLEMENTATION_TOOL: "Validate strategy source and deterministic runtime behavior.",
     RESEARCH_REGISTER_RISK_MANAGER_IMPLEMENTATION_TOOL: (

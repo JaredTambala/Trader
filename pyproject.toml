@@ -11,7 +11,7 @@ requires-python = ">=3.12,<3.13"
 license = {text = "MIT"}
 authors = [{name = "Trader"}]
 dependencies = [
-    "alpaca-py>=0.31.0",
+    "alpaca-py>=0.43.5",
     "dotenv>=0.9.9",
     "fastapi>=0.128.0",
     "langgraph>=1.2.2",

@@ -3,9 +3,51 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import subprocess
+import sys
 
-from trader.market_data.stream import StreamContext, _build_bar_event
 from trader.market_data import CryptoBarEvent, StockBarEvent
+from trader.market_data.stream import StreamContext, _build_bar_event
+
+
+def test_core_and_stream_module_imports_are_warning_clean_and_lazy() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-W",
+            "error",
+            "-c",
+            (
+                "import sys; import trader; "
+                "assert 'alpaca.data.live' not in sys.modules; "
+                "import trader.market_data.stream; "
+                "assert 'alpaca.data.live' not in sys.modules"
+            ),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_alpaca_live_adapter_import_scopes_upstream_deprecation() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-W",
+            "error",
+            "-c",
+            (
+                "from trader.market_data.stream import _load_alpaca_live_types; "
+                "assert len(_load_alpaca_live_types()) == 4"
+            ),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 class FakeBar:

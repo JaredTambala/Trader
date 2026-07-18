@@ -112,8 +112,10 @@ knowledge source
   -> methodology validation report
   -> method-card draft
   -> approved method card
-  -> method package, strategy candidate, or risk-manager candidate
-  -> validation and backtest evidence
+  -> optional implementation producer
+  -> content-addressed implementation registration and validation
+  -> immutable strategy/risk/backtest specifications
+  -> canonical backtest evidence
 ```
 
 Each stage records a different kind of truth.

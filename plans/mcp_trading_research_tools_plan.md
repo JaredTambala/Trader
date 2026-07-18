@@ -14,34 +14,31 @@ Bounded data request
   -> reproducible MCP evidence
 ```
 
-The next useful product surface is the source-backed strategy research toolchain:
+The current strategy research toolchain is implementation-first:
 
 ```text
-approved source evidence
-  -> validated indicator or signal implementation
-  -> method package manifest
-  -> strategy candidate manifest
-  -> baseline backtest
-  -> performance report
+handwritten, maintained, AI-produced, or method-informed source
+  -> content-addressed implementation registration and validation
+  -> immutable strategy and ordered risk specifications
+  -> Data Agent-scoped backtest specification
+  -> canonical Postgres backtest run
+  -> optimisation, Evaluation, and Adversarial evidence
 ```
 
 This toolchain is the shortest path to meaningful MCP value. Agent graphs, generated hypotheses, ML artifacts,
 adversarial robustness, recommendations, and compiled-kernel acceleration should compose this deterministic toolchain
 after it exists; they should not block it.
 
-The next product checkpoint after the baseline chain is risk-aware portfolio construction. Strategy candidates are
-necessary but not sufficient: useful research must be able to generate strategies that operate over multiple symbols,
-generate one or more source-backed risk managers, compose them into a validated strategy/risk stack, run the stack over a
-Data Agent multi-asset data scope, and evaluate the resulting portfolio and risk evidence. The first baseline can keep
-`NoOpRiskManager` for smoke coverage, but meaningful evaluation should move toward:
+Risk-aware portfolio construction now uses registered implementations and immutable specifications. Method cards and
+maintained catalogs may inform producers, but they are not execution dependencies. The current composition is:
 
 ```text
-method packages
-  -> multi-asset strategy candidate
-  -> risk-manager candidate(s)
-  -> validated strategy/risk stack
-  -> risk-scoped portfolio backtest
-  -> performance and risk evaluation report
+validated strategy implementation
+  -> validated risk-manager implementation(s)
+  -> strategy and ordered risk-stack specifications
+  -> Data Agent-scoped backtest specification
+  -> canonical multi-asset backtest run
+  -> holdout Evaluation and independent Adversarial review
 ```
 
 Later slices add the Quant Research Supervisor and each specialist agent carefully: first a deterministic MCP tool that
@@ -66,7 +63,7 @@ trader_standard
 
 trader_research
   Research experiment orchestration, research domain models, tool contracts,
-  data-quality/tool wrappers, strategy-candidate validation, robustness,
+  data-quality/tool wrappers, implementation/specification validation, robustness,
   attribution, reports, and agent-owned research artifact handling.
 
 trader_mcp
@@ -168,19 +165,18 @@ MCP server boots
   -> Data Agent LLM control loop turns natural-language data requests into validated Data Agent tool calls
   -> Quant Research Supervisor identity consumes Data Agent artifacts
   -> Quantitative Methods knowledge/method tools produce source-backed deterministic method artifacts
-  -> Method package manifests become strategy-construction handoffs
-  -> Quant Research Supervisor strategy-candidate tools create and validate declarative candidates
-  -> Quant Research Supervisor backtest tools run one bounded baseline and expose result lookup
-  -> Evaluation performance-report tool summarizes the backtest with caveats
-  -> End-to-end MCP toolchain proves method package -> strategy -> backtest -> performance report
-  -> Quant Research Supervisor portfolio/risk tools generate risk-manager candidates and strategy/risk stacks
-  -> Risk-scoped multi-asset backtest tools evaluate one or more strategies with one or more risk managers
-  -> Evaluation reports include portfolio, exposure, concentration, VaR/CVaR-style risk, and risk-manager evidence
+  -> Optional producers submit source through one content-addressed implementation registry
+  -> Quant Research Supervisor tools validate implementations and immutable specifications
+  -> Canonical DB-backed backtests bind only Data Agent scope and passed specifications
+  -> Provider-neutral optimisation records complete trial and selection lineage
+  -> Evaluation and Adversarial tools independently assess untouched holdout and robustness evidence
   -> Supervisor, Quant Methods, Hypothesis, ML, Evaluation, and Adversarial graph/LLM layers compose the proven tools
   -> Recommendation and experiment-runner tools synthesize later evidence
 ```
 
-Every stage should leave behind a usable MCP tool, a direct service test, an MCP contract/smoke test, and an artifact that matches the owning agent's contract.
+Every current stage should leave behind a usable MCP tool, a direct service test, an MCP contract/smoke test, and an
+artifact that matches the owning agent's contract. Earlier completion rows below are historical delivery evidence;
+their candidate-era APIs are retired and are not current contracts.
 
 ## Completion Status Register
 
@@ -309,7 +305,7 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 56B. Strategy And Risk Implementation Registration And Validation | Done | Registered MCP intake and deterministic validation. | Handwritten, AI-produced, maintained, or method-generated source uses the same hash/interface/parameter/resource/no-live-trading checks; no methodology ref is required. |
 | 56C. Maintained And Method-Generated Producer Adapters | Done | Producer-neutral registration accepts `authoring_origin` and generic `provenance_refs`. | Producers submit source to the same registry; origin affects lineage only and cannot change downstream eligibility. |
 | 56D. Remove Method-Card Execution Coupling | Done | Atomic no-compatibility cutover. | Candidate create/validate, candidate stack, and candidate backtest tools are no longer registered or supported artifact types. Canonical execution packages do not import knowledge types. |
-| 57. Reproducible Strategy, Risk, Backtest, And Optimisation Specifications | Blocked | Implementation tasks 57A-H and controlled-verification tasks 57I-J are done. 57K found stale candidate-era compatibility surfaces and warnings-as-errors failures; product remediation must be followed by a new 57I freeze and rerun of 57J-K before 57L. | Immutable Postgres specifications, runs, trial ledgers, projections, Evaluation, and Adversarial refs compose without provider authority or filesystem identity; the slice is complete only after mandatory verification passes. |
+| 57. Reproducible Strategy, Risk, Backtest, And Optimisation Specifications | In progress | 57K-R is removing the stale candidate-era surface and warning failures found by the first 57K run. A replacement 57I freeze and rerun of 57J-K are required before 57L. | Immutable Postgres specifications, runs, trial ledgers, projections, Evaluation, and Adversarial refs compose without provider authority or filesystem identity; the slice is complete only after mandatory verification passes. |
 | 57A. Strategy And Risk Specifications | Done | Canonical DB-backed services and MCP tools. | Adds data-scope-free strategy and ordered risk-stack specifications over passed implementation validations. |
 | 57B. Reproducible Backtest Specifications | Done | Canonical DB-backed services and MCP tools. | Binds passed behavior to exactly one Data Agent manifest, quality snapshot, costs, assumptions, seed, limits, and lineage before execution. |
 | 57C. DB-First Specification Execution And Evaluation | Done | Canonical specification runner and result services. | Executes only passed specifications and stores complete baseline/portfolio result evidence in `backtest_run`; no canonical filesystem bundle or candidate request form remains. |
@@ -318,9 +314,10 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 57F. Deterministic Optimisation Execution And Independent Review | Done | Grid/random execution, MCP services, Evaluation, and Adversarial tools. | Persists every proposal, attempt, failure, observation, objective result, child ref, selection, and tie-break; holdout Evaluation and Adversarial audit remain separate and cannot rewrite selections. |
 | 57G. Optional Optuna Adapter | Done | Lazy optional adapter and runtime profile. | Adds seeded sequential single-objective TPE behind the provider-neutral protocol, dedicated schema/role checks, canonical reconciliation, no pruning, and fail-closed provider loss/drift. |
 | 57H. Provider-Neutral Experiment Tracking Projection | Done | Explicit `research_project_experiment_tracking`. | Derives an idempotent, non-authoritative projection from canonical evidence. The optional MLflow sink is independently gated and deletion/unavailability cannot affect Trader reads. |
-| 57I. Freeze Revision And Build Acceptance Matrix | Done | `verification-57i-freeze`; focused 56/57 suite: 55 passed; Ruff, compileall, and `git diff --check` passed. | Frozen inventory enumerates the complete changed worktree, 24 canonical MCP tools, 16 canonical artifact/projection pairs, provider protocols/profiles, independent gates, retired contracts, and invariants 36-61 with named evidence and explicit downstream gaps. |
-| 57J. Provision Isolated Verification Runtime | Done | Harness `fd4b384`; `trader_verification_test`; 4 Postgres guard tests passed; operator before/after fingerprint `73c3e970eca95f589c71ac477a2e1f3db9b48ede0c0b3c16c2ee161add498190` matched. | Dedicated marked `*_test` database, distinct non-superuser Trader/Optuna roles, pinned locale/UTC, isolated provider namespaces, credential-free manifest, fail-closed truncate guards, and control-schema fingerprints are active. All mutation gates remained false. |
+| 57I. Freeze Revision And Build Acceptance Matrix | In progress | The first freeze was invalidated by 57K; replacement tag will be `verification-57i-freeze-v2`. | Freeze the cleaned product only after strict static/non-Postgres verification passes. |
+| 57J. Provision Isolated Verification Runtime | Blocked | Requires the replacement 57I freeze and disposable control-schema reset. | Reprovision from scratch and record separate isolation and qualification results. |
 | 57K. Static, Contract, And Regression Gate | Blocked | Ruff, compileall, mypy, 691 non-Postgres tests, 60 focused contract tests, and diff checks passed; operator fingerprints matched. Strict warnings and retired-surface audits failed. | Remove candidate-era domain models/direct services/readers/current docs/tests, add absence regressions, replace deprecated FastAPI/Pydantic calls, resolve or explicitly isolate the Alpaca/websockets import warning, then repeat 57I-J-K. 57L must not begin against the current freeze. |
+| 57K-R. Candidate Retirement And Warning Remediation | In progress | Implements the no-compatibility cleanup required by the failed 57K gate. | Separate qualification and isolation verdicts; preserve only neutral maintained-template discovery; delete retired candidate/stack/bundle contracts; fix FastAPI/Pydantic warnings; isolate the upstream Alpaca live import warning; add absence regressions; update active docs; then replace the 57I freeze and rerun 57J-K. |
 | 57L. Realistic Deterministic Evidence Fixture | Planned | Requires 57K. | Add a bounded multi-asset chronological dataset and handwritten strategy/risk/objective implementations that produce actual trades, nonzero exposure and costs, parameter-sensitive results, and both risk approvals and rejections across disjoint selection and holdout regions. |
 | 57M. Postgres-Native MCP Evidence Graph | Planned | Requires 57L. | Execute the full implementation -> specification -> selection backtest -> objective -> optimisation -> selected specification -> sealed holdout -> Evaluation -> Adversarial variants/report chain through MCP with only `research://postgres/...` canonical refs. |
 | 57N. Determinism, Integrity, And Leakage Tests | Planned | Requires 57M. | Repeat clean runs and verify stable IDs, trial order, observations, tie-breaks, and selection; prove complete failed-trial evidence, immutable selections, source/config drift rejection, distinct selection/holdout hashes, and no holdout access during optimisation. |
@@ -695,7 +692,7 @@ Backward-compatible aliases may be retained initially:
 | 57F. Deterministic Optimisation Execution And Independent Review | Execute bounded studies while retaining complete trial and review evidence. | grid/random engines, executor/services, Evaluation, Adversarial, MCP, Postgres projections, tests | Done. Adds runtime/create/run/get/variant tools, deterministic resume/tie-breaks, complete failed-attempt evidence, sealed holdout Evaluation, and Adversarial plan/judgment. Promotion readiness requires both independent reports. |
 | 57G. Optional Optuna Adapter | Add adaptive sampling without making Optuna a platform dependency or evidence store. | optional adapter, environment/config health, dedicated Postgres schema/role, conformance tests | Done. Optuna loads lazily, uses seeded sequential TPE with no pruning, authenticates to a non-public dedicated schema/role, and reconciles terminal provider state against Trader trials before resume. Provider loss leaves canonical evidence readable and the run partial/blocked. |
 | 57H. Provider-Neutral Experiment Tracking Projection | Project completed canonical evidence to optional analytical tracking systems. | `src/trader_research/tracking/`, MCP/config gates, optional MLflow sink, tests | Done. `research_project_experiment_tracking` derives an idempotent payload from canonical run/trials; callers cannot submit metrics/tags. Projection writes require generic external-research and sink-specific gates and are explicitly non-authoritative. |
-| 57I. Freeze Revision And Build Acceptance Matrix | Establish exactly what is being tested and prevent a moving worktree from invalidating conclusions. | Git checkpoint, `git status --short`, `git diff --stat`, registered-tool/config/artifact/projection inventories, invariant-to-test matrix | Done. The `verification-57i-freeze` tag identifies the checkpoint. The frozen matrix enumerates the full worktree and 56/57 public/persistence/provider/policy/retirement surfaces, maps invariants 36-61 to named tests, and distinguishes existing, partial, and planned evidence across core, Postgres, Optuna, and tracking profiles. Any later change invalidates its phase and downstream evidence. |
+| 57I. Freeze Revision And Build Acceptance Matrix | Establish exactly what is being tested and prevent a moving worktree from invalidating conclusions. | Git checkpoint, `git status --short`, `git diff --stat`, registered-tool/config/artifact/projection inventories, invariant-to-test matrix | In progress. The invalid first freeze is superseded; `verification-57i-freeze-v2` will identify the cleaned checkpoint after 57K-R verification. Any later product change invalidates its phase and downstream evidence. |
 | 57J. Provision Isolated Verification Runtime | Make destructive and external integration tests safe, repeatable, and visibly separate from operator state. | `tests/conftest.py`, dedicated Trader verification DB, optional dedicated Optuna schema/role, disposable tracking experiment, environment manifest | Require `PG_TEST_DB` ending `_test` or `_testing`; never fall back to `PG_DB`; use a least-privilege verification role where practical; pin locale/timezone/dependency versions/seeds and record credential-free config digests. Capture operator DB table counts and stable content fingerprints before and after every Postgres phase. Default all mutation gates off and enable only the gate needed by the current profile. A guard failure or operator fingerprint change is an immediate stop condition. |
 | 57K. Static, Contract, And Regression Gate | Establish that the frozen revision is internally consistent before spending time on integration evidence. | Ruff, compileall, mypy, non-Postgres pytest, MCP/docs/domain/package/SQL boundary suites, `git diff --check` | Run `uv run ruff check src tests`, `python -m compileall -q src/trader_research src/trader_mcp src/trader_agents src/trader_standard src/trader`, `uv run mypy`, `uv run pytest -m 'not postgres' -q`, focused MCP/docs/domain/package/SQL suites, and `git diff --check`. Inventory deleted candidate-era tests against replacement coverage. Treat unexpected skips, collection warnings, import-time optional-provider failures, stale registered tools, compatibility aliases/readers, and package-boundary regressions as blockers. Save exact commands and summaries against the frozen revision. |
 | 57L. Realistic Deterministic Evidence Fixture | Replace the toy empty-strategy smoke graph as the acceptance fixture while keeping it bounded and reproducible. | `tests/support/` fixture builder or checked-in fixture data, realistic strategy/risk/objective sources, fixture assertions | Use at least three symbols and enough chronological bars for warm-up, multiple entries/exits, selection, and untouched holdout. Pin timestamps, prices, source hashes, quality snapshots, costs, seed, and expected scope. The handwritten strategy must place both buy and sell orders and produce parameter-sensitive outcomes; the risk manager must approve and reject observable orders; fees/slippage and final exposure must be nonzero where expected. Selection and holdout windows must be disjoint with different manifest/content hashes. Assert fixture semantics directly so a no-trade or constant-objective run cannot pass the graph accidentally. |
@@ -1194,7 +1191,7 @@ fixture, schema, dependency-lock, or policy change invalidates that phase and ev
 
 #### 57I Frozen Surface Inventory
 
-The checkpoint revision is identified by the annotated Git tag `verification-57i-freeze` on branch
+The replacement checkpoint revision is identified by the annotated Git tag `verification-57i-freeze-v2` on branch
 `experiment/agentic-build`. The tag is created only after the inventory, matrix, documentation regression, and
 checkpoint commit are complete. Later verification records use the commit resolved by that tag, not a moving branch
 name. The pre-cutover parent is `40ade24` (`Complete semantic extraction and research roadmap`).
@@ -1294,7 +1291,7 @@ by the named downstream task. `Planned` means no acceptance-grade test exists ye
 | 50 | C,P | Holdout Evaluation and Adversarial audit are separately owned and cannot rewrite selection. | Direct grid test and `test_mcp_optimization_holdout_and_adversarial_evidence_graph` | Existing smoke evidence / 57M and 57N immutable-selection proof |
 | 51 | C,O,T | Backtest, optimisation, external, Optuna, and tracking gates are independent and reported by config. | All three tests in `test_mcp_optimization_tools.py` | Existing / 57Q full gate matrix |
 | 52 | C,P | Canonical loaders recompute identities and fail closed on source/config/snapshot/lineage drift. | Seeded-random/base-snapshot drift test and content-addressed service loaders | Partial / 57N full tamper matrix |
-| 53 | C | Evidence is tied to one frozen revision and downstream phases rerun after changes. | This inventory/matrix, checkpoint commit, annotated `verification-57i-freeze` tag | Existing / 57I complete |
+| 53 | C | Evidence is tied to one frozen revision and downstream phases rerun after changes. | This inventory/matrix, checkpoint commit, annotated `verification-57i-freeze-v2` tag | Pending replacement 57I freeze and rerun |
 | 54 | P | Tests require explicit `*_test` DB and leave operator runtime/research/knowledge unchanged. | Server/marker/role/locale checks before store construction and every truncate; `verification_control.operator_fingerprints`; 57J before/after digest match. | Existing / 57J complete |
 | 55 | P | Mandatory graph is multi-asset and produces parameter-sensitive trades, costs, exposure, approvals, and rejections. | Current graph is one-symbol, twelve-bar, empty-strategy smoke coverage. | Planned / 57L fixture and 57M graph |
 | 56 | P | Selection and holdout are disjoint by time/hash and holdout is unread before selection. | Current smoke graph separates times but has no access instrumentation. | Planned / 57N |
@@ -1306,7 +1303,7 @@ by the named downstream task. `Planned` means no acceptance-grade test exists ye
 
 #### 57J Isolated Runtime Contract
 
-Verification commits after `verification-57i-freeze` may change only tests, active docs, and the tracker. The controlled
+Verification commits after `verification-57i-freeze-v2` may change only tests, active docs, and the tracker. The controlled
 runtime records both the frozen product SHA and current harness SHA; any change under `src/`, `pyproject.toml`, `uv.lock`,
 or `env.template` blocks execution and requires a new 57I freeze.
 
@@ -1334,10 +1331,10 @@ The test-only command surface is:
 uv run python -m tests.support.postgres_verification provision --reset
 uv run python -m tests.support.postgres_verification begin --phase 57J
 TRADER_VERIFICATION_MODE=true uv run pytest tests/test_postgres_verification_runtime.py -m postgres -q
-uv run python -m tests.support.postgres_verification end --phase 57J
+uv run python -m tests.support.postgres_verification end --phase 57J --outcome passed
 ```
 
-#### 57J Execution Evidence
+#### Superseded 57J Execution Evidence
 
 - Executed 2026-07-18 14:28:30-14:28:33 UTC against frozen product revision
   `09b0b5ebf538d80de935bde52bebf77a099d2449` (`verification-57i-freeze`) and harness revision
@@ -1363,7 +1360,7 @@ uv run python -m tests.support.postgres_verification end --phase 57J
 - One third-party `websockets.legacy` deprecation warning was observed. It does not affect the isolation result and is
   carried into 57K's warnings review rather than being silently discarded.
 
-#### 57K Execution Evidence And Blockers
+#### Initial 57K Execution Evidence And Blockers
 
 - Executed the fingerprinted phase from 2026-07-18 14:46:58-14:48:20 UTC against product freeze
   `09b0b5ebf538d80de935bde52bebf77a099d2449` and harness revision
@@ -1405,6 +1402,21 @@ Required remediation is a product change and therefore invalidates the current f
 models, readers, active documentation, and positive compatibility tests; add explicit absence/boundary regressions;
 resolve the warning failures; then create a new 57I freeze, reprovision/re-run 57J, and rerun all of 57K. Do not start
 57L from the current revision.
+
+#### 57K-R Candidate Retirement And Warning Remediation
+
+This phase replaces the failed candidate-era cutover with a hard deletion. It removes candidate, candidate-validation,
+stack, filesystem backtest-bundle, and legacy performance-report services and domain models. The only retained template
+surface is the neutral read-only maintained implementation catalog under `trader_research.implementations`; catalog
+rows point to real `trader_standard` entrypoints and carry no method-card, candidate, source-generator, or filesystem
+requirements.
+
+The verification control schema is also replaced rather than migrated. `phase_runs` records environmental isolation
+and qualification outcome independently through `isolation_status`, `qualification_status`, explicit blockers,
+`executed_harness_revision`, and `verdict_revision`. FastAPI startup uses lifespan, Pydantic requests use `model_dump`,
+and Alpaca live websocket imports are lazy with an exact adapter-scoped suppression for the upstream deprecation.
+Completion requires a clean `verification-57i-freeze-v2`, a reset disposable verification database, and fresh passing
+57J and 57K evidence.
 
 Execution profiles are independent:
 

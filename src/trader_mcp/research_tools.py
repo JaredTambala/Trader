@@ -48,6 +48,8 @@ from trader_research.backtests import (
 )
 from trader_research.contracts import SideEffect, ToolEnvelope, error_envelope
 from trader_research.implementations import (
+    list_risk_manager_templates,
+    list_strategy_templates,
     register_optimization_objective,
     register_risk_manager_implementation,
     register_strategy_implementation,
@@ -65,7 +67,6 @@ from trader_research.optimization import (
     run_parameter_optimization_variants,
     required_optimizer_profiles_for_variants,
 )
-from trader_research.risk_managers import list_risk_manager_templates
 from trader_research.specifications import (
     create_backtest_specification,
     create_risk_stack_specification,
@@ -74,8 +75,10 @@ from trader_research.specifications import (
     validate_risk_stack_specification,
     validate_strategy_specification,
 )
-from trader_research.strategy_candidates import list_strategy_templates
-from trader_research.tracking import ExperimentTrackingSinkRegistry, project_experiment_tracking
+from trader_research.tracking import (
+    ExperimentTrackingSinkRegistry,
+    project_experiment_tracking,
+)
 
 
 EventStoreProvider = Callable[[], EventStore]
@@ -98,18 +101,30 @@ def register_research_tools(
     sinks = tracking_sink_registry or ExperimentTrackingSinkRegistry()
 
     def _store() -> ResearchArtifactStore | None:
-        return artifact_store_provider() if artifact_store_provider is not None else None
+        return (
+            artifact_store_provider() if artifact_store_provider is not None else None
+        )
 
     def _result(envelope: ToolEnvelope) -> CallToolResult:
         return CallToolResult(**envelope_to_mcp_result(envelope))
 
-    def _blocked(command: str, code: str, message: str, side_effect: SideEffect) -> CallToolResult:
-        return _result(error_envelope(command=command, side_effect=side_effect, code=code, message=message))
+    def _blocked(
+        command: str, code: str, message: str, side_effect: SideEffect
+    ) -> CallToolResult:
+        return _result(
+            error_envelope(
+                command=command, side_effect=side_effect, code=code, message=message
+            )
+        )
 
-    def _implementation_registration(service: Callable[..., ToolEnvelope], **kwargs: Any) -> CallToolResult:
+    def _implementation_registration(
+        service: Callable[..., ToolEnvelope], **kwargs: Any
+    ) -> CallToolResult:
         return _result(service(**kwargs, artifact_store=_store()))
 
-    def _runtime_error(command: str, *, optimization: bool = False) -> CallToolResult | None:
+    def _runtime_error(
+        command: str, *, optimization: bool = False
+    ) -> CallToolResult | None:
         if event_store_provider is None or backtest_config_provider is None:
             return _blocked(
                 command,
@@ -137,14 +152,20 @@ def register_research_tools(
         name=RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL,
         description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL],
     )
-    def research_list_strategy_templates(families: list[str] | None = None) -> CallToolResult:
+    def research_list_strategy_templates(
+        families: list[str] | None = None,
+    ) -> CallToolResult:
         return _result(list_strategy_templates(families=families))
 
     @server.tool(
         name=RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL,
-        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL],
+        description=RESEARCH_TOOL_DESCRIPTIONS[
+            RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL
+        ],
     )
-    def research_list_risk_manager_templates(families: list[str] | None = None) -> CallToolResult:
+    def research_list_risk_manager_templates(
+        families: list[str] | None = None,
+    ) -> CallToolResult:
         return _result(list_risk_manager_templates(families=families))
 
     def _register(
@@ -183,7 +204,9 @@ def register_research_tools(
 
     @server.tool(
         name=RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL,
-        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL],
+        description=RESEARCH_TOOL_DESCRIPTIONS[
+            RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL
+        ],
     )
     def research_register_strategy_implementation(
         name: str,
@@ -219,7 +242,9 @@ def register_research_tools(
 
     @server.tool(
         name=RESEARCH_REGISTER_RISK_MANAGER_IMPLEMENTATION_TOOL,
-        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_REGISTER_RISK_MANAGER_IMPLEMENTATION_TOOL],
+        description=RESEARCH_TOOL_DESCRIPTIONS[
+            RESEARCH_REGISTER_RISK_MANAGER_IMPLEMENTATION_TOOL
+        ],
     )
     def research_register_risk_manager_implementation(
         name: str,
@@ -255,7 +280,9 @@ def register_research_tools(
 
     @server.tool(
         name=RESEARCH_REGISTER_OPTIMIZATION_OBJECTIVE_TOOL,
-        description=MATH_TOOL_DESCRIPTIONS[RESEARCH_REGISTER_OPTIMIZATION_OBJECTIVE_TOOL],
+        description=MATH_TOOL_DESCRIPTIONS[
+            RESEARCH_REGISTER_OPTIMIZATION_OBJECTIVE_TOOL
+        ],
     )
     def research_register_optimization_objective(
         name: str,
@@ -309,7 +336,9 @@ def register_research_tools(
 
     @server.tool(
         name=RESEARCH_VALIDATE_STRATEGY_IMPLEMENTATION_TOOL,
-        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_VALIDATE_STRATEGY_IMPLEMENTATION_TOOL],
+        description=RESEARCH_TOOL_DESCRIPTIONS[
+            RESEARCH_VALIDATE_STRATEGY_IMPLEMENTATION_TOOL
+        ],
     )
     def research_validate_strategy_implementation(
         implementation_version_id: str | None = None,
@@ -327,7 +356,9 @@ def register_research_tools(
 
     @server.tool(
         name=RESEARCH_VALIDATE_RISK_MANAGER_IMPLEMENTATION_TOOL,
-        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_VALIDATE_RISK_MANAGER_IMPLEMENTATION_TOOL],
+        description=RESEARCH_TOOL_DESCRIPTIONS[
+            RESEARCH_VALIDATE_RISK_MANAGER_IMPLEMENTATION_TOOL
+        ],
     )
     def research_validate_risk_manager_implementation(
         implementation_version_id: str | None = None,
@@ -345,7 +376,9 @@ def register_research_tools(
 
     @server.tool(
         name=RESEARCH_VALIDATE_OPTIMIZATION_OBJECTIVE_TOOL,
-        description=MATH_TOOL_DESCRIPTIONS[RESEARCH_VALIDATE_OPTIMIZATION_OBJECTIVE_TOOL],
+        description=MATH_TOOL_DESCRIPTIONS[
+            RESEARCH_VALIDATE_OPTIMIZATION_OBJECTIVE_TOOL
+        ],
     )
     def research_validate_optimization_objective(
         implementation_version_id: str | None = None,
@@ -363,7 +396,9 @@ def register_research_tools(
 
     @server.tool(
         name=RESEARCH_CREATE_STRATEGY_SPECIFICATION_TOOL,
-        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_CREATE_STRATEGY_SPECIFICATION_TOOL],
+        description=RESEARCH_TOOL_DESCRIPTIONS[
+            RESEARCH_CREATE_STRATEGY_SPECIFICATION_TOOL
+        ],
     )
     def research_create_strategy_specification(
         implementation_validation_ref: str,
@@ -391,7 +426,9 @@ def register_research_tools(
 
     @server.tool(
         name=RESEARCH_VALIDATE_STRATEGY_SPECIFICATION_TOOL,
-        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_VALIDATE_STRATEGY_SPECIFICATION_TOOL],
+        description=RESEARCH_TOOL_DESCRIPTIONS[
+            RESEARCH_VALIDATE_STRATEGY_SPECIFICATION_TOOL
+        ],
     )
     def research_validate_strategy_specification(
         strategy_specification_id: str | None = None,
@@ -409,7 +446,9 @@ def register_research_tools(
 
     @server.tool(
         name=RESEARCH_CREATE_RISK_STACK_SPECIFICATION_TOOL,
-        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_CREATE_RISK_STACK_SPECIFICATION_TOOL],
+        description=RESEARCH_TOOL_DESCRIPTIONS[
+            RESEARCH_CREATE_RISK_STACK_SPECIFICATION_TOOL
+        ],
     )
     def research_create_risk_stack_specification(
         risk_managers: list[dict[str, Any]],
@@ -427,7 +466,9 @@ def register_research_tools(
 
     @server.tool(
         name=RESEARCH_VALIDATE_RISK_STACK_SPECIFICATION_TOOL,
-        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_VALIDATE_RISK_STACK_SPECIFICATION_TOOL],
+        description=RESEARCH_TOOL_DESCRIPTIONS[
+            RESEARCH_VALIDATE_RISK_STACK_SPECIFICATION_TOOL
+        ],
     )
     def research_validate_risk_stack_specification(
         risk_stack_specification_id: str | None = None,
@@ -445,7 +486,9 @@ def register_research_tools(
 
     @server.tool(
         name=RESEARCH_CREATE_BACKTEST_SPECIFICATION_TOOL,
-        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_CREATE_BACKTEST_SPECIFICATION_TOOL],
+        description=RESEARCH_TOOL_DESCRIPTIONS[
+            RESEARCH_CREATE_BACKTEST_SPECIFICATION_TOOL
+        ],
     )
     def research_create_backtest_specification(
         strategy_specification_validation_ref: str,
@@ -487,7 +530,9 @@ def register_research_tools(
 
     @server.tool(
         name=RESEARCH_VALIDATE_BACKTEST_SPECIFICATION_TOOL,
-        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_VALIDATE_BACKTEST_SPECIFICATION_TOOL],
+        description=RESEARCH_TOOL_DESCRIPTIONS[
+            RESEARCH_VALIDATE_BACKTEST_SPECIFICATION_TOOL
+        ],
     )
     def research_validate_backtest_specification(
         backtest_specification_id: str | None = None,
@@ -505,7 +550,9 @@ def register_research_tools(
 
     @server.tool(
         name=RESEARCH_RUN_BACKTEST_SPECIFICATION_TOOL,
-        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_RUN_BACKTEST_SPECIFICATION_TOOL],
+        description=RESEARCH_TOOL_DESCRIPTIONS[
+            RESEARCH_RUN_BACKTEST_SPECIFICATION_TOOL
+        ],
     )
     async def research_run_backtest_specification(
         backtest_specification_validation_ref: str,
@@ -515,7 +562,10 @@ def register_research_tools(
             return blocked
 
         def _run() -> ToolEnvelope:
-            assert event_store_provider is not None and backtest_config_provider is not None
+            assert (
+                event_store_provider is not None
+                and backtest_config_provider is not None
+            )
             return run_backtest_specification(
                 event_store=event_store_provider(),
                 config=backtest_config_provider(),
@@ -568,7 +618,9 @@ def register_research_tools(
 
     @server.tool(
         name=RESEARCH_CREATE_PARAMETER_OPTIMIZATION_PLAN_TOOL,
-        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_CREATE_PARAMETER_OPTIMIZATION_PLAN_TOOL],
+        description=RESEARCH_TOOL_DESCRIPTIONS[
+            RESEARCH_CREATE_PARAMETER_OPTIMIZATION_PLAN_TOOL
+        ],
     )
     def research_create_parameter_optimization_plan(
         base_backtest_specification_validation_ref: str,
@@ -604,18 +656,23 @@ def register_research_tools(
 
     @server.tool(
         name=RESEARCH_RUN_PARAMETER_OPTIMIZATION_TOOL,
-        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_RUN_PARAMETER_OPTIMIZATION_TOOL],
+        description=RESEARCH_TOOL_DESCRIPTIONS[
+            RESEARCH_RUN_PARAMETER_OPTIMIZATION_TOOL
+        ],
     )
     async def research_run_parameter_optimization(
         optimization_plan_ref: str,
         optimizer_profile: str = "builtin_random",
         max_new_trials: int | None = None,
     ) -> CallToolResult:
-        blocked = _runtime_error(RESEARCH_RUN_PARAMETER_OPTIMIZATION_TOOL, optimization=True)
+        blocked = _runtime_error(
+            RESEARCH_RUN_PARAMETER_OPTIMIZATION_TOOL, optimization=True
+        )
         if blocked is not None:
             return blocked
         if _is_optuna_profile(engines, optimizer_profile) and (
-            not environment.allow_external_research_writes or not environment.allow_optuna_writes
+            not environment.allow_external_research_writes
+            or not environment.allow_optuna_writes
         ):
             return _blocked(
                 RESEARCH_RUN_PARAMETER_OPTIMIZATION_TOOL,
@@ -628,7 +685,10 @@ def register_research_tools(
             )
 
         def _run() -> ToolEnvelope:
-            assert event_store_provider is not None and backtest_config_provider is not None
+            assert (
+                event_store_provider is not None
+                and backtest_config_provider is not None
+            )
             store = _store()
             if store is None:
                 return _blocked_envelope(
@@ -654,9 +714,13 @@ def register_research_tools(
 
     @server.tool(
         name=RESEARCH_GET_PARAMETER_OPTIMIZATION_RESULTS_TOOL,
-        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_GET_PARAMETER_OPTIMIZATION_RESULTS_TOOL],
+        description=RESEARCH_TOOL_DESCRIPTIONS[
+            RESEARCH_GET_PARAMETER_OPTIMIZATION_RESULTS_TOOL
+        ],
     )
-    def research_get_parameter_optimization_results(optimization_run_ref: str) -> CallToolResult:
+    def research_get_parameter_optimization_results(
+        optimization_run_ref: str,
+    ) -> CallToolResult:
         return _result(
             get_parameter_optimization_results(
                 optimization_run_ref=optimization_run_ref,
@@ -666,15 +730,24 @@ def register_research_tools(
 
     @server.tool(
         name=RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS_TOOL,
-        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS_TOOL],
+        description=RESEARCH_TOOL_DESCRIPTIONS[
+            RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS_TOOL
+        ],
     )
-    async def research_run_parameter_optimization_variants(audit_plan_ref: str) -> CallToolResult:
-        blocked = _runtime_error(RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS_TOOL, optimization=True)
+    async def research_run_parameter_optimization_variants(
+        audit_plan_ref: str,
+    ) -> CallToolResult:
+        blocked = _runtime_error(
+            RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS_TOOL, optimization=True
+        )
         if blocked is not None:
             return blocked
 
         def _run() -> ToolEnvelope:
-            assert event_store_provider is not None and backtest_config_provider is not None
+            assert (
+                event_store_provider is not None
+                and backtest_config_provider is not None
+            )
             store = _store()
             if store is None:
                 return _blocked_envelope(
@@ -694,7 +767,8 @@ def register_research_tools(
                     str(exc),
                 )
             if any(_is_optuna_profile(engines, profile) for profile in profiles) and (
-                not environment.allow_external_research_writes or not environment.allow_optuna_writes
+                not environment.allow_external_research_writes
+                or not environment.allow_optuna_writes
             ):
                 return _blocked_envelope(
                     RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS_TOOL,
@@ -720,13 +794,18 @@ def register_research_tools(
 
     @server.tool(
         name=RESEARCH_PROJECT_EXPERIMENT_TRACKING_TOOL,
-        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_PROJECT_EXPERIMENT_TRACKING_TOOL],
+        description=RESEARCH_TOOL_DESCRIPTIONS[
+            RESEARCH_PROJECT_EXPERIMENT_TRACKING_TOOL
+        ],
     )
     async def research_project_experiment_tracking(
         canonical_run_ref: str,
         tracking_profile: str,
     ) -> CallToolResult:
-        if not environment.allow_external_research_writes or not environment.allow_experiment_tracking_writes:
+        if (
+            not environment.allow_external_research_writes
+            or not environment.allow_experiment_tracking_writes
+        ):
             return _blocked(
                 RESEARCH_PROJECT_EXPERIMENT_TRACKING_TOOL,
                 "experiment_tracking_writes_not_allowed",
