@@ -165,15 +165,15 @@ def test_docs_define_trader_research_refactor_gate_and_execution_lineage() -> No
     for task_number in range(1, 13):
         assert f"TRR-{task_number}." in tracker
 
-    for completed_task in range(1, 12):
+    for completed_task in range(1, 13):
         assert f"| TRR-{completed_task}." in tracker
         task_row = next(
             line for line in tracker.splitlines() if line.startswith(f"| TRR-{completed_task}.")
         )
         assert "| Done |" in task_row
 
-    assert "| TRR-12. Requalify Refactored Product | In progress |" in tracker
-    assert "57O remains blocked until this passes" in tracker
+    assert "`verification-57i-freeze-v4`" in architecture
+    assert "| 57O. Restart, Resume, And Fault-Injection Tests | Planned |" in tracker
 
 
 def test_active_operator_docs_do_not_advertise_retired_research_clis() -> None:

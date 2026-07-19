@@ -39,7 +39,7 @@ read-only review completed before implementation and the gated migration that fo
 Python package, import path, database schema, MCP tool, or artifact payload. Production changes begin only after the
 target boundaries in this section are accepted.
 
-TRR-5 through TRR-11 are complete. Superseded root workflows are gone, and the former root `agents`, `domain`,
+TRR-5 through TRR-12 are complete. Superseded root workflows are gone, and the former root `agents`, `domain`,
 `contracts`, artifact-store, and Postgres-store hubs have been replaced by Foundation, Governance, MCP transport
 contracts, and outer Postgres infrastructure. Research services return `ApplicationResult`; `trader_mcp` adds agent
 ownership, side-effect classification, timestamps, and wire serialization. Canonical artifact writes and registered
@@ -49,6 +49,8 @@ domain, catalog, inventory, quality, and loading modules behind one public facad
 infrastructure. Executable research now enters through one Experiments facade, while Optuna and MLflow adapters live in
 Infrastructure. Evaluation and Adversarial now share a Review context that can access Experiments only through an
 immutable evidence-reader port. The core `trader` package was not changed by these steps.
+The refactored product is qualified by annotated freeze `verification-57i-freeze-v4` at `6f3efb4` and controlled
+replacement 57J-N evidence retained in verification Postgres.
 
 ### Review Scope And Baseline
 
@@ -291,9 +293,10 @@ Each implementation step must leave the repository buildable before the next sta
 11. **Cut over composition roots and delete old imports - complete.** Update MCP adapters, agent ownership imports, tests, and active
     docs in one no-alias cutover. Enforce facade-only cross-context imports, no context cycles, no optional-provider
     imports at core startup, no canonical filesystem artifacts, and no obsolete paths.
-12. **Requalify the product.** Rerun static/package/MCP/Postgres evidence suites and replacement 57I-N verification on a
-    new freeze before resuming 57O. The current `verification-57i-freeze-v3` evidence remains historical proof of its
-    exact revision; it cannot qualify refactored product code.
+12. **Requalify the product - complete.** Static/package/MCP/Postgres suites and replacement 57I-N verification passed
+    on `verification-57i-freeze-v4`. The retained evidence proves operator isolation, canonical/projection
+    reconciliation, meaningful public MCP execution, determinism, fail-closed integrity checks, and holdout-read
+    chronology for the refactored product. Earlier v3 evidence remains historical proof of its exact revision only.
 
 ### Per-Step Acceptance Rules
 
