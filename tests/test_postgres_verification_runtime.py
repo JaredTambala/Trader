@@ -12,6 +12,7 @@ import pytest
 from trader.event_store import PostgresEventStore
 from tests.support.postgres_verification import (
     MUTATION_GATE_NAMES,
+    RETAIN_EVIDENCE_PHASE_ENV,
     VerificationConfigurationError,
     assert_verification_database,
     build_runtime_manifest,
@@ -19,8 +20,11 @@ from tests.support.postgres_verification import (
     _validate_outcome,
     load_operator_settings,
     load_optuna_test_settings,
+    load_retained_evidence_phase,
     load_test_settings,
+    retain_verification_evidence,
     settings_from_mapping,
+    _validate_phase_policy_gates,
 )
 
 
@@ -96,12 +100,40 @@ def test_phase_outcome_contract_requires_explicit_consistent_blockers() -> None:
         _validate_outcome("passed", ("contradiction",))
 
 
+def test_retained_evidence_contract_is_explicitly_limited_to_57m() -> None:
+    assert load_retained_evidence_phase({}) is None
+    assert retain_verification_evidence({}) is False
+    values = {RETAIN_EVIDENCE_PHASE_ENV: "57m"}
+    assert load_retained_evidence_phase(values) == "57M"
+    assert retain_verification_evidence(values) is True
+    with pytest.raises(VerificationConfigurationError, match="may only retain"):
+        load_retained_evidence_phase({RETAIN_EVIDENCE_PHASE_ENV: "57L"})
+
+
+def test_57m_phase_policy_requires_only_backtest_and_optimization_gates() -> None:
+    disabled = {name: False for name in MUTATION_GATE_NAMES}
+    _validate_phase_policy_gates(None, disabled)
+    enabled = {
+        **disabled,
+        "TRADER_MCP_ALLOW_BACKTESTS": True,
+        "TRADER_MCP_ALLOW_OPTIMIZATION": True,
+    }
+    _validate_phase_policy_gates("57M", enabled)
+    with pytest.raises(VerificationConfigurationError, match="requires exactly"):
+        _validate_phase_policy_gates("57M", disabled)
+    with pytest.raises(VerificationConfigurationError, match="requires exactly"):
+        _validate_phase_policy_gates(
+            "57M",
+            {**enabled, "TRADER_MCP_ALLOW_EXTERNAL_RESEARCH_WRITES": True},
+        )
+
+
 @pytest.mark.postgres
 def test_verification_database_has_server_checked_marker_and_manifest(
     postgres_settings: dict[str, object],
 ) -> None:
     identity = assert_verification_database(postgres_settings)
-    manifest = build_runtime_manifest()
+    manifest = build_runtime_manifest(phase="57J")
 
     assert identity["database_name"] == postgres_settings["dbname"]
     assert identity["role_name"] == postgres_settings["user"]
@@ -111,6 +143,8 @@ def test_verification_database_has_server_checked_marker_and_manifest(
     assert manifest["database_identity"] == identity
     assert manifest["freeze"]["freeze_tag"] == "verification-57i-freeze-v2"
     assert manifest["test_database"]["dbname"] == postgres_settings["dbname"]
+    assert manifest["phase"] == "57J"
+    assert manifest["retained_evidence_phase"] is None
     assert all(manifest["policy_gates"][name] is False for name in MUTATION_GATE_NAMES)
     serialized = json.dumps(manifest, sort_keys=True).lower()
     assert "password" not in serialized

@@ -26,6 +26,7 @@ VERIFICATION_MARKER_ID = "trader_verification"
 VERIFICATION_SCHEMA = "verification_control"
 TEST_DATABASE_SUFFIXES = ("_test", "_testing")
 VERIFICATION_MODE_ENV = "TRADER_VERIFICATION_MODE"
+RETAIN_EVIDENCE_PHASE_ENV = "TRADER_VERIFICATION_RETAIN_PHASE"
 MUTATION_GATE_NAMES = (
     "TRADER_MCP_ALLOW_BROKER_MUTATION",
     "TRADER_MCP_ALLOW_RAW_SQL",
@@ -36,6 +37,15 @@ MUTATION_GATE_NAMES = (
     "TRADER_MCP_ALLOW_OPTUNA_WRITES",
     "TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES",
 )
+_PHASE_ENABLED_MUTATION_GATES = {
+    "57M": frozenset(
+        {
+            "TRADER_MCP_ALLOW_BACKTESTS",
+            "TRADER_MCP_ALLOW_OPTIMIZATION",
+        }
+    ),
+}
+_RETAINABLE_EVIDENCE_PHASES = frozenset({"57M"})
 
 RUNTIME_TABLES = (
     "runs",
@@ -364,8 +374,10 @@ def assert_connection_targets_verification_database(
     }
 
 
-def build_runtime_manifest() -> Mapping[str, Any]:
+def build_runtime_manifest(*, phase: str | None = None) -> Mapping[str, Any]:
     """Build a credential-free manifest for the current verification harness."""
+    if phase is not None:
+        _validate_phase(phase)
     revisions = assert_frozen_product()
     test_settings = load_test_settings(required=True)
     if test_settings is None:  # pragma: no cover - required=True fails first
@@ -392,10 +404,11 @@ def build_runtime_manifest() -> Mapping[str, Any]:
         name: _parse_bool(os.environ.get(name, "false"), name)
         for name in MUTATION_GATE_NAMES
     }
-    enabled = [name for name, value in gates.items() if value]
-    if enabled:
+    _validate_phase_policy_gates(phase, gates)
+    retained_evidence_phase = load_retained_evidence_phase()
+    if retained_evidence_phase is not None and retained_evidence_phase != phase:
         raise VerificationConfigurationError(
-            f"All mutation gates must be false during 57J provisioning: {enabled}"
+            f"{RETAIN_EVIDENCE_PHASE_ENV} must match the active controlled phase."
         )
     with psycopg.connect(test_settings.conninfo(), row_factory=dict_row) as connection:
         server = connection.execute(
@@ -403,6 +416,7 @@ def build_runtime_manifest() -> Mapping[str, Any]:
         ).fetchone()
     (server_version,) = _row_values(server, "server_version")
     manifest = {
+        "phase": phase,
         "freeze": dict(revisions),
         "dependency_lock_sha256": _sha256_file(REPO_ROOT / "uv.lock"),
         "python_version": sys.version.split()[0],
@@ -426,6 +440,7 @@ def build_runtime_manifest() -> Mapping[str, Any]:
             "trader-verification-09b0b5e",
         ),
         "policy_gates": gates,
+        "retained_evidence_phase": retained_evidence_phase,
         "database_identity": dict(identity),
         "python_hash_seed": os.environ.get("PYTHONHASHSEED", ""),
         "process_timezone": os.environ.get("TZ", ""),
@@ -589,7 +604,7 @@ def provision_verification_runtime(*, reset: bool) -> Mapping[str, Any]:
 def begin_phase(phase: str) -> Mapping[str, Any]:
     """Capture the runtime manifest and operator fingerprint before a phase."""
     _validate_phase(phase)
-    manifest = build_runtime_manifest()
+    manifest = build_runtime_manifest(phase=phase)
     fingerprint = fingerprint_operator_database()
     test = _required_settings("PG_TEST")
     freeze_revision = str(manifest["freeze"]["freeze_revision"])
@@ -651,6 +666,7 @@ def end_phase(
     normalized_outcome = _validate_outcome(outcome, blockers)
     normalized_blockers = _normalize_blockers(blockers)
     revisions = assert_frozen_product()
+    current_manifest = build_runtime_manifest(phase=phase)
     test = _required_settings("PG_TEST")
     after = fingerprint_operator_database()
     with psycopg.connect(
@@ -660,7 +676,7 @@ def end_phase(
             connection, test, freeze_revision=revisions["freeze_revision"]
         )
         phase_run = connection.execute(
-            "SELECT operator_before_digest, executed_harness_revision "
+            "SELECT operator_before_digest, executed_harness_revision, manifest "
             "FROM verification_control.phase_runs "
             "WHERE phase = %s AND freeze_revision = %s",
             [phase, revisions["freeze_revision"]],
@@ -674,7 +690,11 @@ def end_phase(
             phase_run["executed_harness_revision"] == revisions["harness_revision"]
         )
         operator_matched = before_digest == after["digest"]
-        isolation_passed = harness_matched and operator_matched
+        configuration_matched = (
+            phase_run["manifest"].get("configuration_digest")
+            == current_manifest["configuration_digest"]
+        )
+        isolation_passed = harness_matched and operator_matched and configuration_matched
         recorded_blockers = list(normalized_blockers)
         if not harness_matched:
             recorded_blockers.append(
@@ -683,6 +703,10 @@ def end_phase(
         if not operator_matched:
             recorded_blockers.append(
                 "operator database fingerprint changed during verification"
+            )
+        if not configuration_matched:
+            recorded_blockers.append(
+                "verification configuration changed between phase begin and end"
             )
         qualification_status = normalized_outcome if isolation_passed else "blocked"
         _save_fingerprint(
@@ -707,6 +731,10 @@ def end_phase(
         if not harness_matched:
             raise VerificationConfigurationError(
                 "Verification harness revision changed between phase begin and end."
+            )
+        if not configuration_matched:
+            raise VerificationConfigurationError(
+                "Verification configuration changed between phase begin and end."
             )
         raise VerificationConfigurationError(
             "Operator database fingerprint changed during verification; stop immediately."
@@ -1007,6 +1035,42 @@ def _validate_phase(phase: str) -> None:
     if not re.fullmatch(r"57[A-S]", phase):
         raise VerificationConfigurationError(
             "phase must be a task identifier from 57A through 57S"
+        )
+
+
+def load_retained_evidence_phase(
+    environ: Mapping[str, str] | None = None,
+) -> str | None:
+    """Return the explicitly retained verification phase, if configured."""
+    values = os.environ if environ is None else environ
+    value = str(values.get(RETAIN_EVIDENCE_PHASE_ENV, "")).strip().upper()
+    if not value:
+        return None
+    if value not in _RETAINABLE_EVIDENCE_PHASES:
+        raise VerificationConfigurationError(
+            f"{RETAIN_EVIDENCE_PHASE_ENV} may only retain one of "
+            f"{sorted(_RETAINABLE_EVIDENCE_PHASES)}."
+        )
+    return value
+
+
+def retain_verification_evidence(
+    environ: Mapping[str, str] | None = None,
+) -> bool:
+    """Return whether the controlled 57M evidence rows should survive teardown."""
+    return load_retained_evidence_phase(environ) == "57M"
+
+
+def _validate_phase_policy_gates(
+    phase: str | None,
+    gates: Mapping[str, bool],
+) -> None:
+    expected = _PHASE_ENABLED_MUTATION_GATES.get(phase, frozenset())
+    enabled = frozenset(name for name, value in gates.items() if value)
+    if enabled != expected:
+        raise VerificationConfigurationError(
+            f"Controlled phase {phase or 'manifest'} requires exactly these enabled mutation "
+            f"gates: {sorted(expected)}; received {sorted(enabled)}."
         )
 
 

@@ -14,6 +14,7 @@ from tests.support.postgres_verification import (
     assert_connection_targets_verification_database,
     assert_verification_database,
     load_test_settings,
+    retain_verification_evidence,
     verification_mode_enabled,
 )
 
@@ -134,7 +135,8 @@ def postgres_event_store(
     try:
         yield store
     finally:
-        _truncate_runtime_tables(store, postgres_settings)
+        if not retain_verification_evidence():
+            _truncate_runtime_tables(store, postgres_settings)
         store.close()
 
 
@@ -173,5 +175,6 @@ def postgres_research_artifact_store(
     try:
         yield store
     finally:
-        _truncate_research_artifact_tables(store, postgres_settings)
+        if not retain_verification_evidence():
+            _truncate_research_artifact_tables(store, postgres_settings)
         store.close()

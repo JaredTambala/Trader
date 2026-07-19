@@ -255,6 +255,67 @@ The test fixtures destructively clean runtime and research rows in the verificat
 The durable controlled-execution verdict remains in `verification_control.phase_runs`; no rows are copied into the
 operator database.
 
+### 57M Stdio MCP Evidence Graph
+
+57M runs `tests/test_postgres_optimization_evidence_graph.py` through an actual MCP `ClientSession` over stdio. The
+child server uses only `PostgresEventStore` and `PostgresResearchArtifactStore` connected to the guarded verification
+database. Direct services are not substitutes for graph calls. Test setup may seed the locked 57L bars, and test
+assertions may read Postgres for reconciliation, but all product artifacts are created through public MCP tools.
+
+The phase requires exactly `TRADER_MCP_ALLOW_BACKTESTS=true` and `TRADER_MCP_ALLOW_OPTIMIZATION=true`. Broker mutation,
+raw SQL, data loading, external research writes, Optuna writes, and experiment-tracking writes remain false. The phase
+manifest records and rechecks this exact policy profile at `end`; configuration drift blocks qualification.
+
+The graph obtains selection and holdout inventory/quality evidence from Data Agent MCP tools, registers and validates
+the handwritten strategy, risk manager, and closed objective, creates immutable specifications, runs the selection
+backtest and four-trial built-in grid, executes the selected holdout specification, obtains a passed Evaluation report,
+and asks Adversarial to plan `seed_sensitivity` plus `multiple_testing`. The Supervisor executes the declared seed
+variant and Adversarial judges the supplied canonical evidence. Optuna and MLflow are not used.
+
+Ordinary Postgres tests still clean their rows. Only the controlled 57M command may set
+`TRADER_VERIFICATION_RETAIN_PHASE=57M`; any other phase value fails closed. This leaves the resulting bars and research
+artifacts in `trader_verification_test` after pytest exits so they can be inspected in pgAdmin. The retained phase is
+part of the credential-free runtime manifest and must match both `begin` and `end`. A later destructive phase may
+explicitly replace these disposable verification rows; they are never copied to the operator database.
+
+Run the controlled graph with the complete explicit verification environment:
+
+```bash
+export TRADER_VERIFICATION_RETAIN_PHASE=57M
+export TRADER_MCP_ALLOW_BACKTESTS=true
+export TRADER_MCP_ALLOW_OPTIMIZATION=true
+uv run python -m tests.support.postgres_verification begin --phase 57M
+uv run pytest tests/test_postgres_optimization_evidence_graph.py -m postgres -q -W error -s
+uv run python -m tests.support.postgres_verification end --phase 57M --outcome passed
+```
+
+Inspect the retained canonical and typed evidence without relying on filesystem paths:
+
+```sql
+SELECT artifact_type, artifact_id, status, agent_owner
+FROM public.research_artifacts
+ORDER BY artifact_type, artifact_id;
+
+SELECT optimization_run_id, optimization_plan_id, status, selected_trial_id
+FROM public.research_parameter_optimization_runs
+ORDER BY optimization_run_id;
+
+SELECT optimization_run_id, sequence, status, objective_value, parameters,
+       child_backtest_run_id
+FROM public.research_parameter_optimization_trials
+ORDER BY optimization_run_id, sequence;
+
+SELECT run_id, dataset_id, status, selection_origin_ref
+FROM public.research_backtest_runs
+ORDER BY run_id;
+
+SELECT report_id, optimization_run_id, holdout_backtest_run_id, status
+FROM public.research_parameter_optimization_evaluations;
+
+SELECT report_id, audit_plan_id, baseline_optimization_run_id, status
+FROM public.research_parameter_optimization_robustness_reports;
+```
+
 Do not copy verification rows into the operator database. The final acceptance record must distinguish passed,
 failed, not run, and optional profile not qualified. Optional-provider failure leaves that provider gated off and does
 not invalidate a passing built-in core unless canonical Trader state was affected.
