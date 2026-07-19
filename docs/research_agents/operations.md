@@ -187,7 +187,7 @@ export TRADER_MCP_ALLOW_OPTUNA_WRITES=false
 export TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES=false
 ```
 
-With a clean worktree whose product paths are byte-identical to `verification-57i-freeze-v2`, execute:
+With a clean worktree whose product paths are byte-identical to `verification-57i-freeze-v3`, execute:
 
 ```bash
 uv run python -m tests.support.postgres_verification provision --reset

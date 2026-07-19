@@ -210,7 +210,7 @@ def test_tracker_freezes_57i_surface_and_acceptance_matrix() -> None:
 
     required_inventory = (
         "#### 57I Frozen Surface Inventory",
-        "`verification-57i-freeze-v2`",
+        "`verification-57i-freeze-v3`",
         "`research_register_strategy_implementation`",
         "`research_register_optimization_objective`",
         "`research_run_backtest_specification`",
@@ -257,7 +257,7 @@ def test_docs_define_57j_isolated_postgres_runtime() -> None:
         "verification_control.operator_fingerprints",
         "tests.support.postgres_verification provision --reset",
         "before every `TRUNCATE`",
-        "byte-identical to `verification-57i-freeze-v2`",
+        "byte-identical to `verification-57i-freeze-v3`",
         "isolation_status",
         "qualification_status",
         "--outcome passed",
