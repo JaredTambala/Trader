@@ -63,6 +63,7 @@ from trader_research.domain import (
 )
 from trader_research.postgres_artifact_store import PostgresResearchArtifactStore
 from tests.support.postgres_verification import retain_verification_evidence
+from tests.support.postgres_57n import ACCESS_STAGE_ENV
 from tests.support.realistic_optimization_fixture import (
     ASSET_CLASS,
     BACKTEST_ASSUMPTIONS,
@@ -906,7 +907,7 @@ def _all_strings(value: Any) -> list[str]:
     return strings
 
 
-def _server_parameters() -> StdioServerParameters:
+def _server_parameters(*, access_stage: str | None = None) -> StdioServerParameters:
     repo_root = Path(__file__).resolve().parents[1]
     environment = dict(os.environ)
     source_path = str(repo_root / "src")
@@ -927,6 +928,10 @@ def _server_parameters() -> StdioServerParameters:
             "TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES": "false",
         }
     )
+    if access_stage is not None:
+        environment[ACCESS_STAGE_ENV] = access_stage
+    else:
+        environment.pop(ACCESS_STAGE_ENV, None)
     return StdioServerParameters(
         command=sys.executable,
         args=["-m", "tests.support.mcp_postgres_optimization_server"],

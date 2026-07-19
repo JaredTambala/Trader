@@ -27,7 +27,9 @@ registered. ML feature/training/model lifecycle tools and broader robustness rem
 
 Canonical loaders recompute content-addressed IDs and validation lineage at use time. Optimisation startup rechecks the
 pinned base specification, implementation hashes, dataset/quality snapshots, objective source, and provider profile;
-payload or configuration drift blocks before a trial executes.
+payload or configuration drift blocks before a trial executes. Optimisation result reads, tracking projection,
+holdout Evaluation, variant execution, and Adversarial audit also reload the sealed plan and recompute the complete
+trial ledger, objective values, deterministic selection, and selected child refs before consuming a run.
 
 Knowledge-base and bounded methodology contracts remain implemented and maintained at the 33AB baseline. Composite
 methodology expansion is deferred under 33AC.
@@ -296,6 +298,13 @@ and budget. A run pins engine profile/version/configuration digest/capabilities,
 engine in place. Each canonical trial stores the suggestion, retry attempts, exceptions, child specs/runs, closed
 observation, constraints, objective result, diagnostics, warnings, and blockers. Selection is deterministic and remains
 exploratory.
+
+Canonical run consumption is fail-closed rather than a projection lookup. The loader verifies the run ID against the
+resolved engine profile and executor, reloads the plan and all upstream validations, requires contiguous trial
+sequence/IDs and declared parameters, reevaluates every passed observation with the pinned objective, recomputes counts
+and tie-breaking, and compares the selected parameters/value/child refs. A modified run, plan, trial, implementation,
+validation, strategy parameter, cost assumption, dataset/quality snapshot, or selection lineage is therefore rejected
+by every downstream consumer.
 
 `builtin_grid` and `builtin_random` are always available without Optuna or MLflow. `optuna_tpe` is lazy and requires its
 dedicated configured non-public schema/role plus both external-write and Optuna-write gates. Provider loss blocks or

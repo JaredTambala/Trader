@@ -9,9 +9,9 @@ from trader_research.contracts import SCHEMA_VERSION, SideEffect, ToolEnvelope, 
 from trader_research.domain import (
     BACKTEST_RUN,
     PARAMETER_OPTIMIZATION_EVALUATION_REPORT,
-    PARAMETER_OPTIMIZATION_RUN,
     stable_research_id,
 )
+from trader_research.optimization.services import load_validated_parameter_optimization_run
 
 
 EVALUATION_GENERATE_PARAMETER_OPTIMIZATION_REPORT = "evaluation_generate_parameter_optimization_report"
@@ -28,7 +28,9 @@ def generate_parameter_optimization_report(
     if artifact_store is None:
         return _error("research_artifact_store_required", "A ResearchArtifactStore is required.")
     try:
-        optimization = load_artifact_ref(artifact_store, PARAMETER_OPTIMIZATION_RUN, optimization_run_ref)
+        optimization, _ = load_validated_parameter_optimization_run(
+            artifact_store, optimization_run_ref
+        )
         holdout = load_artifact_ref(artifact_store, BACKTEST_RUN, holdout_backtest_run_ref)
         blockers = _holdout_blockers(optimization, holdout)
         status = "passed" if not blockers else "blocked"

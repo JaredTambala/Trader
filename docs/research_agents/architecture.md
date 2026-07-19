@@ -629,6 +629,19 @@ Content-addressed implementation, specification, validation, snapshot, and optim
 stable IDs before use. A persisted payload cannot retain an earlier validation merely by keeping its old ID; source,
 parameter, ordering, dataset, quality, or lineage drift fails closed before a trial or backtest starts.
 
+The same rule applies after execution. A canonical optimisation-run loader reconstructs trust from the sealed plan and
+trial artifacts rather than trusting the run summary: it reevaluates objective results from closed observations,
+recomputes trial counts and deterministic selection, and checks selected child lineage. Results, tracking projection,
+holdout Evaluation, variant execution, and Adversarial audit all use this loader. Typed projections remain queryable
+views of canonical JSONB and are never a shortcut around these checks.
+
+Determinism qualification compares all canonical research identities and payload evidence from two clean database
+runs. The only excluded backtest-result fields are `finished_at` and `duration_seconds`, which measure wall-clock
+execution and do not affect research semantics. Dataset timestamps, events, trades, metrics, observations, objective
+values, provider configuration, suggestions, trial order, tie-breaks, selections, and report lineage remain in the
+digest. A test-only audited event-store proxy records bounded bar-table reads by phase; a database selection seal proves
+that optimisation reads stop at the selection boundary and holdout reads begin only after immutable selection.
+
 The execution graph is:
 
 ```text

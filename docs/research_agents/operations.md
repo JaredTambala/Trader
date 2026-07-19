@@ -272,8 +272,8 @@ backtest and four-trial built-in grid, executes the selected holdout specificati
 and asks Adversarial to plan `seed_sensitivity` plus `multiple_testing`. The Supervisor executes the declared seed
 variant and Adversarial judges the supplied canonical evidence. Optuna and MLflow are not used.
 
-Ordinary Postgres tests still clean their rows. Only the controlled 57M command may set
-`TRADER_VERIFICATION_RETAIN_PHASE=57M`; any other phase value fails closed. This leaves the resulting bars and research
+Ordinary Postgres tests still clean their rows. Controlled 57M and 57N commands may set their matching
+`TRADER_VERIFICATION_RETAIN_PHASE`; any other phase value fails closed. This leaves the resulting bars and research
 artifacts in `trader_verification_test` after pytest exits so they can be inspected in pgAdmin. The retained phase is
 part of the credential-free runtime manifest and must match both `begin` and `end`. A later destructive phase may
 explicitly replace these disposable verification rows; they are never copied to the operator database.
@@ -314,6 +314,64 @@ FROM public.research_parameter_optimization_evaluations;
 
 SELECT report_id, audit_plan_id, baseline_optimization_run_id, status
 FROM public.research_parameter_optimization_robustness_reports;
+```
+
+### 57N Determinism, Integrity, And Holdout Leakage
+
+57N repeats the complete 57M graph twice from guarded empty public runtime/research tables and also runs built-in random
+search from the same provider-neutral plan. It compares stable refs and normalized canonical payload hashes for all
+artifacts. Only wall-clock `backtest_run.bundle.result.finished_at` and `duration_seconds` are excluded; every research
+input, event-derived result, observation, score, trial order, tie-break, selection, and report lineage remains hashed.
+
+Between the clean repeats, the test mutates source hashes, validation state, strategy parameters, dataset and quality
+snapshots, fixed costs, plan seed, engine configuration digest, trial objective/order, selected refs, and holdout
+selection lineage directly in the disposable database. Each public MCP consumer must fail closed, and every successful
+attack rejection is recorded in `verification_control.integrity_checks`. Original payloads are restored after each
+case.
+
+The test-only `AuditedPostgresEventStore` records bounded reads of `stock_bar_events` and `crypto_bar_events` in
+`verification_control.data_access_log`, grouped under `plan_setup`, `selection_optimization`, and
+`holdout_evaluation`. After optimisation completes, `verification_control.selection_seals` records a database-clock
+seal over the selected run digest. Assertions require every trial child and objective observation to use the selection
+region, no holdout backtest before the seal, a selection-stage maximum timestamp before holdout start, and all
+holdout-evaluation audit rows after the seal. Plan setup may read both regions to create and hash the sealed manifests;
+that is not model fitting or objective evaluation.
+
+Run the controlled phase with exactly the backtest and optimisation gates enabled:
+
+```bash
+export TRADER_VERIFICATION_RETAIN_PHASE=57N
+export TRADER_MCP_ALLOW_BACKTESTS=true
+export TRADER_MCP_ALLOW_OPTIMIZATION=true
+uv run python -m tests.support.postgres_verification begin --phase 57N
+uv run pytest tests/test_postgres_optimization_determinism_integrity.py -m postgres -q -W error -s
+uv run python -m tests.support.postgres_verification end --phase 57N --outcome passed
+```
+
+Inspect the retained qualification evidence in pgAdmin:
+
+```sql
+SELECT execution_label, graph_digest, artifact_count, root_refs
+FROM verification_control.determinism_snapshots
+WHERE phase = '57N'
+ORDER BY execution_label;
+
+SELECT check_name, target_artifact_type, consumer_tool, error_code, passed
+FROM verification_control.integrity_checks
+WHERE phase = '57N'
+ORDER BY check_name;
+
+SELECT stage, sum(read_count) AS reads,
+       min(minimum_parameter_ts) AS minimum_parameter_ts,
+       max(maximum_parameter_ts) AS maximum_parameter_ts
+FROM verification_control.data_access_log
+WHERE phase = '57N'
+GROUP BY stage
+ORDER BY stage;
+
+SELECT optimization_run_id, run_digest, sealed_at
+FROM verification_control.selection_seals
+WHERE phase = '57N';
 ```
 
 Do not copy verification rows into the operator database. The final acceptance record must distinguish passed,

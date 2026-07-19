@@ -13,7 +13,12 @@ from trader_research.adversarial import (
     generate_parameter_optimization_audit,
 )
 from trader_research.artifact_store import InMemoryResearchArtifactStore
-from trader_research.domain import BACKTEST_RUN, BACKTEST_SPECIFICATION, PARAMETER_OPTIMIZATION_RUN
+from trader_research.domain import (
+    BACKTEST_RUN,
+    BACKTEST_SPECIFICATION,
+    PARAMETER_OPTIMIZATION_RUN,
+    PARAMETER_OPTIMIZATION_TRIAL,
+)
 from trader_research.evaluation import generate_parameter_optimization_report
 from trader_research.implementations import (
     register_optimization_objective,
@@ -150,6 +155,36 @@ class RetryExecutor(FakeExecutor):
             parameters=parameters,
             trial_id=trial_id,
             optimization_run_id=optimization_run_id,
+        )
+
+
+class TieExecutor(FakeExecutor):
+    """Return equal objective evidence so canonical tie-breaking is exercised."""
+
+    executor_kind = "tie_fixture"
+
+    def execute(
+        self,
+        *,
+        plan: Mapping[str, Any],
+        parameters: Mapping[str, Any],
+        trial_id: str,
+        optimization_run_id: str,
+    ) -> TrialExecution:
+        result = super().execute(
+            plan=plan,
+            parameters=parameters,
+            trial_id=trial_id,
+            optimization_run_id=optimization_run_id,
+        )
+        observation = deepcopy(dict(result.observation or {}))
+        observation["metrics"]["sharpe"] = 1.0
+        return TrialExecution(
+            status=result.status,
+            observation=observation,
+            child_refs=result.child_refs,
+            warnings=result.warnings,
+            blockers=result.blockers,
         )
 
 
@@ -377,6 +412,13 @@ def test_seeded_random_retry_evidence_and_base_snapshot_drift_are_deterministic(
     trial = partial.data["new_trials"][0]
     assert [attempt["status"] for attempt in trial["attempts"]] == ["blocked", "passed"]
     assert "transient fixture failure" in trial["attempts"][0]["exception"]
+    retry_results = get_parameter_optimization_results(
+        optimization_run_ref=partial.data["parameter_optimization_run"][
+            "optimization_run_id"
+        ],
+        artifact_store=store,
+    )
+    assert retry_results.ok is True
 
     drift_store = InMemoryResearchArtifactStore()
     drift_plan = _plan(drift_store)
@@ -397,6 +439,85 @@ def test_seeded_random_retry_evidence_and_base_snapshot_drift_are_deterministic(
     )
     assert drifted.ok is False
     assert "canonical content" in drifted.errors[0]["message"]
+
+
+def test_equal_objectives_use_canonical_parameter_tie_break() -> None:
+    store = InMemoryResearchArtifactStore()
+    plan = _plan(store)
+    completed = run_parameter_optimization(
+        optimization_plan_ref=plan["optimization_plan_id"],
+        optimizer_profile="builtin_grid",
+        trial_executor=TieExecutor(),
+        artifact_store=store,
+    )
+
+    assert completed.ok is True
+    run = completed.data["parameter_optimization_run"]
+    assert run["selected_objective_value"] == 1.0
+    assert run["selected_parameters"] == {"/strategy/parameters/period": 2}
+
+
+def test_random_run_can_exhaust_finite_space_before_trial_budget() -> None:
+    store = InMemoryResearchArtifactStore()
+    plan = _plan(store, max_trials=5)
+    completed = run_parameter_optimization(
+        optimization_plan_ref=plan["optimization_plan_id"],
+        optimizer_profile="builtin_random",
+        trial_executor=FakeExecutor(),
+        artifact_store=store,
+    )
+    assert completed.ok is True
+    run = completed.data["parameter_optimization_run"]
+    assert run["status"] == "completed"
+    assert run["trial_count"] == 2
+    results = get_parameter_optimization_results(
+        optimization_run_ref=run["optimization_run_id"], artifact_store=store
+    )
+    assert results.ok is True
+    assert run["selection_policy"]["tie_break"] == [
+        "canonical_parameters",
+        "trial_id",
+    ]
+
+
+@pytest.mark.parametrize("target", ["run", "trial"])
+def test_results_fail_closed_on_canonical_selection_evidence_tamper(target: str) -> None:
+    store = InMemoryResearchArtifactStore()
+    plan = _plan(store)
+    completed = run_parameter_optimization(
+        optimization_plan_ref=plan["optimization_plan_id"],
+        optimizer_profile="builtin_grid",
+        trial_executor=FakeExecutor(),
+        artifact_store=store,
+    )
+    assert completed.ok is True
+    run = completed.data["parameter_optimization_run"]
+
+    if target == "run":
+        changed = deepcopy(run)
+        changed["selected_trial_id"] = "parameter_optimization_trial_tampered"
+        store.save_artifact(
+            artifact_type=PARAMETER_OPTIMIZATION_RUN,
+            artifact_id=run["optimization_run_id"],
+            payload=changed,
+            status=changed["status"],
+        )
+    else:
+        trial_id = run["selected_trial_id"]
+        changed = deepcopy(store.load_artifact(PARAMETER_OPTIMIZATION_TRIAL, trial_id))
+        changed["objective_value"] = float(changed["objective_value"]) + 100.0
+        store.save_artifact(
+            artifact_type=PARAMETER_OPTIMIZATION_TRIAL,
+            artifact_id=trial_id,
+            payload=changed,
+            status=changed["status"],
+        )
+
+    result = get_parameter_optimization_results(
+        optimization_run_ref=run["optimization_run_id"], artifact_store=store
+    )
+    assert result.ok is False
+    assert result.errors[0]["code"] == "parameter_optimization_lookup_failed"
 
 
 def test_optuna_adapter_requires_isolated_postgres_and_reconciles_canonical_trials(
@@ -462,6 +583,7 @@ def _plan(
     store: InMemoryResearchArtifactStore,
     *,
     resource_limits: Mapping[str, Any] | None = None,
+    max_trials: int = 2,
 ) -> Mapping[str, Any]:
     base_validation_id, objective_validation_id = _base_validations(store)
     created = create_parameter_optimization_plan(
@@ -470,7 +592,7 @@ def _plan(
         holdout_data_quality_report=_quality("2025-02-01T00:00:00+00:00", "2025-02-28T00:00:00+00:00"),
         objective_validation_ref=objective_validation_id,
         search_space=[{"path": "/strategy/parameters/period", "type": "integer", "low": 2, "high": 3}],
-        max_trials=2,
+        max_trials=max_trials,
         resource_limits=resource_limits,
         artifact_store=store,
     )

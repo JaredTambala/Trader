@@ -150,7 +150,7 @@ class BacktestOptimizationTrialExecutor:
                 artifact_store=self._store,
             )
             run_payload = _data(run, "backtest_run")
-            observation = _observation(run_payload, trial_id)
+            observation = backtest_optimization_observation(run_payload, trial_id)
             return TrialExecution(
                 status="passed" if run.ok else "blocked",
                 observation=observation,
@@ -187,7 +187,10 @@ def _apply_path(
     raise ValueError(f"unsupported trial parameter path: {path}")
 
 
-def _observation(run: Mapping[str, Any], trial_id: str) -> dict[str, Any]:
+def backtest_optimization_observation(
+    run: Mapping[str, Any], trial_id: str
+) -> dict[str, Any]:
+    """Derive the closed optimization observation from one canonical backtest run."""
     bundle = dict(run.get("bundle") or {})
     summary = dict(run.get("summary") or {})
     metrics = {

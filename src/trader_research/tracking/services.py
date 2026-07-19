@@ -9,16 +9,15 @@ from trader_research.artifact_store import (
     ResearchArtifactStore,
     ResearchArtifactStoreError,
     json_payload_hash,
-    load_artifact_ref,
 )
 from trader_research.contracts import SCHEMA_VERSION, SideEffect, ToolEnvelope, error_envelope, success_envelope
 from trader_research.domain import (
     EXPERIMENT_TRACKING_PROJECTION_REPORT,
     PARAMETER_OPTIMIZATION_RUN,
-    PARAMETER_OPTIMIZATION_TRIAL,
     stable_research_id,
 )
 from trader_research.optimization.contracts import ExperimentTrackingSink
+from trader_research.optimization.services import load_validated_parameter_optimization_run
 
 
 RESEARCH_PROJECT_EXPERIMENT_TRACKING = "research_project_experiment_tracking"
@@ -58,14 +57,10 @@ def project_experiment_tracking(
         return _error("research_artifact_store_required", "A ResearchArtifactStore is required.")
     registry = sink_registry or ExperimentTrackingSinkRegistry()
     try:
-        run = load_artifact_ref(artifact_store, PARAMETER_OPTIMIZATION_RUN, canonical_run_ref)
+        run, trials = load_validated_parameter_optimization_run(
+            artifact_store, canonical_run_ref
+        )
         run_id = str(run["optimization_run_id"])
-        trials = [
-            dict(record.payload)
-            for record in artifact_store.list_artifacts(artifact_type=PARAMETER_OPTIMIZATION_TRIAL)
-            if record.payload.get("optimization_run_id") == run_id
-        ]
-        trials.sort(key=lambda item: (int(item.get("sequence") or 0), str(item.get("trial_id") or "")))
         canonical_snapshot = {"parameter_optimization_run": dict(run), "trials": trials}
         sink = registry.get(tracking_profile)
         profile = dict(sink.profile())

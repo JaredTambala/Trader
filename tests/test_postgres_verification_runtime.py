@@ -100,11 +100,14 @@ def test_phase_outcome_contract_requires_explicit_consistent_blockers() -> None:
         _validate_outcome("passed", ("contradiction",))
 
 
-def test_retained_evidence_contract_is_explicitly_limited_to_57m() -> None:
+def test_retained_evidence_contract_is_explicitly_limited_to_qualified_phases() -> None:
     assert load_retained_evidence_phase({}) is None
     assert retain_verification_evidence({}) is False
     values = {RETAIN_EVIDENCE_PHASE_ENV: "57m"}
     assert load_retained_evidence_phase(values) == "57M"
+    assert retain_verification_evidence(values) is True
+    values = {RETAIN_EVIDENCE_PHASE_ENV: "57n"}
+    assert load_retained_evidence_phase(values) == "57N"
     assert retain_verification_evidence(values) is True
     with pytest.raises(VerificationConfigurationError, match="may only retain"):
         load_retained_evidence_phase({RETAIN_EVIDENCE_PHASE_ENV: "57L"})
@@ -119,6 +122,7 @@ def test_57m_phase_policy_requires_only_backtest_and_optimization_gates() -> Non
         "TRADER_MCP_ALLOW_OPTIMIZATION": True,
     }
     _validate_phase_policy_gates("57M", enabled)
+    _validate_phase_policy_gates("57N", enabled)
     with pytest.raises(VerificationConfigurationError, match="requires exactly"):
         _validate_phase_policy_gates("57M", disabled)
     with pytest.raises(VerificationConfigurationError, match="requires exactly"):

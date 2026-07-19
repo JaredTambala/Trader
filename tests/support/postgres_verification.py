@@ -44,8 +44,14 @@ _PHASE_ENABLED_MUTATION_GATES = {
             "TRADER_MCP_ALLOW_OPTIMIZATION",
         }
     ),
+    "57N": frozenset(
+        {
+            "TRADER_MCP_ALLOW_BACKTESTS",
+            "TRADER_MCP_ALLOW_OPTIMIZATION",
+        }
+    ),
 }
-_RETAINABLE_EVIDENCE_PHASES = frozenset({"57M"})
+_RETAINABLE_EVIDENCE_PHASES = frozenset({"57M", "57N"})
 
 RUNTIME_TABLES = (
     "runs",
@@ -1057,8 +1063,8 @@ def load_retained_evidence_phase(
 def retain_verification_evidence(
     environ: Mapping[str, str] | None = None,
 ) -> bool:
-    """Return whether the controlled 57M evidence rows should survive teardown."""
-    return load_retained_evidence_phase(environ) == "57M"
+    """Return whether a controlled retained phase should survive teardown."""
+    return load_retained_evidence_phase(environ) in _RETAINABLE_EVIDENCE_PHASES
 
 
 def _validate_phase_policy_gates(

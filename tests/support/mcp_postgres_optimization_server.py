@@ -12,6 +12,7 @@ from tests.support.postgres_verification import (
     assert_verification_database,
     load_test_settings,
 )
+from tests.support.postgres_57n import AuditedPostgresEventStore, configured_access_stage
 from tests.support.realistic_optimization_fixture import build_backtest_config
 
 
@@ -22,7 +23,12 @@ def main() -> None:
         raise RuntimeError("PG_TEST settings are required")
     assert_verification_database(settings)
     connect_kwargs = settings.connect_kwargs()
-    event_store = PostgresEventStore(**connect_kwargs)
+    access_stage = configured_access_stage()
+    event_store = (
+        AuditedPostgresEventStore(stage=access_stage, **connect_kwargs)
+        if access_stage is not None
+        else PostgresEventStore(**connect_kwargs)
+    )
     artifact_store = PostgresResearchArtifactStore(**connect_kwargs)
     environment = load_local_environment("env.template")
     server = create_server(

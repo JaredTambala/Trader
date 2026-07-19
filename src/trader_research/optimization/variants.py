@@ -8,7 +8,6 @@ from trader_research.artifact_store import ResearchArtifactStore, ResearchArtifa
 from trader_research.contracts import SideEffect, ToolEnvelope, error_envelope, success_envelope
 from trader_research.domain import (
     PARAMETER_OPTIMIZATION_AUDIT_PLAN,
-    PARAMETER_OPTIMIZATION_PLAN,
     PARAMETER_OPTIMIZATION_RUN,
 )
 
@@ -17,6 +16,8 @@ from .engines import OptimizationEngineRegistry
 from .services import (
     RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS,
     create_parameter_optimization_plan,
+    load_validated_parameter_optimization_plan,
+    load_validated_parameter_optimization_run,
     run_parameter_optimization,
 )
 
@@ -29,7 +30,9 @@ def required_optimizer_profiles_for_variants(
     """Return the distinct optimizer profiles an audit plan asks the Supervisor to execute."""
     audit = load_artifact_ref(artifact_store, PARAMETER_OPTIMIZATION_AUDIT_PLAN, audit_plan_ref)
     baseline_run = load_artifact_ref(
-        artifact_store, PARAMETER_OPTIMIZATION_RUN, str(audit["baseline_optimization_run_id"])
+        artifact_store,
+        PARAMETER_OPTIMIZATION_RUN,
+        str(audit["baseline_optimization_run_id"]),
     )
     baseline_profile = str((baseline_run.get("engine_profile") or {}).get("profile_name") or "builtin_random")
     profiles: set[str] = set()
@@ -54,11 +57,11 @@ def run_parameter_optimization_variants(
         return _error("research_artifact_store_required", "A ResearchArtifactStore is required.")
     try:
         audit = load_artifact_ref(artifact_store, PARAMETER_OPTIMIZATION_AUDIT_PLAN, audit_plan_ref)
-        baseline_run = load_artifact_ref(
-            artifact_store, PARAMETER_OPTIMIZATION_RUN, str(audit["baseline_optimization_run_id"])
+        baseline_run, _ = load_validated_parameter_optimization_run(
+            artifact_store, str(audit["baseline_optimization_run_id"])
         )
-        baseline_plan = load_artifact_ref(
-            artifact_store, PARAMETER_OPTIMIZATION_PLAN, str(audit["baseline_optimization_plan_id"])
+        baseline_plan, _, _ = load_validated_parameter_optimization_plan(
+            artifact_store, str(audit["baseline_optimization_plan_id"])
         )
         registry = engine_registry or OptimizationEngineRegistry()
         baseline_profile = str((baseline_run.get("engine_profile") or {}).get("profile_name") or "builtin_random")

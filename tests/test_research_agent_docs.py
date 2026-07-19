@@ -320,6 +320,35 @@ def test_docs_define_57m_as_retained_postgres_stdio_mcp_evidence() -> None:
     assert "| 57M. Postgres-Native MCP Evidence Graph | Done |" in tracker
 
 
+def test_docs_define_57n_determinism_integrity_and_leakage_controls() -> None:
+    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
+    contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
+    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
+    tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(
+        encoding="utf-8"
+    )
+    combined = "\n".join((architecture, contracts, operations, tracker))
+    normalized = " ".join(combined.split())
+
+    required_phrases = (
+        "57N Determinism, Integrity, And Holdout Leakage",
+        "tests/test_postgres_optimization_determinism_integrity.py",
+        "TRADER_VERIFICATION_RETAIN_PHASE=57N",
+        "verification_control.determinism_snapshots",
+        "verification_control.integrity_checks",
+        "verification_control.data_access_log",
+        "verification_control.selection_seals",
+        "finished_at",
+        "duration_seconds",
+        "complete trial ledger",
+        "14 source/config/snapshot/lineage mutations",
+    )
+    for phrase in required_phrases:
+        assert phrase in normalized
+
+    assert "| 57N. Determinism, Integrity, And Leakage Tests | In progress |" in tracker
+
+
 def test_tracker_records_57k_remediation_and_rerun_boundary() -> None:
     tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(encoding="utf-8")
     normalized_tracker = " ".join(tracker.split())

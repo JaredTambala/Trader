@@ -9,11 +9,13 @@ from trader_research.contracts import SCHEMA_VERSION, SideEffect, ToolEnvelope, 
 from trader_research.domain import (
     BACKTEST_RUN,
     PARAMETER_OPTIMIZATION_AUDIT_PLAN,
-    PARAMETER_OPTIMIZATION_PLAN,
     PARAMETER_OPTIMIZATION_ROBUSTNESS_REPORT,
-    PARAMETER_OPTIMIZATION_RUN,
     PARAMETER_OPTIMIZATION_TRIAL,
     stable_research_id,
+)
+from trader_research.optimization.services import (
+    load_validated_parameter_optimization_plan,
+    load_validated_parameter_optimization_run,
 )
 
 
@@ -45,7 +47,9 @@ def create_parameter_optimization_audit_plan(
     if artifact_store is None:
         return _error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")
     try:
-        baseline = load_artifact_ref(artifact_store, PARAMETER_OPTIMIZATION_RUN, optimization_run_ref)
+        baseline, _ = load_validated_parameter_optimization_run(
+            artifact_store, optimization_run_ref
+        )
         if baseline.get("status") != "completed" or not baseline.get("selected_trial_id"):
             raise ValueError("baseline optimization run must be completed with a selected trial")
         normalized = _normalize_attacks(attacks)
@@ -99,13 +103,13 @@ def generate_parameter_optimization_audit(
         return _error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")
     try:
         plan = load_artifact_ref(artifact_store, PARAMETER_OPTIMIZATION_AUDIT_PLAN, audit_plan_ref)
-        baseline = load_artifact_ref(
-            artifact_store, PARAMETER_OPTIMIZATION_RUN, str(plan["baseline_optimization_run_id"])
+        baseline, _ = load_validated_parameter_optimization_run(
+            artifact_store, str(plan["baseline_optimization_run_id"])
         )
         if json_payload_hash(baseline) != plan.get("baseline_digest"):
             raise ValueError("baseline optimization run changed after the audit plan was created")
         variants = [
-            load_artifact_ref(artifact_store, PARAMETER_OPTIMIZATION_RUN, ref)
+            load_validated_parameter_optimization_run(artifact_store, ref)[0]
             for ref in (variant_optimization_run_refs or ())
         ]
         stresses = [
@@ -203,7 +207,9 @@ def _audit_evidence(
     warnings: list[str] = []
     variant_by_reason: dict[str, list[Mapping[str, Any]]] = {}
     for variant in variants:
-        child_plan = load_artifact_ref(store, PARAMETER_OPTIMIZATION_PLAN, str(variant["optimization_plan_id"]))
+        child_plan, _, _ = load_validated_parameter_optimization_plan(
+            store, str(variant["optimization_plan_id"])
+        )
         if child_plan.get("parent_plan_ref") != baseline.get("optimization_plan_id"):
             raise ValueError("optimization variant does not descend from the baseline plan")
         variant_by_reason.setdefault(str(child_plan.get("variant_reason") or ""), []).append(variant)
