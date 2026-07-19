@@ -341,12 +341,14 @@ def test_docs_define_57n_determinism_integrity_and_leakage_controls() -> None:
         "finished_at",
         "duration_seconds",
         "complete trial ledger",
-        "14 source/config/snapshot/lineage mutations",
+        "All 14 hostile mutations",
+        "57N Controlled Determinism And Integrity Evidence",
+        "dacabc75a30a0c8b2d79d32d5dbba73fea14f2986cdfb651902f5be8e4bd9923",
     )
     for phrase in required_phrases:
         assert phrase in normalized
 
-    assert "| 57N. Determinism, Integrity, And Leakage Tests | In progress |" in tracker
+    assert "| 57N. Determinism, Integrity, And Leakage Tests | Done |" in tracker
 
 
 def test_tracker_records_57k_remediation_and_rerun_boundary() -> None:
