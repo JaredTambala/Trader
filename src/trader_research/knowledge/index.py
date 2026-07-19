@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Sequence
 
-from trader_research.domain import stable_research_id
+from trader_research.foundation import stable_research_id
 
 from .domain import KnowledgeChunk, KnowledgeEmbeddingManifest
 from .embeddings import EmbeddingProvider

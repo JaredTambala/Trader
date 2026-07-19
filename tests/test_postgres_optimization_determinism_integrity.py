@@ -23,7 +23,7 @@ from trader_mcp.constants import (
     RESEARCH_RUN_BACKTEST_SPECIFICATION_TOOL,
     RESEARCH_RUN_PARAMETER_OPTIMIZATION_TOOL,
 )
-from trader_research.domain import (
+from trader_research.governance.artifacts import (
     BACKTEST_SPECIFICATION,
     BACKTEST_RUN,
     IMPLEMENTATION_VALIDATION_REPORT,
@@ -33,7 +33,7 @@ from trader_research.domain import (
     PARAMETER_OPTIMIZATION_TRIAL,
     STRATEGY_SPECIFICATION,
 )
-from trader_research.postgres_artifact_store import PostgresResearchArtifactStore
+from trader_research.infrastructure.postgres import PostgresResearchArtifactStore
 from tests.support.postgres_57n import (
     access_audit_summary,
     clear_57n_control_evidence,

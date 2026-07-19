@@ -186,23 +186,14 @@ The reproducible runner exports:
 - `artifacts/reproducible_backtest/equity_curve.csv`
 - `artifacts/reproducible_backtest/trades.csv`
 
-## Running a research experiment
+## Canonical research backtests
 
-Research experiments use the same backtest engine, but add experiment grouping, provenance, parameter sweeps, and a
-comparison surface:
+The research layer uses the same `BacktestRunner`, but admission and evidence are Postgres-first. A canonical run starts
+from validated implementation and strategy/risk specifications, binds one Data Agent manifest through an immutable
+backtest specification, and writes a `backtest_run` research artifact plus typed Postgres projection. Parameter studies
+use the provider-neutral optimization ledger rather than event-store experiment tables or filesystem bundles.
 
-```bash
-uv run python run_research_experiment.py configs/reproducible_backtest.yaml --experiment demo_research --run-data-quality
-uv run python run_compare_results.py configs/reproducible_backtest.yaml --experiment demo_research --format table
-uv run python run_compare_results.py configs/reproducible_backtest.yaml --experiment demo_research --format json
-```
-
-When `research.sweep.parameters` is present, parameter paths are expanded in sorted path order and YAML list values are
-kept in declared order. Each member is run sequentially and recorded in `experiment_runs`. Failed members keep their
-error row, while successful members write artifacts under `artifacts/research/<experiment_slug>/<run_id>/`.
-
-Research result records include `run_id`, `experiment_id`, `experiment_run_id`, provenance, assumptions, strategy
-metadata, data-quality summary when available, and the local artifact path.
+See [Research Agent Workflows](../research_agents/workflows.md) for the MCP execution graph.
 
 To see per-cycle logs, set:
 

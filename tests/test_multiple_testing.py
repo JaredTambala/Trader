@@ -4,12 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from trader_research.methods import math_run_multiple_testing_report
+from trader_research.methodology import math_run_multiple_testing_report
+from tests.support.method_cards import approved_method_card_reader
 
 
 def test_multiple_testing_applies_benjamini_hochberg_to_declared_family(tmp_path: Path) -> None:
+    artifact_root = tmp_path / "artifacts"
     result = math_run_multiple_testing_report(
-        artifact_root=tmp_path / "artifacts",
+        artifact_root=artifact_root,
         candidate_family_manifest=_candidate_family(),
         metric_matrix=[
             {"candidate_id": "c1", "p_value": 0.01, "metric_name": "rank_ic_p_value", "metric_value": 0.8},
@@ -18,6 +20,12 @@ def test_multiple_testing_applies_benjamini_hochberg_to_declared_family(tmp_path
             {"candidate_id": "c4", "p_value": 0.20, "metric_name": "rank_ic_p_value", "metric_value": 0.1},
         ],
         method_contract=_bh_contract(),
+        approved_card_reader=approved_method_card_reader(
+            artifact_root,
+            method_id="benjamini_hochberg",
+            method_card_id="method_card_benjamini_hochberg_validated_v1",
+            family="multiple_testing",
+        ),
     )
 
     assert result.ok is True, result.to_dict()
@@ -95,5 +103,5 @@ def _bh_contract() -> dict[str, object]:
     return {
         "method_id": "benjamini_hochberg",
         "parameters": {"alpha": 0.05},
-        "knowledge_evidence_refs": [{"method_card_id": "method_card_benjamini_hochberg_seed_v1"}],
+        "knowledge_evidence_refs": [{"method_card_id": "method_card_benjamini_hochberg_validated_v1"}],
     }

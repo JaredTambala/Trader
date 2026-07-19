@@ -33,9 +33,17 @@ class EmbeddingProvider(Protocol):
     resolve OpenAI-compatible backends from runtime configuration.
     """
 
-    provider: str
-    model: str
-    version: str
+    @property
+    def provider(self) -> str:
+        """Return the stable provider name recorded in embedding evidence."""
+
+    @property
+    def model(self) -> str:
+        """Return the stable model name recorded in embedding evidence."""
+
+    @property
+    def version(self) -> str:
+        """Return the stable provider version recorded in embedding evidence."""
 
     def embed(self, text: str) -> tuple[float, ...]:
         """Return one numeric embedding vector for the supplied text payload and backend."""
@@ -245,7 +253,7 @@ def build_embedding_provider_from_env(env: Mapping[str, str] | None = None) -> E
 
 
 def embedding_runtime_summary(env: Mapping[str, str]) -> dict[str, Any]:
-    """Return log- and envelope-safe metadata about embedding runtime settings.
+    """Return log- and result-safe metadata about embedding runtime settings.
 
     The summary reports whether provider/model/base URL are configured, which
     backend would be used, whether an API key is present, and the parsed timeout.

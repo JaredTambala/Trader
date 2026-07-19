@@ -2,17 +2,25 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from trader_research.methods import math_run_signal_diagnostics
+from trader_research.methodology import math_run_signal_diagnostics
+from tests.support.method_cards import approved_method_card_reader
 
 
 def test_signal_diagnostics_evaluate_declared_signal_candidates(tmp_path: Path) -> None:
+    artifact_root = tmp_path / "artifacts"
     result = math_run_signal_diagnostics(
-        artifact_root=tmp_path / "artifacts",
+        artifact_root=artifact_root,
         signal_observations=_signal_observations(),
         forward_return_labels=_forward_return_labels(),
         candidate_family_manifest=_candidate_family(),
         method_contracts=[_rank_ic_contract(1)],
         quantile_count=5,
+        approved_card_reader=approved_method_card_reader(
+            artifact_root,
+            method_id="rank_ic",
+            method_card_id="method_card_rank_ic_validated_v1",
+            family="signal_diagnostic",
+        ),
     )
 
     assert result.ok is True, result.to_dict()
@@ -58,8 +66,9 @@ def test_signal_diagnostics_fail_without_rank_ic_evidence(tmp_path: Path) -> Non
 
 def test_signal_diagnostics_fail_on_duplicate_observation_keys(tmp_path: Path) -> None:
     observations = _signal_observations()[:5]
+    artifact_root = tmp_path / "artifacts"
     result = math_run_signal_diagnostics(
-        artifact_root=tmp_path / "artifacts",
+        artifact_root=artifact_root,
         signal_observations=[*observations, observations[0]],
         forward_return_labels=_forward_return_labels()[:5],
         candidate_family_manifest={
@@ -68,6 +77,12 @@ def test_signal_diagnostics_fail_on_duplicate_observation_keys(tmp_path: Path) -
             "tested_grid": {"period": [20]},
         },
         method_contracts=[_rank_ic_contract(1)],
+        approved_card_reader=approved_method_card_reader(
+            artifact_root,
+            method_id="rank_ic",
+            method_card_id="method_card_rank_ic_validated_v1",
+            family="signal_diagnostic",
+        ),
     )
 
     assert result.ok is False
@@ -91,7 +106,7 @@ def _rank_ic_contract(horizon: int) -> dict[str, object]:
         "method_id": "rank_ic",
         "parameters": {"horizon": horizon},
         "no_lookahead": True,
-        "knowledge_evidence_refs": [{"method_card_id": "method_card_rank_ic_seed_v1"}],
+        "knowledge_evidence_refs": [{"method_card_id": "method_card_rank_ic_validated_v1"}],
     }
 
 

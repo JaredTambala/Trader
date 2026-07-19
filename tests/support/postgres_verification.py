@@ -21,7 +21,7 @@ from psycopg.types.json import Jsonb
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FREEZE_TAG = "verification-57i-freeze-v3"
+FREEZE_TAG = "verification-57i-freeze-v4"
 VERIFICATION_MARKER_ID = "trader_verification"
 VERIFICATION_SCHEMA = "verification_control"
 TEST_DATABASE_SUFFIXES = ("_test", "_testing")
@@ -815,7 +815,7 @@ def _fingerprint_table(
 def _initialize_product_schemas(settings: PostgresConnectionSettings) -> None:
     from trader.event_store import PostgresEventStore
     from trader_research.knowledge.postgres_store import PostgresKnowledgeStore
-    from trader_research.postgres_artifact_store import PostgresResearchArtifactStore
+    from trader_research.infrastructure.postgres import PostgresResearchArtifactStore
 
     event_store = PostgresEventStore(**settings.connect_kwargs())
     event_store.close()

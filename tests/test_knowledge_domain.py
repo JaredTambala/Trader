@@ -15,14 +15,13 @@ from trader_research.knowledge.domain import (
     KnowledgeEmbeddingManifest,
     KnowledgeIngestionReport,
     KnowledgeSourceManifest,
-    MethodCard,
+    MethodCardSummary,
     MethodCardSet,
     MethodologyCandidate,
     MethodologyCandidateValidationReport,
     MethodologyEvidencePacket,
     MethodologyFieldExtractionReport,
-    RichMethodCard,
-    RICH_METHOD_CARD_FORMAT,
+    MethodCard,
     SOURCE_TYPE_LABELS,
 )
 from trader_research.knowledge.extractors import ExtractedSection
@@ -114,6 +113,8 @@ def test_knowledge_artifacts_round_trip_json() -> None:
         outputs=("average",),
         failure_modes=("warmup",),
         evidence_refs=(EvidenceReference(source_id=source.source_id, chunk_id=chunk.chunk_id),),
+        source_methodology_candidate_id="methodology_candidate_demo",
+        validation_refs=({"artifact_type": "methodology_candidate_validation_report", "artifact_id": "validation_demo"},),
     )
     method_card_set = MethodCardSet(
         method_card_set_id="method_card_set_sma_demo",
@@ -142,8 +143,9 @@ def test_knowledge_artifacts_round_trip_json() -> None:
     assert KnowledgeChunk.from_dict(payload["chunk"]).to_dict()["chunk_id"] == chunk.chunk_id
     assert KnowledgeEmbeddingManifest.from_dict(payload["embedding"]).to_dict()["dimension"] == 32
     assert KnowledgeIngestionReport.from_dict(payload["report"]).to_dict()["chunks_indexed"] == 1
-    assert MethodCard.from_dict(payload["method_card"]).approved is True
-    assert MethodCard.from_dict(payload["method_card"]).method_card_set_id == method_card_set.method_card_set_id
+    parsed_card = MethodCard.from_dict(payload["method_card"])
+    assert parsed_card.approved is True
+    assert parsed_card.method_card_set_id == method_card_set.method_card_set_id
     assert MethodCardSet.from_dict(payload["method_card_set"]).current_approved_method_card_id == method_card.method_card_id
     json.dumps(payload)
 
@@ -289,8 +291,8 @@ def test_methodology_evidence_packet_round_trips_role_evidence() -> None:
     json.dumps(payload)
 
 
-def test_rich_method_card_round_trips_and_projects_to_shallow_card() -> None:
-    card = RichMethodCard(
+def test_method_card_round_trips_and_derives_compact_summary() -> None:
+    card = MethodCard(
         method_card_id="method_card_draft_pairs_demo",
         method_card_set_id="method_card_set_pairs_demo",
         revision_number=1,
@@ -318,14 +320,16 @@ def test_rich_method_card_round_trips_and_projects_to_shallow_card() -> None:
     )
 
     payload = card.to_dict()
-    parsed = RichMethodCard.from_dict(payload)
-    shallow = parsed.to_method_card()
+    parsed = MethodCard.from_dict(payload)
+    summary = parsed.to_summary()
 
     assert payload["artifact_type"] == "method_card_draft"
-    assert payload["card_format"] == RICH_METHOD_CARD_FORMAT
+    assert "card_format" not in payload
     assert parsed.to_dict() == payload
-    assert shallow.to_dict()["method_card_id"] == card.method_card_id
-    assert "core_fields" not in shallow.to_dict()
+    assert summary.to_dict()["method_card_id"] == card.method_card_id
+    assert summary.to_dict()["read_model"] == "method_card_summary"
+    assert "core_fields" not in summary.to_dict()
+    assert not hasattr(MethodCardSummary, "from_dict")
     json.dumps(payload)
 
 
@@ -344,9 +348,6 @@ def test_method_cards_require_explicit_set_lineage() -> None:
 
     with pytest.raises(ValueError, match="method_card_set_id is required"):
         MethodCard.from_dict(payload)
-
-    with pytest.raises(ValueError, match="method_card_set_id is required"):
-        RichMethodCard.from_dict({**payload, "card_format": RICH_METHOD_CARD_FORMAT})
 
 
 def test_methodology_extraction_and_validation_reports_round_trip_json() -> None:

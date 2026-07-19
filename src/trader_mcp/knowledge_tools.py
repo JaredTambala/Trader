@@ -7,11 +7,11 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from mcp.types import CallToolResult
 
-from trader_mcp.adapters import envelope_to_mcp_result
+from trader_mcp.adapters import result_to_mcp_result
+from trader_mcp.contracts import SideEffect, error_envelope
 from trader_mcp.constants import (
     KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL,
     KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
-    KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL,
     KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL,
     KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL,
     KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL,
@@ -43,40 +43,33 @@ from trader_mcp.constants import (
 )
 from trader_mcp.environment import McpEnvironment
 from trader_agents.llm_client import LlmJsonRequest, LlmMessage, RuntimeConfiguredLlmClient
-from trader_research.knowledge.citation_validation import validate_citations as validate_citations_service
-from trader_research.knowledge.domain import DEFAULT_SOURCE_TYPE
-from trader_research.knowledge.embeddings import EmbeddingProvider, RuntimeConfiguredEmbeddingProvider
-from trader_research.knowledge.store import KnowledgeStore
-from trader_research.knowledge.ingestion import (
-    get_ingestion_status as get_ingestion_status_service,
-    ingest_documents as ingest_documents_service,
-)
-from trader_research.knowledge.method_cards import (
-    create_method_card_draft as create_method_card_draft_service,
-    create_rich_method_card_draft as create_rich_method_card_draft_service,
-    get_method_card_set as get_method_card_set_service,
-    list_method_card_sets as list_method_card_sets_service,
-    publish_method_card as publish_method_card_service,
-    update_method_card_status as update_method_card_status_service,
-)
-from trader_research.knowledge.methodology_candidates import (
-    discover_methodology_candidates as discover_methodology_candidates_service,
-)
-from trader_research.knowledge.evidence_assembly import (
+from trader_research.knowledge import (
+    DEFAULT_SOURCE_TYPE,
+    EmbeddingProvider,
+    KnowledgeStore,
+    RuntimeConfiguredEmbeddingProvider,
+    StoreBackedApprovedMethodCardReader,
     assemble_methodology_evidence as assemble_methodology_evidence_service,
-)
-from trader_research.knowledge.methodology_extraction import (
+    create_method_card_draft as create_method_card_draft_service,
+    discover_methodology_candidates as discover_methodology_candidates_service,
     extract_methodology_fields as extract_methodology_fields_service,
-    validate_methodology_candidate as validate_methodology_candidate_service,
-)
-from trader_research.knowledge.retrieval import (
     get_evidence_chunks as get_evidence_chunks_service,
+    get_ingestion_status as get_ingestion_status_service,
+    get_method_card_set as get_method_card_set_service,
+    ingest_documents as ingest_documents_service,
+    list_method_card_sets as list_method_card_sets_service,
+    list_sources as list_sources_service,
+    publish_method_card as publish_method_card_service,
+    register_source as register_source_service,
     retrieve_evidence as retrieve_evidence_service,
     search_methods as search_methods_service,
+    update_method_card_status as update_method_card_status_service,
+    validate_methodology_candidate as validate_methodology_candidate_service,
+    validate_citations as validate_citations_service,
 )
-from trader_research.knowledge.sources import list_sources as list_sources_service
-from trader_research.knowledge.sources import register_source as register_source_service
-from trader_research.methods import (
+from trader_research.methodology import (
+    generation_messages,
+    generation_response_schema,
     math_compile_kernel as compile_kernel_service,
     math_generate_cpp_kernel as generate_cpp_kernel_service,
     math_generate_python_method as generate_python_method_service,
@@ -89,8 +82,7 @@ from trader_research.methods import (
     math_run_signal_fixtures as run_signal_fixtures_service,
     math_validate_method_contract as validate_method_contract_service,
 )
-from trader_research.method_implementations import generation_messages, generation_response_schema
-from trader_research.artifact_store import ResearchArtifactStore, ResearchArtifactStoreError
+from trader_research.foundation import ResearchArtifactStore, ResearchArtifactStoreError
 
 
 def register_quant_methods_tools(
@@ -112,16 +104,18 @@ def register_quant_methods_tools(
     def _artifact_store() -> ResearchArtifactStore | None:
         return artifact_store_provider() if artifact_store_provider is not None else None
 
-    def _artifact_store_error(command: str, error: ResearchArtifactStoreError) -> CallToolResult:
-        from trader_research.contracts import SideEffect, error_envelope
+    def _approved_card_reader() -> StoreBackedApprovedMethodCardReader | None:
+        store = _knowledge_store()
+        return StoreBackedApprovedMethodCardReader(store) if store is not None else None
 
+    def _artifact_store_error(command: str, error: ResearchArtifactStoreError) -> CallToolResult:
         envelope = error_envelope(
             command=command,
             side_effect=SideEffect.LOCAL_MUTATING,
             code="research_artifact_store_unavailable",
             message=str(error),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=KNOWLEDGE_REGISTER_SOURCE_TOOL,
@@ -147,7 +141,7 @@ def register_quant_methods_tools(
             access_policy=access_policy,
             knowledge_store=_knowledge_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=KNOWLEDGE_INGEST_DOCUMENTS_TOOL,
@@ -161,7 +155,7 @@ def register_quant_methods_tools(
             force=force,
             knowledge_store=_knowledge_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=KNOWLEDGE_GET_INGESTION_STATUS_TOOL,
@@ -177,7 +171,7 @@ def register_quant_methods_tools(
             run_id=run_id,
             knowledge_store=_knowledge_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=KNOWLEDGE_LIST_SOURCES_TOOL,
@@ -197,7 +191,7 @@ def register_quant_methods_tools(
             limit=limit,
             knowledge_store=_knowledge_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=KNOWLEDGE_SEARCH_METHODS_TOOL,
@@ -217,7 +211,7 @@ def register_quant_methods_tools(
             limit=limit,
             knowledge_store=_knowledge_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=KNOWLEDGE_LIST_METHOD_CARD_SETS_TOOL,
@@ -239,7 +233,7 @@ def register_quant_methods_tools(
             limit=limit,
             knowledge_store=_knowledge_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=KNOWLEDGE_GET_METHOD_CARD_SET_TOOL,
@@ -255,7 +249,7 @@ def register_quant_methods_tools(
             include_cards=include_cards,
             knowledge_store=_knowledge_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=KNOWLEDGE_RETRIEVE_EVIDENCE_TOOL,
@@ -278,7 +272,7 @@ def register_quant_methods_tools(
             approved_only=approved_only,
             knowledge_store=_knowledge_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=KNOWLEDGE_GET_EVIDENCE_CHUNKS_TOOL,
@@ -298,7 +292,7 @@ def register_quant_methods_tools(
             max_chars_per_chunk=max_chars_per_chunk,
             knowledge_store=_knowledge_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL,
@@ -326,7 +320,7 @@ def register_quant_methods_tools(
             knowledge_store=_knowledge_store(),
             artifact_store=_artifact_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL,
@@ -351,7 +345,7 @@ def register_quant_methods_tools(
             knowledge_store=_knowledge_store(),
             artifact_store=_artifact_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL,
@@ -378,7 +372,7 @@ def register_quant_methods_tools(
             knowledge_store=_knowledge_store(),
             artifact_store=_artifact_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE_TOOL,
@@ -401,13 +395,13 @@ def register_quant_methods_tools(
             knowledge_store=_knowledge_store(),
             artifact_store=_artifact_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
-        name=KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL,
-        description=KNOWLEDGE_TOOL_DESCRIPTIONS[KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL],
+        name=KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
+        description=KNOWLEDGE_TOOL_DESCRIPTIONS[KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL],
     )
-    def knowledge_create_rich_method_card_draft(
+    def knowledge_create_method_card_draft(
         methodology_candidate_validation_id: str | None = None,
         methodology_candidate_validation_uri: str | None = None,
         methodology_candidate_validation_report: dict[str, Any] | None = None,
@@ -417,7 +411,7 @@ def register_quant_methods_tools(
         version: int = 1,
         method_card_set_id: str | None = None,
     ) -> CallToolResult:
-        envelope = create_rich_method_card_draft_service(
+        envelope = create_method_card_draft_service(
             artifact_root=environment.artifact_root,
             methodology_candidate_validation_id=methodology_candidate_validation_id,
             methodology_candidate_validation_uri=methodology_candidate_validation_uri,
@@ -430,39 +424,7 @@ def register_quant_methods_tools(
             knowledge_store=_knowledge_store(),
             artifact_store=_artifact_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
-
-    @server.tool(
-        name=KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
-        description=KNOWLEDGE_TOOL_DESCRIPTIONS[KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL],
-    )
-    def knowledge_create_method_card_draft(
-        method_id: str,
-        title: str,
-        family: str,
-        assumptions: list[str],
-        inputs: list[str],
-        outputs: list[str],
-        failure_modes: list[str],
-        evidence_refs: list[dict[str, Any]],
-        version: int = 1,
-        method_card_set_id: str | None = None,
-    ) -> CallToolResult:
-        envelope = create_method_card_draft_service(
-            artifact_root=environment.artifact_root,
-            method_id=method_id,
-            title=title,
-            family=family,
-            assumptions=assumptions,
-            inputs=inputs,
-            outputs=outputs,
-            failure_modes=failure_modes,
-            evidence_refs=evidence_refs,
-            version=version,
-            method_card_set_id=method_card_set_id,
-            knowledge_store=_knowledge_store(),
-        )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL,
@@ -484,7 +446,7 @@ def register_quant_methods_tools(
             approve=approve,
             knowledge_store=_knowledge_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=KNOWLEDGE_UPDATE_METHOD_CARD_STATUS_TOOL,
@@ -506,7 +468,7 @@ def register_quant_methods_tools(
             superseded_by_method_card_id=superseded_by_method_card_id,
             knowledge_store=_knowledge_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=KNOWLEDGE_VALIDATE_CITATIONS_TOOL,
@@ -522,7 +484,7 @@ def register_quant_methods_tools(
             require_approved_method_card=require_approved_method_card,
             knowledge_store=_knowledge_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=MATH_LIST_METHOD_CONTRACTS_TOOL,
@@ -539,9 +501,8 @@ def register_quant_methods_tools(
             status=status,
             include_planned=include_planned,
             limit=limit,
-            knowledge_store=_knowledge_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=MATH_VALIDATE_METHOD_CONTRACT_TOOL,
@@ -555,9 +516,9 @@ def register_quant_methods_tools(
             artifact_root=environment.artifact_root,
             method_contract=method_contract,
             require_evidence=require_evidence,
-            knowledge_store=_knowledge_store(),
+            approved_card_reader=_approved_card_reader(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL,
@@ -565,7 +526,7 @@ def register_quant_methods_tools(
     )
     def math_register_method_implementation(
         method_id: str,
-        method_card_ids: list[str],
+        method_card_ids: list[str] | None = None,
         method_contract: dict[str, Any] | None = None,
         entrypoint: str | None = None,
         source_path: str | None = None,
@@ -579,7 +540,7 @@ def register_quant_methods_tools(
             envelope = register_method_implementation_service(
                 artifact_root=environment.artifact_root,
                 method_id=method_id,
-                method_card_ids=method_card_ids,
+                method_card_ids=method_card_ids or [],
                 method_contract=method_contract,
                 entrypoint=entrypoint,
                 source_path=source_path,
@@ -588,12 +549,12 @@ def register_quant_methods_tools(
                 implementation_kind=implementation_kind,
                 dependency_allowlist=dependency_allowlist,
                 expected_source_hash=expected_source_hash,
-                knowledge_store=_knowledge_store(),
+                approved_card_reader=_approved_card_reader(),
                 artifact_store=_artifact_store(),
             )
         except ResearchArtifactStoreError as exc:
             return _artifact_store_error(MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL, exc)
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=MATH_RUN_INDICATOR_FIXTURES_TOOL,
@@ -610,12 +571,12 @@ def register_quant_methods_tools(
                 implementation_id=implementation_id,
                 implementation_manifest=implementation_manifest,
                 fixtures=fixtures,
-                knowledge_store=_knowledge_store(),
+                approved_card_reader=_approved_card_reader(),
                 artifact_store=_artifact_store(),
             )
         except ResearchArtifactStoreError as exc:
             return _artifact_store_error(MATH_RUN_INDICATOR_FIXTURES_TOOL, exc)
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=MATH_RUN_SIGNAL_FIXTURES_TOOL,
@@ -632,12 +593,12 @@ def register_quant_methods_tools(
                 implementation_id=implementation_id,
                 implementation_manifest=implementation_manifest,
                 fixtures=fixtures,
-                knowledge_store=_knowledge_store(),
+                approved_card_reader=_approved_card_reader(),
                 artifact_store=_artifact_store(),
             )
         except ResearchArtifactStoreError as exc:
             return _artifact_store_error(MATH_RUN_SIGNAL_FIXTURES_TOOL, exc)
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=MATH_GENERATE_PYTHON_METHOD_TOOL,
@@ -665,9 +626,9 @@ def register_quant_methods_tools(
             method_contract=method_contract,
             llm_payload=llm_payload,
             fixtures=fixtures,
-            knowledge_store=_knowledge_store(),
+            approved_card_reader=_approved_card_reader(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=MATH_RUN_SIGNAL_DIAGNOSTICS_TOOL,
@@ -689,9 +650,9 @@ def register_quant_methods_tools(
             method_contracts=method_contracts,
             quantile_count=quantile_count,
             data_quality_report=data_quality_report,
-            knowledge_store=_knowledge_store(),
+            approved_card_reader=_approved_card_reader(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=MATH_RUN_MULTIPLE_TESTING_REPORT_TOOL,
@@ -709,9 +670,9 @@ def register_quant_methods_tools(
             metric_matrix=metric_matrix,
             method_contract=method_contract,
             alpha=alpha,
-            knowledge_store=_knowledge_store(),
+            approved_card_reader=_approved_card_reader(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=MATH_GENERATE_CPP_KERNEL_TOOL,
@@ -728,7 +689,7 @@ def register_quant_methods_tools(
             implementation_manifest=implementation_manifest,
             template_id=template_id,
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=MATH_COMPILE_KERNEL_TOOL,
@@ -747,7 +708,7 @@ def register_quant_methods_tools(
             compiler=compiler,
             timeout_seconds=timeout_seconds,
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=MATH_PACKAGE_METHOD_ARTIFACT_TOOL,
@@ -774,4 +735,4 @@ def register_quant_methods_tools(
             )
         except ResearchArtifactStoreError as exc:
             return _artifact_store_error(MATH_PACKAGE_METHOD_ARTIFACT_TOOL, exc)
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))

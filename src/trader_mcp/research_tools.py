@@ -11,7 +11,8 @@ from mcp.types import CallToolResult
 
 from trader.config import Config
 from trader.event_store import EventStore
-from trader_mcp.adapters import envelope_to_mcp_result
+from trader_mcp.adapters import result_to_mcp_result
+from trader_mcp.contracts import SideEffect, ToolEnvelope, error_envelope
 from trader_mcp.constants import (
     MATH_TOOL_DESCRIPTIONS,
     RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL,
@@ -40,50 +41,42 @@ from trader_mcp.constants import (
     RESEARCH_VALIDATE_STRATEGY_SPECIFICATION_TOOL,
 )
 from trader_mcp.environment import McpEnvironment
-from trader_research.artifact_store import ResearchArtifactStore
-from trader_research.backtests import (
+from trader_research.foundation import ApplicationResult, ResearchArtifactStore
+from trader_research.experiments import (
+    BacktestOptimizationTrialExecutor,
+    ExperimentTrackingSinkRegistry,
+    OptimizationEngineRegistry,
     compare_backtest_results,
+    create_backtest_specification,
+    create_parameter_optimization_plan,
+    create_risk_stack_specification,
+    create_strategy_specification,
     get_backtest_results,
-    run_backtest_specification,
-)
-from trader_research.contracts import SideEffect, ToolEnvelope, error_envelope
-from trader_research.implementations import (
+    get_optimizer_runtime,
+    get_parameter_optimization_results,
     list_risk_manager_templates,
     list_strategy_templates,
+    project_experiment_tracking,
     register_optimization_objective,
     register_risk_manager_implementation,
     register_strategy_implementation,
-    validate_optimization_objective,
-    validate_risk_manager_implementation,
-    validate_strategy_implementation,
-)
-from trader_research.optimization import (
-    BacktestOptimizationTrialExecutor,
-    OptimizationEngineRegistry,
-    create_parameter_optimization_plan,
-    get_optimizer_runtime,
-    get_parameter_optimization_results,
+    required_optimizer_profiles_for_variants,
+    run_backtest_specification,
     run_parameter_optimization,
     run_parameter_optimization_variants,
-    required_optimizer_profiles_for_variants,
-)
-from trader_research.specifications import (
-    create_backtest_specification,
-    create_risk_stack_specification,
-    create_strategy_specification,
     validate_backtest_specification,
+    validate_optimization_objective,
+    validate_risk_manager_implementation,
     validate_risk_stack_specification,
+    validate_strategy_implementation,
     validate_strategy_specification,
-)
-from trader_research.tracking import (
-    ExperimentTrackingSinkRegistry,
-    project_experiment_tracking,
 )
 
 
 EventStoreProvider = Callable[[], EventStore]
 ToolConfigProvider = Callable[[], Config]
 ResearchArtifactStoreProvider = Callable[[], ResearchArtifactStore]
+ServiceResult = ApplicationResult | ToolEnvelope
 
 
 def register_research_tools(
@@ -105,8 +98,8 @@ def register_research_tools(
             artifact_store_provider() if artifact_store_provider is not None else None
         )
 
-    def _result(envelope: ToolEnvelope) -> CallToolResult:
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+    def _result(result: ServiceResult) -> CallToolResult:
+        return CallToolResult(**result_to_mcp_result(result))
 
     def _blocked(
         command: str, code: str, message: str, side_effect: SideEffect
@@ -118,7 +111,7 @@ def register_research_tools(
         )
 
     def _implementation_registration(
-        service: Callable[..., ToolEnvelope], **kwargs: Any
+        service: Callable[..., ApplicationResult], **kwargs: Any
     ) -> CallToolResult:
         return _result(service(**kwargs, artifact_store=_store()))
 
@@ -169,7 +162,7 @@ def register_research_tools(
         return _result(list_risk_manager_templates(families=families))
 
     def _register(
-        service: Callable[..., ToolEnvelope],
+        service: Callable[..., ApplicationResult],
         *,
         name: str,
         version: str,
@@ -317,7 +310,7 @@ def register_research_tools(
         )
 
     def _validate(
-        service: Callable[..., ToolEnvelope],
+        service: Callable[..., ApplicationResult],
         *,
         implementation_version_id: str | None,
         implementation_version_uri: str | None,
@@ -561,7 +554,7 @@ def register_research_tools(
         if blocked is not None:
             return blocked
 
-        def _run() -> ToolEnvelope:
+        def _run() -> ApplicationResult:
             assert (
                 event_store_provider is not None
                 and backtest_config_provider is not None
@@ -684,7 +677,7 @@ def register_research_tools(
                 SideEffect.LOCAL_MUTATING,
             )
 
-        def _run() -> ToolEnvelope:
+        def _run() -> ServiceResult:
             assert (
                 event_store_provider is not None
                 and backtest_config_provider is not None
@@ -743,7 +736,7 @@ def register_research_tools(
         if blocked is not None:
             return blocked
 
-        def _run() -> ToolEnvelope:
+        def _run() -> ServiceResult:
             assert (
                 event_store_provider is not None
                 and backtest_config_provider is not None
@@ -816,7 +809,7 @@ def register_research_tools(
                 SideEffect.EXTERNAL_RESEARCH_MUTATING,
             )
 
-        def _run() -> ToolEnvelope:
+        def _run() -> ApplicationResult:
             return project_experiment_tracking(
                 canonical_run_ref=canonical_run_ref,
                 tracking_profile=tracking_profile,

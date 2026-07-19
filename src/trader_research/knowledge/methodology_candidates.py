@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from trader_research.governance.artifacts import QUANTITATIVE_METHODS_OWNER
+
+from trader_research.foundation import ApplicationResult, error_result, success_result
+
 from pathlib import Path
 import re
 from typing import Any, Mapping, Sequence
 
-from trader_research.artifact_store import ResearchArtifactStore, ResearchArtifactStoreError
-from trader_research.contracts import SideEffect, ToolEnvelope, error_envelope, success_envelope
-from trader_research.domain import METHODOLOGY_CANDIDATE, stable_research_id
+from trader_research.foundation.artifacts import ResearchArtifactStore, ResearchArtifactStoreError
+from trader_research.foundation import stable_research_id
+from trader_research.governance.artifacts import METHODOLOGY_CANDIDATE
 
 from .domain import KnowledgeChunk, KnowledgeSourceManifest, MethodologyCandidate
 from .embeddings import EmbeddingProvider
@@ -134,7 +138,7 @@ def discover_methodology_candidates(
     embedding_provider: EmbeddingProvider | None = None,
     knowledge_store: KnowledgeStore | None = None,
     artifact_store: ResearchArtifactStore | None = None,
-) -> ToolEnvelope:
+) -> ApplicationResult:
     """Discover source-backed methodology candidates without approving methods."""
     if artifact_store is None:
         return _artifact_store_unavailable("research artifact store is required")
@@ -142,9 +146,8 @@ def discover_methodology_candidates(
     normalized_source_ids = tuple(dict.fromkeys(str(item).strip() for item in (source_ids or ()) if str(item).strip()))
     normalized_families = _normalize_families(method_families or ())
     if not normalized_query and not normalized_source_ids and not normalized_families:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES,
-            side_effect=SideEffect.LOCAL_MUTATING,
             code="validation_error",
             message="query, source_ids, or method_families is required",
         )
@@ -184,9 +187,8 @@ def discover_methodology_candidates(
                 if source is not None:
                     sources[source_id] = source
     except (KnowledgeStoreError, ValueError) as exc:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES,
-            side_effect=SideEffect.LOCAL_MUTATING,
             code="methodology_discovery_error",
             message=str(exc),
         )
@@ -201,9 +203,8 @@ def discover_methodology_candidates(
         max_candidates=max_candidates,
     )
     if not candidates:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES,
-            side_effect=SideEffect.LOCAL_MUTATING,
             code="methodology_discovery_blocked",
             message="no methodology candidates were discovered",
             data={"candidate_count": 0},
@@ -214,6 +215,7 @@ def discover_methodology_candidates(
         for candidate in candidates:
             records.append(
                 artifact_store.save_artifact(
+                    agent_owner=QUANTITATIVE_METHODS_OWNER,
                     artifact_type=METHODOLOGY_CANDIDATE,
                     artifact_id=candidate.methodology_candidate_id,
                     payload=candidate.to_dict(),
@@ -229,9 +231,8 @@ def discover_methodology_candidates(
     except ResearchArtifactStoreError as exc:
         return _artifact_store_unavailable(str(exc))
 
-    return success_envelope(
+    return success_result(
         command=KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES,
-        side_effect=SideEffect.LOCAL_MUTATING,
         data={
             "methodology_candidates": [candidate.to_dict() for candidate in candidates],
             "candidate_count": len(candidates),
@@ -695,7 +696,7 @@ def _chunk_labels(chunk: KnowledgeChunk) -> tuple[str, ...]:
 def _identity_key(source_name: str, *, aliases: Sequence[str], abbreviations: Sequence[str]) -> str:
     key_terms = [source_name, *aliases, *abbreviations]
     normalized = "|".join(_normalize_identity_text(term) for term in key_terms if _normalize_identity_text(term))
-    digest = stable_research_id("method_identity", normalized)
+    digest = stable_research_id("method_identity", {"normalized_identity": normalized})
     return digest
 
 
@@ -876,19 +877,17 @@ def _family_attribution(
     return attribution
 
 
-def _validation_error(message: str) -> ToolEnvelope:
-    return error_envelope(
+def _validation_error(message: str) -> ApplicationResult:
+    return error_result(
         command=KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES,
-        side_effect=SideEffect.LOCAL_MUTATING,
         code="validation_error",
         message=message,
     )
 
 
-def _artifact_store_unavailable(message: str) -> ToolEnvelope:
-    return error_envelope(
+def _artifact_store_unavailable(message: str) -> ApplicationResult:
+    return error_result(
         command=KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES,
-        side_effect=SideEffect.LOCAL_MUTATING,
         code="research_artifact_store_unavailable",
         message=message,
     )

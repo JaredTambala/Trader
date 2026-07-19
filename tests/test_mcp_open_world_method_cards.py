@@ -9,7 +9,7 @@ import anyio
 
 from trader_mcp.constants import (
     KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL,
-    KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL,
+    KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
     KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL,
     KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL,
     KNOWLEDGE_GET_METHOD_CARD_SET_TOOL,
@@ -21,7 +21,7 @@ from trader_mcp.constants import (
 )
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
-from trader_research.artifact_store import InMemoryResearchArtifactStore
+from trader_research.foundation.artifacts import InMemoryResearchArtifactStore
 from trader_research.knowledge.embeddings import DeterministicEmbeddingProvider
 from trader_research.knowledge.store import JsonKnowledgeStore
 
@@ -150,12 +150,13 @@ async def _materialize_card(
     validation_ref = validated.structuredContent["artifacts"]["methodology_candidate_validation_report"]
 
     drafted = await server.call_tool(
-        KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL,
+        KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
         {"methodology_candidate_validation_uri": validation_ref["uri"]},
     )
     assert drafted.isError is False
     draft = drafted.structuredContent["data"]["method_card_draft"]
-    assert draft["card_format"] == "rich_method_card"
+    assert "card_format" not in draft
+    assert draft["source_methodology_candidate_id"] == candidate["methodology_candidate_id"]
     assert draft["method_card_set_id"]
 
     published = await server.call_tool(

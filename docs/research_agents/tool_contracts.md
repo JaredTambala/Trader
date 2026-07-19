@@ -190,8 +190,7 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | `knowledge_assemble_methodology_evidence` | Quantitative Methods Agent | `research://postgres/methodology_evidence_packet/...` refs |
 | `knowledge_extract_methodology_fields` | Quantitative Methods Agent | `methodology_field_extraction_report` and updated `methodology_candidate` refs |
 | `knowledge_validate_methodology_candidate` | Quantitative Methods Agent | `methodology_candidate_validation_report` with readiness summary |
-| `knowledge_create_method_card_draft` | Quantitative Methods Agent | `method_card_draft.json` |
-| `knowledge_create_rich_method_card_draft` | Quantitative Methods Agent | rich `method_card_draft` payload with `card_format="rich_method_card"` |
+| `knowledge_create_method_card_draft` | Quantitative Methods Agent | canonical evidence-backed `method_card_draft` payload |
 | `knowledge_publish_method_card` | Quantitative Methods Agent | approved `method_card.json` |
 | `knowledge_update_method_card_status` | Quantitative Methods Agent | retired `method_card.json` status update |
 | `knowledge_validate_citations` | Quantitative Methods Agent | `citation_validation_report.json` |
@@ -349,7 +348,7 @@ package.
 
 ## Maintained Implementation Template Catalog
 
-`research_list_strategy_templates` and `research_list_risk_manager_templates` are read-only discovery tools over the maintained implementation catalog in `trader_research.implementations`. Each row exposes a stable template ID, implementation kind, runtime contract, real `trader_standard` entrypoint, typed parameter metadata, required runtime context, and concise behavior metadata. Strategy rows also declare portfolio mode.
+`research_list_strategy_templates` and `research_list_risk_manager_templates` are read-only discovery tools over the maintained implementation catalog exposed by `trader_research.experiments`. Each row exposes a stable template ID, implementation kind, runtime contract, real `trader_standard` entrypoint, typed parameter metadata, required runtime context, and concise behavior metadata. Strategy rows also declare portfolio mode.
 
 Catalog rows are informational producer metadata. They are not implementation versions, executable specifications, validation evidence, or permission to run code. They do not contain method-card requirements, candidate validation requirements, source generators, dataset scope, filesystem paths, or mutable provider identity. To execute a maintained implementation, a producer submits its source through the same content-addressed implementation registration and validation contract used by handwritten and externally produced code.
 
@@ -391,7 +390,7 @@ Knowledge-base rules:
 - Knowledge tools must not expose arbitrary filesystem access, execute code from documents, or reproduce large source
   passages in artifacts.
 
-Rich methodology schema:
+Methodology schema:
 
 The conceptual semantic-extraction design and execution graph are defined in
 [semantic_extraction.md](semantic_extraction.md). This appendix defines transport and artifact contracts.
@@ -403,9 +402,9 @@ The conceptual semantic-extraction design and execution graph are defined in
   evidence-unit refs, rejected or weak role refs, source/chunk/text hashes, readiness goal, and diagnostics. Each role
   ref records `target_binding`, `accepted_target_binding`, binding terms, competing method labels, and the reason it was
   accepted or rejected. It is not a method card or approval.
-- Rich method cards keep the existing `method_card_draft` and `method_card` artifact types and add
-  `card_format="rich_method_card"` plus nullable rich fields, so shallow method-card search remains compatible.
-- Rich fields are grouped into common core groups: `identity`, `scope`, `data_requirements`, `method_specification`,
+- Method cards use the `method_card_draft` and `method_card` artifact types and always carry nullable methodology fields,
+  field-level evidence, candidate lineage, and validation lineage. There is no second shallow or rich card format.
+- Methodology fields are grouped into common core groups: `identity`, `scope`, `data_requirements`, `method_specification`,
   `signal_decision_logic`, `portfolio_execution`, `risk_validation`, and `implementation_notes`.
 - Domain extension blocks are nullable and closed: `technical_indicators`, `statistical_arbitrage`,
   `options_derivatives`, `fundamental_valuation`, `sentiment_alternative_data`, `portfolio_construction`,
@@ -417,7 +416,7 @@ The conceptual semantic-extraction design and execution graph are defined in
 - Source suitability matters. Internal notes can support operator-local context, but textbook or primary-source claims
   for high-risk families need real textbook, paper, documentation, or comparable curated sources. The validator blocks
   textbook/primary-source claims backed only by internal notes.
-- Rich-card fields are descriptive evidence, not executable code. They can provide provenance, defaults, and template
+- Method-card fields are descriptive evidence, not executable code. They can provide provenance, defaults, and template
   eligibility only where a maintained service explicitly supports the method family.
 
 Methodology candidate tool contracts:
@@ -468,21 +467,22 @@ Methodology candidate tool contracts:
 - Methodology field refs must include exact `claim_span` provenance. Validation re-slices stored evidence-unit text at
   the supplied offsets, recomputes the span hash, checks role and target binding, and verifies specialized field semantics.
   Another method appearing elsewhere in the same evidence unit is not a blocker.
-- `knowledge_create_rich_method_card_draft` request: exactly one of `methodology_candidate_validation_id`,
+- `knowledge_create_method_card_draft` request: exactly one of `methodology_candidate_validation_id`,
   `methodology_candidate_validation_uri`, or inline `methodology_candidate_validation_report`; optional `method_id`,
   `title`, `family`, and `version`.
 - Canonical method-card draft materialization requires a packet-backed passed validation report with `valid=true`, empty
   blockers, implementation readiness, and a loadable matching `methodology_candidate` whose lineage points to the same
   evidence packet as the validation report. Optional `method_id`, `title`, or `family` overrides fail closed unless the
   candidate identity, aliases, abbreviations, and validated families support them. The service revalidates source/chunk
-  evidence, derives summary fields from evidence-backed rich fields, and fails closed if assumptions, inputs, outputs,
+  evidence, derives compact summary fields from evidence-backed methodology fields, and fails closed if assumptions, inputs, outputs,
   or failure modes cannot be populated.
-  Success writes a rich `method_card_draft` with nullable field groups, field-level evidence refs, candidate lineage,
-  validation refs, source hashes, and chunk hashes while preserving shallow `MethodCard` projection compatibility.
-- `knowledge_publish_method_card` preserves rich payloads when publishing rich drafts. Approved rich cards remain visible
-  to existing shallow method-card search, citation validation, method contracts, implementation registration, and method
-  packaging through their shallow projection.
-- Approved rich cards may be retained as optional provenance by an external implementation producer. The resulting
+  Success writes the complete `method_card_draft` with nullable field groups, field-level evidence refs, candidate
+  lineage, validation refs, source hashes, and chunk hashes. Search derives a compact `MethodCardSummary`; summaries
+  have no writable parser or persistence API.
+- `knowledge_publish_method_card` preserves the complete payload. Approved cards remain visible to method-card search,
+  citation validation, evidence-required method contracts, implementation registration, and method packaging through
+  derived summaries or the narrow approved-card read port.
+- Approved cards may be retained as optional provenance by an external implementation producer. The resulting
   source receives no special eligibility: it must pass the same content-addressed implementation registration,
   validation, and specification contracts as handwritten or maintained source. Numeric behavior is never inferred from
   prose at execution time.

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from trader_research.foundation import ApplicationResult, error_result, success_result
+
 import hashlib
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from trader_research.contracts import SideEffect, ToolEnvelope, error_envelope, success_envelope
-from trader_research.domain import stable_research_id
+from trader_research.foundation import stable_research_id
 
 from .domain import EvidenceChunkDereferenceReport, EvidenceRetrievalReport, KnowledgeChunk, KnowledgeSourceManifest
 from .embeddings import EmbeddingConfigurationError, EmbeddingProvider, EmbeddingRequestError
@@ -31,18 +32,17 @@ def search_methods(
     include_drafts: bool = False,
     limit: int = 10,
     knowledge_store: KnowledgeStore | None = None,
-) -> ToolEnvelope:
+) -> ApplicationResult:
     """Search method-card contracts and return JSON-safe method metadata.
 
     The command bounds the requested limit, delegates deterministic matching to the
     method-card catalog, and respects draft visibility. It is read-only and
-    translates knowledge-store failures into a stable envelope code for tool
+    translates knowledge-store failures into a stable result code for tool
     clients.
     """
     if limit < 1 or limit > 50:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_SEARCH_METHODS,
-            side_effect=SideEffect.READ_ONLY,
             code="validation_error",
             message="limit must be between 1 and 50",
         )
@@ -56,15 +56,13 @@ def search_methods(
             knowledge_store=knowledge_store,
         )
     except KnowledgeStoreError as exc:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_SEARCH_METHODS,
-            side_effect=SideEffect.READ_ONLY,
             code="knowledge_store_error",
             message=str(exc),
         )
-    return success_envelope(
+    return success_result(
         command=KNOWLEDGE_SEARCH_METHODS,
-        side_effect=SideEffect.READ_ONLY,
         data={
             "methods": [card.to_dict() for card in cards],
             "method_count": len(cards),
@@ -82,19 +80,18 @@ def retrieve_evidence(
     top_k: int = 5,
     approved_only: bool = True,
     knowledge_store: KnowledgeStore | None = None,
-) -> ToolEnvelope:
+) -> ApplicationResult:
     """Search indexed knowledge chunks and package them as citeable evidence.
 
     The query is validated, embedded, searched through lexical/vector fusion, and
     wrapped in an `EvidenceRetrievalReport` with filters and deterministic
     retrieval ID. Embedding configuration, embedding backend, validation, and store
-    failures are converted into read-only error envelopes so callers can retry with
+    failures are converted into read-only error results so callers can retry with
     corrected runtime settings.
     """
     if not query.strip():
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_RETRIEVE_EVIDENCE,
-            side_effect=SideEffect.READ_ONLY,
             code="validation_error",
             message="query is required",
         )
@@ -109,9 +106,8 @@ def retrieve_evidence(
             approved_only=approved_only,
         )
     except (EmbeddingConfigurationError, EmbeddingRequestError, ValueError, KnowledgeStoreError) as exc:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_RETRIEVE_EVIDENCE,
-            side_effect=SideEffect.READ_ONLY,
             code="embedding_configuration_error"
             if isinstance(exc, EmbeddingConfigurationError)
             else "knowledge_store_error"
@@ -140,9 +136,8 @@ def retrieve_evidence(
         },
         results=tuple(results),
     )
-    return success_envelope(
+    return success_result(
         command=KNOWLEDGE_RETRIEVE_EVIDENCE,
-        side_effect=SideEffect.READ_ONLY,
         data={"evidence_retrieval_report": report.to_dict()},
         warnings=tuple() if results else ("no indexed chunks matched the query",),
     )
@@ -156,7 +151,7 @@ def get_evidence_chunks(
     include_text: bool = True,
     max_chars_per_chunk: int = 4000,
     knowledge_store: KnowledgeStore | None = None,
-) -> ToolEnvelope:
+) -> ApplicationResult:
     """Resolve chunk IDs into ordered, bounded evidence payloads for agent context.
 
     The command de-duplicates requested IDs while preserving order, validates the
@@ -167,24 +162,21 @@ def get_evidence_chunks(
     """
     requested_chunk_ids = tuple(dict.fromkeys(str(chunk_id).strip() for chunk_id in chunk_ids if str(chunk_id).strip()))
     if not requested_chunk_ids:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_GET_EVIDENCE_CHUNKS,
-            side_effect=SideEffect.READ_ONLY,
             code="validation_error",
             message="chunk_ids is required",
         )
     if len(requested_chunk_ids) > MAX_DEREFERENCE_CHUNKS:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_GET_EVIDENCE_CHUNKS,
-            side_effect=SideEffect.READ_ONLY,
             code="validation_error",
             message=f"chunk_ids must contain at most {MAX_DEREFERENCE_CHUNKS} entries",
             data={"requested_chunk_count": len(requested_chunk_ids), "max_chunk_count": MAX_DEREFERENCE_CHUNKS},
         )
     if max_chars_per_chunk < 1 or max_chars_per_chunk > MAX_CHARS_PER_CHUNK_LIMIT:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_GET_EVIDENCE_CHUNKS,
-            side_effect=SideEffect.READ_ONLY,
             code="validation_error",
             message=f"max_chars_per_chunk must be between 1 and {MAX_CHARS_PER_CHUNK_LIMIT}",
             data={"max_chars_per_chunk": max_chars_per_chunk},
@@ -195,9 +187,8 @@ def get_evidence_chunks(
         chunks = store.load_chunks_by_ids(requested_chunk_ids)
         sources_by_id = _load_sources_for_chunks(store, chunks)
     except KnowledgeStoreError as exc:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_GET_EVIDENCE_CHUNKS,
-            side_effect=SideEffect.READ_ONLY,
             code="knowledge_store_error",
             message=str(exc),
         )
@@ -208,9 +199,8 @@ def get_evidence_chunks(
         chunk.chunk_id for chunk in chunks if source_id is not None and chunk.source_id != source_id
     )
     if missing_chunk_ids or source_mismatch_chunk_ids:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_GET_EVIDENCE_CHUNKS,
-            side_effect=SideEffect.READ_ONLY,
             code="chunk_dereference_error",
             message="one or more evidence chunks could not be resolved",
             data={
@@ -255,9 +245,8 @@ def get_evidence_chunks(
         warnings=warnings,
     )
     payload = report.to_dict()
-    return success_envelope(
+    return success_result(
         command=KNOWLEDGE_GET_EVIDENCE_CHUNKS,
-        side_effect=SideEffect.READ_ONLY,
         data={
             "evidence_chunk_dereference_report": payload,
             "chunks": payload["chunks"],

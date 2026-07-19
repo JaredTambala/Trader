@@ -5,19 +5,26 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from trader_research.contracts import ToolEnvelope, envelope_json
+from trader_research.foundation import ApplicationResult
+
+from .contracts import ToolEnvelope, envelope_json, result_to_envelope
 
 
-def envelope_to_mcp_result(envelope: ToolEnvelope) -> dict[str, Any]:
-    """Convert a research tool envelope to an MCP CallToolResult-style mapping.
+def result_to_mcp_result(
+    result: ApplicationResult | ToolEnvelope,
+) -> dict[str, Any]:
+    """Convert an application result to an MCP CallToolResult-style mapping.
 
     Args:
-        envelope: Research tool envelope to expose through MCP.
+        result: Research result or MCP-owned envelope to expose through MCP.
 
     Returns:
         Dictionary with MCP-style `content`, `structuredContent`, and `isError`
         fields.
     """
+    envelope = (
+        result_to_envelope(result) if isinstance(result, ApplicationResult) else result
+    )
     structured_content = envelope.to_dict()
     return {
         "content": [{"type": "text", "text": envelope_json(envelope)}],

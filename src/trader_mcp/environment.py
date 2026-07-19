@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
-from typing import Mapping
+from typing import Literal, Mapping
 
 from dotenv import dotenv_values
 
@@ -32,7 +32,7 @@ class McpEnvironment:
     """
 
     environment: str
-    transport: str
+    transport: Literal["stdio"]
     artifact_root: Path
     trader_config_path: Path | None
     tool_env_path: Path | None
@@ -112,9 +112,10 @@ def load_local_environment(env_path: str | Path | None = None) -> McpEnvironment
     if not path.exists():
         raise FileNotFoundError(f"Local MCP env file not found: {path}")
     file_values = {key: value for key, value in dotenv_values(path).items() if value is not None}
-    transport = _required_env("TRADER_MCP_TRANSPORT", file_values)
-    if transport != "stdio":
-        raise ValueError(f"Unsupported local MCP transport: {transport}")
+    transport_value = _required_env("TRADER_MCP_TRANSPORT", file_values)
+    if transport_value != "stdio":
+        raise ValueError(f"Unsupported local MCP transport: {transport_value}")
+    transport: Literal["stdio"] = "stdio"
     return McpEnvironment(
         environment=_required_env("TRADER_MCP_ENVIRONMENT", file_values),
         transport=transport,

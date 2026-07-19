@@ -113,7 +113,7 @@ knowledge source
   -> field-specific span filtering
   -> bounded multi-span field synthesis
   -> semantic and provenance validation
-  -> canonical rich method-card draft
+  -> canonical evidence-backed method-card draft
   -> explicit publication
 ```
 
@@ -188,7 +188,7 @@ does not support the populated field for the selected target.
 
 ### Draft And Publication
 
-`knowledge_create_rich_method_card_draft` consumes only a passed, packet-backed validation report with implementation
+`knowledge_create_method_card_draft` consumes only a passed, packet-backed validation report with implementation
 readiness. It revalidates evidence and derives required card summaries. Missing assumptions, inputs, outputs, or failure
 modes block draft creation rather than being supplied by the caller.
 

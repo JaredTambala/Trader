@@ -65,18 +65,11 @@ files = [
     "src/trader/broker/helpers.py",
     "src/trader/broker/internal.py",
     "src/trader/strategy_metadata/resolution.py",
-    "src/trader_research/research.py",
-    "src/trader_research/domain.py",
+    "src/trader_research",
+    "src/trader_mcp",
+    "src/trader_agents",
     "src/trader/runtime/status.py",
-    "src/trader_research/artifacts.py",
-    "src/trader_research/discovery.py",
-    "src/trader_research/promotion.py",
-    "src/trader_research/recommendations.py",
-    "src/trader_research/suites.py",
     "run_operator.py",
-    "run_research_discovery.py",
-    "run_research_recommendations.py",
-    "run_prepare_paper_promotion.py",
 ]
 check_untyped_defs = true
 follow_imports = "silent"

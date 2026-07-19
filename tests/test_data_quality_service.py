@@ -41,8 +41,7 @@ def test_data_quality_returns_complete_sample_report(tmp_path: Path) -> None:
     second = data_summarize_quality(store, _request())
 
     assert first.ok is True
-    assert first.agent_owner == "Data Agent"
-    assert first.side_effect.value == "read_only"
+    assert first.operation == "data_summarize_quality"
     assert first.warnings == ()
     report = first.to_dict()["data"]["data_quality_report"]
     assert report["report_id"] == second.to_dict()["data"]["data_quality_report"]["report_id"]

@@ -6,18 +6,13 @@ import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from trader_research.contracts import write_json_artifact
-from trader_research.methods.contracts import MethodRegistryEntry
-
 from .domain import (
     KnowledgeChunk,
     KnowledgeEmbeddingManifest,
     KnowledgeIngestionReport,
     KnowledgeSourceManifest,
-    MethodCard,
     MethodCardSet,
-    RICH_METHOD_CARD_FORMAT,
-    RichMethodCard,
+    MethodCard,
 )
 
 
@@ -28,7 +23,7 @@ class KnowledgeRepository:
     converts typed domain objects to JSON files, and validates source paths against
     allowed roots before registration. It is intentionally simple storage used by
     the JSON compatibility store and local tests; higher-level services decide
-    which writes are allowed and how errors become tool envelopes.
+    which writes are allowed and how errors become tool results.
     """
 
     def __init__(self, artifact_root: str | Path, *, allowed_roots: Sequence[str | Path] | None = None) -> None:
@@ -67,11 +62,6 @@ class KnowledgeRepository:
         return self.artifact_root / "method_card_sets"
 
     @property
-    def method_contract_dir(self) -> Path:
-        """Return the artifact directory containing persisted method contract override artifacts under root."""
-        return self.artifact_root / "method_contracts"
-
-    @property
     def index_path(self) -> Path:
         """Return the JSON search-index artifact path used by the compatibility store."""
         return self.artifact_root / "index.json"
@@ -85,7 +75,6 @@ class KnowledgeRepository:
             self.ingestion_dir,
             self.method_card_dir,
             self.method_card_set_dir,
-            self.method_contract_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
 
@@ -124,10 +113,6 @@ class KnowledgeRepository:
     def method_card_set_path(self, method_card_set_id: str) -> Path:
         """Return the method-card set artifact path for a stable aggregate ID."""
         return self.method_card_set_dir / f"{method_card_set_id}.json"
-
-    def method_contract_path(self, method_id: str) -> Path:
-        """Return the method-contract artifact path for a maintained method identifier under root."""
-        return self.method_contract_dir / f"{method_id}.json"
 
     def save_source(self, manifest: KnowledgeSourceManifest) -> Path:
         """Persist a source manifest and return the written artifact path for callers."""
@@ -221,13 +206,9 @@ class KnowledgeRepository:
         payload = _read_json(self.index_path)
         return tuple(_mapping(item) for item in _sequence(payload.get("entries")))
 
-    def save_method_card(self, method_card: MethodCard) -> Path:
-        """Persist a method-card artifact and return its deterministic artifact path for callers."""
-        self.ensure_dirs()
-        return write_json_artifact(method_card.to_dict(), self.method_card_path(method_card.method_card_id))
 
-    def save_rich_method_card(self, method_card: RichMethodCard) -> Path:
-        """Persist a rich method-card payload without dropping nullable methodology fields."""
+    def save_method_card(self, method_card: MethodCard) -> Path:
+        """Persist a method-card payload without dropping nullable methodology fields."""
         self.ensure_dirs()
         return write_json_artifact(method_card.to_dict(), self.method_card_path(method_card.method_card_id))
 
@@ -236,21 +217,15 @@ class KnowledgeRepository:
         self.ensure_dirs()
         return write_json_artifact(method_card_set.to_dict(), self.method_card_set_path(method_card_set.method_card_set_id))
 
-    def list_persisted_method_cards(self) -> tuple[MethodCard, ...]:
-        """Load persisted method cards from disk in deterministic filename order for merging."""
-        if not self.method_card_dir.exists():
-            return tuple()
-        return tuple(MethodCard.from_dict(_read_json(path)) for path in sorted(self.method_card_dir.glob("*.json")))
 
-    def list_persisted_rich_method_cards(self) -> tuple[RichMethodCard, ...]:
-        """Load rich method-card payloads from disk while ignoring shallow cards."""
+    def list_persisted_method_cards(self) -> tuple[MethodCard, ...]:
+        """Load canonical method-card payloads from disk."""
         if not self.method_card_dir.exists():
             return tuple()
         cards = []
         for path in sorted(self.method_card_dir.glob("*.json")):
             payload = _read_json(path)
-            if payload.get("card_format") == RICH_METHOD_CARD_FORMAT:
-                cards.append(RichMethodCard.from_dict(payload))
+            cards.append(MethodCard.from_dict(payload))
         return tuple(cards)
 
     def list_method_card_sets(self) -> tuple[MethodCardSet, ...]:
@@ -261,20 +236,22 @@ class KnowledgeRepository:
             MethodCardSet.from_dict(_read_json(path)) for path in sorted(self.method_card_set_dir.glob("*.json"))
         )
 
-    def save_method_contract(self, method: MethodRegistryEntry) -> Path:
-        """Persist a method-contract artifact and return its deterministic artifact path for callers."""
-        self.ensure_dirs()
-        return write_json_artifact(method.to_dict(), self.method_contract_path(method.method_id))
 
-    def list_persisted_method_contracts(self) -> tuple[MethodRegistryEntry, ...]:
-        """Load persisted method contracts from disk in deterministic filename order for merging."""
-        if not self.method_contract_dir.exists():
-            return tuple()
-        return tuple(MethodRegistryEntry.from_dict(_read_json(path)) for path in sorted(self.method_contract_dir.glob("*.json")))
 
 
 def _read_json(path: Path) -> Mapping[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def write_json_artifact(payload: Mapping[str, Any], path: str | Path) -> Path:
+    """Write a JSON artifact for the non-canonical local knowledge test adapter."""
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True, default=str),
+        encoding="utf-8",
+    )
+    return output_path
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:

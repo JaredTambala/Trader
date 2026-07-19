@@ -230,8 +230,8 @@ Provider implementation rules:
 
 - Data Agent graphs should store and pass provider context, but should not import Alpaca clients or provider SDKs.
 - `trader_research.data` may resolve configured provider metadata from the bounded trader config.
-- Provider-specific code should live in adapter modules, for example `trader_research.providers.alpaca_symbols`, or a
-similarly explicit provider package.
+- Provider-specific code lives in outer adapter modules, currently
+  `trader_research.infrastructure.providers.alpaca`; Data domain/application modules do not import provider SDKs.
 - Concrete provider requests must match the configured provider before any provider catalog or data-source query is
 attempted.
 - Instrument type and bar type must be resolved through the provider adapter. The graph should not assume that

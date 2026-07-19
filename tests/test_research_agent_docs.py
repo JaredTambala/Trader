@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 
 from trader_mcp.constants import REGISTERED_TOOL_NAMES
-from trader_research.agents import AGENT_DEFINITIONS
+from trader_research.governance.ownership import AGENT_DEFINITIONS
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -134,6 +134,64 @@ def test_docs_pin_knowledge_baseline_and_identify_next_delivery_focus() -> None:
     assert "Durable filesystem bundle paths are neither required nor returned" in tracker
 
 
+def test_docs_define_trader_research_refactor_gate_and_execution_lineage() -> None:
+    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
+    tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(
+        encoding="utf-8"
+    )
+
+    required_architecture_phrases = (
+        "## `trader_research` Refactor Review And Plan",
+        "The refactor will establish five bounded domain contexts",
+        "knowledge.citation_validation <-> knowledge.method_cards",
+        "Business operations will return typed application results",
+        "There will be no old-to-new Python modules, aliases, dual writes",
+        "one evidence-backed method-card",
+        "`MethodCardSummary` is a non-writable read model",
+        "`trader_research.data` is the sole application facade",
+        "Provider SDK code does not belong to the Data context",
+        "`trader_research.experiments` is the single outer application facade",
+        "Neither adapter is imported by",
+        "Review imports only `trader_research.experiments.reads`",
+        "It exposes no implementation",
+        "`trader_mcp` composes every domain operation through the public",
+        "forcibly rejects every `optuna` and `mlflow` import",
+        "Production refactoring starts at TRR-5 only",
+        "replacement 57I-N verification",
+    )
+    for phrase in required_architecture_phrases:
+        assert phrase in architecture
+
+    for task_number in range(1, 13):
+        assert f"TRR-{task_number}." in tracker
+
+    for completed_task in range(1, 12):
+        assert f"| TRR-{completed_task}." in tracker
+        task_row = next(
+            line for line in tracker.splitlines() if line.startswith(f"| TRR-{completed_task}.")
+        )
+        assert "| Done |" in task_row
+
+    assert "| TRR-12. Requalify Refactored Product | In progress |" in tracker
+    assert "57O remains blocked until this passes" in tracker
+
+
+def test_active_operator_docs_do_not_advertise_retired_research_clis() -> None:
+    active_paths = (REPO_ROOT / "README.md", *(REPO_ROOT / "docs" / "core").rglob("*.md"))
+    retired_commands = (
+        "run_compare_results.py",
+        "run_prepare_paper_promotion.py",
+        "run_research_discovery.py",
+        "run_research_experiment.py",
+        "run_research_recommendations.py",
+    )
+
+    for path in active_paths:
+        content = path.read_text(encoding="utf-8")
+        for command in retired_commands:
+            assert command not in content, f"{command} found in {path.relative_to(REPO_ROOT)}"
+
+
 def test_docs_define_provider_neutral_optimization_and_independent_review() -> None:
     architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
     agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
@@ -210,7 +268,7 @@ def test_tracker_freezes_57i_surface_and_acceptance_matrix() -> None:
 
     required_inventory = (
         "#### 57I Frozen Surface Inventory",
-        "`verification-57i-freeze-v3`",
+        "`verification-57i-freeze-v4`",
         "`research_register_strategy_implementation`",
         "`research_register_optimization_objective`",
         "`research_run_backtest_specification`",
@@ -257,7 +315,7 @@ def test_docs_define_57j_isolated_postgres_runtime() -> None:
         "verification_control.operator_fingerprints",
         "tests.support.postgres_verification provision --reset",
         "before every `TRUNCATE`",
-        "byte-identical to `verification-57i-freeze-v3`",
+        "byte-identical to `verification-57i-freeze-v4`",
         "isolation_status",
         "qualification_status",
         "--outcome passed",

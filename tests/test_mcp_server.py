@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import timedelta
 import os
 from pathlib import Path
+import subprocess
 import sys
 
 import anyio
@@ -31,6 +32,54 @@ from trader_mcp.constants import (
 )
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
+
+
+def test_server_starts_without_optional_optuna_or_mlflow_packages() -> None:
+    script = '''
+import builtins
+from pathlib import Path
+
+real_import = builtins.__import__
+
+def guarded_import(name, *args, **kwargs):
+    if name.split(".", 1)[0] in {"mlflow", "optuna"}:
+        raise ModuleNotFoundError(name)
+    return real_import(name, *args, **kwargs)
+
+builtins.__import__ = guarded_import
+
+from trader_mcp.environment import McpEnvironment
+from trader_mcp.server import create_server
+
+environment = McpEnvironment(
+    environment="test",
+    transport="stdio",
+    artifact_root=Path("artifacts/research"),
+    trader_config_path=None,
+    tool_env_path=None,
+    allow_broker_mutation=False,
+    allow_raw_sql=False,
+    allow_symbol_provider_discovery=False,
+    allow_data_loading=False,
+    allow_backtests=False,
+    embeddings_provider="deterministic",
+    embeddings_model="test",
+    embeddings_base_url="",
+    embeddings_api_key="",
+    embeddings_timeout_seconds=1.0,
+    knowledge_store="unavailable",
+)
+assert create_server(environment) is not None
+'''
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_local_env_loads_portable_configuration() -> None:

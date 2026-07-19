@@ -23,7 +23,6 @@ Primary entrypoints:
 uv run python examples/run_injected_backtest.py
 uv run python examples/run_library_backtest.py
 uv run python examples/run_reproducible_backtest.py
-uv run python run_research_experiment.py configs/reproducible_backtest.yaml --experiment demo_research
 ```
 
 Flow:
@@ -39,12 +38,9 @@ Flow:
 9. Run, cycle, signal, order, fill, and position records are persisted.
 10. The runner builds `BacktestResult`.
 
-Research orchestration wraps this same backtest path. `run_research_experiment.py` builds a standard-library strategy
-from config, optionally expands a deterministic parameter sweep, runs each member sequentially, and records
-`experiments` / `experiment_runs` rows plus local artifacts. It is backtest-only and local in Sprint 3.
-Sprint 5 `run_research_discovery.py` adds a JSON-first orchestration wrapper for AI/tool clients: it plans or prepares
-data, expands supported standard strategy families into a bounded suite, runs sequential backtests, compares results,
-and writes recommendations. It is still backtest-only and does not call the live service.
+Canonical research orchestration is exposed through MCP. It validates registered implementation versions and immutable
+strategy/risk/backtest specifications before invoking this same runner, then stores complete run evidence in Postgres
+research artifacts. See [Research Agent Workflows](../../research_agents/workflows.md).
 
 Backtest mode does not call Alpaca, does not write market-data bars, and does not depend on wall-clock timing for
 decisions. Its main persistence boundary is the run/cycle trail: `runs` records the run, `run_events` records each

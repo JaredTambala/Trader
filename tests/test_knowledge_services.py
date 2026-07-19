@@ -131,11 +131,11 @@ def test_ingest_retrieve_and_validate_citations(tmp_path: Path) -> None:
                     "source_id": result["source_id"],
                     "chunk_id": result["chunk_id"],
                     "locator": result["locator"],
-                    "method_card_id": "method_card_sma_seed_v1",
                 }
             ]
-        },
-    )
+            },
+            require_approved_method_card=False,
+        )
     bad_citation = validate_citations(
         artifact_root=artifact_root,
         artifact={"knowledge_evidence_refs": [{"source_id": source_id, "chunk_id": "missing"}]},

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from trader_research.governance.artifacts import OWNER_BY_ARTIFACT_TYPE
+
 from dataclasses import replace
 
 import anyio
@@ -22,8 +24,11 @@ from trader_mcp.constants import (
 )
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
-from trader_research.artifact_store import InMemoryResearchArtifactStore
-from trader_research.domain import PARAMETER_OPTIMIZATION_AUDIT_PLAN, PARAMETER_OPTIMIZATION_RUN
+from trader_research.foundation.artifacts import InMemoryResearchArtifactStore
+from trader_research.governance.artifacts import (
+    PARAMETER_OPTIMIZATION_AUDIT_PLAN,
+    PARAMETER_OPTIMIZATION_RUN,
+)
 
 
 def test_mcp_exposes_decoupled_tools_and_independent_write_gates() -> None:
@@ -119,6 +124,7 @@ def test_optimization_requires_its_gate_after_backtests_are_enabled() -> None:
 def test_optuna_variant_execution_uses_the_same_external_write_gates() -> None:
     store = InMemoryResearchArtifactStore()
     store.save_artifact(
+        agent_owner=OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_RUN],
         artifact_type=PARAMETER_OPTIMIZATION_RUN,
         artifact_id="baseline-run",
         payload={
@@ -129,6 +135,7 @@ def test_optuna_variant_execution_uses_the_same_external_write_gates() -> None:
         status="completed",
     )
     store.save_artifact(
+        agent_owner=OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_AUDIT_PLAN],
         artifact_type=PARAMETER_OPTIMIZATION_AUDIT_PLAN,
         artifact_id="audit-plan",
         payload={

@@ -177,22 +177,10 @@ local order/fill audit events based on broker state.
 
 ## AI-Toolable Research
 
-The Sprint 5 research surface lets an AI system or script plan data work, run bounded research suites, compare results,
-rank candidates, and prepare a dry-run paper-promotion packet. These commands are JSON-first and research-only; they do
-not start `TraderService`, submit Alpaca orders, clear halt state, or reconcile broker state.
-
-```bash
-uv run python run_research_discovery.py configs/reproducible_backtest.yaml \
-  --symbols DEMO \
-  --asset-class stocks \
-  --timeframe 1Min \
-  --since 1d \
-  --strategies trend_following,mean_reversion \
-  --data-mode existing \
-  --json
-
-uv run python run_research_recommendations.py configs/reproducible_backtest.yaml --experiment demo_discovery --json
-```
+The supported research control plane is the Postgres-first MCP server. Data, implementation, specification, backtest,
+optimization, knowledge, Evaluation, and Adversarial tools return canonical `research://postgres/...` references and do
+not control live trading. The old filesystem discovery, recommendation, promotion, and event-store experiment command
+wrappers have been retired.
 
 See [docs/research_agents/tool_contracts.md](docs/research_agents/tool_contracts.md) for the stable envelope schema and
 side-effect classes, and [docs/research_agents/workflows.md](docs/research_agents/workflows.md) for the current
@@ -461,17 +449,11 @@ uv run python examples/run_reproducible_backtest.py
 This loads the checked-in synthetic `DEMO` 1-minute dataset and exports stable artifacts under
 `artifacts/reproducible_backtest/`.
 
-### Run a research experiment and compare results
+### Run canonical research through MCP
 
-```bash
-uv run python run_research_experiment.py configs/reproducible_backtest.yaml --experiment demo_research --run-data-quality
-uv run python run_compare_results.py configs/reproducible_backtest.yaml --experiment demo_research --format table
-uv run python run_compare_results.py configs/reproducible_backtest.yaml --experiment demo_research --format json
-```
-
-Research runs are backtest-only in this phase. They use config-defined `trader_standard` strategies, optional
-deterministic parameter sweeps, Postgres `experiments` / `experiment_runs` records, and local artifacts under
-`artifacts/research/`.
+Research backtests and optimization runs are created from registered implementation versions and immutable
+specifications. See [docs/research_agents/workflows.md](docs/research_agents/workflows.md) for the execution graph and
+[docs/research_agents/operations.md](docs/research_agents/operations.md) for policy gates and Postgres inspection.
 
 ### Replay stored bars through the realtime path
 

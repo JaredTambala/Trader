@@ -6,7 +6,7 @@ import shutil
 
 import pytest
 
-from trader_research.methods import (
+from trader_research.methodology import (
     math_compile_kernel,
     math_generate_cpp_kernel,
     math_register_method_implementation,
@@ -46,12 +46,15 @@ def test_generate_cpp_kernel_requires_validated_indicator_manifest(tmp_path: Pat
     registered = _registered_sma_manifest(artifact_root)
     signal_like_manifest = {**_validated_sma_manifest(artifact_root), "runtime_contract": "trader.signals.Signal"}
     unsupported_manifest = {**_validated_sma_manifest(artifact_root), "method_id": "ema"}
-    missing_evidence_manifest = {**_validated_sma_manifest(artifact_root), "method_card_ids": []}
+    provenance_neutral_manifest = {**_validated_sma_manifest(artifact_root), "method_card_ids": []}
 
     unvalidated = math_generate_cpp_kernel(artifact_root=artifact_root, implementation_manifest=registered)
     wrong_runtime = math_generate_cpp_kernel(artifact_root=artifact_root, implementation_manifest=signal_like_manifest)
     unsupported = math_generate_cpp_kernel(artifact_root=artifact_root, implementation_manifest=unsupported_manifest)
-    missing_evidence = math_generate_cpp_kernel(artifact_root=artifact_root, implementation_manifest=missing_evidence_manifest)
+    provenance_neutral = math_generate_cpp_kernel(
+        artifact_root=artifact_root,
+        implementation_manifest=provenance_neutral_manifest,
+    )
 
     assert unvalidated.ok is False
     assert "validated Python implementation manifest is required" in unvalidated.data["blockers"]
@@ -59,8 +62,7 @@ def test_generate_cpp_kernel_requires_validated_indicator_manifest(tmp_path: Pat
     assert "C++ kernels require trader.indicators.Indicator, got trader.signals.Signal" in wrong_runtime.data["blockers"]
     assert unsupported.ok is False
     assert "unsupported C++ kernel method: ema" in unsupported.data["blockers"]
-    assert missing_evidence.ok is False
-    assert "approved method-card refs are required" in missing_evidence.data["blockers"]
+    assert provenance_neutral.ok is True
 
 
 def test_compile_cpp_kernel_success_when_compiler_available(tmp_path: Path) -> None:
@@ -153,7 +155,7 @@ def _registered_sma_manifest(artifact_root: Path) -> dict[str, object]:
     registered = math_register_method_implementation(
         artifact_root=artifact_root,
         method_id="sma",
-        method_card_ids=["method_card_sma_seed_v1"],
+        method_card_ids=[],
         method_contract=_sma_contract(),
     )
     assert registered.ok is True, registered.to_dict()
@@ -175,5 +177,4 @@ def _sma_contract() -> dict[str, object]:
         "method_id": "sma",
         "parameters": {"period": 3},
         "no_lookahead": True,
-        "knowledge_evidence_refs": [{"method_card_id": "method_card_sma_seed_v1"}],
     }

@@ -6,20 +6,19 @@ from typing import Any, Mapping
 
 from langgraph.graph import END, START, StateGraph
 
-from trader_research.contracts import SideEffect
-from trader_research.domain import (
+from trader_research.foundation import stable_research_id
+from trader_research.governance import (
+    BoundedResearchRequest,
     DATA_AGENT_OWNER,
     DATA_QUALITY_REPORT,
     DATASET_MANIFEST,
     OWNER_BY_ARTIFACT_TYPE,
-    BoundedResearchRequest,
     ResearchIssue,
     SpecialistArtifactSlot,
     SpecialistHandoff,
-    stable_research_id,
 )
 
-from .state import QuantResearchSupervisorState, graph_error, mapping_or_empty
+from .state import AgentStatus, QuantResearchSupervisorState, graph_error, mapping_or_empty
 
 
 SUPERVISOR_OWNER = "Quant Research Supervisor Agent"
@@ -93,7 +92,6 @@ def data_agent_handoffs_from_state(data_state: Mapping[str, Any]) -> list[dict[s
                 source_request=request,
                 provenance_refs=provenance_refs,
                 warnings=warnings,
-                side_effect=SideEffect.READ_ONLY,
             ).to_dict()
         )
     quality_report = mapping_or_empty(
@@ -114,7 +112,6 @@ def data_agent_handoffs_from_state(data_state: Mapping[str, Any]) -> list[dict[s
                 source_request=request,
                 provenance_refs=provenance_refs,
                 warnings=warnings,
-                side_effect=SideEffect.READ_ONLY,
             ).to_dict()
         )
     return handoffs
@@ -200,7 +197,7 @@ def _supervise(state: QuantResearchSupervisorState) -> QuantResearchSupervisorSt
                 status="optional_missing",
             )
 
-    status = "failed" if errors else "blocked" if blockers else "completed"
+    status: AgentStatus = "failed" if errors else "blocked" if blockers else "completed"
     public_status = "failed_validation" if errors else "blocked_missing_evidence" if blockers else "ready_for_next_stage"
     return {
         "research_request": request.to_dict(),

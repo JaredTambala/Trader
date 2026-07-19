@@ -92,13 +92,14 @@ retrying with `force=true`. Providers that expose ordered batch embedding are ca
 response must match the requested count and indexes before publication. Single-text providers retain the same atomic
 path through a deterministic fallback.
 
-`knowledge_assemble_methodology_evidence` and `knowledge_create_rich_method_card_draft` require both the knowledge store
+`knowledge_assemble_methodology_evidence` and `knowledge_create_method_card_draft` require both the knowledge store
 and the research artifact store. Evidence assembly loads a methodology candidate, applies the family evidence profile,
-and writes a role-labeled `methodology_evidence_packet` research artifact. Rich draft creation loads a passed
+and writes a role-labeled `methodology_evidence_packet` research artifact. Draft creation loads a passed
 methodology-candidate validation report from structured research artifacts, revalidates source/chunk evidence in the
-knowledge store, and writes the rich method-card draft back through the knowledge-store method-card path.
+knowledge store, and writes the complete method-card draft back through the knowledge-store method-card path. The
+free-form summary draft contract and the second rich-card tool no longer exist.
 
-## Rich Methodology Operating Checklist
+## Methodology Operating Checklist
 
 For source-to-method work, verify these conditions before expecting strategy evidence:
 
@@ -187,7 +188,7 @@ export TRADER_MCP_ALLOW_OPTUNA_WRITES=false
 export TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES=false
 ```
 
-With a clean worktree whose product paths are byte-identical to `verification-57i-freeze-v3`, execute:
+With a clean worktree whose product paths are byte-identical to `verification-57i-freeze-v4`, execute:
 
 ```bash
 uv run python -m tests.support.postgres_verification provision --reset

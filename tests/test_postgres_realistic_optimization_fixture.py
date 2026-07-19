@@ -38,31 +38,30 @@ from tests.support.realistic_optimization_fixture import (
     seed_fixture,
 )
 from trader.event_store import PostgresEventStore
-from trader_research.artifact_store import json_payload_hash, source_hash
-from trader_research.backtests import run_backtest_specification
-from trader_research.domain import BACKTEST_RUN, PARAMETER_OPTIMIZATION_TRIAL
-from trader_research.implementations import (
+from trader_research.foundation import json_payload_hash, source_hash
+from trader_research.experiments import (
+    BacktestOptimizationTrialExecutor,
+    create_backtest_specification,
+    create_parameter_optimization_plan,
+    create_risk_stack_specification,
+    create_strategy_specification,
     register_optimization_objective,
     register_risk_manager_implementation,
     register_strategy_implementation,
+    run_backtest_specification,
+    run_parameter_optimization,
+    validate_backtest_specification,
     validate_optimization_objective,
     validate_risk_manager_implementation,
-    validate_strategy_implementation,
-)
-from trader_research.optimization import (
-    BacktestOptimizationTrialExecutor,
-    create_parameter_optimization_plan,
-    run_parameter_optimization,
-)
-from trader_research.postgres_artifact_store import PostgresResearchArtifactStore
-from trader_research.specifications import (
-    create_backtest_specification,
-    create_risk_stack_specification,
-    create_strategy_specification,
-    validate_backtest_specification,
     validate_risk_stack_specification,
+    validate_strategy_implementation,
     validate_strategy_specification,
 )
+from trader_research.governance.artifacts import (
+    BACKTEST_RUN,
+    PARAMETER_OPTIMIZATION_TRIAL,
+)
+from trader_research.infrastructure.postgres import PostgresResearchArtifactStore
 
 
 def test_realistic_optimization_fixture_is_bounded_and_deterministic() -> None:

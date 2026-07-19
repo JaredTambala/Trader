@@ -9,7 +9,7 @@ source of truth is `src/trader_research/agents.py`; artifact ownership is regist
 | --- | --- | --- | --- |
 | Quant Research Supervisor Agent | Coordinate research workflows and synthesize specialist-owned evidence. | Strategy/risk implementation versions, immutable strategy/risk/backtest specifications, canonical backtest runs, optimisation plans/runs/trials, tracking projection reports, comparisons, and planned walk-forward runs. | Registered implementation/specification/backtest/optimisation/projection `research_*` tools. |
 | Data Agent | Produce trustworthy bounded market-data manifests and quality evidence. | Symbol discovery reports, dataset manifests, data-quality reports, load result envelopes. | `mcp_health`, `mcp_get_config`, `data_discover_symbols`, `data_get_inventory`, `data_summarize_quality`, `data_ensure_loaded`. |
-| Quantitative Methods Agent | Produce auditable deterministic methods, method evidence, diagnostics, and statistical inference artifacts. | Knowledge manifests, methodology candidates, methodology evidence packets, methodology extraction/validation reports, legacy projections and canonical method cards, implementation manifests, validation reports, diagnostics, multiple-testing reports, method packages, optional kernel manifests. | `mcp_health`, `mcp_get_config`, `knowledge_*`, and current `math_*` tools. |
+| Quantitative Methods Agent | Produce auditable deterministic methods, method evidence, diagnostics, and statistical inference artifacts. | Knowledge manifests, methodology candidates, methodology evidence packets, methodology extraction/validation reports, canonical method cards and derived summaries, implementation manifests, validation reports, diagnostics, multiple-testing reports, method packages, optional kernel manifests. | `mcp_health`, `mcp_get_config`, `knowledge_*`, and current `math_*` tools. |
 | ML Agent | Coordinate point-in-time feature engineering, fitting, MLflow recording/registry, model evaluation, deployment evidence, predictions, and drift. | Planned feature-set specs, training datasets/splits/pipelines/specs, MLflow run refs, model evaluations and immutable version refs, promotion reports, deployment manifests, prediction artifacts, and drift reports. | Planned 39A-39J ML tools only; no ML tools are currently registered. |
 | Hypothesis Agent | Produce explicit falsifiable strategy hypothesis cards. | Hypothesis cards. | Planned `hypothesis_create_card`. |
 | Evaluation Agent | Produce skeptical critique and performance evidence from research artifacts. | Untouched-holdout optimisation reports and planned stitched out-of-sample walk-forward reports. | `evaluation_generate_parameter_optimization_report` plus planned broader critique/walk-forward tooling. |
@@ -23,18 +23,19 @@ source of truth is `src/trader_research/agents.py`; artifact ownership is regist
 - The supervisor must not rewrite specialist artifacts to make a strategy look better.
 - Promotion to paper trading remains a human-reviewed proposal, not an autonomous action.
 
-## Rich Methodology Ownership
+## Methodology Ownership
 
 - The Quantitative Methods Agent owns source registration, full-document ingestion, retrieval, methodology candidate
-  discovery, family-role evidence assembly, rich field extraction, candidate validation, rich method-card drafts, and
+  discovery, family-role evidence assembly, evidence-backed field extraction, candidate validation, method-card drafts, and
   method-card publishing.
 - The Quantitative Methods Agent does not create strategies, risk managers, portfolio backtests, or Evaluation reports.
-- Approved rich method cards may be optional provenance for maintained implementation producers. The Supervisor does
+- Approved method cards may be optional provenance for evidence-required implementation producers. Maintained
+  computational implementations whose catalog contracts do not require methodology evidence remain provenance-neutral. The Supervisor does
   not edit card evidence, and generated source still passes normal implementation validation.
-- The Data Agent remains the only owner of dataset manifests and quality reports. Rich method cards must not carry
+- The Data Agent remains the only owner of dataset manifests and quality reports. Method cards must not carry
   symbols, timeframes, date windows, source filters, or load decisions.
 - The Evaluation Agent consumes backtest and risk evidence after immutable specifications are validated and executed; it
-  does not approve methods or repair missing rich-field citations.
+  does not approve methods or repair missing methodology-field citations.
 
 ## ML Lifecycle Ownership
 

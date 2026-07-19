@@ -6,7 +6,7 @@ import hashlib
 import re
 from typing import Mapping, Sequence
 
-from trader_research.domain import stable_research_id
+from trader_research.foundation import stable_research_id
 
 from .domain import EvidenceClaimSpan, KnowledgeChunk, MethodologyCandidate
 from .evidence_profiles import EvidenceRoleProfile

@@ -43,8 +43,8 @@ from trader_mcp.constants import (
     RESEARCH_VALIDATE_STRATEGY_IMPLEMENTATION_TOOL,
     RESEARCH_VALIDATE_STRATEGY_SPECIFICATION_TOOL,
 )
-from trader_research.artifact_store import json_payload_hash
-from trader_research.domain import (
+from trader_research.foundation import json_payload_hash
+from trader_research.governance.artifacts import (
     BACKTEST_RUN,
     BACKTEST_SPECIFICATION,
     BACKTEST_SPECIFICATION_VALIDATION_REPORT,
@@ -61,7 +61,7 @@ from trader_research.domain import (
     STRATEGY_SPECIFICATION,
     STRATEGY_SPECIFICATION_VALIDATION_REPORT,
 )
-from trader_research.postgres_artifact_store import PostgresResearchArtifactStore
+from trader_research.infrastructure.postgres import PostgresResearchArtifactStore
 from tests.support.postgres_verification import retain_verification_evidence
 from tests.support.postgres_57n import ACCESS_STAGE_ENV
 from tests.support.realistic_optimization_fixture import (

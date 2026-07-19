@@ -43,23 +43,9 @@ export_backtest_equity_curve_csv(result, path)
 export_backtest_trades_csv(result, path)
 ```
 
-Research result workflow:
-
-```bash
-uv run python run_research_experiment.py configs/reproducible_backtest.yaml --experiment demo_research --run-data-quality
-uv run python run_compare_results.py configs/reproducible_backtest.yaml --experiment demo_research --format table
-uv run python run_compare_results.py configs/reproducible_backtest.yaml --experiment demo_research --format json
-```
-
-Research artifacts are written under `artifacts/research/<experiment_slug>/<run_id>/` by default:
-
-- `result.json`
-- `provenance.json`
-- `metrics.json`
-- `equity_curve.csv`
-- `benchmark_curve.csv`
-- `positions.csv`
-- `trades.csv` when trades exist
+Canonical research results are stored as Postgres `research_artifacts` with typed backtest, optimization, tracking,
+Evaluation, and Adversarial projections. MCP returns `research://postgres/...` refs; a filesystem path is not canonical
+research identity or authority.
 
 Reproducible sample output:
 
@@ -94,17 +80,13 @@ metrics:
 Backtest logging/export behavior is wrapper-owned. The reproducible example writes exports under
 `artifacts/reproducible_backtest/` by default and accepts `--output-dir`.
 
-The research CLI reads optional `research.experiment` and `research.sweep` config. Without a sweep it records one
-backtest run. With `research.sweep.parameters`, it expands parameter paths deterministically and records every member
-under one experiment.
-
 The API/UI backtest path uses the shared serializer, but its request shape does not expose the complete backtest
 assumptions surface yet. Wrapper-driven backtests remain the primary research path.
 
 Backtest result payloads include enough context to review:
 
 - assumptions used for execution modeling
-- run, experiment, and provenance fields when produced by the research workflow
+- run and provenance fields when produced by the research workflow
 - warnings from data/execution fallback
 - per-trade prices, fees, slippage, and realized PnL
 - portfolio state and performance metrics
@@ -125,22 +107,9 @@ JSON/CSV exports are simple local files. Metrics snapshots are schema-less JSON 
 shared between API and wrapper export paths, which keeps result shape consistent without building a separate warehouse
 model yet.
 
-Experiment comparison reads `experiment_runs.result_summary` and warns when compared members have different
-assumptions, symbols, timeframe, asset class, or data window. The JSON format is stable so a future tool-agent can use
-it without scraping table output.
-
-Sprint 5 recommendations read comparison JSON or persisted experiment rows and write local recommendation artifacts.
-They rank candidates with conservative gates for status, data quality, warnings, drawdown, turnover, trade count, and
-operator context. A recommendation can be converted into a dry-run promotion packet, but the packet is only a proposal:
-it writes YAML/JSON under `artifacts/promotions/<recommendation_id>/` and never starts paper trading.
-
-Tool-facing result commands:
-
-```bash
-uv run python run_research_discovery.py configs/reproducible_backtest.yaml --symbols DEMO --strategies trend_following --json
-uv run python run_research_recommendations.py configs/reproducible_backtest.yaml --experiment demo_discovery --json
-uv run python run_prepare_paper_promotion.py configs/reproducible_backtest.yaml --recommendation-json artifacts/recommendations/demo_discovery.json --recommendation-id rec_... --dry-run --json
-```
+Canonical comparison and optimization result tools resolve immutable Postgres refs and preserve mismatched-scope
+warnings, complete trial ledgers, and selected-specification lineage. Evaluation and Adversarial reports remain
+independent interpretations rather than recommendation or promotion mutations.
 
 Backtest metrics are computed from the strategy equity curve and the frictionless buy-and-hold benchmark. Realized PnL
 and trade stats use adjusted fill prices and fees. Live metrics are operational observations, not independent
@@ -149,7 +118,6 @@ reconciliation against a broker statement.
 ## Current limits
 
 - No warehouse table model for normalized performance metrics.
-- No distributed artifact store.
-- Recommendation and promotion artifacts are local files rather than database tables.
+- No distributed artifact store beyond the configured Postgres authority.
 - Benchmark remains costless.
 - Metrics are only as accurate as stored market data and modeled execution assumptions.

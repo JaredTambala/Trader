@@ -2,28 +2,26 @@
 
 from __future__ import annotations
 
+from trader_research.foundation.artifacts import ArtifactReference
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Protocol, Sequence
-
-from trader_research.contracts import ArtifactReference
-from trader_research.methods.contracts import MethodRegistryEntry
 
 from .domain import (
     KnowledgeChunk,
     KnowledgeEmbeddingManifest,
     KnowledgeIngestionReport,
     KnowledgeSourceManifest,
-    MethodCard,
     MethodCardSet,
-    RichMethodCard,
+    MethodCard,
 )
 from .embeddings import TOKEN_PATTERN, cosine_similarity
 from .storage import KnowledgeRepository
 
 
 class KnowledgeStoreError(RuntimeError):
-    """Base exception for storage failures surfaced by knowledge services and tool envelopes."""
+    """Base exception for storage failures surfaced by knowledge services and tool results."""
 
 
 class KnowledgeStoreUnavailable(KnowledgeStoreError):
@@ -57,8 +55,8 @@ class KnowledgeStore(Protocol):
 
     Implementations may be local JSON files, Postgres records, or unavailable
     sentinels, but they expose the same source, chunk, embedding, method-card, and
-    method-contract operations. Service functions depend on this protocol so tests
-    can inject fakes and tool envelopes can translate backend-specific failures
+    method-card operations. Service functions depend on this protocol so tests
+    can inject fakes and tool results can translate backend-specific failures
     into stable knowledge-store errors.
     """
 
@@ -157,17 +155,13 @@ class KnowledgeStore(Protocol):
     ) -> tuple[Mapping[str, Any], ...]:
         """Return vector chunk matches ordered by relevance after applying filters for retrieval."""
 
+
+
     def save_method_card(self, method_card: MethodCard) -> None:
-        """Persist a method card using its stable method-card identifier for citations."""
+        """Persist the complete canonical method-card payload."""
 
     def list_persisted_method_cards(self) -> tuple[MethodCard, ...]:
-        """List method cards persisted outside the seeded in-memory catalog for merging."""
-
-    def save_rich_method_card(self, method_card: RichMethodCard) -> None:
-        """Persist a rich method-card payload while preserving shallow method-card compatibility."""
-
-    def list_persisted_rich_method_cards(self) -> tuple[RichMethodCard, ...]:
-        """List persisted rich method cards with full nullable methodology fields."""
+        """List persisted canonical method cards."""
 
     def save_method_card_set(self, method_card_set: MethodCardSet) -> None:
         """Persist a stable method-card set summary for revision grouping."""
@@ -175,11 +169,7 @@ class KnowledgeStore(Protocol):
     def list_method_card_sets(self) -> tuple[MethodCardSet, ...]:
         """List stable method-card set summaries."""
 
-    def save_method_contract(self, method: MethodRegistryEntry) -> None:
-        """Persist a method contract using its maintained method identifier for registry lookup."""
 
-    def list_persisted_method_contracts(self) -> tuple[MethodRegistryEntry, ...]:
-        """List method contracts persisted outside the bundled seed registry for merging."""
 
 
 class JsonKnowledgeStore:
@@ -214,7 +204,6 @@ class JsonKnowledgeStore:
             "method_card_draft": self.repository.method_card_path,
             "method_card": self.repository.method_card_path,
             "method_card_set": self.repository.method_card_set_path,
-            "method_contract": self.repository.method_contract_path,
         }
         path_factory = path_by_type.get(artifact_type)
         return ArtifactReference(
@@ -433,21 +422,15 @@ class JsonKnowledgeStore:
         results.sort(key=lambda result: (-float(result["score"]), str(result["chunk_id"])))
         return tuple(results[:limit])
 
+
+
     def save_method_card(self, method_card: MethodCard) -> None:
-        """Persist a method card through the local JSON repository backend for citations."""
+        """Persist a method card through the local JSON repository backend."""
         self.repository.save_method_card(method_card)
 
     def list_persisted_method_cards(self) -> tuple[MethodCard, ...]:
-        """List method cards stored as local JSON artifacts for catalog merging."""
+        """List method cards stored as local JSON artifacts."""
         return self.repository.list_persisted_method_cards()
-
-    def save_rich_method_card(self, method_card: RichMethodCard) -> None:
-        """Persist a rich method card through the local JSON repository backend."""
-        self.repository.save_rich_method_card(method_card)
-
-    def list_persisted_rich_method_cards(self) -> tuple[RichMethodCard, ...]:
-        """List rich method cards stored as local JSON artifacts."""
-        return self.repository.list_persisted_rich_method_cards()
 
     def save_method_card_set(self, method_card_set: MethodCardSet) -> None:
         """Persist a stable method-card set through the local JSON repository backend."""
@@ -457,13 +440,7 @@ class JsonKnowledgeStore:
         """List stable method-card sets stored as local JSON artifacts."""
         return self.repository.list_method_card_sets()
 
-    def save_method_contract(self, method: MethodRegistryEntry) -> None:
-        """Persist a method contract through the local JSON repository backend for lookup."""
-        self.repository.save_method_contract(method)
 
-    def list_persisted_method_contracts(self) -> tuple[MethodRegistryEntry, ...]:
-        """List method contracts stored as local JSON artifacts for registry merging."""
-        return self.repository.list_persisted_method_contracts()
 
     def _filtered_index_entries(
         self,

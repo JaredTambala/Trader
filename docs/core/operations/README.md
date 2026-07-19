@@ -83,25 +83,8 @@ uv run python examples/run_injected_backtest.py
 uv run python examples/run_library_backtest.py
 ```
 
-Research experiment and comparison:
-
-```bash
-uv run python run_research_experiment.py configs/reproducible_backtest.yaml --experiment demo_research --run-data-quality
-uv run python run_compare_results.py configs/reproducible_backtest.yaml --experiment demo_research --format table
-```
-
-AI/tool discovery and recommendations:
-
-```bash
-uv run python run_research_discovery.py configs/reproducible_backtest.yaml \
-  --symbols DEMO \
-  --asset-class stocks \
-  --timeframe 1Min \
-  --strategies trend_following,mean_reversion \
-  --data-mode existing \
-  --json
-uv run python run_research_recommendations.py configs/reproducible_backtest.yaml --experiment demo_discovery --json
-```
+Research implementation, specification, backtest, optimization, and review workflows run through MCP and canonical
+Postgres research artifacts. See [Research Agent Operations](../../research_agents/operations.md).
 
 Realtime paper trading:
 

@@ -35,7 +35,7 @@ from trader_mcp.constants import (
 )
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
-from trader_research.artifact_store import InMemoryResearchArtifactStore
+from trader_research.foundation.artifacts import InMemoryResearchArtifactStore
 from trader_research.data import DataInventoryRequest, DataQualityRequest, data_summarize_quality, get_data_inventory
 
 

@@ -1,11 +1,12 @@
-"""Data Agent services for discovery, inventory, quality, and loading.
+"""Public Data Agent application facade.
 
-The package is the canonical public surface for MCP-facing Data Agent
-capabilities. Implementations live in `services` so callers can depend on a
-bounded package rather than a broad top-level module.
+Callers enter through this package surface. The domain, catalog, inventory,
+quality, and loading modules remain implementation details of the Data context.
+External provider adapters live under :mod:`trader_research.infrastructure`.
 """
 
-from .services import (
+from .catalog import data_discover_symbols, resolve_data_provider_context
+from .domain import (
     DATA_DISCOVER_SYMBOLS,
     DATA_ENSURE_LOADED,
     DATA_GET_INVENTORY,
@@ -22,12 +23,10 @@ from .services import (
     DataSymbolDiscoveryRequest,
     SymbolCatalogProvider,
     SymbolCatalogResult,
-    data_discover_symbols,
-    data_ensure_loaded,
-    data_summarize_quality,
-    get_data_inventory,
-    resolve_data_provider_context,
 )
+from .inventory import get_data_inventory
+from .loading import data_ensure_loaded
+from .quality import data_summarize_quality
 
 __all__ = [
     "DATA_DISCOVER_SYMBOLS",

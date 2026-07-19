@@ -7,14 +7,14 @@ from collections.abc import Callable
 from mcp.server.fastmcp import FastMCP
 from mcp.types import CallToolResult
 
-from trader_mcp.adapters import envelope_to_mcp_result
+from trader_mcp.adapters import result_to_mcp_result
 from trader_mcp.constants import (
     EVALUATION_GENERATE_PARAMETER_OPTIMIZATION_REPORT_TOOL,
     EVALUATION_TOOL_DESCRIPTIONS,
 )
 from trader_mcp.environment import McpEnvironment
-from trader_research.artifact_store import ResearchArtifactStore
-from trader_research.evaluation import generate_parameter_optimization_report
+from trader_research.foundation import ResearchArtifactStore
+from trader_research.review import generate_parameter_optimization_report
 
 
 ResearchArtifactStoreProvider = Callable[[], ResearchArtifactStore]
@@ -42,4 +42,4 @@ def register_evaluation_tools(
             holdout_backtest_run_ref=holdout_backtest_run_ref,
             artifact_store=artifact_store_provider() if artifact_store_provider is not None else None,
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))

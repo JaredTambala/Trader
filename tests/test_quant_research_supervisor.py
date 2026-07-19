@@ -6,7 +6,10 @@ import anyio
 
 from trader_agents.quant_research import build_quant_research_supervisor_graph
 from trader_agents.state import build_quant_research_supervisor_initial_state
-from trader_research.domain import DATA_QUALITY_REPORT, DATASET_MANIFEST
+from trader_research.governance.artifacts import (
+    DATA_QUALITY_REPORT,
+    DATASET_MANIFEST,
+)
 
 
 def _state(**overrides: object) -> dict[str, Any]:

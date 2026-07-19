@@ -42,8 +42,7 @@ def test_data_inventory_returns_dataset_manifest_for_sample_data(tmp_path: Path)
     second = get_data_inventory(store, request)
 
     assert first.ok is True
-    assert first.agent_owner == "Data Agent"
-    assert first.side_effect.value == "read_only"
+    assert first.operation == "data_get_inventory"
     assert first.warnings == ()
     manifest = first.to_dict()["data"]["dataset_manifest"]
     assert manifest["dataset_id"] == second.to_dict()["data"]["dataset_manifest"]["dataset_id"]

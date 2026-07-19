@@ -5,14 +5,14 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal, TypedDict
 
-from trader_research.domain import (
+from trader_research.foundation import stable_research_id
+from trader_research.governance import (
     BoundedResearchRequest,
     DataRequirement,
     FEATURE_MANIFEST,
     MODEL_CARD,
     PREDICTION_ARTIFACT,
     DRIFT_REPORT,
-    stable_research_id,
 )
 
 from .identities import AgentIdentity, build_agent_identity

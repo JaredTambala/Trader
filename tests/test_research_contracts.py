@@ -1,71 +1,53 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
-
-from trader_research.contracts import (
-    ArtifactReference,
-    SideEffect,
-    ToolEnvelope,
-    envelope_json,
-    error_envelope,
-    success_envelope,
-)
+from trader_research.foundation import ApplicationResult, error_result, success_result
+from trader_research.foundation.artifacts import ArtifactReference
 
 
-def test_tool_envelope_includes_agent_owner_in_stable_json() -> None:
-    envelope = ToolEnvelope(
+def test_application_result_excludes_transport_metadata() -> None:
+    result = ApplicationResult(
         ok=True,
-        command="data_get_inventory",
-        agent_owner="Data Agent",
-        side_effect=SideEffect.READ_ONLY,
-        generated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        operation="data_get_inventory",
         data={"dataset_id": "dataset_demo"},
     )
 
-    payload = json.loads(envelope_json(envelope))
+    payload = result.to_dict()
 
     assert payload == {
-        "agent_owner": "Data Agent",
         "artifacts": {},
-        "command": "data_get_inventory",
+        "operation": "data_get_inventory",
         "data": {"dataset_id": "dataset_demo"},
         "errors": [],
-        "generated_at": "2026-01-01T00:00:00+00:00",
         "ok": True,
         "schema_version": "1",
-        "side_effect": "read_only",
         "warnings": [],
     }
 
 
-def test_success_envelope_derives_data_agent_owner() -> None:
-    envelope = success_envelope(
+def test_success_result_preserves_operation_and_data() -> None:
+    result = success_result(
         command="data_get_inventory",
-        side_effect=SideEffect.READ_ONLY,
         data={"symbols": ["DEMO"]},
     )
 
-    assert envelope.agent_owner == "Data Agent"
-    assert envelope.to_dict()["agent_owner"] == "Data Agent"
+    assert result.operation == "data_get_inventory"
+    assert result.to_dict()["data"] == {"symbols": ["DEMO"]}
 
 
-def test_error_envelope_preserves_structured_errors() -> None:
-    envelope = error_envelope(
+def test_error_result_preserves_structured_errors() -> None:
+    result = error_result(
         command="data_get_inventory",
-        side_effect=SideEffect.READ_ONLY,
         code="missing_data",
         message="No bars found for DEMO.",
         data={"symbol": "DEMO"},
     )
 
-    payload = envelope.to_dict()
+    payload = result.to_dict()
 
     assert payload["ok"] is False
-    assert payload["agent_owner"] == "Data Agent"
     assert payload["errors"] == [{"code": "missing_data", "message": "No bars found for DEMO."}]
     assert payload["data"] == {"symbol": "DEMO"}
 
@@ -78,13 +60,12 @@ def test_artifact_reference_serializes_json_safe_values(tmp_path: Path) -> None:
         uri="file://dataset_manifest.json",
         metadata={"created_at": datetime(2026, 1, 1, tzinfo=timezone.utc)},
     )
-    envelope = success_envelope(
+    result = success_result(
         command="data_get_inventory",
-        side_effect=SideEffect.READ_ONLY,
         artifacts={"dataset_manifest": reference},
     )
 
-    payload = envelope.to_dict()
+    payload = result.to_dict()
 
     assert payload["artifacts"]["dataset_manifest"] == {
         "artifact_type": "dataset_manifest",
@@ -92,17 +73,3 @@ def test_artifact_reference_serializes_json_safe_values(tmp_path: Path) -> None:
         "uri": "file://dataset_manifest.json",
         "metadata": {"created_at": "2026-01-01T00:00:00+00:00"},
     }
-    json.dumps(payload)
-
-
-def test_unknown_command_requires_explicit_agent_owner() -> None:
-    with pytest.raises(KeyError, match="Unknown research tool"):
-        success_envelope(command="mcp_health", side_effect=SideEffect.READ_ONLY)
-
-    envelope = success_envelope(
-        command="mcp_health",
-        agent_owner="MCP Server",
-        side_effect=SideEffect.READ_ONLY,
-    )
-
-    assert envelope.agent_owner == "MCP Server"

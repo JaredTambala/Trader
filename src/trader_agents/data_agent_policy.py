@@ -292,8 +292,7 @@ def _route_tool_action(
             return _failed_state(context_error[0], context_error[1], state=state, decisions=decisions)
         request_payload = _with_resolved_provider_context(request_payload, mapping_or_empty(state.get("symbol_discovery_report")))
 
-    return {
-        request_key: request_payload,
+    update: DataAgentState = {
         "next_policy_route": _TOOL_ROUTE[expected_tool],
         "status": "ready",
         "llm_decisions": decisions,
@@ -302,6 +301,8 @@ def _route_tool_action(
         "warnings": list(state.get("warnings", [])),
         "called_tools": list(state.get("called_tools", [])),
     }
+    _set_request_payload(update, request_key, request_payload)
+    return update
 
 
 def _apply_retry_updates(
@@ -345,8 +346,27 @@ def _apply_retry_updates(
                 state=state,
                 decisions=decisions,
             )
-        update[key] = dict(request)
+        _set_request_payload(update, key, request)
     return update
+
+
+def _set_request_payload(
+    state: DataAgentState,
+    key: str,
+    request: Mapping[str, Any],
+) -> None:
+    """Assign a validated request through one of the declared state keys."""
+    payload = dict(request)
+    if key == "symbol_discovery_request":
+        state["symbol_discovery_request"] = payload
+    elif key == "inventory_request":
+        state["inventory_request"] = payload
+    elif key == "quality_request":
+        state["quality_request"] = payload
+    elif key == "ensure_request":
+        state["ensure_request"] = payload
+    else:  # pragma: no cover - callers validate against _REQUEST_KEYS first
+        raise ValueError(f"unsupported Data Agent request key: {key}")
 
 
 def _validate_tool_request(*, action: str, request: Mapping[str, Any]) -> tuple[str, str] | None:
@@ -445,7 +465,7 @@ def _blocked_state(
     details: Mapping[str, Any] | None = None,
 ) -> DataAgentState:
     """Build a structured policy blocker state update."""
-    blocker = {"code": code, "message": message}
+    blocker: dict[str, Any] = {"code": code, "message": message}
     if details:
         blocker["details"] = dict(details)
     return {

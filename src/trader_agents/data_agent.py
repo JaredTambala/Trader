@@ -527,8 +527,30 @@ async def _call_data_agent_tool(
         "called_tools": called_tools,
     }
     for output_key in output_keys:
-        update[output_key] = payload
+        _set_output_payload(update, output_key, payload)
     return update
+
+
+def _set_output_payload(
+    state: DataAgentState,
+    key: str,
+    payload: dict[str, Any],
+) -> None:
+    """Assign a tool payload through one of the declared output state keys."""
+    if key == "dataset_manifest":
+        state["dataset_manifest"] = payload
+    elif key == "symbol_discovery_report":
+        state["symbol_discovery_report"] = payload
+    elif key == "quality_report":
+        state["quality_report"] = payload
+    elif key == "initial_quality_report":
+        state["initial_quality_report"] = payload
+    elif key == "load_result":
+        state["load_result"] = payload
+    elif key == "final_quality_report":
+        state["final_quality_report"] = payload
+    else:  # pragma: no cover - graph construction supplies closed keys
+        raise ValueError(f"unsupported Data Agent output key: {key}")
 
 
 def _route_after_tool(state: DataAgentState) -> str:

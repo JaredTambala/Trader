@@ -4,7 +4,7 @@ import trader_agents
 import trader_mcp
 import trader_research
 from trader_agents import build_agent_identity
-from trader_research.agents import AGENT_DEFINITIONS, agent_owner_for_tool, get_agent_definition
+from trader_research.governance.ownership import AGENT_DEFINITIONS, agent_owner_for_tool, get_agent_definition
 
 
 def test_new_research_packages_import_cleanly() -> None:
@@ -89,7 +89,8 @@ def test_quantitative_methods_tool_owner_and_identity_use_method_contract_tools(
     assert "knowledge_discover_methodology_candidates" in identity.tool_allowlist
     assert "knowledge_extract_methodology_fields" in identity.tool_allowlist
     assert "knowledge_validate_methodology_candidate" in identity.tool_allowlist
-    assert "knowledge_create_rich_method_card_draft" in identity.tool_allowlist
+    assert "knowledge_create_method_card_draft" in identity.tool_allowlist
+    assert "knowledge_create_rich_method_card_draft" not in identity.tool_allowlist
     assert "knowledge_update_method_card_status" in identity.tool_allowlist
     assert "knowledge_validate_citations" in identity.tool_allowlist
     assert "math_list_method_contracts" in identity.tool_allowlist
@@ -106,7 +107,7 @@ def test_quantitative_methods_tool_owner_and_identity_use_method_contract_tools(
     assert agent_owner_for_tool("knowledge_discover_methodology_candidates") == "Quantitative Methods Agent"
     assert agent_owner_for_tool("knowledge_extract_methodology_fields") == "Quantitative Methods Agent"
     assert agent_owner_for_tool("knowledge_validate_methodology_candidate") == "Quantitative Methods Agent"
-    assert agent_owner_for_tool("knowledge_create_rich_method_card_draft") == "Quantitative Methods Agent"
+    assert agent_owner_for_tool("knowledge_create_method_card_draft") == "Quantitative Methods Agent"
     assert agent_owner_for_tool("knowledge_update_method_card_status") == "Quantitative Methods Agent"
     assert agent_owner_for_tool("math_list_method_contracts") == "Quantitative Methods Agent"
     assert agent_owner_for_tool("math_run_signal_diagnostics") == "Quantitative Methods Agent"

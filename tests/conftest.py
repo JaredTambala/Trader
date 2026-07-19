@@ -8,7 +8,7 @@ import psycopg
 from trader.event_store import PostgresEventStore
 from trader_research.knowledge.postgres_store import PostgresKnowledgeStore
 from trader_research.knowledge.store import KnowledgeVectorExtensionUnavailable
-from trader_research.postgres_artifact_store import PostgresResearchArtifactStore
+from trader_research.infrastructure.postgres import PostgresResearchArtifactStore
 from tests.support.postgres_verification import (
     VerificationConfigurationError,
     assert_connection_targets_verification_database,

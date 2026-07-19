@@ -12,8 +12,8 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from trader.event_store import PostgresEventStore
-from trader_research.artifact_store import json_payload_hash
-from trader_research.postgres_artifact_store import PostgresResearchArtifactStore
+from trader_research.foundation import json_payload_hash
+from trader_research.infrastructure.postgres import PostgresResearchArtifactStore
 from tests.support.postgres_verification import assert_connection_targets_verification_database
 
 

@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-import trader_research.domain as research_domain
-from trader_research.contracts import SideEffect
-from trader_research.domain import (
+import trader_research.governance.artifacts as research_artifacts
+from trader_research.foundation import stable_research_id
+from trader_research.governance.artifacts import (
     BACKTEST_RUN,
     BACKTEST_SPECIFICATION,
     BACKTEST_SPECIFICATION_VALIDATION_REPORT,
@@ -43,12 +43,13 @@ from trader_research.domain import (
     STATISTICAL_TEST_REPORT,
     STRATEGY_SPECIFICATION,
     STRATEGY_SPECIFICATION_VALIDATION_REPORT,
+)
+from trader_research.governance.handoffs import (
     BoundedResearchRequest,
     DataRequirement,
     ResearchIssue,
     SpecialistHandoff,
     artifact_report_ref,
-    stable_research_id,
 )
 
 
@@ -81,7 +82,7 @@ def test_retired_candidate_domain_contracts_are_absent() -> None:
     }
 
     assert [
-        name for name in sorted(retired_names) if hasattr(research_domain, name)
+        name for name in sorted(retired_names) if hasattr(research_artifacts, name)
     ] == []
 
 
@@ -110,7 +111,6 @@ def test_research_request_and_handoff_round_trip_json() -> None:
         source_request=request.data_requirement.to_dict(),
         provenance_refs={"envelope_id": "env_demo"},
         warnings=(warning,),
-        side_effect=SideEffect.READ_ONLY,
     )
 
     request_payload = request.to_dict()
@@ -121,7 +121,6 @@ def test_research_request_and_handoff_round_trip_json() -> None:
     )
     assert SpecialistHandoff.from_dict(handoff_payload).to_dict() == handoff_payload
     assert handoff_payload["agent_owner"] == "Data Agent"
-    assert handoff_payload["side_effect"] == "read_only"
     assert handoff_payload["warnings"] == [
         {"code": "data_agent_warning", "message": "Partial coverage.", "details": {}}
     ]

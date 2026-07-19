@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import importlib
 
-from trader_research.implementations import (
+from trader_research.experiments import (
     list_risk_manager_templates,
     list_strategy_templates,
 )
@@ -14,7 +14,7 @@ def test_strategy_catalog_exposes_runtime_metadata_without_candidate_coupling() 
     envelope = list_strategy_templates(families=["pairs-mean-reversion"])
 
     assert envelope.ok is True
-    assert envelope.side_effect.value == "read_only"
+    assert envelope.operation == "research_list_strategy_templates"
     assert envelope.data["template_count"] == 1
     template = envelope.data["templates"][0]
     assert template["template_id"] == "pairs_mean_reversion"

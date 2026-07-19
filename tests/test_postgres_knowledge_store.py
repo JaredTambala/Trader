@@ -5,13 +5,12 @@ from pathlib import Path
 import pytest
 
 from trader_research.knowledge.citation_validation import validate_citations
-from trader_research.knowledge.domain import MethodCard, MethodCardSet
+from trader_research.knowledge.domain import EvidenceReference, MethodCard, MethodCardSet
 from trader_research.knowledge.embeddings import DeterministicEmbeddingProvider
 from trader_research.knowledge.ingestion import ingest_documents
 from trader_research.knowledge.postgres_store import PostgresKnowledgeStore
 from trader_research.knowledge.retrieval import get_evidence_chunks, retrieve_evidence
 from trader_research.knowledge.sources import register_source
-from trader_research.methods.contracts import MethodRegistryEntry, ParameterSpec
 
 
 pytestmark = pytest.mark.postgres
@@ -61,10 +60,10 @@ def test_postgres_knowledge_store_register_ingest_retrieve_validate(
                     "source_id": evidence["source_id"],
                     "chunk_id": evidence["chunk_id"],
                     "locator": evidence["locator"],
-                    "method_card_id": "method_card_sma_seed_v1",
                 }
             ]
         },
+        require_approved_method_card=False,
         knowledge_store=postgres_knowledge_store,
     )
     method_card = MethodCard(
@@ -79,6 +78,20 @@ def test_postgres_knowledge_store_register_ingest_retrieve_validate(
         inputs=("prices",),
         outputs=("average",),
         failure_modes=("warmup",),
+        evidence_refs=(
+            EvidenceReference(
+                source_id=evidence["source_id"],
+                chunk_id=evidence["chunk_id"],
+                locator=evidence["locator"],
+            ),
+        ),
+        source_methodology_candidate_id="methodology_candidate_postgres_demo",
+        validation_refs=(
+            {
+                "artifact_type": "methodology_candidate_validation_report",
+                "artifact_id": "validation_postgres_demo",
+            },
+        ),
     )
     postgres_knowledge_store.save_method_card(method_card)
     method_card_set = MethodCardSet(
@@ -94,22 +107,6 @@ def test_postgres_knowledge_store_register_ingest_retrieve_validate(
         status_counts={"draft": 1},
     )
     postgres_knowledge_store.save_method_card_set(method_card_set)
-    method_contract = MethodRegistryEntry(
-        method_id="postgres_db_backed_demo",
-        family="indicator",
-        status="approved",
-        purpose="Demonstrate Postgres-backed method contract persistence.",
-        parameters=(ParameterSpec("period", "int", min_value=2, max_value=50),),
-        inputs=("price series",),
-        outputs=("derived series",),
-        assumptions=("ordered observations",),
-        failure_modes=("warmup",),
-        artifact_outputs=("indicator_validation_report.json",),
-        warmup="period - 1 observations",
-        nan_policy="propagate",
-        no_lookahead=True,
-    )
-    postgres_knowledge_store.save_method_contract(method_contract)
     runtime = postgres_knowledge_store.runtime_summary()
 
     assert registered.ok is True
@@ -126,5 +123,6 @@ def test_postgres_knowledge_store_register_ingest_retrieve_validate(
     assert citations.ok is True
     assert postgres_knowledge_store.list_persisted_method_cards() == (method_card,)
     assert postgres_knowledge_store.list_method_card_sets() == (method_card_set,)
-    assert postgres_knowledge_store.list_persisted_method_contracts() == (method_contract,)
+    assert not hasattr(postgres_knowledge_store, "save_method_contract")
+    assert not hasattr(postgres_knowledge_store, "list_persisted_method_contracts")
     assert runtime["pgvector_available"] is True

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, TypedDict
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
@@ -12,7 +12,7 @@ from mcp.types import CallToolResult
 
 from trader.config import Config, build_config, load_yaml_config
 from trader.event_store import EventStore, NoOpEventStore, build_event_store
-from trader_mcp.adapters import envelope_to_mcp_result
+from trader_mcp.adapters import result_to_mcp_result
 from trader_mcp.adversarial_tools import register_adversarial_tools
 from trader_mcp.constants import (
     ADVERSARIAL_TOOL_DESCRIPTIONS,
@@ -27,7 +27,6 @@ from trader_mcp.constants import (
     EVALUATION_TOOL_NAMES,
     KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL,
     KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
-    KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL,
     KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL,
     KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL,
     KNOWLEDGE_INGEST_DOCUMENTS_TOOL,
@@ -69,9 +68,16 @@ from trader_mcp.environment import McpEnvironment, load_local_environment
 from trader_mcp.evaluation_tools import register_evaluation_tools
 from trader_mcp.knowledge_tools import register_quant_methods_tools
 from trader_mcp.research_tools import register_research_tools
-from trader_research.agents import agent_owner_for_tool
-from trader_research.artifact_store import ResearchArtifactStore, UnavailableResearchArtifactStore
-from trader_research.contracts import SCHEMA_VERSION, SideEffect, ToolEnvelope, error_envelope, success_envelope
+from trader_research.governance import agent_owner_for_tool
+from trader_research.foundation import ResearchArtifactStore, UnavailableResearchArtifactStore
+from trader_mcp.contracts import (
+    SCHEMA_VERSION,
+    SideEffect,
+    ToolEnvelope,
+    error_envelope,
+    result_to_envelope,
+    success_envelope,
+)
 from trader_research.data import (
     DataEnsureLoadedPolicy,
     DataEnsureLoadedRequest,
@@ -84,14 +90,18 @@ from trader_research.data import (
     data_summarize_quality as summarize_quality_service,
     get_data_inventory,
 )
-from trader_research.knowledge.embeddings import EmbeddingProvider, embedding_runtime_summary
-from trader_research.knowledge.postgres_store import PostgresKnowledgeStore
-from trader_research.knowledge.store import KnowledgeStore, UnavailableKnowledgeStore
-from trader_research.methods.registry import save_bootstrap_method_contracts
-from trader_research.optimization import OptimizationEngineRegistry, OptunaOptimizationEngine
-from trader_research.postgres_artifact_store import PostgresResearchArtifactStore
-from trader_research.providers import AlpacaSymbolCatalogProvider
-from trader_research.tracking import ExperimentTrackingSinkRegistry, MLflowExperimentTrackingSink
+from trader_research.knowledge import (
+    EmbeddingProvider,
+    KnowledgeStore,
+    PostgresKnowledgeStore,
+    UnavailableKnowledgeStore,
+    embedding_runtime_summary,
+)
+from trader_research.experiments import ExperimentTrackingSinkRegistry, OptimizationEngineRegistry
+from trader_research.infrastructure.providers.alpaca import AlpacaSymbolCatalogProvider
+from trader_research.infrastructure.providers.mlflow import MLflowExperimentTrackingSink
+from trader_research.infrastructure.providers.optuna import OptunaOptimizationEngine
+from trader_research.infrastructure.postgres import PostgresResearchArtifactStore
 
 
 EventStoreProvider = Callable[[], EventStore]
@@ -108,6 +118,15 @@ ResearchArtifactStoreProvider = Callable[[], ResearchArtifactStore]
 
 SymbolDiscoveryPolicyProvider = Callable[[], DataSymbolDiscoveryPolicy]
 """Callable that returns the symbol-discovery policy for Data Agent tools."""
+
+
+class _ConfiguredMarketDataContext(TypedDict):
+    """Typed config values copied into bounded Data Agent requests."""
+
+    configured_provider: str | None
+    configured_asset_class: str | None
+    configured_symbols: tuple[str, ...]
+    configured_universe_available: bool
 
 
 class ToolRuntimeConfigurationError(ValueError):
@@ -181,7 +200,7 @@ def create_server(
         Returns:
             MCP call result containing a read-only health envelope.
         """
-        return CallToolResult(**envelope_to_mcp_result(build_health_envelope(local_env)))
+        return CallToolResult(**result_to_mcp_result(build_health_envelope(local_env)))
 
     @server.tool(name=MCP_CONFIG_TOOL, description=SUPPORT_TOOL_DESCRIPTIONS[MCP_CONFIG_TOOL])
     def mcp_get_config() -> CallToolResult:
@@ -191,7 +210,7 @@ def create_server(
             MCP call result containing a read-only configuration envelope.
         """
         return CallToolResult(
-            **envelope_to_mcp_result(
+            **result_to_mcp_result(
                 build_config_envelope(
                     local_env,
                     knowledge_store_provider_configured=knowledge_store_provider is not None,
@@ -238,7 +257,7 @@ def create_server(
             include_local_coverage=include_local_coverage,
             policy_provider=resolved_symbol_discovery_policy_provider,
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=DATA_GET_INVENTORY_TOOL,
@@ -281,7 +300,7 @@ def create_server(
             instrument_type=instrument_type,
             bar_type=bar_type,
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=DATA_SUMMARIZE_QUALITY_TOOL,
@@ -324,7 +343,7 @@ def create_server(
             instrument_type=instrument_type,
             bar_type=bar_type,
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=DATA_ENSURE_LOADED_TOOL,
@@ -374,7 +393,7 @@ def create_server(
             bar_type=bar_type,
             policy=resolved_data_loading_policy,
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     register_quant_methods_tools(
         server,
@@ -452,7 +471,6 @@ def build_knowledge_store_provider(environment: McpEnvironment | None = None) ->
                 user=getattr(config, "pg_user", None) or None,
                 password=getattr(config, "pg_password", None) or None,
             )
-            save_bootstrap_method_contracts(store)
         return store
 
     return _provider
@@ -616,7 +634,6 @@ def build_config_envelope(
                 KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL,
                 KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL,
                 KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE_TOOL,
-                KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL,
                 KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
                 KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL,
                 KNOWLEDGE_UPDATE_METHOD_CARD_STATUS_TOOL,
@@ -841,7 +858,7 @@ def build_data_inventory_envelope(
             error=exc,
             environment=environment,
         )
-    return get_data_inventory(event_store, request)
+    return result_to_envelope(get_data_inventory(event_store, request))
 
 
 def build_data_quality_envelope(
@@ -908,7 +925,7 @@ def build_data_quality_envelope(
             error=exc,
             environment=environment,
         )
-    return summarize_quality_service(event_store, request)
+    return result_to_envelope(summarize_quality_service(event_store, request))
 
 
 def build_data_ensure_loaded_envelope(
@@ -984,14 +1001,16 @@ def build_data_ensure_loaded_envelope(
             error=exc,
             environment=environment,
         )
-    return ensure_loaded_service(
-        event_store,
-        request,
-        policy=policy
-        or DataEnsureLoadedPolicy(
-            allow_data_loading=environment.allow_data_loading,
-            backfill_config_path=environment.trader_config_path,
-        ),
+    return result_to_envelope(
+        ensure_loaded_service(
+            event_store,
+            request,
+            policy=policy
+            or DataEnsureLoadedPolicy(
+                allow_data_loading=environment.allow_data_loading,
+                backfill_config_path=environment.trader_config_path,
+            ),
+        )
     )
 
 
@@ -1062,7 +1081,9 @@ def build_data_symbol_discovery_envelope(
             error=exc,
             environment=environment,
         )
-    return discover_symbols_service(event_store, request, policy=runtime_policy)
+    return result_to_envelope(
+        discover_symbols_service(event_store, request, policy=runtime_policy)
+    )
 
 
 def _data_inventory_request_from_inputs(
@@ -1246,7 +1267,9 @@ def _data_symbol_discovery_request_from_inputs(
     )
 
 
-def _configured_market_data_context(environment: McpEnvironment | None) -> dict[str, object]:
+def _configured_market_data_context(
+    environment: McpEnvironment | None,
+) -> _ConfiguredMarketDataContext:
     """Return configured market-data provider context for MCP tool requests."""
     if environment is None or environment.trader_config_path is None:
         return {
@@ -1272,7 +1295,7 @@ def _configured_market_data_context(environment: McpEnvironment | None) -> dict[
     }
 
 
-def _load_tool_config(environment: McpEnvironment) -> object:
+def _load_tool_config(environment: McpEnvironment) -> Config:
     """Load trader config for tool execution without making MCP startup depend on it."""
     if environment.trader_config_path is None:
         raise ToolRuntimeConfigurationError("Tool execution requires a trader config path.")

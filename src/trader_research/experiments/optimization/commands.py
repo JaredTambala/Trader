@@ -1,0 +1,7 @@
+"""Stable MCP operation names for parameter optimization."""
+
+RESEARCH_GET_OPTIMIZER_RUNTIME = "research_get_optimizer_runtime"
+RESEARCH_CREATE_PARAMETER_OPTIMIZATION_PLAN = "research_create_parameter_optimization_plan"
+RESEARCH_RUN_PARAMETER_OPTIMIZATION = "research_run_parameter_optimization"
+RESEARCH_GET_PARAMETER_OPTIMIZATION_RESULTS = "research_get_parameter_optimization_results"
+RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS = "research_run_parameter_optimization_variants"

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from trader_research.foundation import ApplicationResult, error_result, success_result
+
 from pathlib import Path
 from typing import Sequence
 
-from trader_research.contracts import SideEffect, ToolEnvelope, error_envelope, success_envelope
-from trader_research.domain import stable_research_id
+from trader_research.foundation import stable_research_id
 
 from .chunking import chunk_sections
 from .domain import KnowledgeChunk, KnowledgeIngestionReport
@@ -27,34 +28,32 @@ def ingest_documents(
     embedding_provider: EmbeddingProvider,
     force: bool = False,
     knowledge_store: KnowledgeStore | None = None,
-) -> ToolEnvelope:
+) -> ApplicationResult:
     """Ingest registered sources into citeable chunks and searchable embeddings.
 
     The command validates batch size, loads each source manifest, reuses existing
     chunks unless `force` is true, extracts text, creates deterministic chunks, and
     indexes all resulting embeddings through the configured store. Extraction,
-    chunking, storage, and embedding failures are converted into tool envelopes
+    chunking, storage, and embedding failures are converted into tool results
     with a saved ingestion report whenever possible so callers can inspect partial
     progress and blockers.
     """
     if not source_ids:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_INGEST_DOCUMENTS,
-            side_effect=SideEffect.LOCAL_MUTATING,
             code="validation_error",
             message="at least one source_id is required",
         )
     if len(source_ids) > 25:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_INGEST_DOCUMENTS,
-            side_effect=SideEffect.LOCAL_MUTATING,
             code="validation_error",
             message="at most 25 source_ids may be ingested in one call",
         )
     store = knowledge_store or JsonKnowledgeStore(artifact_root)
     warnings: list[str] = []
     blockers: list[str] = []
-    all_chunks = []
+    all_chunks: list[KnowledgeChunk] = []
     replacement_chunks: dict[str, tuple[KnowledgeChunk, ...]] = {}
     ingested_source_ids: list[str] = []
     try:
@@ -80,9 +79,8 @@ def ingest_documents(
             all_chunks.extend(chunks)
             ingested_source_ids.append(source.source_id)
     except (OSError, ValueError, KnowledgeStoreError) as exc:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_INGEST_DOCUMENTS,
-            side_effect=SideEffect.LOCAL_MUTATING,
             code="ingestion_error",
             message=str(exc),
         )
@@ -113,9 +111,8 @@ def ingest_documents(
             store.save_ingestion_report(report)
         except KnowledgeStoreError:
             pass
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_INGEST_DOCUMENTS,
-            side_effect=SideEffect.LOCAL_MUTATING,
             code="embedding_configuration_error"
             if isinstance(exc, EmbeddingConfigurationError)
             else "embedding_index_error",
@@ -151,9 +148,8 @@ def ingest_documents(
         else:
             store.save_ingestion_report(report)
     except KnowledgeStoreError as exc:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_INGEST_DOCUMENTS,
-            side_effect=SideEffect.LOCAL_MUTATING,
             code="ingestion_report_error",
             message=str(exc),
             data={"knowledge_ingestion_report": report.to_dict()},
@@ -167,16 +163,14 @@ def ingest_documents(
             embedding_manifest.embedding_manifest_id,
         )
     if blockers:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_INGEST_DOCUMENTS,
-            side_effect=SideEffect.LOCAL_MUTATING,
             code="ingestion_blocked",
             message="one or more sources could not be ingested",
             data={"knowledge_ingestion_report": report.to_dict()},
         )
-    return success_envelope(
+    return success_result(
         command=KNOWLEDGE_INGEST_DOCUMENTS,
-        side_effect=SideEffect.LOCAL_MUTATING,
         data={"knowledge_ingestion_report": report.to_dict()},
         artifacts=artifacts,
         warnings=tuple(warnings),
@@ -189,12 +183,12 @@ def get_ingestion_status(
     source_ids: Sequence[str] | None = None,
     run_id: str | None = None,
     knowledge_store: KnowledgeStore | None = None,
-) -> ToolEnvelope:
+) -> ApplicationResult:
     """Summarize registered-source and ingestion-report state without mutation.
 
     The status response lists matching sources with chunk counts and indexed flags,
     then appends persisted ingestion reports filtered by source IDs or run ID. Store
-    failures become read-only error envelopes so monitoring tools can distinguish
+    failures become read-only error results so monitoring tools can distinguish
     repository problems from an empty knowledge base.
     """
     store = knowledge_store or JsonKnowledgeStore(artifact_root)
@@ -217,9 +211,8 @@ def get_ingestion_status(
                 }
             )
     except KnowledgeStoreError as exc:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_GET_INGESTION_STATUS,
-            side_effect=SideEffect.READ_ONLY,
             code="knowledge_store_error",
             message=str(exc),
         )
@@ -230,15 +223,13 @@ def get_ingestion_status(
             for report in store.list_ingestion_reports(source_ids=source_ids, run_id=run_id)
         ]
     except KnowledgeStoreError as exc:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_GET_INGESTION_STATUS,
-            side_effect=SideEffect.READ_ONLY,
             code="knowledge_store_error",
             message=str(exc),
         )
-    return success_envelope(
+    return success_result(
         command=KNOWLEDGE_GET_INGESTION_STATUS,
-        side_effect=SideEffect.READ_ONLY,
         data={
             "sources": sources,
             "ingestion_reports": reports,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from trader_research.agents import AgentDefinition, get_agent_definition
+from trader_research.governance import AgentDefinition, get_agent_definition
 
 
 @dataclass(frozen=True)

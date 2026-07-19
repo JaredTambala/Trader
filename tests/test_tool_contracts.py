@@ -3,8 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-from trader_research.contracts import SideEffect, ToolEnvelope, envelope_json, success_envelope
-from trader_research.contracts import ToolEnvelope as ResearchToolEnvelope
+from trader_mcp.contracts import SideEffect, ToolEnvelope, envelope_json, success_envelope
 
 
 def test_tool_envelope_is_stable_json() -> None:
@@ -41,7 +40,6 @@ def test_success_envelope_declares_side_effect_class() -> None:
         data={"starts_trading": False},
     )
 
-    assert ToolEnvelope is ResearchToolEnvelope
     assert envelope.agent_owner == "Quant Research Supervisor Agent"
     assert envelope.to_dict()["side_effect"] == "local_mutating"
     assert envelope.to_dict()["data"]["starts_trading"] is False

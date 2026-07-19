@@ -48,8 +48,7 @@ def test_data_ensure_existing_succeeds_when_data_is_complete(tmp_path: Path) -> 
     result = envelope.to_dict()["data"]["load_result"]
 
     assert envelope.ok is True
-    assert envelope.agent_owner == "Data Agent"
-    assert envelope.side_effect.value == "local_mutating"
+    assert envelope.operation == "data_ensure_loaded"
     assert result["mode"] == "existing"
     assert result["status"] == "already_loaded"
     assert result["rows_loaded"] == 0

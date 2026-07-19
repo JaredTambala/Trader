@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from trader_research.governance.artifacts import OWNER_BY_ARTIFACT_TYPE
+
 import pytest
 
-from trader_research.domain import (
+from trader_research.governance.artifacts import (
     PARAMETER_OPTIMIZATION_PLAN,
     PARAMETER_OPTIMIZATION_RUN,
     PARAMETER_OPTIMIZATION_TRIAL,
 )
-from trader_research.postgres_artifact_store import (
+from trader_research.infrastructure.postgres import (
     RESEARCH_ARTIFACT_SCHEMA_STATEMENTS,
     PostgresResearchArtifactStore,
 )
@@ -46,6 +48,7 @@ def test_optimization_artifacts_have_typed_pgadmin_visible_projections(
 ) -> None:
     store = postgres_research_artifact_store
     store.save_artifact(
+        agent_owner=OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_PLAN],
         artifact_type=PARAMETER_OPTIMIZATION_PLAN,
         artifact_id="plan-1",
         payload={
@@ -61,6 +64,7 @@ def test_optimization_artifacts_have_typed_pgadmin_visible_projections(
         status="created",
     )
     store.save_artifact(
+        agent_owner=OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_RUN],
         artifact_type=PARAMETER_OPTIMIZATION_RUN,
         artifact_id="run-1",
         payload={
@@ -80,6 +84,7 @@ def test_optimization_artifacts_have_typed_pgadmin_visible_projections(
         status="completed",
     )
     store.save_artifact(
+        agent_owner=OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_TRIAL],
         artifact_type=PARAMETER_OPTIMIZATION_TRIAL,
         artifact_id="trial-1",
         payload={

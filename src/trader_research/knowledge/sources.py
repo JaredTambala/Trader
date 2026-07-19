@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from trader_research.foundation import ApplicationResult, error_result, success_result
+
 import hashlib
 from pathlib import Path
 from typing import Sequence
 
-from trader_research.contracts import SideEffect, ToolEnvelope, error_envelope, success_envelope
-from trader_research.domain import stable_research_id
+from trader_research.foundation import stable_research_id
 
 from .domain import DEFAULT_SOURCE_TYPE, KnowledgeSourceManifest, SOURCE_TYPE_LABELS, SUPPORTED_SOURCE_EXTENSIONS
 from .store import JsonKnowledgeStore, KnowledgeStore, KnowledgeStoreError
@@ -29,7 +30,7 @@ def register_source(
     access_policy: str = "local_curated",
     allowed_roots: Sequence[str | Path] | None = None,
     knowledge_store: KnowledgeStore | None = None,
-) -> ToolEnvelope:
+) -> ApplicationResult:
     """Validate and register a local knowledge source for later ingestion.
 
     The command resolves the path, enforces allowed roots and supported suffixes,
@@ -77,15 +78,13 @@ def register_source(
         )
         store.save_source(manifest)
     except (OSError, ValueError, KnowledgeStoreError) as exc:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_REGISTER_SOURCE,
-            side_effect=SideEffect.LOCAL_MUTATING,
             code="source_registration_error",
             message=str(exc),
         )
-    return success_envelope(
+    return success_result(
         command=KNOWLEDGE_REGISTER_SOURCE,
-        side_effect=SideEffect.LOCAL_MUTATING,
         data={
             "knowledge_source_manifest": manifest.to_dict(),
             "duplicate_source_ids": list(duplicate_source_ids),
@@ -105,18 +104,17 @@ def list_sources(
     status: str | None = None,
     limit: int = 50,
     knowledge_store: KnowledgeStore | None = None,
-) -> ToolEnvelope:
+) -> ApplicationResult:
     """Return registered knowledge sources matching metadata filters.
 
     The read-only command validates the result limit, applies optional topic,
     method-family, and status filters through the store, and returns JSON-safe
     source manifests plus a count. Store failures are surfaced as knowledge-store
-    error envelopes rather than being confused with an empty result set.
+    error results rather than being confused with an empty result set.
     """
     if limit < 1 or limit > 200:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_LIST_SOURCES,
-            side_effect=SideEffect.READ_ONLY,
             code="validation_error",
             message="limit must be between 1 and 200",
         )
@@ -127,15 +125,13 @@ def list_sources(
             for source in store.list_sources(topic=topic, method_family=method_family, status=status, limit=limit)
         ]
     except KnowledgeStoreError as exc:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_LIST_SOURCES,
-            side_effect=SideEffect.READ_ONLY,
             code="knowledge_store_error",
             message=str(exc),
         )
-    return success_envelope(
+    return success_result(
         command=KNOWLEDGE_LIST_SOURCES,
-        side_effect=SideEffect.READ_ONLY,
         data={"sources": sources, "source_count": len(sources)},
     )
 

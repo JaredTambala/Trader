@@ -41,42 +41,16 @@ symbol,asset_class,timeframe,ts,open,high,low,close,volume,trade_count,vwap,sour
 Running the loader multiple times should not duplicate bars because market-data tables are unique on
 `(symbol, timeframe, ts, source)`.
 
-## 3. Run One Standard Strategy Experiment
+## 3. Run One Canonical Research Backtest
 
-```bash
-uv run python run_research_experiment.py configs/reproducible_backtest.yaml --experiment first_strategy_demo --run-data-quality
-```
-
-The research CLI:
-
-- builds a `trader_standard` strategy from config
-- expands `research.sweep.parameters` when present
-- runs each backtest member sequentially
-- records `experiments` and `experiment_runs`
-- attaches strategy metadata, config hash, git/package provenance, assumptions, risk config, data window, and
-  data-quality summary
-- writes artifacts under `artifacts/research/first_strategy_demo/<run_id>/`
-
-Each successful run writes:
-
-- `result.json`
-- `provenance.json`
-- `metrics.json`
-- `equity_curve.csv`
-- `benchmark_curve.csv`
-- `positions.csv`
-- `trades.csv` when trades exist
+Register and validate the strategy implementation, create and validate its immutable strategy and backtest
+specifications, then call the backtest MCP tool. The run is stored in Postgres as canonical `backtest_run` evidence.
+See [Research Agent Workflows](../research_agents/workflows.md) for the exact implementation-to-evidence graph.
 
 ## 4. Compare Results
 
-```bash
-uv run python run_compare_results.py configs/reproducible_backtest.yaml --experiment first_strategy_demo --format table
-uv run python run_compare_results.py configs/reproducible_backtest.yaml --experiment first_strategy_demo --format json
-```
-
-The comparison reads `experiment_runs` and reports total return, Sharpe, max drawdown, turnover, fees, slippage, alpha,
-beta, warning count, status, and artifact path. It warns when compared runs differ in assumptions, symbols, timeframe,
-asset class, or data window.
+Use the MCP comparison and optimization result tools over explicit `research://postgres/...` refs. Comparisons preserve
+scope and assumption warnings; parameter searches preserve every trial and selected-specification lineage.
 
 ## 5. Try A Tiny Custom Wrapper
 

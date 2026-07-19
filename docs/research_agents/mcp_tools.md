@@ -15,14 +15,14 @@ MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded 
 | --- | --- |
 | Data Agent tools | `trader_research.data` |
 | Knowledge tools | `trader_research.knowledge` |
-| Quantitative Methods math tools | `trader_research.methods` |
-| Implementation registry | `trader_research.implementations` |
-| Immutable specifications | `trader_research.specifications` |
-| Backtest/result/comparison tools | `trader_research.backtests` |
-| Optimisation engines and ledger | `trader_research.optimization` |
-| Tracking projections | `trader_research.tracking` |
-| Evaluation tools | `trader_research.evaluation` |
-| Adversarial tools | `trader_research.adversarial` |
+| Quantitative Methods math tools | `trader_research.methodology` |
+| Implementation registry | `trader_research.experiments` |
+| Immutable specifications | `trader_research.experiments` |
+| Backtest/result/comparison tools | `trader_research.experiments` |
+| Optimisation engines and ledger | `trader_research.experiments` |
+| Tracking projections | `trader_research.experiments` |
+| Evaluation tools | `trader_research.review` |
+| Adversarial tools | `trader_research.review` |
 | ML Agent tools (planned, not registered) | `trader_research.ml` plus an optional `trader_mlflow` integration adapter |
 
 ## Support Tools
@@ -58,8 +58,7 @@ MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded 
 | `knowledge_assemble_methodology_evidence` | `local_mutating` | DB-backed role-labeled methodology evidence packet. |
 | `knowledge_extract_methodology_fields` | `local_mutating` | DB-backed methodology field-extraction report. |
 | `knowledge_validate_methodology_candidate` | `local_mutating` | DB-backed methodology candidate validation report. |
-| `knowledge_create_method_card_draft` | `local_mutating` | Draft method card. |
-| `knowledge_create_rich_method_card_draft` | `local_mutating` | DB-backed rich method-card draft preserving field-level methodology evidence. |
+| `knowledge_create_method_card_draft` | `local_mutating` | DB-backed canonical method-card draft preserving field-level methodology evidence and validation lineage. |
 | `knowledge_publish_method_card` | `local_mutating` | Approved method card. |
 | `knowledge_update_method_card_status` | `local_mutating` | Retired method-card status update. |
 | `knowledge_validate_citations` | `read_only` | Citation validation report. |
@@ -79,13 +78,13 @@ MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded 
 
 Quantitative Methods tools do not fetch market data, create strategies, run backtests, or promote strategies.
 
-Rich methodology work uses the knowledge tool family as a staged review path: register a source reference, ingest and
+Methodology work uses the knowledge tool family as a staged review path: register a source reference, ingest and
 index the whole document into schema-v2 evidence units, retrieve or scan source units, discover methodology candidates,
-assemble target-conditioned claim spans into family-role evidence packets, synthesize nullable rich fields from one or
-more cited spans, validate field attribution and readiness, create a rich draft card, and
+assemble target-conditioned claim spans into family-role evidence packets, synthesize nullable methodology fields from
+one or more cited spans, validate field attribution and readiness, create a canonical draft card, and
 publish only after explicit approval. Candidate, evidence-packet, extraction, and validation artifacts are
-research-artifact-store records; rich method-card payloads are knowledge-store method-card records with shallow
-projections for existing method-card consumers. Persisted method cards can be marked `rejected` or `superseded` through
+research-artifact-store records; complete method-card payloads are knowledge-store records with compact derived search
+summaries. Persisted method cards can be marked `rejected` or `superseded` through
 the lifecycle status tool; retired records remain auditable in storage but are hidden from normal method search and
 approved-card checks. Stable method-card sets group immutable draft and approved revision rows so operators can inspect
 current approved cards and revision history without aggregating by volatile card IDs. Legacy method-card rows without
@@ -133,7 +132,7 @@ knowledge base. They are not currently being expanded toward autonomous book-sca
 | `research_run_parameter_optimization_variants` | `local_mutating` | Immutable child optimisation runs. | Executes only Adversarial-requested optimisation variants. |
 | `research_project_experiment_tracking` | `external_research_mutating` | Non-authoritative projection report. | Derived, idempotent, and separately gated. |
 
-The catalog tools expose neutral metadata from `trader_research.implementations`; they do not expose method-card gates,
+The catalog tools expose neutral metadata through `trader_research.experiments`; they do not expose method-card gates,
 candidate validators, source generators, or filesystem identities. Candidate/stack creation and loose
 `research_run_backtest` / `research_run_portfolio_backtest` request forms are not registered or implemented.
 Maintained or externally produced source enters the same implementation registry.

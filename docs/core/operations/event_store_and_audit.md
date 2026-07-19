@@ -143,16 +143,9 @@ Realtime notification path:
 
 The notification is a trigger; the bar row is the durable fact.
 
-Research audit path:
-
-1. `run_research_experiment.py` upserts an experiment by normalized name.
-2. Each backtest member records an `experiment_runs` start row before execution.
-3. Successful members attach `run_id`, strategy metadata, parameters, assumptions, provenance, data-quality summary,
-   result summary, and artifact directory.
-4. Failed members update the same row with `status=failed` and `error_message`, so a partial sweep remains auditable.
-
-The detailed trading audit still lives in `runs`, `run_events`, `order_events`, `fill_events`, and
-`position_snapshots`. The research tables are an index and comparison surface over those facts.
+The `experiments` and `experiment_runs` tables remain generic core event-store capabilities. Canonical agent research no
+longer uses them: its specifications, runs, trials, and reports are owned by the separate Postgres research artifact
+store. Detailed runtime audit remains in `runs`, `run_events`, `order_events`, `fill_events`, and `position_snapshots`.
 
 Postgres allows separate stream, replay, backfill, service, and analysis processes to coordinate through one runtime
 store. Optional buffered writes can reduce write contention, idempotent bar inserts support safe retries, and session

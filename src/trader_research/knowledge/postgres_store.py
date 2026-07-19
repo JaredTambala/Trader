@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from trader_research.foundation.artifacts import ArtifactReference
+
 from typing import Any, Callable, Mapping, Sequence, TypeVar
 
 from trader.knowledge.store import (
@@ -10,18 +12,13 @@ from trader.knowledge.store import (
     PostgresKnowledgeStoreError,
     PostgresKnowledgeVectorExtensionUnavailable,
 )
-from trader_research.contracts import ArtifactReference
-from trader_research.methods.contracts import MethodRegistryEntry
-
 from .domain import (
     KnowledgeChunk,
     KnowledgeEmbeddingManifest,
     KnowledgeIngestionReport,
     KnowledgeSourceManifest,
-    MethodCard,
     MethodCardSet,
-    RICH_METHOD_CARD_FORMAT,
-    RichMethodCard,
+    MethodCard,
 )
 from .store import (
     KnowledgeEmbeddingDimensionError,
@@ -238,27 +235,16 @@ class PostgresKnowledgeStore:
             )
         )
 
+
+
     def save_method_card(self, method_card: MethodCard) -> None:
-        """Persist a method card through the core Postgres record store adapter."""
+        """Persist a method-card payload through the core Postgres record store adapter."""
         _translate_errors(lambda: self._records.save_method_card(method_card.to_dict()))
 
     def list_persisted_method_cards(self) -> tuple[MethodCard, ...]:
-        """List persisted method cards from Postgres and parse each payload into domain objects."""
+        """List persisted method cards from Postgres and parse full payloads."""
         payloads = _translate_errors(self._records.list_persisted_method_cards)
         return tuple(MethodCard.from_dict(payload) for payload in payloads)
-
-    def save_rich_method_card(self, method_card: RichMethodCard) -> None:
-        """Persist a rich method-card payload through the core Postgres record store adapter."""
-        _translate_errors(lambda: self._records.save_method_card(method_card.to_dict()))
-
-    def list_persisted_rich_method_cards(self) -> tuple[RichMethodCard, ...]:
-        """List persisted rich method cards from Postgres and parse full payloads."""
-        payloads = _translate_errors(self._records.list_persisted_method_cards)
-        return tuple(
-            RichMethodCard.from_dict(payload)
-            for payload in payloads
-            if payload.get("card_format") == RICH_METHOD_CARD_FORMAT
-        )
 
     def save_method_card_set(self, method_card_set: MethodCardSet) -> None:
         """Persist a stable method-card set through the core Postgres record store adapter."""
@@ -269,14 +255,7 @@ class PostgresKnowledgeStore:
         payloads = _translate_errors(self._records.list_method_card_sets)
         return tuple(MethodCardSet.from_dict(payload) for payload in payloads)
 
-    def save_method_contract(self, method: MethodRegistryEntry) -> None:
-        """Persist a method contract through the core Postgres record store adapter."""
-        _translate_errors(lambda: self._records.save_method_contract(method.to_dict()))
 
-    def list_persisted_method_contracts(self) -> tuple[MethodRegistryEntry, ...]:
-        """List persisted method contracts from Postgres and parse each payload into domain objects."""
-        payloads = _translate_errors(self._records.list_persisted_method_contracts)
-        return tuple(MethodRegistryEntry.from_dict(payload) for payload in payloads)
 
     def close(self) -> None:
         """Close the wrapped core Postgres knowledge record store connection after use."""

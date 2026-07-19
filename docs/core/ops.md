@@ -24,12 +24,8 @@ For the current component-oriented operating manual, start with `docs/core/opera
 - Start streaming market data: `uv run python run_market_data_stream.py configs/example.yaml` (set `stream.symbols`/`stream.asset_class`).
 - Backfill historical bars: `uv run python run_market_data_backfill.py configs/example.yaml` (set `backfill.since` or `backfill.start/end`).
 - Run a backtest: `uv run python examples/run_injected_backtest.py`.
-- Run a research experiment: `uv run python run_research_experiment.py configs/reproducible_backtest.yaml --experiment demo_research --run-data-quality`.
-- Compare research results: `uv run python run_compare_results.py configs/reproducible_backtest.yaml --experiment demo_research --format table`.
-- Plan an AI/tool discovery workflow: `uv run python run_research_discovery.py configs/reproducible_backtest.yaml --symbols DEMO --strategies trend_following --data-mode plan --json`.
-- Run AI/tool research discovery: `uv run python run_research_discovery.py configs/reproducible_backtest.yaml --symbols DEMO --strategies trend_following,mean_reversion --data-mode existing --json`.
-- Build recommendations: `uv run python run_research_recommendations.py configs/reproducible_backtest.yaml --experiment demo_discovery --json`.
-- Build a dry-run promotion packet: `uv run python run_prepare_paper_promotion.py configs/reproducible_backtest.yaml --recommendation-json artifacts/recommendations/demo_discovery.json --recommendation-id rec_... --dry-run --json`.
+- Operate DB-first research tools through the MCP server; see
+  [Research Agent Operations](../research_agents/operations.md).
 - Run data quality checks: `uv run python run_data_quality.py configs/example.yaml` (set `data_quality.symbols/timeframe`, optionally `data_quality.sessions`).
 - Write data quality JSON: `uv run python run_data_quality.py configs/example.yaml --output-json artifacts/data_quality/example.json`.
 - Start Postgres (Docker): `docker compose -f docker-compose.postgres.yml up -d`.
@@ -109,8 +105,8 @@ trader_service:
 - If it returns `2`, treat the runtime as unhealthy; latest run/cycle failure or stale market data needs operator
   action before trading resumes.
 - On errors, inspect Postgres event store logs for traceability.
-- AI/tool discovery commands are research-only. They may read operator JSON and write local research artifacts, but they
-  must not be used to start trading, clear halt, or reconcile broker state.
+- Research MCP tools are outside the live trading hot path and cannot start trading, clear halt, reconcile broker state,
+  or write canonical filesystem artifacts.
 
 ## Order Recovery Runbook
 

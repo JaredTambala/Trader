@@ -5,9 +5,8 @@ from __future__ import annotations
 from trader.event_store import PostgresEventStore
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
-from trader_research.optimization import OptimizationEngineRegistry
-from trader_research.postgres_artifact_store import PostgresResearchArtifactStore
-from trader_research.tracking import ExperimentTrackingSinkRegistry
+from trader_research.experiments import ExperimentTrackingSinkRegistry, OptimizationEngineRegistry
+from trader_research.infrastructure.postgres import PostgresResearchArtifactStore
 from tests.support.postgres_verification import (
     assert_verification_database,
     load_test_settings,

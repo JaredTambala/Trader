@@ -5,13 +5,17 @@ from pathlib import Path
 
 import pytest
 
-from trader_research.knowledge.domain import KnowledgeIngestionReport, KnowledgeSourceManifest, MethodCard
+from trader_research.knowledge.domain import (
+    EvidenceReference,
+    KnowledgeIngestionReport,
+    KnowledgeSourceManifest,
+    MethodCard,
+)
 from trader_research.knowledge.embeddings import DeterministicEmbeddingProvider
 from trader_research.knowledge.extractors import extract_text
 from trader_research.knowledge.index import index_chunks, reciprocal_rank_fusion, search_chunks
 from trader_research.knowledge.chunking import chunk_sections
 from trader_research.knowledge.store import JsonKnowledgeStore
-from trader_research.methods.contracts import MethodRegistryEntry, ParameterSpec
 
 
 FIXTURE = Path("tests/fixtures/knowledge/sma_method.md")
@@ -55,24 +59,11 @@ def test_json_knowledge_store_contract_indexes_active_chunks(tmp_path: Path) -> 
         inputs=("prices",),
         outputs=("average",),
         failure_modes=("warmup",),
+        evidence_refs=(EvidenceReference(source_id=source.source_id, chunk_id=chunks[0].chunk_id),),
+        source_methodology_candidate_id="methodology_candidate_store_demo",
+        validation_refs=({"artifact_type": "methodology_candidate_validation_report", "artifact_id": "validation_store_demo"},),
     )
     store.save_method_card(method_card)
-    method_contract = MethodRegistryEntry(
-        method_id="db_backed_demo",
-        family="indicator",
-        status="approved",
-        purpose="Demonstrate JSON-backed method contract persistence.",
-        parameters=(ParameterSpec("period", "int", min_value=2, max_value=50),),
-        inputs=("price series",),
-        outputs=("derived series",),
-        assumptions=("ordered observations",),
-        failure_modes=("warmup",),
-        artifact_outputs=("indicator_validation_report.json",),
-        warmup="period - 1 observations",
-        nan_policy="propagate",
-        no_lookahead=True,
-    )
-    store.save_method_contract(method_contract)
 
     lexical = store.search_lexical("simple moving average", limit=3)
     vector = store.search_vector(
@@ -95,7 +86,8 @@ def test_json_knowledge_store_contract_indexes_active_chunks(tmp_path: Path) -> 
     assert store.load_chunks_by_ids((chunks[0].chunk_id, "missing")) == (chunks[0],)
     assert store.list_ingestion_reports(source_ids=(source.source_id,))[0].ingestion_id == report.ingestion_id
     assert store.list_persisted_method_cards() == (method_card,)
-    assert store.list_persisted_method_contracts() == (method_contract,)
+    assert not hasattr(store, "save_method_contract")
+    assert not hasattr(store, "list_persisted_method_contracts")
     assert lexical
     assert vector
     assert hybrid[0]["retrieval_scores"]["combined_rank"] == 1

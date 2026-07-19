@@ -69,20 +69,15 @@ KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL: Final = (
 KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL: Final = (
     "knowledge_extract_methodology_fields"
 )
-"""Tool name for extracting rich methodology fields from a candidate."""
+"""Tool name for extracting evidence-backed methodology fields from a candidate."""
 
 KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE_TOOL: Final = (
     "knowledge_validate_methodology_candidate"
 )
 """Tool name for validating extracted methodology candidates before draft-card creation."""
 
-KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL: Final = (
-    "knowledge_create_rich_method_card_draft"
-)
-"""Tool name for promoting a validated methodology candidate into a rich method-card draft."""
-
 KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL: Final = "knowledge_create_method_card_draft"
-"""Tool name for creating draft method cards from validated evidence."""
+"""Tool name for promoting a validated methodology candidate into a method-card draft."""
 
 KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL: Final = "knowledge_publish_method_card"
 """Tool name for publishing approved method cards from drafts."""
@@ -226,7 +221,6 @@ KNOWLEDGE_TOOL_NAMES: Final = (
     KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL,
     KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL,
     KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE_TOOL,
-    KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL,
     KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
     KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL,
     KNOWLEDGE_UPDATE_METHOD_CARD_STATUS_TOOL,
@@ -327,16 +321,13 @@ KNOWLEDGE_TOOL_DESCRIPTIONS: Final = {
         "Assemble role-labeled methodology evidence packets from discovered candidates."
     ),
     KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS_TOOL: (
-        "Extract rich nullable methodology fields from a role-labeled evidence packet or source-backed candidate."
+        "Extract nullable methodology fields from a role-labeled evidence packet or source-backed candidate."
     ),
     KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE_TOOL: (
-        "Validate field-level evidence for a rich methodology candidate."
-    ),
-    KNOWLEDGE_CREATE_RICH_METHOD_CARD_DRAFT_TOOL: (
-        "Create a rich method-card draft from a passed methodology-candidate validation report."
+        "Validate field-level evidence for a methodology candidate."
     ),
     KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL: (
-        "Create a legacy/projection draft method card; canonical methodology cards use rich validated drafts."
+        "Create an evidence-backed method-card draft from a passed methodology-candidate validation report."
     ),
     KNOWLEDGE_PUBLISH_METHOD_CARD_TOOL: "Publish an approved Quant Methods method card from a draft with explicit approval.",
     KNOWLEDGE_UPDATE_METHOD_CARD_STATUS_TOOL: (

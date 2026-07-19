@@ -3,16 +3,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from trader_research.knowledge.domain import MethodCard
+from trader_research.knowledge.approved_cards import StoreBackedApprovedMethodCardReader
+from trader_research.knowledge.domain import EvidenceReference, MethodCard
 from trader_research.knowledge.store import JsonKnowledgeStore
-from trader_research.methods.contracts import MethodRegistryEntry, ParameterSpec
-from trader_research.methods import (
+from trader_research.methodology import (
     math_package_method_artifact,
     math_register_method_implementation,
     math_run_indicator_fixtures,
     math_run_signal_fixtures,
 )
-from trader_research.methods.packages import MethodPackageManifest
+from trader_research.methodology.packaging import MethodPackageManifest
 
 
 def test_package_validated_indicator_method_artifact(tmp_path: Path) -> None:
@@ -42,7 +42,7 @@ def test_package_validated_indicator_method_artifact(tmp_path: Path) -> None:
     assert package["source_hash"] == manifest["source_hash"]
     assert package["validation_report_ref"]["validation_id"] == report["validation_id"]
     assert package["validation_summary"]["fixture_count"] == report["fixture_count"]
-    assert package["method_card_ids"] == ["method_card_sma_seed_v1"]
+    assert package["method_card_ids"] == []
     assert package["cxx_kernel_refs"] == []
     assert package_path.exists()
     assert json.loads(package_path.read_text(encoding="utf-8")) == package
@@ -93,11 +93,6 @@ def test_package_rejects_invalid_python_gates(tmp_path: Path) -> None:
             {**registered},
             report,
             "validated method implementation manifest is required",
-        ),
-        (
-            {**validated_manifest, "method_card_ids": []},
-            report,
-            "approved method-card refs are required",
         ),
         (
             {**validated_manifest, "runtime_contract": "custom.Runtime"},
@@ -184,8 +179,8 @@ def _registered_sma(artifact_root: Path) -> dict[str, object]:
     registered = math_register_method_implementation(
         artifact_root=artifact_root,
         method_id="sma",
-        method_card_ids=["method_card_sma_seed_v1"],
-        method_contract=_contract("sma", {"period": 3}, "method_card_sma_seed_v1"),
+        method_card_ids=[],
+        method_contract=_contract("sma", {"period": 3}),
     )
     assert registered.ok is True, registered.to_dict()
     return dict(registered.data["method_implementation_manifest"])
@@ -220,11 +215,19 @@ def _validated_signal(artifact_root: Path) -> tuple[dict[str, object], dict[str,
             inputs=("latest-first OHLCV bar window",),
             outputs=("scalar action signal",),
             failure_modes=("insufficient warmup observations",),
+            evidence_refs=(EvidenceReference(source_id="source_test", chunk_id="chunk_test"),),
+            source_methodology_candidate_id="methodology_candidate_bollinger_signal_test",
+            validation_refs=(
+                {
+                    "artifact_type": "methodology_candidate_validation_report",
+                    "artifact_id": "validation_bollinger_signal_test",
+                },
+            ),
             approved_by="test",
             approval_note="Approved for method package test.",
         )
     )
-    store.save_method_contract(_signal_contract_entry(method_card_id))
+    reader = StoreBackedApprovedMethodCardReader(store)
     registered = math_register_method_implementation(
         artifact_root=artifact_root,
         method_id="bollinger_bwma_action_signal",
@@ -234,13 +237,13 @@ def _validated_signal(artifact_root: Path) -> tuple[dict[str, object], dict[str,
             {"period": 20, "stddev_multiplier": 2.0},
             method_card_id,
         ),
-        knowledge_store=store,
+        approved_card_reader=reader,
     )
     assert registered.ok is True, registered.to_dict()
     validated = math_run_signal_fixtures(
         artifact_root=artifact_root,
         implementation_manifest=registered.data["method_implementation_manifest"],
-        knowledge_store=store,
+        approved_card_reader=reader,
     )
     assert validated.ok is True, validated.to_dict()
     return (
@@ -249,37 +252,19 @@ def _validated_signal(artifact_root: Path) -> tuple[dict[str, object], dict[str,
     )
 
 
-def _contract(method_id: str, parameters: dict[str, object], method_card_id: str) -> dict[str, object]:
-    return {
+def _contract(
+    method_id: str,
+    parameters: dict[str, object],
+    method_card_id: str | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
         "method_id": method_id,
         "parameters": parameters,
         "no_lookahead": True,
-        "knowledge_evidence_refs": [{"method_card_id": method_card_id}],
     }
-
-
-def _signal_contract_entry(method_card_id: str) -> MethodRegistryEntry:
-    return MethodRegistryEntry(
-        method_id="bollinger_bwma_action_signal",
-        family="signal",
-        status="approved",
-        purpose="Validate a Bollinger/BWMA trade-intent signal implementation.",
-        parameters=(
-            ParameterSpec("period", "int", min_value=2, max_value=100),
-            ParameterSpec("stddev_multiplier", "float", min_value=0.1, max_value=10.0),
-        ),
-        inputs=("latest-first OHLCV bar window",),
-        outputs=("scalar action signal",),
-        assumptions=("input bars are ordered latest first",),
-        failure_modes=("insufficient warmup observations",),
-        artifact_outputs=("signal_implementation_validation_report.json",),
-        warmup="period observations",
-        nan_policy="return 0 for invalid windows",
-        no_lookahead=True,
-        requires_evidence=True,
-        approved_method_card_ids=(method_card_id,),
-        runtime_contract="trader.signals.Signal",
-    )
+    if method_card_id is not None:
+        payload["knowledge_evidence_refs"] = [{"method_card_id": method_card_id}]
+    return payload
 
 
 def _compiled_cxx_manifest(python_manifest: dict[str, object]) -> dict[str, object]:

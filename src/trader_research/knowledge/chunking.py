@@ -7,7 +7,7 @@ import hashlib
 import re
 from typing import Sequence
 
-from trader_research.domain import stable_research_id
+from trader_research.foundation import stable_research_id
 
 from .domain import KnowledgeChunk, KnowledgeSourceManifest
 from .extractors import ExtractedSection

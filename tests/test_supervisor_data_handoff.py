@@ -13,7 +13,10 @@ from trader_agents.quant_research import data_agent_handoffs_from_state, build_q
 from trader_agents.state import build_data_agent_initial_state, build_quant_research_supervisor_initial_state
 from trader_agents.tool_client import StdioMcpToolClient
 from trader_mcp.constants import DATA_DISCOVER_SYMBOLS_TOOL, DATA_GET_INVENTORY_TOOL, DATA_SUMMARIZE_QUALITY_TOOL
-from trader_research.domain import DATASET_MANIFEST, DATA_QUALITY_REPORT
+from trader_research.governance.artifacts import (
+    DATASET_MANIFEST,
+    DATA_QUALITY_REPORT,
+)
 
 
 def test_supervisor_consumes_data_agent_graph_handoff_without_fetching_raw_data() -> None:

@@ -8,17 +8,17 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from mcp.types import CallToolResult
 
-from trader_mcp.adapters import envelope_to_mcp_result
+from trader_mcp.adapters import result_to_mcp_result
 from trader_mcp.constants import (
     ADVERSARIAL_CREATE_PARAMETER_OPTIMIZATION_AUDIT_PLAN_TOOL,
     ADVERSARIAL_GENERATE_PARAMETER_OPTIMIZATION_AUDIT_TOOL,
     ADVERSARIAL_TOOL_DESCRIPTIONS,
 )
-from trader_research.adversarial import (
+from trader_research.review import (
     create_parameter_optimization_audit_plan,
     generate_parameter_optimization_audit,
 )
-from trader_research.artifact_store import ResearchArtifactStore
+from trader_research.foundation import ResearchArtifactStore
 
 
 ResearchArtifactStoreProvider = Callable[[], ResearchArtifactStore]
@@ -49,7 +49,7 @@ def register_adversarial_tools(
             attacks=attacks,
             artifact_store=_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
         name=ADVERSARIAL_GENERATE_PARAMETER_OPTIMIZATION_AUDIT_TOOL,
@@ -66,4 +66,4 @@ def register_adversarial_tools(
             stress_backtest_run_refs=stress_backtest_run_refs,
             artifact_store=_store(),
         )
-        return CallToolResult(**envelope_to_mcp_result(envelope))
+        return CallToolResult(**result_to_mcp_result(envelope))

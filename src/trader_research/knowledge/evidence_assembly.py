@@ -2,17 +2,24 @@
 
 from __future__ import annotations
 
+from trader_research.governance.artifacts import QUANTITATIVE_METHODS_OWNER
+
+from trader_research.foundation import ApplicationResult, error_result, success_result
+
 from pathlib import Path
 import re
 from typing import Any, Mapping, Sequence
 
-from trader_research.artifact_store import (
+from trader_research.foundation.artifacts import (
     ResearchArtifactStore,
     ResearchArtifactStoreError,
     load_artifact_ref,
 )
-from trader_research.contracts import SideEffect, ToolEnvelope, error_envelope, success_envelope
-from trader_research.domain import METHODOLOGY_CANDIDATE, METHODOLOGY_EVIDENCE_PACKET, stable_research_id
+from trader_research.foundation import stable_research_id
+from trader_research.governance.artifacts import (
+    METHODOLOGY_CANDIDATE,
+    METHODOLOGY_EVIDENCE_PACKET,
+)
 
 from .claim_spans import detect_local_method_labels, select_role_claim_spans
 from .domain import KnowledgeChunk, MethodologyCandidate, MethodologyEvidencePacket
@@ -43,7 +50,7 @@ def assemble_methodology_evidence(
     max_chunks_per_role: int = 6,
     knowledge_store: KnowledgeStore | None = None,
     artifact_store: ResearchArtifactStore | None = None,
-) -> ToolEnvelope:
+) -> ApplicationResult:
     """Assemble role-labeled evidence chunks for a methodology candidate."""
     if artifact_store is None:
         return _artifact_store_error("research artifact store is required")
@@ -176,6 +183,7 @@ def assemble_methodology_evidence(
     )
     try:
         record = artifact_store.save_artifact(
+            agent_owner=QUANTITATIVE_METHODS_OWNER,
             artifact_type=METHODOLOGY_EVIDENCE_PACKET,
             artifact_id=packet.evidence_packet_id,
             payload=packet.to_dict(),
@@ -195,16 +203,14 @@ def assemble_methodology_evidence(
     data = {"methodology_evidence_packet": packet.to_dict()}
     artifacts = {"methodology_evidence_packet": record.reference().to_dict()}
     if blockers:
-        return error_envelope(
+        return error_result(
             command=KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE,
-            side_effect=SideEffect.LOCAL_MUTATING,
             code="methodology_evidence_assembly_blocked",
             message="methodology evidence assembly missing required roles",
             data=data,
         )
-    return success_envelope(
+    return success_result(
         command=KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE,
-        side_effect=SideEffect.LOCAL_MUTATING,
         data=data,
         artifacts=artifacts,
     )
@@ -549,7 +555,7 @@ def _target_identity_terms(candidate: MethodologyCandidate) -> tuple[tuple[str, 
         str(identity.get("canonical_name") or ""),
         str(identity.get("source_name") or ""),
     ]
-    aliases = []
+    aliases: list[str] = []
     for key in ("aliases", "abbreviations"):
         value = identity.get(key)
         if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
@@ -682,19 +688,17 @@ def _sentences(text: str) -> tuple[str, ...]:
     return tuple(sentence.strip() for sentence in sentences if sentence.strip())
 
 
-def _validation_error(message: str) -> ToolEnvelope:
-    return error_envelope(
+def _validation_error(message: str) -> ApplicationResult:
+    return error_result(
         command=KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE,
-        side_effect=SideEffect.LOCAL_MUTATING,
         code="validation_error",
         message=message,
     )
 
 
-def _artifact_store_error(message: str) -> ToolEnvelope:
-    return error_envelope(
+def _artifact_store_error(message: str) -> ApplicationResult:
+    return error_result(
         command=KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE,
-        side_effect=SideEffect.LOCAL_MUTATING,
         code="research_artifact_store_unavailable",
         message=message,
     )

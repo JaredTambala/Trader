@@ -146,7 +146,7 @@ approved source evidence
   -> methodology evidence assembly
   -> methodology field extraction
   -> methodology candidate validation
-  -> rich method-card draft
+  -> evidence-backed method-card draft
   -> approved method card
   -> optional maintained or external implementation producer
   -> normal content-addressed implementation registration and validation
@@ -158,21 +158,20 @@ approved source evidence
 Knowledge and method cards remain supported, but candidate artifacts are no longer an execution boundary. Produced
 source enters the same registry as handwritten source, and data scope is supplied only by the backtest specification.
 
-For statistical-arbitrage evidence, an external or maintained producer may use an approved rich method card to author
+For statistical-arbitrage evidence, an external or maintained producer may use an approved method card to author
 source based on the `pairs_mean_reversion` template. That source still enters the normal implementation registry;
 method-card lineage is optional provenance, while symbols, timeframe, and dates remain Data Agent scope.
 
 The historical 33N regression remains methodology evidence; its candidate/stack handoff is superseded by the canonical
 implementation/specification path.
 
-## Rich Methodology Operator Workflow
+## Methodology Operator Workflow
 
-Use this workflow when the goal is to turn an ingested source into a richer method description that can later drive
-bounded strategy or risk candidate generation.
+Use this workflow when the goal is to turn an ingested source into a complete, cited method description that may inform
+an external implementation producer.
 
 This workflow is maintained at the 33AB functional baseline. It is appropriate for bounded, locally identifiable
 methods and should fail closed when the source cannot support the requested fields. Composite book-scale framework
-extraction is deferred; do not interpret the existence of the tools as a claim that every source can produce a usable
 method card.
 
 ```text
@@ -182,7 +181,7 @@ source registration
   -> family-role evidence assembly
   -> methodology field extraction
   -> methodology candidate validation
-  -> rich method-card draft
+  -> evidence-backed method-card draft
   -> explicit publish approval
   -> optional implementation producer
   -> content-addressed implementation registration and validation
@@ -219,14 +218,15 @@ Draft cards are still review artifacts. Canonical method-card draft materializat
 implementation readiness and a candidate lineage that matches the validation packet. Caller-provided `method_id`,
 `title`, or `family` values are accepted only when candidate identity or alias evidence supports them. Drafts can be
 searched only when draft visibility is enabled and cannot satisfy strategy/risk generation until they are published.
-Publishing preserves the full rich payload and exposes the shallow method-card projection so older citation, contract,
-implementation, and packaging workflows continue to work.
+Publishing preserves the complete payload. Search derives a compact summary at read time, while methodology engineering
+uses the narrow approved-card read port. There is no writable summary card, alternate card format, or compatibility
+reader for old payloads.
 
 The 33V open-world MCP regression proves this flow with method names that do not exist in the maintained source code.
 It discovers and publishes one technical-indicator card and one statistical-arbitrage card, preserves their stable
 method-card set lineage, and passes the approved statistical-arbitrage card into the maintained pairs strategy template.
-The same regression blocks a definition-only technical method that lacks formula evidence, rejects an approved shallow
-card for strategy generation, and rejects a target field contaminated with evidence from an adjacent named method.
+The same regression blocks a definition-only technical method that lacks formula evidence and rejects a target field
+contaminated with evidence from an adjacent named method.
 
 That controlled regression is not sufficient evidence for arbitrary extracted PDF text. Evidence units are
 non-exclusive context containers: one unit may legitimately support several methods, and adjacent method text is not by
@@ -237,7 +237,7 @@ assumptions and failure modes are absent from accepted target-bound evidence. Do
 overrides, caller-authored prose, or publication; stronger claim-level semantic extraction must produce valid evidence
 first.
 
-Approved rich cards can drive only maintained bounded templates. The pairs mean-reversion template requires an approved
+Approved method cards can drive only maintained bounded templates. The pairs mean-reversion template requires an approved
 statistical-arbitrage card with strategy-template readiness plus evidence for spread or legs, relationship testing or
 hedge-ratio logic, entry logic, exit logic, and price/input requirements. Risk templates can consume approved risk-model
 or portfolio-construction cards with risk-manager readiness, but numeric limits must be explicit structured values;
@@ -247,7 +247,7 @@ Operator examples:
 
 - Pairs trading or cointegration: ingest a textbook or paper section covering pairs, spreads, hedge ratios,
   cointegration or stationarity tests, entry thresholds, and exits. Discover statistical-arbitrage candidates by source
-  ID or query, validate the extracted fields, publish a rich card, and use it with the pairs mean-reversion template.
+  ID or query, validate the extracted fields, publish the method card, and use it with the pairs mean-reversion template.
 - Options straddle: ingest a source that describes the option instrument, call/put legs, payoff, strike selection,
   expiry selection, volatility assumption, and risk. Validate an options/derivatives rich card first; strategy
   generation remains blocked until a maintained options template exists.

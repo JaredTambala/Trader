@@ -2,46 +2,45 @@
 
 from __future__ import annotations
 
+from trader_research.governance.artifacts import OWNER_BY_ARTIFACT_TYPE
+
 from dataclasses import dataclass
 from copy import deepcopy
 from typing import Any, Mapping
 
 import pytest
 
-from trader_research.adversarial import (
+from trader_research.review import (
     create_parameter_optimization_audit_plan,
     generate_parameter_optimization_audit,
+    generate_parameter_optimization_report,
 )
-from trader_research.artifact_store import InMemoryResearchArtifactStore
-from trader_research.domain import (
+from trader_research.foundation.artifacts import InMemoryResearchArtifactStore
+from trader_research.governance.artifacts import (
     BACKTEST_RUN,
     BACKTEST_SPECIFICATION,
     PARAMETER_OPTIMIZATION_RUN,
     PARAMETER_OPTIMIZATION_TRIAL,
 )
-from trader_research.evaluation import generate_parameter_optimization_report
-from trader_research.implementations import (
-    register_optimization_objective,
-    register_strategy_implementation,
-    validate_optimization_objective,
-    validate_strategy_implementation,
-)
-from trader_research.optimization import (
+from trader_research.experiments import (
+    ExperimentTrackingSinkRegistry,
     OptimizationObservation,
-    OptunaOptimizationEngine,
     RandomOptimizationEngine,
     TrialExecution,
-    create_parameter_optimization_plan,
-    get_parameter_optimization_results,
-    run_parameter_optimization,
-)
-from trader_research.specifications import (
     create_backtest_specification,
+    create_parameter_optimization_plan,
     create_strategy_specification,
+    get_parameter_optimization_results,
+    project_experiment_tracking,
+    register_optimization_objective,
+    register_strategy_implementation,
+    run_parameter_optimization,
     validate_backtest_specification,
+    validate_optimization_objective,
     validate_strategy_specification,
+    validate_strategy_implementation,
 )
-from trader_research.tracking import ExperimentTrackingSinkRegistry, project_experiment_tracking
+from trader_research.infrastructure.providers.optuna import OptunaOptimizationEngine
 
 
 STRATEGY_SOURCE = """
@@ -270,6 +269,7 @@ def test_grid_resume_selection_projection_evaluation_and_audit_are_separate() ->
         "blockers": [],
     }
     store.save_artifact(
+        agent_owner=OWNER_BY_ARTIFACT_TYPE[BACKTEST_RUN],
         artifact_type=BACKTEST_RUN,
         artifact_id="holdout-run",
         payload=holdout,
@@ -426,6 +426,7 @@ def test_seeded_random_retry_evidence_and_base_snapshot_drift_are_deterministic(
     changed = deepcopy(drift_store.load_artifact(BACKTEST_SPECIFICATION, base_id))
     changed["dataset"]["payload"]["dataset_id"] = "silently-replaced-selection"
     drift_store.save_artifact(
+        agent_owner=OWNER_BY_ARTIFACT_TYPE[BACKTEST_SPECIFICATION],
         artifact_type=BACKTEST_SPECIFICATION,
         artifact_id=base_id,
         payload=changed,
@@ -497,6 +498,7 @@ def test_results_fail_closed_on_canonical_selection_evidence_tamper(target: str)
         changed = deepcopy(run)
         changed["selected_trial_id"] = "parameter_optimization_trial_tampered"
         store.save_artifact(
+            agent_owner=OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_RUN],
             artifact_type=PARAMETER_OPTIMIZATION_RUN,
             artifact_id=run["optimization_run_id"],
             payload=changed,
@@ -507,6 +509,7 @@ def test_results_fail_closed_on_canonical_selection_evidence_tamper(target: str)
         changed = deepcopy(store.load_artifact(PARAMETER_OPTIMIZATION_TRIAL, trial_id))
         changed["objective_value"] = float(changed["objective_value"]) + 100.0
         store.save_artifact(
+            agent_owner=OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_TRIAL],
             artifact_type=PARAMETER_OPTIMIZATION_TRIAL,
             artifact_id=trial_id,
             payload=changed,
@@ -524,7 +527,7 @@ def test_optuna_adapter_requires_isolated_postgres_and_reconciles_canonical_tria
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "trader_research.optimization.optuna_adapter.metadata.version",
+        "trader_research.infrastructure.providers.optuna.metadata.version",
         lambda package: "4.2.0" if package == "optuna" else "unknown",
     )
     configured = OptunaOptimizationEngine(
@@ -564,7 +567,7 @@ def test_optuna_adapter_requires_isolated_postgres_and_reconciles_canonical_tria
     assert "dedicated non-public schema" in str(public_schema.reason)
     assert "PostgreSQL" in str(non_postgres.reason)
 
-    from trader_research.optimization.optuna_adapter import _OptunaSession
+    from trader_research.infrastructure.providers.optuna import _OptunaSession
 
     class _State:
         name = "COMPLETE"
