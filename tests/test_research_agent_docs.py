@@ -235,8 +235,8 @@ def test_tracker_freezes_57i_surface_and_acceptance_matrix() -> None:
     for invariant in range(36, 62):
         assert f"| {invariant} |" in tracker
 
-    assert "The 57M stdio MCP graph now proves the realistic behavior" in tracker
-    assert "Ready / controlled 57M execution pending" in tracker
+    assert "The controlled 57M stdio MCP graph proves the realistic behavior" in tracker
+    assert "Passed / controlled 57M" in tracker
     assert "Planned / 57S" in tracker
 
 
@@ -304,6 +304,7 @@ def test_docs_define_57m_as_retained_postgres_stdio_mcp_evidence() -> None:
 
     required_phrases = (
         "57M Stdio MCP Evidence Graph",
+        "57M Controlled Stdio MCP Execution Evidence",
         "actual MCP `ClientSession` over stdio",
         "TRADER_VERIFICATION_RETAIN_PHASE=57M",
         "exactly `TRADER_MCP_ALLOW_BACKTESTS=true`",
@@ -311,11 +312,12 @@ def test_docs_define_57m_as_retained_postgres_stdio_mcp_evidence() -> None:
         "Supervisor executes the declared seed",
         "tests/test_postgres_optimization_evidence_graph.py",
         "canonical responses/rows contain no filesystem authority",
+        "87 canonical artifacts across 15 artifact types",
     )
     for phrase in required_phrases:
         assert phrase in combined
 
-    assert "| 57M. Postgres-Native MCP Evidence Graph | In progress |" in tracker
+    assert "| 57M. Postgres-Native MCP Evidence Graph | Done |" in tracker
 
 
 def test_tracker_records_57k_remediation_and_rerun_boundary() -> None:
