@@ -223,7 +223,15 @@ def test_postgres_optimization_restart_resume_and_fault_recovery(
     assert postgres_research_artifact_store.list_artifacts(
         artifact_type="backtest_run"
     )
+    orphan_record = postgres_research_artifact_store.list_artifacts(
+        artifact_type="backtest_run"
+    )[0]
     assert _run_worker(prepared.optimization_plan_id)["ok"] is True
+    recovered_record = postgres_research_artifact_store.load_artifact_record(
+        "backtest_run", orphan_record.artifact_id
+    )
+    assert recovered_record.updated_at == orphan_record.updated_at
+    assert recovered_record.payload == orphan_record.payload
     _assert_matches_baseline(
         postgres_research_artifact_store,
         baseline_run,
@@ -373,6 +381,7 @@ def test_postgres_optimization_enforces_trial_process_deadlines(
         event_store=postgres_event_store,
         artifact_store=postgres_research_artifact_store,
         postgres_settings=postgres_settings,
+        search_values=(2,),
         max_trials=1,
         per_trial_timeout_seconds=30.0,
     )
@@ -393,6 +402,7 @@ def test_postgres_optimization_enforces_trial_process_deadlines(
         postgres_event_store,
         postgres_research_artifact_store,
         postgres_settings,
+        search_values=(2,),
         max_trials=1,
         per_trial_timeout_seconds=0.001,
     )

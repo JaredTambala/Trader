@@ -18,7 +18,13 @@ from trader.event_store import EventStore
 from trader.portfolio import Position
 from trader.risk import RiskContext, RiskManager
 from trader_standard.risk import NoOpRiskManager
-from trader_research.foundation.artifacts import ResearchArtifactStore, ResearchArtifactStoreError, load_artifact_ref
+from trader_research.foundation.artifacts import (
+    ResearchArtifactNotFound,
+    ResearchArtifactRecord,
+    ResearchArtifactStore,
+    ResearchArtifactStoreError,
+    load_artifact_ref,
+)
 from trader_research.foundation import stable_research_id
 from trader_research.governance.artifacts import (
     BACKTEST_RUN,
@@ -137,6 +143,21 @@ def run_backtest_specification(
                 "risk_source_hashes": [item["source_hash"] for item in risk_lineage],
             },
         )
+        persisted = _load_persisted_backtest_run(
+            artifact_store,
+            run_id=run_id,
+            specification=specification,
+            validation=validation,
+            strategy_specification=strategy_specification,
+            strategy_implementation=strategy_implementation,
+            risk_lineage=risk_lineage,
+        )
+        if persisted is not None:
+            return _backtest_application_result(
+                command=command,
+                payload=persisted.payload,
+                artifact_reference=persisted.reference().to_dict(),
+            )
         window = dataset["time_range"]
         runner = BacktestRunner(
             config,
@@ -240,21 +261,133 @@ def run_backtest_specification(
         )
     except ResearchArtifactStoreError as exc:
         return _error(command, "backtest_run_persistence_failed", str(exc))
+    return _backtest_application_result(
+        command=command,
+        payload=payload,
+        artifact_reference=record.reference().to_dict(),
+    )
+
+
+def _load_persisted_backtest_run(
+    store: ResearchArtifactStore,
+    *,
+    run_id: str,
+    specification: Mapping[str, Any],
+    validation: Mapping[str, Any],
+    strategy_specification: Mapping[str, Any],
+    strategy_implementation: ImplementationVersion,
+    risk_lineage: Sequence[Mapping[str, Any]],
+) -> ResearchArtifactRecord | None:
+    """Return a complete canonical run or fail closed when persisted evidence drifted."""
+    try:
+        record = store.load_artifact_record(BACKTEST_RUN, run_id)
+    except ResearchArtifactNotFound:
+        return None
+
+    payload = record.payload
+    expected = {
+        "artifact_type": BACKTEST_RUN,
+        "schema_version": SCHEMA_VERSION,
+        "run_id": run_id,
+        "backtest_kind": "portfolio" if risk_lineage else "baseline",
+        "backtest_specification_id": specification["backtest_specification_id"],
+        "backtest_specification_validation_id": validation["validation_id"],
+        "strategy_specification_id": strategy_specification["strategy_specification_id"],
+        "strategy_implementation_version_id": strategy_implementation.implementation_version_id,
+        "risk_stack_specification_id": specification.get("risk_stack_specification_id"),
+        "risk_lineage": list(risk_lineage),
+        "dataset_id": specification["dataset"]["payload"]["dataset_id"],
+        "dataset_hash": specification["dataset"]["sha256"],
+        "quality_hash": specification["data_quality"]["sha256"],
+        "selection_origin_ref": specification.get("selection_origin_ref"),
+        "parent_specification_ref": specification.get("parent_specification_ref"),
+        "variant_reason": specification.get("variant_reason"),
+    }
+    if record.artifact_type != BACKTEST_RUN or record.artifact_id != run_id:
+        raise ValueError("persisted backtest run record identity drifted")
+    if record.agent_owner != QUANT_RESEARCH_SUPERVISOR_OWNER:
+        raise ValueError("persisted backtest run owner drifted")
+    for key, value in expected.items():
+        if payload.get(key) != value:
+            raise ValueError(f"persisted backtest run {key} drifted")
+
+    status = str(payload.get("status") or "")
+    blockers = payload.get("blockers")
+    warnings = payload.get("warnings")
+    if status not in {"passed", "blocked"} or record.status != status:
+        raise ValueError("persisted backtest run status drifted")
+    if not isinstance(blockers, list) or not isinstance(warnings, list):
+        raise ValueError("persisted backtest run warnings or blockers are malformed")
+    if (status == "passed" and blockers) or (status == "blocked" and not blockers):
+        raise ValueError("persisted backtest run blockers do not match its status")
+
+    summary = payload.get("summary")
+    bundle = payload.get("bundle")
+    if not isinstance(summary, Mapping) or summary.get("run_id") != run_id:
+        raise ValueError("persisted backtest run summary identity drifted")
+    if not isinstance(bundle, Mapping):
+        raise ValueError("persisted backtest run bundle is malformed")
+    required_bundle_fields = {
+        "result",
+        "metrics",
+        "equity_curve",
+        "trades",
+        "positions",
+        "symbol_metrics",
+        "exposure_summary",
+        "risk_decisions",
+        "risk_limit_breaches",
+        "risk_measure_summary",
+        "provenance",
+    }
+    if not required_bundle_fields.issubset(bundle):
+        raise ValueError("persisted backtest run bundle is incomplete")
+    result = bundle.get("result")
+    if not isinstance(result, Mapping) or result.get("run_id") != run_id:
+        raise ValueError("persisted backtest result identity drifted")
+    if bundle.get("metrics") != summary:
+        raise ValueError("persisted backtest metrics drifted from its summary")
+    provenance = bundle.get("provenance")
+    expected_provenance = {
+        "backtest_specification": specification,
+        "backtest_specification_validation": validation,
+        "strategy_source_hash": strategy_implementation.source_hash,
+        "risk_lineage": list(risk_lineage),
+    }
+    if not isinstance(provenance, Mapping) or dict(provenance) != expected_provenance:
+        raise ValueError("persisted backtest run provenance drifted")
+    return record
+
+
+def _backtest_application_result(
+    *,
+    command: str,
+    payload: Mapping[str, Any],
+    artifact_reference: Mapping[str, Any],
+) -> ApplicationResult:
+    """Build the same service result for newly executed and recovered runs."""
+    warnings = tuple(str(item) for item in payload.get("warnings", []))
     application_result = success_result(
         command=command,
-        data={"backtest_run": payload, "summary": summary},
-        artifacts={"backtest_run": record.reference().to_dict()},
-        warnings=tuple(backtest_result.warnings),
+        data={"backtest_run": payload, "summary": payload.get("summary") or {}},
+        artifacts={"backtest_run": artifact_reference},
+        warnings=warnings,
     )
-    if status == "passed":
+    if payload.get("status") == "passed":
         return application_result
+    blockers = list(payload.get("blockers") or [])
     return ApplicationResult(
         ok=False,
         operation=application_result.operation,
         data=application_result.data,
         artifacts=application_result.artifacts,
         warnings=application_result.warnings,
-        errors=({"code": "backtest_run_blocked", "message": payload["blockers"][0]},),
+        errors=(
+            {
+                "code": "backtest_run_blocked",
+                "message": str(blockers[0] if blockers else "backtest run is blocked"),
+            },
+        ),
     )
 
 
