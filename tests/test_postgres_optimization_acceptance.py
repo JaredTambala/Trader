@@ -27,7 +27,7 @@ _COMMANDS = {
         "uv run mypy",
         "uv run pytest -m 'not postgres' -q -W error",
         "uv run pytest tests/test_mcp_tools.py tests/test_mcp_data_workflow.py tests/test_mcp_quant_methods_tools.py tests/test_mcp_optimization_tools.py tests/test_agent_identities.py tests/test_research_agent_docs.py tests/test_research_domain.py tests/test_package_boundaries.py -q -W error",
-        "git diff --check verification-57i-freeze-v5^ verification-57i-freeze-v5",
+        "git diff --check verification-57i-freeze-v6^ verification-57i-freeze-v6",
     ],
     "57L": [
         "uv run pytest tests/test_postgres_realistic_optimization_fixture.py -m postgres -q -W error",

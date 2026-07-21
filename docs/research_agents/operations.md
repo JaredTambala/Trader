@@ -188,7 +188,7 @@ export TRADER_MCP_ALLOW_OPTUNA_WRITES=false
 export TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES=false
 ```
 
-With a clean worktree whose product paths are byte-identical to `verification-57i-freeze-v5`, execute:
+With a clean worktree whose product paths are byte-identical to `verification-57i-freeze-v6`, execute:
 
 ```bash
 uv run python -m tests.support.postgres_verification provision --reset
@@ -383,9 +383,11 @@ not invalidate a passing built-in core unless canonical Trader state was affecte
 
 57O proves that canonical Postgres state, rather than process memory, is sufficient to resume built-in optimisation.
 The controlled test compares an uninterrupted run with fresh-process recovery after a partial run and injects failures
-before/after trial and final-run persistence boundaries. It also proves bounded retries, terminal blocked-run reads,
-stable sequence/provider trial IDs, and Postgres child-process deadlines. A declared deadline is enforced by terminating
-the isolated child; an executor without that capability blocks before executing.
+before/after trial and final-run persistence boundaries. A completed child backtest whose trial write was interrupted is
+resolved by its deterministic run ID, its complete payload and lineage are revalidated, and the persisted row is reused
+without updating it or replaying the event store. It also proves bounded retries, terminal blocked-run reads, stable
+sequence/provider trial IDs, and Postgres child-process deadlines. A declared deadline is enforced by terminating the
+isolated child; an executor without that capability blocks before executing.
 
 Run with only backtests and optimisation enabled:
 

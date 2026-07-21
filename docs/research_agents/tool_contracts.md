@@ -271,6 +271,9 @@ and fails on hash or scope drift. Loose scope and filesystem refs are not accept
 `TRADER_MCP_ALLOW_BACKTESTS=true`. It chooses no-risk or ordered-risk execution from the specification and writes one
 canonical `backtest_run` containing summary metrics, complete result, curves, trades, positions, symbol metrics,
 exposure, risk decisions/breaches/measures, warnings, blockers, and full implementation/specification/dataset lineage.
+Execution is idempotent by deterministic run ID: a complete persisted run is returned only after record identity,
+ownership, status, specification, source hashes, dataset hashes, result identity, sidecar completeness, and provenance
+revalidate. Drift blocks the call; valid persisted evidence is not overwritten or replayed.
 `research_get_backtest_results` accepts exactly one run ID or DB URI. Comparison accepts 2-50 canonical run refs plus a
 numeric ranking metric/order. No new execution service reads or returns a durable filesystem path.
 

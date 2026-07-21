@@ -253,7 +253,7 @@ boundary is outside this research-layer refactor.
 ### Refactor Record
 
 The completed TRR-1 through TRR-12 delivery sequence, its acceptance evidence, and the
-`verification-57i-freeze-v5` qualification candidate are recorded in the
+`verification-57i-freeze-v6` qualification candidate are recorded in the
 [active tracker](../../plans/mcp_trading_research_tools_plan.md). That sequence explains how the architecture was
 reached; it is not part of the reader-facing architecture contract.
 

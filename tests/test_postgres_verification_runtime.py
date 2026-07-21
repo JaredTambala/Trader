@@ -151,7 +151,7 @@ def test_verification_database_has_server_checked_marker_and_manifest(
     assert identity["lc_collate"] == os.environ["PG_TEST_LOCALE"]
     assert identity["lc_ctype"] == os.environ["PG_TEST_LOCALE"]
     assert manifest["database_identity"] == identity
-    assert manifest["freeze"]["freeze_tag"] == "verification-57i-freeze-v5"
+    assert manifest["freeze"]["freeze_tag"] == "verification-57i-freeze-v6"
     assert manifest["test_database"]["dbname"] == postgres_settings["dbname"]
     assert manifest["phase"] == "57J"
     assert manifest["retained_evidence_phase"] is None

@@ -21,7 +21,7 @@ from psycopg.types.json import Jsonb
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FREEZE_TAG = "verification-57i-freeze-v5"
+FREEZE_TAG = "verification-57i-freeze-v6"
 VERIFICATION_MARKER_ID = "trader_verification"
 VERIFICATION_SCHEMA = "verification_control"
 TEST_DATABASE_SUFFIXES = ("_test", "_testing")

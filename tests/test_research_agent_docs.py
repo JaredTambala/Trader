@@ -171,7 +171,7 @@ def test_docs_define_current_research_architecture_and_refactor_lineage() -> Non
         "forcibly rejects every `optuna` and `mlflow` import",
         "### Boundary Enforcement",
         "### Refactor Record",
-        "`verification-57i-freeze-v5`",
+        "`verification-57i-freeze-v6`",
     )
     for phrase in required_architecture_phrases:
         assert phrase in architecture
@@ -352,7 +352,7 @@ def test_tracker_freezes_57i_surface_and_acceptance_matrix() -> None:
 
     required_inventory = (
         "#### 57I Frozen Surface Inventory",
-        "`verification-57i-freeze-v5`",
+        "`verification-57i-freeze-v6`",
         "`research_register_strategy_implementation`",
         "`research_register_optimization_objective`",
         "`research_run_backtest_specification`",
@@ -399,7 +399,7 @@ def test_docs_define_57j_isolated_postgres_runtime() -> None:
         "verification_control.operator_fingerprints",
         "tests.support.postgres_verification provision --reset",
         "before every `TRUNCATE`",
-        "byte-identical to `verification-57i-freeze-v5`",
+        "byte-identical to `verification-57i-freeze-v6`",
         "isolation_status",
         "qualification_status",
         "--outcome passed",
