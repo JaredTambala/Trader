@@ -1,18 +1,105 @@
 # Research Agents And MCP Documentation
 
-This directory contains the current operating documentation for Trader research agents, MCP tools, and LangGraph
-orchestration. It is intentionally split by concern so agents do not have to infer current behavior from old plans.
+This is the starting point for understanding Trader's research system. The research layer turns bounded data and
+supplied executable code into deterministic, inspectable evidence. It sits above the core trading runtime and outside
+the live trading hot path.
 
-## Authoritative Current References
+## What Trader Research Does
 
-- [architecture.md](architecture.md): package boundaries, layer responsibilities, and safety model.
-- [semantic_extraction.md](semantic_extraction.md): claim-level methodology evidence, semantic extraction, validation,
-  and execution design.
-- [agents.md](agents.md): agent identities, owned artifacts, tool allowlists, and handoff rules.
-- [mcp_tools.md](mcp_tools.md): current registered MCP tool catalog and planned tool ownership.
-- [workflows.md](workflows.md): supported research workflows and near-term portfolio/risk workflow direction.
-- [operations.md](operations.md): local MCP server startup, policy gates, persistence expectations, and verification.
-- [tool_contracts.md](tool_contracts.md): detailed request/response and artifact contract appendix.
+The primary implemented path is:
+
+```text
+Data Agent scope and quality evidence
+  -> content-addressed strategy and risk implementation versions
+  -> immutable strategy, risk-stack, and backtest specifications
+  -> canonical Postgres backtest run
+  -> optional provider-neutral parameter optimisation
+  -> separately executed untouched-holdout backtest
+  -> Evaluation-owned performance report
+  -> Adversarial-owned robustness report
+```
+
+The Knowledge and Methodology contexts provide an optional source-backed route into implementation authoring:
+
+```text
+registered and ingested source
+  -> citeable evidence units and methodology evidence
+  -> approved method card
+  -> optional implementation producer
+  -> normal implementation registration and validation path
+```
+
+A method card is provenance, not an execution identity. Handwritten, AI-produced, maintained, and methodology-produced
+code receives the same implementation validation. Data Agent artifacts remain the only source of symbols, timeframe,
+date bounds, provider scope, and market-data quality.
+
+Trader Postgres is canonical for implementations, specifications, runs, trial ledgers, Evaluation, and Adversarial
+evidence. MCP is the control-plane API over deterministic services. LangGraph agents constrain tool access and preserve
+artifact ownership. Research tools cannot place live orders, mutate broker state, clear halts, or expose raw SQL.
+
+## Start Here
+
+Read the active documentation in this order. Do not read `architecture.md` from top to bottom before establishing the
+product flow.
+
+| Step | Read | Question it answers |
+| ---: | --- | --- |
+| 1 | [Current Capability Baseline](#current-capability-baseline) | What works now, what is maintained, and what is only planned? |
+| 2 | [architecture.md](architecture.md#bounded-context-architecture) | Which package owns each responsibility, and which dependencies are allowed? |
+| 3 | [agents.md](agents.md) | Which agent owns each artifact and decision boundary? |
+| 4 | [workflows.md](workflows.md) | How do tools compose into useful evidence-producing procedures? |
+| 5 | [mcp_tools.md](mcp_tools.md) | Which MCP tools are actually registered and callable? |
+| 6 | [tool_contracts.md](tool_contracts.md) | What are the exact request, envelope, artifact, and fail-closed contracts? |
+| 7 | [operations.md](operations.md) | How is MCP configured, gated, persisted, inspected, and verified? |
+
+The [active tracker](../../plans/mcp_trading_research_tools_plan.md) records delivery lineage and acceptance evidence.
+It is not the introductory product manual. Files under [history/](history/) explain superseded designs and should not be
+used to infer current tools or import paths.
+
+## Topic Reading Paths
+
+### Strategy Implementation And Backtesting
+
+1. [workflows.md: Worked Implementation-To-Evidence Walkthrough](workflows.md#worked-implementation-to-evidence-walkthrough)
+2. [tool_contracts.md: Canonical Implementation, Specification, And Optimisation Contracts](tool_contracts.md#canonical-implementation-specification-and-optimisation-contracts)
+3. [mcp_tools.md: Quant Research Supervisor Tools](mcp_tools.md#quant-research-supervisor-tools)
+4. [../core/first_strategy.md](../core/first_strategy.md) and [../core/backtesting.md](../core/backtesting.md) for the
+   underlying runtime interfaces and backtest engine
+
+### Knowledge Ingestion And Method Cards
+
+1. [semantic_extraction.md](semantic_extraction.md)
+2. [workflows.md: Methodology Operator Workflow](workflows.md#methodology-operator-workflow)
+3. [operations.md: Methodology Operating Checklist](operations.md#methodology-operating-checklist)
+4. [architecture.md: Canonical Method Card Architecture](architecture.md#canonical-method-card-architecture)
+
+### Parameter Optimisation And Review
+
+1. [architecture.md: Experiment Tracking And Optimisation Architecture](architecture.md#experiment-tracking-and-optimisation-architecture)
+2. [workflows.md: Parameter Optimisation And Independent Audit](workflows.md#parameter-optimisation-and-independent-audit)
+3. [tool_contracts.md: Canonical Implementation, Specification, And Optimisation Contracts](tool_contracts.md#canonical-implementation-specification-and-optimisation-contracts)
+4. [operations.md: Controlled Verification Procedure](operations.md#controlled-verification-procedure)
+
+### Planned ML Lifecycle
+
+1. [architecture.md: ML Lifecycle Architecture](architecture.md#ml-lifecycle-architecture)
+2. [workflows.md: Planned MLflow Model Lifecycle](workflows.md#planned-mlflow-model-lifecycle)
+3. [agents.md: ML Lifecycle Ownership](agents.md#ml-lifecycle-ownership)
+4. [mcp_tools.md: Planned MLflow Tool Universe](mcp_tools.md#planned-mlflow-tool-universe)
+
+The ML documents describe a roadmap. No `ml_*` MCP tools are currently registered.
+
+## Document Roles
+
+| Document | Use it for | Do not use it for |
+| --- | --- | --- |
+| [architecture.md](architecture.md) | Current package boundaries, authority, persistence, safety, and subsystem designs. | Tool availability or historical refactor sequencing. |
+| [agents.md](agents.md) | Agent missions, artifact ownership, allowlists, and handoffs. | Detailed request schemas. |
+| [mcp_tools.md](mcp_tools.md) | Registered tool catalog, owners, side effects, and capability gates. | Service internals. |
+| [workflows.md](workflows.md) | End-to-end procedures and artifact flow. | Exact field-level contracts. |
+| [tool_contracts.md](tool_contracts.md) | Request fields, envelopes, validation, and artifact contracts. | Introductory reading. |
+| [operations.md](operations.md) | Startup, environment, Postgres, policy gates, and qualification. | Conceptual domain ownership. |
+| [semantic_extraction.md](semantic_extraction.md) | Claim-level methodology evidence and method-card extraction semantics. | Generic strategy execution. |
 
 ## Current Capability Baseline
 
@@ -31,22 +118,20 @@ following distinctions are important when assessing what the platform can do tod
 | Robustness and adversarial evaluation | Independent parameter-optimisation attack planning and judgment are registered. | Broader cost/data perturbation execution remains tasks 44/46. | Active next focus. |
 | Walk-forward optimisation | Provider-neutral optimisation contracts now exist for composition inside folds. | Fold construction, stitched OOS report, and walk-forward audit remain deferred tasks 58-59. | Build after ML integration and broader robustness primitives. |
 
-The implementation-to-evidence and parameter-optimisation foundations are now present. The next product direction is
-the 39A-39J MLflow lifecycle for point-in-time feature engineering, fitting,
-recording, evaluation, immutable model versioning, deployment evidence, strategy inference, predictions, and drift.
-Robustness/adversarial evidence follows those reproducible baselines. Knowledge and Data Agent tools remain supported
-dependencies, but further autonomous methodology-understanding work is not on the current critical path.
-
-## Historical Context
-
-Older briefs, implementation notes, and superseded user guides live under [history/](history/). They can be useful for
-context, but they are not authoritative for current tool availability, agent boundaries, or operation.
+The implementation-to-evidence and parameter-optimisation foundations are present. The next product direction is the
+39A-39J MLflow lifecycle for point-in-time feature engineering, fitting, recording, evaluation, immutable model
+versioning, deployment evidence, strategy inference, predictions, and drift. Robustness/adversarial evidence follows
+those reproducible baselines. Knowledge and Data Agent tools remain supported dependencies, but further autonomous
+methodology-understanding work is not on the current critical path.
 
 ## Sources Of Truth
 
-When the docs and implementation disagree, resolve the docs from the implementation:
+When documentation and implementation disagree, inspect these current sources and then correct the documentation:
 
 - Registered MCP tools and capability flags: `src/trader_mcp/constants.py`.
-- Agent identities and allowlists: `src/trader_research/agents.py`.
-- Artifact types and ownership: `src/trader_research/domain.py`.
+- MCP transport envelopes and side-effect classification: `src/trader_mcp/contracts.py`.
+- Agent identities, tool ownership, and allowlists: `src/trader_research/governance/ownership.py`.
+- Artifact types and ownership: `src/trader_research/governance/artifacts.py`.
+- Public research application surfaces: the `__init__.py` facade in each `trader_research` bounded context.
+- Canonical Postgres persistence and projection registration: `src/trader_research/infrastructure/postgres/`.
 - Implementation status and roadmap: `plans/mcp_trading_research_tools_plan.md`.

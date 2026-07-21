@@ -2,7 +2,7 @@
 
 This is the canonical catalog for the currently registered research-agent MCP tools. Tool names, descriptions, groups,
 and capability flags are defined in `src/trader_mcp/constants.py`; owner lookup is defined in
-`src/trader_research/agents.py`.
+`src/trader_research/governance/ownership.py`.
 
 Every tool returns a shared `ToolEnvelope` through MCP `structuredContent` and text content. See
 [tool_contracts.md](tool_contracts.md) for detailed request and artifact schemas.

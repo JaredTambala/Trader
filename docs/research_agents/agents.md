@@ -1,7 +1,8 @@
 # Research Agent Definitions
 
 This document describes the current agent identities, ownership boundaries, and tool allowlists. The implementation
-source of truth is `src/trader_research/agents.py`; artifact ownership is registered in `src/trader_research/domain.py`.
+source of truth for agent and tool ownership is `src/trader_research/governance/ownership.py`; artifact ownership is
+registered in `src/trader_research/governance/artifacts.py`.
 
 ## Agent Map
 
@@ -103,4 +104,5 @@ are proven.
 ## Identity Checks
 
 Agent display names, allowlists, and output artifacts are executable metadata. Update this document when
-`src/trader_research/agents.py` changes, and update the documentation consistency test so every agent remains covered.
+`src/trader_research/governance/ownership.py` or `src/trader_research/governance/artifacts.py` changes, and update the
+documentation consistency test so every agent remains covered.

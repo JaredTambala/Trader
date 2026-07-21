@@ -32,116 +32,31 @@ reintroduced.
 | `trader_research.knowledge` | Knowledge-source registration, ingestion, indexing, retrieval, methodology candidates, method cards, and citation validation. |
 | `trader_research.methodology.implementation` | Python method implementation registration, quarantine generation, and deterministic fixtures. |
 
-## `trader_research` Refactor Review And Plan
+## Bounded Context Architecture
 
-This section is the canonical architecture record for the `trader_research` comprehensibility refactor. It records the
-read-only review completed before implementation and the gated migration that follows. The review itself changes no
-Python package, import path, database schema, MCP tool, or artifact payload. Production changes begin only after the
-target boundaries in this section are accepted.
+`trader_research` contains five domain contexts, a narrow Foundation/Governance kernel, and an outer Infrastructure
+layer. The current package structure is a hard-cutover architecture: deleted root hubs and former top-level context
+paths have no compatibility aliases or fallback readers.
 
-TRR-5 through TRR-12 are complete. Superseded root workflows are gone, and the former root `agents`, `domain`,
-`contracts`, artifact-store, and Postgres-store hubs have been replaced by Foundation, Governance, MCP transport
-contracts, and outer Postgres infrastructure. Research services return `ApplicationResult`; `trader_mcp` adds agent
-ownership, side-effect classification, timestamps, and wire serialization. Canonical artifact writes and registered
-context projections remain atomic in one Postgres transaction. Knowledge now owns one evidence-backed method-card
-lifecycle, and Methodology Engineering accesses approved cards only through a narrow read port. Data is split into
-domain, catalog, inventory, quality, and loading modules behind one public facade; the Alpaca catalog adapter is outer
-infrastructure. Executable research now enters through one Experiments facade, while Optuna and MLflow adapters live in
-Infrastructure. Evaluation and Adversarial now share a Review context that can access Experiments only through an
-immutable evidence-reader port. The core `trader` package was not changed by these steps.
-The refactored product is qualified by annotated freeze `verification-57i-freeze-v4` at `6f3efb4` and controlled
-replacement 57J-N evidence retained in verification Postgres.
+The pre-refactor inventory, dependency findings, migration sequence, and qualification evidence remain in tracker
+tasks TRR-1 through TRR-12 in the
+[active implementation plan](../../plans/mcp_trading_research_tools_plan.md). They are historical delivery evidence,
+not part of this current-state architecture description.
 
-### Review Scope And Baseline
-
-The review covered the complete `src/trader_research` tree, its imports from `trader_mcp` and `trader_agents`, package
-facades, persistence adapters, active documentation, package-boundary tests, and the remaining root command-line
-workflows. The measurements below are the pre-refactor baseline used to justify TRR-5 through TRR-12; they are not a
-current package inventory:
-
-| Measure | Baseline value | Architectural consequence |
-| --- | ---: | --- |
-| Python files | 77 | The package is large enough that directory names and public facades must carry real architectural meaning. |
-| Python lines | 27,420 | Module-level familiarity is no longer a workable substitute for documented boundaries. |
-| `knowledge` | 19 files / 10,381 lines | Knowledge ingestion, evidence semantics, method-card lifecycle, and persistence are one oversized context. |
-| Root modules | 12 files / 4,548 lines | Shared contracts, artifact persistence, agent metadata, and superseded filesystem workflows are mixed together. |
-| `methods` plus `method_implementations` | 16 files / 5,025 lines | Method contracts, diagnostics, code production, fixtures, and knowledge access have unclear ownership. |
-| Files over 900 lines | 7 | Domain models, application orchestration, persistence dispatch, and validation rules need decomposition. |
-
-The seven largest modules are `knowledge/method_cards.py` (1,719 lines), `knowledge/domain.py` (1,697),
-`data/services.py` (1,697), `knowledge/methodology_extraction.py` (1,612), `optimization/services.py` (941),
-`methods/diagnostics.py` (923), and `postgres_artifact_store.py` (917). Line count is not itself a defect, but these
-modules each contain multiple reasons to change and cross several lifecycle stages.
-
-### Baseline Findings
-
-These findings describe the system before implementation began. TRR-5 resolves finding 7, TRR-6 resolves findings 2,
-3, and 5, and TRR-7 resolves findings 4 and 8. The remaining findings are acceptance inputs to TRR-8 through TRR-12.
-
-1. **The documented capability packages are only partial boundaries.** Canonical experiment packages are already
-   protected from knowledge imports, which is valuable, but most contexts depend bidirectionally on root modules.
-   Package facades do not consistently define the public application API: MCP imports deep service, storage, provider,
-   and domain modules directly.
-2. **A central root domain has become a dependency hub.** `domain.py` combines artifact-type constants, ownership,
-   stable identity, handoff models, experiment-plan models, report refs, and verdicts. Thirty source modules import
-   `stable_research_id`; artifact constants are imported across unrelated contexts. These concepts do not have the same
-   owner or change cadence.
-3. **Persistence knows every product domain.** `PostgresResearchArtifactStore._save_projection` is a long artifact-type
-   dispatch over implementation, specification, backtest, optimization, tracking, knowledge, Evaluation, and
-   Adversarial projections. Adding a new artifact modifies one central adapter even when its owning context is otherwise
-   independent.
-4. **Knowledge and methodology engineering are entangled.** Knowledge storage imports `MethodRegistryEntry`; method
-   diagnostics and implementation registration import knowledge internals; the `methods` facade uses lazy attribute
-   loading specifically to survive startup import pressure. There is one implementation-level strongly connected
-   component between citation validation and method-card services, in addition to wider facade-induced cycles.
-5. **Transport results leak into application services.** Research services commonly construct `ToolEnvelope`,
-   `SideEffect`, and MCP-shaped errors themselves. This makes otherwise deterministic application logic responsible for
-   transport presentation and forces direct-service tests to understand tool transport.
-6. **Optional adapters are exposed by eager package facades.** Optimization and tracking facades publish Optuna and
-   MLflow adapters beside core contracts. Their internals are currently guarded, but the package shape does not make the
-   provider-neutral core visually or structurally distinct from optional infrastructure.
-7. **Superseded product paths remain active.** `artifacts.py`, `discovery.py`, `promotion.py`, `recommendations.py`,
-   `research.py`, and `suites.py` support old filesystem bundles, legacy event-store experiments, and Sprint 5 command
-   wrappers. They are not used by registered MCP or agent surfaces, but root scripts, tests, README material, and core
-   operations documentation still advertise them. They conflict with the DB-first 56/57 architecture and should be
-   removed, not relocated.
-8. **The method-card model still has two product meanings.** Shallow seeded `MethodCard` records and
-   `knowledge_create_method_card_draft` remain registered beside evidence-backed `RichMethodCard` records. The intended
-   product has one method card: the evidence-backed form. A derived summary may exist as a read model, but it must not be
-   writable, independently approved, or treated as another card format.
-9. **Terminology drifts across layers.** "Method", "methodology", "implementation", "candidate", "artifact",
-   "report", and British/American spellings of optimization do not always identify one lifecycle concept. This makes
-   search results and service names harder to interpret than the domain requires.
-
-The current implementation-module graph has one source-level cycle when package `__init__.py` files are ignored:
-
-```text
-knowledge.citation_validation <-> knowledge.method_cards
-```
-
-The broader conceptual graph is more coupled because root services and facades participate in both directions:
-
-```text
-knowledge -> methods -> method_implementations -> knowledge
-experimentation contexts <-> root domain/artifact/persistence modules
-MCP -> package facades and deep implementation modules
-```
-
-### Target Architecture
-
-The refactor will establish five bounded domain contexts, a narrow Foundation/Governance kernel, and an outer
-Infrastructure layer. This is an internal hard cutover, not a compatibility migration.
+### Context Map
 
 ```text
 src/trader_research/
   foundation/
     identity.py                 # Stable IDs and content digests only
     errors.py                   # Typed application failures and blockers
+    results.py                  # Typed application outcomes
     artifacts/
       domain.py                 # Artifact refs and immutable records
       store.py                  # Store protocol and in-memory test adapter
   governance/
-    ownership.py                # Agent and artifact ownership declarations
+    ownership.py                # Agent and tool ownership declarations
+    artifacts.py                # Artifact-type ownership declarations
     handoffs.py                 # Cross-agent request/handoff value objects
   data/
     domain.py                   # Inventory, manifest, quality, and load models
@@ -151,27 +66,32 @@ src/trader_research/
     catalog.py
   knowledge/
     sources.py
-    chunks.py
+    chunking.py
     ingestion.py
     retrieval.py
-    evidence.py
-    methodology.py              # Candidate/assembly/extraction/validation workflow
-    method_cards.py             # One evidence-backed method-card lifecycle
+    evidence_assembly.py
+    methodology_candidates.py
+    methodology_extraction.py
+    methodology_validation.py
+    method_card_drafting.py
+    method_card_sets.py
+    method_card_catalog.py
     domain/                     # Source, chunk, evidence, candidate, and card models
-    storage/                    # KnowledgeStore port and adapters
+    store.py                    # KnowledgeStore port and in-memory adapter
+    postgres_store.py           # Postgres knowledge adapter
   methodology/
     contracts.py                # Computational method contracts and registry entries
     registry.py
     diagnostics.py
     multiple_testing.py
     implementation/
-      domain.py
+      manifest.py
       registration.py
-      validation.py
       fixtures.py
       generation.py
-      kernels.py
-      packaging.py
+      io.py
+    kernels.py
+    packaging.py
   experiments/
     implementations/            # Generic executable implementation versions
     specifications/             # Strategy, risk-stack, and backtest specifications
@@ -220,28 +140,27 @@ experiments -> data public artifact API -> foundation
 infrastructure -> context ports
 ```
 
-No context may import another context's private module. `__init__.py` files will expose small, explicit application
-facades and value objects; they will not eagerly import optional providers or use lazy loading to mask a cycle.
+No context may import another context's private module. `__init__.py` files expose small, explicit application facades
+and value objects; they do not eagerly import optional providers or use lazy loading to mask a cycle.
 
 ### Public And Transport Boundaries
 
-Business operations will return typed application results or raise typed boundary errors carrying stable codes,
-blockers, and warnings. `trader_mcp` will own conversion to `ToolEnvelope`, side-effect metadata, and transport JSON.
+Business operations return typed application results or raise typed boundary errors carrying stable codes, blockers,
+and warnings. `trader_mcp` owns conversion to `ToolEnvelope`, side-effect metadata, and transport JSON.
 This preserves deterministic direct services while making MCP presentation an adapter concern.
 
 Canonical MCP tool names and canonical Postgres artifact payloads are product contracts, not Python import
-compatibility surfaces. They remain unchanged during a pure internal move unless a task below explicitly retires them.
-There will be no old-to-new Python modules, aliases, dual writes, fallback readers, translated development rows, or
-filesystem authority.
+compatibility surfaces. There are no old-to-new Python modules, aliases, dual writes, fallback readers, translated
+development rows, or canonical filesystem authority.
 
-Postgres persistence will use a registry of typed projection writers. The generic artifact store will save the canonical
-record and invoke only registered projection writers. Projection modules may know their context's payload, while the
-generic store will not contain an `if/elif` list of every artifact type. The MCP composition root will assemble the
-store, context services, provider adapters, and projection registry.
+Postgres persistence uses a registry of typed projection writers. The generic artifact store saves the canonical record
+and invokes only registered projection writers. Projection modules know their context's payload, while the generic store
+does not contain an `if/elif` list of every artifact type. The MCP composition root assembles the store, context
+services, provider adapters, and projection registry.
 
 ### Canonical Vocabulary
 
-The refactor will apply these naming rules to code and active documentation:
+Code and active documentation use these naming rules:
 
 - **Methodology**: a source-backed description of a computational or trading idea before executable code exists.
 - **Method card**: the one evidence-backed, citeable methodology record. "Rich method card" is retired because richness
@@ -257,50 +176,9 @@ The refactor will apply these naming rules to code and active documentation:
 - **Optimization**: canonical spelling in Python, MCP tools, artifact types, and SQL. Prose may use "optimisation", but
   must quote executable names exactly.
 
-### Staged Hard Cutover
+### Boundary Enforcement
 
-The review and design gate above are steps 1-4. They are documentation-only. Production refactoring starts at TRR-5 only.
-Each implementation step must leave the repository buildable before the next starts.
-
-1. **Inventory the current system - complete.** Record package sizes, public facades, direct MCP imports, persistence
-   dispatch, optional adapters, root workflows, and test/doc consumers.
-2. **Map dependencies and authority - complete.** Identify implementation cycles, facade-induced cycles, DB and
-   filesystem authorities, deep imports, provider boundaries, and context ownership.
-3. **Diagnose the causes of poor comprehensibility - complete.** Classify oversized modules, mixed lifecycle stages,
-   duplicate card models, superseded paths, transport leakage, terminology drift, and missing boundary tests.
-4. **Define and review the target architecture - complete.** Accept the contexts, dependency graph, vocabulary,
-   no-compatibility policy, migration order, and verification consequences in this section. No production code changes
-   belong in steps 1-4.
-5. **Retire superseded root workflows - complete.** Delete the six legacy root workflow modules, their five root command wrappers,
-   obsolete filesystem helper export, and research-layer use of the core event-store experiment APIs, together with
-   tests and active docs that advertise that path. The generic `trader` event-store API and schema remain unchanged.
-   Prove registered MCP, canonical Postgres backtests, and canonical optimization reads are unaffected. Do not replace
-   the retired research paths with wrappers.
-6. **Extract foundation, governance, and persistence boundaries - complete.** Split root domain/contracts/store responsibilities,
-   introduce typed application outcomes, move envelope conversion to MCP, and replace central projection dispatch with
-   registered context projection writers. Add executable import rules before moving higher contexts.
-7. **Encapsulate Knowledge and methodology engineering - complete.** Split large knowledge domain/service modules by lifecycle,
-   break citation/card and storage/registry cycles, remove the shallow card model/tool/seed records, and make approved
-   method-card access a narrow read port. Consolidate `methods` and `method_implementations` under one methodology
-   engineering context without coupling it back into generic experiment execution.
-8. **Decompose Data - complete.** Split inventory, catalog, quality, and loading operations; move the Alpaca catalog provider to
-   infrastructure; expose one Data application facade; preserve manifest and quality artifact contracts.
-9. **Consolidate Experimentation - complete.** Move implementation, specification, backtest, optimization, and tracking code under
-   the experiment context; split orchestration from domain and provider ports; keep built-in grid/random engines in the
-   core and optional Optuna/MLflow adapters in infrastructure. Preserve the 56/57 canonical artifacts and MCP graph.
-10. **Isolate independent Review - complete.** Move Evaluation and Adversarial services behind public experiment read APIs. Prove
-    that neither can mutate plans, selections, specifications, or runs.
-11. **Cut over composition roots and delete old imports - complete.** Update MCP adapters, agent ownership imports, tests, and active
-    docs in one no-alias cutover. Enforce facade-only cross-context imports, no context cycles, no optional-provider
-    imports at core startup, no canonical filesystem artifacts, and no obsolete paths.
-12. **Requalify the product - complete.** Static/package/MCP/Postgres suites and replacement 57I-N verification passed
-    on `verification-57i-freeze-v4`. The retained evidence proves operator isolation, canonical/projection
-    reconciliation, meaningful public MCP execution, determinism, fail-closed integrity checks, and holdout-read
-    chronology for the refactored product. Earlier v3 evidence remains historical proof of its exact revision only.
-
-### Per-Step Acceptance Rules
-
-Every implementation step must satisfy all of the following before merge:
+The current package structure is protected by executable constraints:
 
 - the changed context has a documented public facade and owner
 - new cross-context imports follow the allowed graph and are covered by AST boundary tests
@@ -309,12 +187,10 @@ Every implementation step must satisfy all of the following before merge:
 - canonical writes remain Postgres-first and reconcile with typed projections
 - no compatibility module, alias, dual write, fallback reader, or data migration is introduced
 - deleted behavior is removed from root scripts, active docs, tests, tool catalogs, and operations guidance together
-- no phase mixes structural moves with unrelated feature behavior
 - `ruff`, `compileall`, `mypy`, targeted tests, package boundaries, docs tests, and `git diff --check` pass
 
-The implementation is complete only when a new contributor can start from the target context map, enter through a public
-facade, and follow one-way dependencies to domain logic and outward ports without reading MCP registration or a central
-god module first.
+A contributor should be able to start from this context map, enter through a public facade, and follow one-way
+dependencies to domain logic and outward ports without reading MCP registration or a central orchestration module.
 
 ### Data Context Boundary
 
@@ -373,6 +249,13 @@ package metadata without loading provider SDKs; SDK imports occur only when a ga
 them. A clean-interpreter regression forcibly rejects every `optuna` and `mlflow` import while importing and constructing
 the complete MCP server. Alpaca remains a core platform dependency through `trader.timeframes`; changing that core
 boundary is outside this research-layer refactor.
+
+### Refactor Record
+
+The completed TRR-1 through TRR-12 delivery sequence, its acceptance evidence, and the
+`verification-57i-freeze-v4` qualification baseline are recorded in the
+[active tracker](../../plans/mcp_trading_research_tools_plan.md). That sequence explains how the architecture was
+reached; it is not part of the reader-facing architecture contract.
 
 ## Control Plane And Execution Plane
 
@@ -1109,7 +992,8 @@ scope.
 
 ## Artifact Ownership
 
-Agents are separated by the artifacts they own. Ownership lives in `src/trader_research/domain.py` and
-`src/trader_research/agents.py`. The Quant Research Supervisor may coordinate workflows and consume specialist outputs,
-but it must preserve specialist ownership and must not forge Data, Quantitative Methods, ML, Hypothesis, Evaluation, or
-Adversarial artifacts.
+Agents are separated by the artifacts they own. Artifact ownership lives in
+`src/trader_research/governance/artifacts.py`, while agent and tool ownership lives in
+`src/trader_research/governance/ownership.py`. The Quant Research Supervisor may coordinate workflows and consume
+specialist outputs, but it must preserve specialist ownership and must not forge Data, Quantitative Methods, ML,
+Hypothesis, Evaluation, or Adversarial artifacts.

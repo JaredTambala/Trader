@@ -88,7 +88,8 @@ def test_canonical_readme_links_resolve() -> None:
     for target in re.findall(r"\]\(([^)]+)\)", readme):
         if target.startswith(("http://", "https://", "#")):
             continue
-        assert (readme_path.parent / target).exists(), target
+        path_target, _, _ = target.partition("#")
+        assert (readme_path.parent / path_target).exists(), target
 
 
 def test_semantic_extraction_doc_is_canonical_and_preserves_overlap_invariant() -> None:
@@ -134,20 +135,32 @@ def test_docs_pin_knowledge_baseline_and_identify_next_delivery_focus() -> None:
     assert "Durable filesystem bundle paths are neither required nor returned" in tracker
 
 
-def test_docs_define_trader_research_refactor_gate_and_execution_lineage() -> None:
+def test_docs_define_current_research_architecture_and_refactor_lineage() -> None:
+    readme = (DOC_ROOT / "README.md").read_text(encoding="utf-8")
     architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
     tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(
         encoding="utf-8"
     )
 
+    required_readme_phrases = (
+        "## What Trader Research Does",
+        "## Start Here",
+        "## Topic Reading Paths",
+        "## Document Roles",
+        "Data Agent scope and quality evidence",
+        "canonical Postgres backtest",
+        "Adversarial",
+    )
+    for phrase in required_readme_phrases:
+        assert phrase in readme
+
     required_architecture_phrases = (
-        "## `trader_research` Refactor Review And Plan",
-        "The refactor will establish five bounded domain contexts",
-        "knowledge.citation_validation <-> knowledge.method_cards",
-        "Business operations will return typed application results",
-        "There will be no old-to-new Python modules, aliases, dual writes",
-        "one evidence-backed method-card",
-        "`MethodCardSummary` is a non-writable read model",
+        "## Bounded Context Architecture",
+        "### Context Map",
+        "### Public And Transport Boundaries",
+        "Business operations return typed application results",
+        "There are no old-to-new Python modules, aliases, dual writes",
+        "one evidence-backed, citeable methodology record",
         "`trader_research.data` is the sole application facade",
         "Provider SDK code does not belong to the Data context",
         "`trader_research.experiments` is the single outer application facade",
@@ -156,11 +169,23 @@ def test_docs_define_trader_research_refactor_gate_and_execution_lineage() -> No
         "It exposes no implementation",
         "`trader_mcp` composes every domain operation through the public",
         "forcibly rejects every `optuna` and `mlflow` import",
-        "Production refactoring starts at TRR-5 only",
-        "replacement 57I-N verification",
+        "### Boundary Enforcement",
+        "### Refactor Record",
+        "`verification-57i-freeze-v4`",
     )
     for phrase in required_architecture_phrases:
         assert phrase in architecture
+
+    historical_architecture_phrases = (
+        "## `trader_research` Refactor Review And Plan",
+        "### Review Scope And Baseline",
+        "### Baseline Findings",
+        "### Staged Hard Cutover",
+        "Production refactoring starts at TRR-5 only",
+        "The refactor will establish",
+    )
+    for phrase in historical_architecture_phrases:
+        assert phrase not in architecture
 
     for task_number in range(1, 13):
         assert f"TRR-{task_number}." in tracker
@@ -172,8 +197,49 @@ def test_docs_define_trader_research_refactor_gate_and_execution_lineage() -> No
         )
         assert "| Done |" in task_row
 
-    assert "`verification-57i-freeze-v4`" in architecture
+    assert "| 53A. Research Documentation Reader Journey | Done |" in tracker
     assert "| 57O. Restart, Resume, And Fault-Injection Tests | Planned |" in tracker
+
+
+def test_active_docs_reference_current_research_source_paths() -> None:
+    current_docs = "\n".join(
+        path.read_text(encoding="utf-8") for path in _current_markdown_docs()
+    )
+    stale_paths = (
+        "src/trader_research/agents.py",
+        "src/trader_research/domain.py",
+        "src/trader_research/artifact_store.py",
+        "src/trader_research/postgres_artifact_store.py",
+    )
+
+    assert "src/trader_research/governance/ownership.py" in current_docs
+    assert "src/trader_research/governance/artifacts.py" in current_docs
+    for stale_path in stale_paths:
+        assert stale_path not in current_docs
+
+
+def test_docs_walk_supplied_implementations_to_bounded_evidence() -> None:
+    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
+    required_tools = (
+        "research_register_strategy_implementation",
+        "research_validate_strategy_implementation",
+        "research_create_strategy_specification",
+        "research_create_risk_stack_specification",
+        "research_create_backtest_specification",
+        "research_run_backtest_specification",
+        "research_get_backtest_results",
+        "evaluation_generate_parameter_optimization_report",
+        "adversarial_create_parameter_optimization_audit_plan",
+        "adversarial_generate_parameter_optimization_audit",
+    )
+
+    assert "## Worked Implementation-To-Evidence Walkthrough" in workflows
+    assert "A method card is not required" in workflows
+    assert "What it does not prove" in workflows
+    assert "No stage in this workflow places an order" in workflows
+    assert "research://postgres/backtest_run/{run_id}" in workflows
+    for tool_name in required_tools:
+        assert tool_name in workflows
 
 
 def test_active_operator_docs_do_not_advertise_retired_research_clis() -> None:

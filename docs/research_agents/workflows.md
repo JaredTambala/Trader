@@ -30,6 +30,57 @@ a prerequisite for testing an explicitly supplied implementation.
 Implementation intake, specifications, canonical backtests, parameter optimisation, holdout Evaluation, and
 optimisation audit are implemented. ML versioning and broader cost/data perturbation tooling remain planned.
 
+## Worked Implementation-To-Evidence Walkthrough
+
+This is the shortest current journey from supplied strategy and risk-manager code to durable trading evidence.
+A method card is not required. Handwritten, maintained, and externally generated source all enter through the same
+content-addressed implementation boundary.
+
+1. **Fix the data scope.** Call `data_discover_symbols` when discovery is needed, then `data_get_inventory` to create an
+   exact Data Agent dataset manifest and `data_summarize_quality` to create its quality report. The manifest, rather
+   than loose symbol or date arguments, defines the rows available to the experiment.
+2. **Admit executable behavior.** Call `research_register_strategy_implementation` and
+   `research_validate_strategy_implementation`, then the corresponding
+   `research_register_risk_manager_implementation` and `research_validate_risk_manager_implementation` tools. Each
+   validation pins source identity and checks its interface, declared parameters, static safety rules, and deterministic
+   fixture behavior.
+3. **Configure strategy and risk behavior.** Create and validate a `strategy_specification` with
+   `research_create_strategy_specification` and `research_validate_strategy_specification`. Create and validate an
+   ordered `risk_stack_specification` with `research_create_risk_stack_specification` and
+   `research_validate_risk_stack_specification`. These specifications bind validated implementation versions and
+   parameters; they do not own symbols, timeframes, or date windows.
+4. **Bind one reproducible experiment.** Call `research_create_backtest_specification` with the strategy and risk-stack
+   specifications, exact dataset manifest and quality evidence, cost assumptions, initial state, and seed. Then call
+   `research_validate_backtest_specification` to recheck source hashes, upstream validation, data snapshots, and scope.
+5. **Execute and inspect.** With `TRADER_MCP_ALLOW_BACKTESTS=true`, call
+   `research_run_backtest_specification`. The result is a canonical Postgres artifact such as
+   `research://postgres/backtest_run/{run_id}`. Call `research_get_backtest_results` to read the run and its bundle,
+   including trades, performance, final positions, per-symbol measures, exposures, risk decisions, and breach evidence.
+6. **Optimise only when the question requires it.** Register and validate a closed-input objective with
+   `research_register_optimization_objective` and `research_validate_optimization_objective`. Create a provider-neutral
+   plan with `research_create_parameter_optimization_plan`, pinning the passed selection-region backtest specification
+   and a sealed later holdout. With the backtest and optimisation gates enabled,
+   `research_run_parameter_optimization` executes built-in grid, seeded-random, or configured optional Optuna
+   suggestions as immutable child specifications and runs. The selected specification remains exploratory.
+7. **Test the untouched holdout.** Create, validate, and run a separate backtest specification over the sealed holdout
+   using the selected strategy specification. Generate
+   `evaluation_generate_parameter_optimization_report` from the complete optimisation ledger and matching holdout run.
+8. **Challenge the procedure independently.** Call `adversarial_create_parameter_optimization_audit_plan`; the
+   Supervisor executes the requested immutable variants through `research_run_parameter_optimization_variants`; then
+   `adversarial_generate_parameter_optimization_audit` judges the supplied evidence. Adversarial owns the attack and
+   verdict, while the Supervisor owns execution.
+
+| Evidence stage | What it proves | What it does not prove |
+| --- | --- | --- |
+| Implementation validation | The pinned source satisfies its declared interface, safety checks, and deterministic fixtures. | Profitability or correct economic intent. |
+| Validated backtest run | One immutable strategy/risk/data/cost configuration executed reproducibly and produced inspectable evidence. | Generalisation beyond that data scope. |
+| Optimisation selection | A declared objective selected one configuration from a complete, bounded selection ledger. | Holdout performance or freedom from selection bias. |
+| Holdout Evaluation | The selected configuration's matching untouched-holdout evidence satisfies Evaluation checks. | Robustness to alternative procedures or production readiness. |
+| Adversarial report | Declared variants and stresses support or challenge the optimisation procedure independently. | Permission to deploy or trade live. |
+
+No stage in this workflow places an order, mutates the live runtime, or promotes a strategy automatically. Its product is
+a connected graph of immutable Postgres artifacts whose identities and lineage can be queried independently.
+
 ## Data Agent Workflow
 
 ```text
