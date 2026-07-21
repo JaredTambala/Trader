@@ -1,6 +1,7 @@
 """Provider-neutral parameter optimization capability."""
 
 from .contracts import (
+    DeadlineOptimizationTrialExecutor,
     ExperimentTrackingSink,
     OptimizationEngine,
     OptimizationEngineProfile,
@@ -20,6 +21,7 @@ from .variants import required_optimizer_profiles_for_variants, run_parameter_op
 __all__ = [
     "ExperimentTrackingSink",
     "BacktestOptimizationTrialExecutor",
+    "DeadlineOptimizationTrialExecutor",
     "GridOptimizationEngine",
     "OptimizationEngine",
     "OptimizationEngineProfile",

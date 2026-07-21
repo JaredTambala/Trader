@@ -171,7 +171,7 @@ def test_docs_define_current_research_architecture_and_refactor_lineage() -> Non
         "forcibly rejects every `optuna` and `mlflow` import",
         "### Boundary Enforcement",
         "### Refactor Record",
-        "`verification-57i-freeze-v4`",
+        "`verification-57i-freeze-v5`",
     )
     for phrase in required_architecture_phrases:
         assert phrase in architecture
@@ -198,7 +198,7 @@ def test_docs_define_current_research_architecture_and_refactor_lineage() -> Non
         assert "| Done |" in task_row
 
     assert "| 53A. Research Documentation Reader Journey | Done |" in tracker
-    assert "| 57O. Restart, Resume, And Fault-Injection Tests | Planned |" in tracker
+    assert "| 57O. Restart, Resume, And Fault-Injection Tests | Implemented |" in tracker
 
 
 def test_active_docs_reference_current_research_source_paths() -> None:
@@ -322,9 +322,27 @@ def test_docs_define_controlled_verification_profiles_and_stop_conditions() -> N
         "PostgresResearchArtifactStore",
         "risk approvals and rejections",
         "no canonical filesystem path",
+        "57O Restart, Resume, Fault, And Deadline Qualification",
+        "57P Provider Independence Qualification",
+        "57Q Policy, Security, And Resource Boundaries",
+        "57R Projection, Operator, And Bounded-Scale Qualification",
+        "57S Acceptance Record",
+        "verification_control.acceptance_records",
+        "not_qualified",
     )
     for phrase in required_phrases:
         assert phrase in normalized_operations
+
+    contracts = " ".join(
+        (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8").split()
+    )
+    for phrase in (
+        "Dependency declarations are descriptive",
+        "deadline-capable executor",
+        "fresh child process",
+        "not a claim that arbitrary Python is an operating-system security sandbox",
+    ):
+        assert phrase in contracts
 
 
 def test_tracker_freezes_57i_surface_and_acceptance_matrix() -> None:
@@ -334,7 +352,7 @@ def test_tracker_freezes_57i_surface_and_acceptance_matrix() -> None:
 
     required_inventory = (
         "#### 57I Frozen Surface Inventory",
-        "`verification-57i-freeze-v4`",
+        "`verification-57i-freeze-v5`",
         "`research_register_strategy_implementation`",
         "`research_register_optimization_objective`",
         "`research_run_backtest_specification`",
@@ -361,7 +379,7 @@ def test_tracker_freezes_57i_surface_and_acceptance_matrix() -> None:
 
     assert "The controlled 57M stdio MCP graph proves the realistic behavior" in tracker
     assert "Passed / controlled 57M" in tracker
-    assert "Planned / 57S" in tracker
+    assert "Implemented / controlled 57S pending" in tracker
 
 
 def test_docs_define_57j_isolated_postgres_runtime() -> None:
@@ -381,7 +399,7 @@ def test_docs_define_57j_isolated_postgres_runtime() -> None:
         "verification_control.operator_fingerprints",
         "tests.support.postgres_verification provision --reset",
         "before every `TRUNCATE`",
-        "byte-identical to `verification-57i-freeze-v4`",
+        "byte-identical to `verification-57i-freeze-v5`",
         "isolation_status",
         "qualification_status",
         "--outcome passed",

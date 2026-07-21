@@ -115,8 +115,8 @@ class _SequenceSession:
         self._pending = [dict(item) for item in suggestions if _parameter_key(item) not in completed]
         self._run_id = run_id
         self._algorithm = algorithm
-        self._asked = 0
-        self._told = 0
+        self._asked = len(prior_trials)
+        self._told = len(prior_trials)
 
     def ask(self) -> OptimizationSuggestion | None:
         if not self._pending:

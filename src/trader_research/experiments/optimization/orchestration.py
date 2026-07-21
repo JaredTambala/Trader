@@ -94,6 +94,9 @@ def run_parameter_optimization(
                 trial_id=trial_id,
                 optimization_run_id=run_id,
                 max_attempts=int((plan.get("resource_limits") or {}).get("max_trial_attempts", 1)),
+                timeout_seconds=(plan.get("resource_limits") or {}).get(
+                    "per_trial_timeout_seconds"
+                ),
             )
             value = None
             diagnostics: Mapping[str, Any] = {}
@@ -219,21 +222,48 @@ def _execute_trial(
     trial_id: str,
     optimization_run_id: str,
     max_attempts: int,
+    timeout_seconds: float | None,
 ) -> tuple[TrialExecution, list[dict[str, Any]]]:
     attempts: list[dict[str, Any]] = []
     execution = TrialExecution(status="blocked", observation=None, blockers=("trial was not executed",))
     for attempt in range(1, max_attempts + 1):
         exception: str | None = None
         try:
-            execution = executor.execute(
-                plan=plan,
-                parameters=parameters,
-                trial_id=trial_id,
-                optimization_run_id=optimization_run_id,
-            )
+            if timeout_seconds is None:
+                execution = executor.execute(
+                    plan=plan,
+                    parameters=parameters,
+                    trial_id=trial_id,
+                    optimization_run_id=optimization_run_id,
+                )
+            else:
+                execute_with_timeout = getattr(executor, "execute_with_timeout", None)
+                if not callable(execute_with_timeout):
+                    execution = TrialExecution(
+                        status="blocked",
+                        observation=None,
+                        blockers=(
+                            "trial executor cannot enforce per_trial_timeout_seconds",
+                        ),
+                    )
+                else:
+                    execution = execute_with_timeout(
+                        plan=plan,
+                        parameters=parameters,
+                        trial_id=trial_id,
+                        optimization_run_id=optimization_run_id,
+                        timeout_seconds=float(timeout_seconds),
+                    )
         except Exception as exc:
-            exception = f"{type(exc).__name__}: {exc}"
+            exception = _bounded_text(f"{type(exc).__name__}: {exc}")
             execution = TrialExecution(status="blocked", observation=None, blockers=(exception,))
+        execution = TrialExecution(
+            status=execution.status,
+            observation=execution.observation,
+            child_refs=execution.child_refs,
+            warnings=_bounded_messages(execution.warnings),
+            blockers=_bounded_messages(execution.blockers),
+        )
         attempts.append(
             {
                 "attempt": attempt,
@@ -247,6 +277,16 @@ def _execute_trial(
         if execution.status == "passed":
             break
     return execution, attempts
+
+
+def _bounded_messages(values: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(_bounded_text(str(value)) for value in values[:25])
+
+
+def _bounded_text(value: str, *, limit: int = 2_000) -> str:
+    if len(value) <= limit:
+        return value
+    return value[: limit - len("...[truncated]")] + "...[truncated]"
 
 
 def _positive(value: int) -> int:

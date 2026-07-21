@@ -247,7 +247,13 @@ optional generic provenance refs, and metadata. IDs are content-addressed over n
 Validation accepts exactly one implementation ID, URI, or inline payload and writes an
 `implementation_validation_report` after import/call safety checks, kind-specific interface construction, parameter
 validation, and a deterministic fixture. Strategy/risk implementations are Supervisor-owned; optimisation objectives
-are Quantitative Methods-owned. Method cards and packages are not eligibility requirements.
+are Quantitative Methods-owned. Method cards and packages are not eligibility requirements. Dependency declarations
+are descriptive lock/provenance data; they never expand the executable import allowlist. Validation blocks broad
+`trader` imports, restricted Trader database/broker/runtime submodules, filesystem/network/database/subprocess/tool
+imports, unsafe dynamic builtins, dangerous mutation calls, and dunder-based introspection. Objective modules receive a
+separate closed builtin environment and may import only `math`; modules such as `typing` and `statistics` are excluded
+because their module globals expose ambient interpreter modules. These are bounded admission and deterministic-fixture controls, not a claim
+that arbitrary Python is an operating-system security sandbox.
 
 `research_create_strategy_specification` consumes one passed strategy implementation validation and explicit
 parameters, sizing, portfolio mode, runtime context, assumptions, tunable-field declarations, and optional provenance.
@@ -296,7 +302,12 @@ objective metrics block. An engine receives only search dimensions, seed, prior 
 and budget. A run pins engine profile/version/configuration digest/capabilities, seed, and executor kind. It never changes
 engine in place. Each canonical trial stores the suggestion, retry attempts, exceptions, child specs/runs, closed
 observation, constraints, objective result, diagnostics, warnings, and blockers. Selection is deterministic and remains
-exploratory.
+exploratory. Trial budgets are limited to 1-1,000, execution remains sequential, and retry attempts are limited to
+1-3. Warning, blocker, and exception evidence is count/size bounded before persistence. A declared
+`per_trial_timeout_seconds` requires a deadline-capable executor; otherwise the trial blocks before child execution.
+The Postgres MCP adapter enforces that deadline by spawning a fresh child process, recreating its Postgres connections
+after spawn, and terminating overdue work. Merely observing elapsed time after an executor returns does not satisfy the
+contract.
 
 Canonical run consumption is fail-closed rather than a projection lookup. The loader verifies the run ID against the
 resolved engine profile and executor, reloads the plan and all upstream validations, requires contiguous trial

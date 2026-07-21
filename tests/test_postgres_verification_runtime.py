@@ -109,6 +109,9 @@ def test_retained_evidence_contract_is_explicitly_limited_to_qualified_phases() 
     values = {RETAIN_EVIDENCE_PHASE_ENV: "57n"}
     assert load_retained_evidence_phase(values) == "57N"
     assert retain_verification_evidence(values) is True
+    values = {RETAIN_EVIDENCE_PHASE_ENV: "57r"}
+    assert load_retained_evidence_phase(values) == "57R"
+    assert retain_verification_evidence(values) is True
     with pytest.raises(VerificationConfigurationError, match="may only retain"):
         load_retained_evidence_phase({RETAIN_EVIDENCE_PHASE_ENV: "57L"})
 
@@ -123,6 +126,9 @@ def test_57m_phase_policy_requires_only_backtest_and_optimization_gates() -> Non
     }
     _validate_phase_policy_gates("57M", enabled)
     _validate_phase_policy_gates("57N", enabled)
+    _validate_phase_policy_gates("57O", enabled)
+    _validate_phase_policy_gates("57P", enabled)
+    _validate_phase_policy_gates("57R", enabled)
     with pytest.raises(VerificationConfigurationError, match="requires exactly"):
         _validate_phase_policy_gates("57M", disabled)
     with pytest.raises(VerificationConfigurationError, match="requires exactly"):
@@ -145,7 +151,7 @@ def test_verification_database_has_server_checked_marker_and_manifest(
     assert identity["lc_collate"] == os.environ["PG_TEST_LOCALE"]
     assert identity["lc_ctype"] == os.environ["PG_TEST_LOCALE"]
     assert manifest["database_identity"] == identity
-    assert manifest["freeze"]["freeze_tag"] == "verification-57i-freeze-v4"
+    assert manifest["freeze"]["freeze_tag"] == "verification-57i-freeze-v5"
     assert manifest["test_database"]["dbname"] == postgres_settings["dbname"]
     assert manifest["phase"] == "57J"
     assert manifest["retained_evidence_phase"] is None

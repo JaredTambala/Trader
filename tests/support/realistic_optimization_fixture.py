@@ -353,6 +353,18 @@ def build_realistic_optimization_fixture() -> RealisticOptimizationFixture:
     return RealisticOptimizationFixture(selection=selection, holdout=holdout)
 
 
+def build_bounded_scale_region(*, bar_count: int = 1_000) -> FixtureRegion:
+    """Build a larger deterministic region for bounded operator-scale checks."""
+    if bar_count < 1 or bar_count > 10_000:
+        raise ValueError("bounded scale bar_count must be between 1 and 10000")
+    return FixtureRegion(
+        name="bounded_scale",
+        start=datetime(2025, 1, 6, 0, 0, tzinfo=timezone.utc),
+        bar_count=bar_count,
+        patterns=_SELECTION_PATTERNS,
+    )
+
+
 def seed_fixture(store: EventStore, fixture: RealisticOptimizationFixture) -> None:
     """Insert the complete fixture into an injected event store."""
     for region in (fixture.selection, fixture.holdout):

@@ -198,6 +198,23 @@ class OptimizationTrialExecutor(Protocol):
         """Execute one trial and return a closed observation plus lineage refs."""
 
 
+class DeadlineOptimizationTrialExecutor(Protocol):
+    """Trial executor that can stop child work at a declared wall-clock deadline."""
+
+    executor_kind: str
+
+    def execute_with_timeout(
+        self,
+        *,
+        plan: Mapping[str, Any],
+        parameters: Mapping[str, Any],
+        trial_id: str,
+        optimization_run_id: str,
+        timeout_seconds: float,
+    ) -> TrialExecution:
+        """Execute one trial in an isolation boundary with enforced termination."""
+
+
 class ExperimentTrackingSink(Protocol):
     """Optional analytical projection sink; never a canonical evidence store."""
 

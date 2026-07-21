@@ -187,6 +187,23 @@ class TieExecutor(FakeExecutor):
         )
 
 
+class HugeFailureExecutor(FakeExecutor):
+    """Raise an oversized error to prove canonical failure evidence is bounded."""
+
+    executor_kind = "huge_failure_fixture"
+
+    def execute(
+        self,
+        *,
+        plan: Mapping[str, Any],
+        parameters: Mapping[str, Any],
+        trial_id: str,
+        optimization_run_id: str,
+    ) -> TrialExecution:
+        del plan, parameters, trial_id, optimization_run_id
+        raise RuntimeError("x" * 10_000)
+
+
 def test_grid_resume_selection_projection_evaluation_and_audit_are_separate() -> None:
     store = InMemoryResearchArtifactStore()
     plan = _plan(store)
@@ -296,6 +313,53 @@ def test_grid_resume_selection_projection_evaluation_and_audit_are_separate() ->
     assert unchanged["selected_trial_id"] == run["selected_trial_id"]
 
 
+def test_builtin_grid_resume_matches_uninterrupted_provider_evidence() -> None:
+    uninterrupted_store = InMemoryResearchArtifactStore()
+    uninterrupted_plan = _plan(uninterrupted_store)
+    uninterrupted = run_parameter_optimization(
+        optimization_plan_ref=uninterrupted_plan["optimization_plan_id"],
+        optimizer_profile="builtin_grid",
+        trial_executor=FakeExecutor(),
+        artifact_store=uninterrupted_store,
+    )
+    assert uninterrupted.ok is True
+
+    resumed_store = InMemoryResearchArtifactStore()
+    resumed_plan = _plan(resumed_store)
+    partial = run_parameter_optimization(
+        optimization_plan_ref=resumed_plan["optimization_plan_id"],
+        optimizer_profile="builtin_grid",
+        trial_executor=FakeExecutor(),
+        artifact_store=resumed_store,
+        max_new_trials=1,
+    )
+    assert partial.ok is True
+    resumed = run_parameter_optimization(
+        optimization_plan_ref=resumed_plan["optimization_plan_id"],
+        optimizer_profile="builtin_grid",
+        trial_executor=FakeExecutor(),
+        artifact_store=resumed_store,
+    )
+    assert resumed.ok is True
+
+    uninterrupted_run = uninterrupted.data["parameter_optimization_run"]
+    resumed_run = resumed.data["parameter_optimization_run"]
+    uninterrupted_trials = get_parameter_optimization_results(
+        optimization_run_ref=uninterrupted_run["optimization_run_id"],
+        artifact_store=uninterrupted_store,
+    ).data["trials"]
+    resumed_trials = get_parameter_optimization_results(
+        optimization_run_ref=resumed_run["optimization_run_id"],
+        artifact_store=resumed_store,
+    ).data["trials"]
+
+    assert resumed_run == uninterrupted_run
+    assert resumed_trials == uninterrupted_trials
+    engine_trial_ids = [trial["engine_trial_id"] for trial in resumed_trials]
+    assert engine_trial_ids[0].startswith("grid-000000-")
+    assert engine_trial_ids[1].startswith("grid-000001-")
+
+
 def test_closed_observation_and_plan_reject_undeclared_inputs() -> None:
     with pytest.raises(ValueError, match="undeclared fields"):
         OptimizationObservation.from_mapping(
@@ -376,6 +440,250 @@ def objective(observation):
     )
     assert non_finite_validation.ok is False
     assert "finite numeric value" in non_finite_validation.errors[0]["message"]
+
+
+@pytest.mark.parametrize(
+    ("source_code", "blocker"),
+    [
+        (
+            "import pathlib\n\ndef objective(observation):\n    return 1.0\n",
+            "import is not allowed: pathlib",
+        ),
+        (
+            "import socket\n\ndef objective(observation):\n    return 1.0\n",
+            "import is not allowed: socket",
+        ),
+        (
+            "import psycopg\n\ndef objective(observation):\n    return 1.0\n",
+            "import is not allowed: psycopg",
+        ),
+        (
+            "import subprocess\n\ndef objective(observation):\n    return 1.0\n",
+            "import is not allowed: subprocess",
+        ),
+        (
+            "import statistics\n\ndef objective(observation):\n"
+            "    return statistics.sys.modules['os'].getcwd()\n",
+            "import is not allowed: statistics",
+        ),
+        (
+            "import typing\n\ndef objective(observation):\n"
+            "    return typing.sys.modules['os'].getcwd()\n",
+            "import is not allowed: typing",
+        ),
+        (
+            "from trader_mcp import server\n\ndef objective(observation):\n    return 1.0\n",
+            "import is not allowed: trader_mcp",
+        ),
+        (
+            "def objective(observation):\n    return globals()\n",
+            "unsafe name is not allowed: globals",
+        ),
+        (
+            "def objective(observation):\n    return observation.__class__\n",
+            "dunder attribute is not allowed: __class__",
+        ),
+    ],
+)
+def test_objective_validation_rejects_isolation_escape_surfaces(
+    source_code: str,
+    blocker: str,
+) -> None:
+    store = InMemoryResearchArtifactStore()
+    implementation = register_optimization_objective(
+        name="unsafe-isolation-objective",
+        version="1",
+        source_code=source_code,
+        factory_name="objective",
+        dependencies=["psycopg", "requests"],
+        artifact_store=store,
+    )
+    validation = validate_optimization_objective(
+        implementation_version_id=implementation.data["implementation_version"][
+            "implementation_version_id"
+        ],
+        artifact_store=store,
+    )
+
+    assert validation.ok is False
+    assert blocker in validation.data["implementation_validation_report"]["blockers"]
+
+
+@pytest.mark.parametrize(
+    ("source_code", "blocker"),
+    [
+        (
+            """
+import psycopg
+from trader.strategies import Strategy
+
+class UnsafeStrategy(Strategy):
+    @property
+    def strategy_id(self):
+        return "unsafe"
+
+    def generate_orders(self, **kwargs):
+        return ()
+
+def build_strategy(**kwargs):
+    return UnsafeStrategy()
+""",
+            "import is not allowed: psycopg",
+        ),
+        (
+            """
+from trader.strategies import Strategy
+
+class UnsafeStrategy(Strategy):
+    @property
+    def strategy_id(self):
+        return "unsafe"
+
+    def generate_orders(self, *, event_store, **kwargs):
+        event_store.connection().execute("DELETE FROM research_artifacts")
+        return ()
+
+def build_strategy(**kwargs):
+    return UnsafeStrategy()
+""",
+            "unsafe attribute call is not allowed: connection",
+        ),
+        (
+            """
+from trader.broker import AlpacaPaperBroker
+from trader.strategies import Strategy
+
+class UnsafeStrategy(Strategy):
+    @property
+    def strategy_id(self):
+        return "unsafe"
+
+    def generate_orders(self, **kwargs):
+        return ()
+
+def build_strategy(**kwargs):
+    return UnsafeStrategy()
+""",
+            "import is not allowed: trader.broker",
+        ),
+        (
+            """
+from trader import event_store
+from trader.strategies import Strategy
+
+class UnsafeStrategy(Strategy):
+    @property
+    def strategy_id(self):
+        return "unsafe"
+
+    def generate_orders(self, **kwargs):
+        return ()
+
+def build_strategy(**kwargs):
+    return UnsafeStrategy()
+""",
+            "import is not allowed: trader.event_store",
+        ),
+        (
+            """
+import trader
+from trader.strategies import Strategy
+
+class UnsafeStrategy(Strategy):
+    @property
+    def strategy_id(self):
+        return "unsafe"
+
+    def generate_orders(self, **kwargs):
+        return ()
+
+def build_strategy(**kwargs):
+    return UnsafeStrategy()
+""",
+            "broad import is not allowed: trader",
+        ),
+        (
+            """
+from trader.strategies import Strategy
+
+class UnsafeStrategy(Strategy):
+    @property
+    def strategy_id(self):
+        return self.__class__.__name__
+
+    def generate_orders(self, **kwargs):
+        return ()
+
+def build_strategy(**kwargs):
+    return UnsafeStrategy()
+""",
+            "dunder attribute is not allowed: __class__",
+        ),
+    ],
+)
+def test_strategy_dependencies_cannot_grant_database_or_broker_access(
+    source_code: str,
+    blocker: str,
+) -> None:
+    store = InMemoryResearchArtifactStore()
+    implementation = register_strategy_implementation(
+        name="unsafe-strategy",
+        version="1",
+        source_code=source_code,
+        factory_name="build_strategy",
+        dependencies=["psycopg", "alpaca-py"],
+        artifact_store=store,
+    )
+    validation = validate_strategy_implementation(
+        implementation_version_id=implementation.data["implementation_version"][
+            "implementation_version_id"
+        ],
+        artifact_store=store,
+    )
+
+    assert validation.ok is False
+    assert blocker in validation.data["implementation_validation_report"]["blockers"]
+
+
+def test_trial_timeout_requires_enforcement_and_oversized_failures_are_bounded() -> None:
+    timeout_store = InMemoryResearchArtifactStore()
+    timeout_plan = _plan(
+        timeout_store,
+        resource_limits={
+            "max_trial_attempts": 1,
+            "per_trial_timeout_seconds": 0.001,
+        },
+    )
+    timed_out = run_parameter_optimization(
+        optimization_plan_ref=timeout_plan["optimization_plan_id"],
+        optimizer_profile="builtin_grid",
+        trial_executor=FakeExecutor(),
+        artifact_store=timeout_store,
+    )
+    assert timed_out.ok is False
+    timeout_trials = timed_out.data["new_trials"]
+    assert len(timeout_trials) == 2
+    assert all(trial["status"] == "blocked" for trial in timeout_trials)
+    assert all(
+        trial["blockers"]
+        == ["trial executor cannot enforce per_trial_timeout_seconds"]
+        for trial in timeout_trials
+    )
+
+    failure_store = InMemoryResearchArtifactStore()
+    failure_plan = _plan(failure_store)
+    failed = run_parameter_optimization(
+        optimization_plan_ref=failure_plan["optimization_plan_id"],
+        optimizer_profile="builtin_grid",
+        trial_executor=HugeFailureExecutor(),
+        artifact_store=failure_store,
+    )
+    assert failed.ok is False
+    for trial in failed.data["new_trials"]:
+        blocker = trial["blockers"][0]
+        assert len(blocker) == 2_000
+        assert blocker.endswith("...[truncated]")
+        assert trial["attempts"][0]["exception"] == blocker
 
 
 def test_seeded_random_retry_evidence_and_base_snapshot_drift_are_deterministic() -> None:

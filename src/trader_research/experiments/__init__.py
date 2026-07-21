@@ -32,6 +32,7 @@ from .implementations import (
 )
 from .optimization import (
     BacktestOptimizationTrialExecutor,
+    DeadlineOptimizationTrialExecutor,
     ExperimentTrackingSink,
     GridOptimizationEngine,
     OptimizationEngine,
@@ -65,6 +66,7 @@ from .tracking import ExperimentTrackingSinkRegistry, project_experiment_trackin
 
 __all__ = [
     "BacktestOptimizationTrialExecutor",
+    "DeadlineOptimizationTrialExecutor",
     "ExperimentTrackingSink",
     "ExperimentTrackingSinkRegistry",
     "GridOptimizationEngine",

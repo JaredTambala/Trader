@@ -35,11 +35,51 @@ _ALLOWED_IMPORT_ROOTS = frozenset(
     }
 )
 _FORBIDDEN_CALLS = frozenset({"compile", "eval", "exec", "open", "__import__"})
-_FORBIDDEN_ATTRIBUTES = frozenset({"popen", "remove", "rmdir", "system", "unlink"})
+_FORBIDDEN_NAMES = _FORBIDDEN_CALLS | frozenset(
+    {
+        "__builtins__",
+        "breakpoint",
+        "getattr",
+        "globals",
+        "input",
+        "locals",
+        "setattr",
+        "vars",
+    }
+)
+_FORBIDDEN_ATTRIBUTES = frozenset(
+    {
+        "commit",
+        "connect",
+        "connection",
+        "cursor",
+        "execute",
+        "executemany",
+        "open",
+        "place_order",
+        "popen",
+        "record_event",
+        "remove",
+        "rmdir",
+        "rollback",
+        "submit_order",
+        "system",
+        "unlink",
+    }
+)
+_FORBIDDEN_IMPORT_PREFIXES = (
+    "trader.broker",
+    "trader.config",
+    "trader.event_store",
+    "trader.market_data.alpaca",
+    "trader.operator",
+    "trader.runtime",
+    "trader.web",
+)
 _FORBIDDEN_OBJECTIVE_NAMES = _FORBIDDEN_CALLS | frozenset(
     {"__builtins__", "breakpoint", "dir", "help", "memoryview"}
 )
-_OBJECTIVE_IMPORT_ROOTS = frozenset({"math", "statistics", "typing"})
+_OBJECTIVE_IMPORT_ROOTS = frozenset({"math"})
 _OBJECTIVE_BUILTINS = {
     name: getattr(builtins, name)
     for name in (
@@ -79,22 +119,23 @@ def source_safety_blockers(implementation: ImplementationVersion) -> tuple[str, 
         tree = ast.parse(implementation.source_code)
     except SyntaxError as exc:
         return (f"source code does not compile: {exc}",)
-    dependency_roots = {
-        value.split("[", 1)[0].split("=", 1)[0].split(">", 1)[0].split("<", 1)[0].replace("-", "_")
-        for value in implementation.dependencies
-    }
-    allowed_roots = _ALLOWED_IMPORT_ROOTS | dependency_roots
+    allowed_roots = _ALLOWED_IMPORT_ROOTS
     if implementation.implementation_kind == "optimization_objective":
         allowed_roots = _OBJECTIVE_IMPORT_ROOTS
         blockers.extend(_objective_module_blockers(tree))
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            roots = [alias.name.split(".", 1)[0] for alias in node.names]
-            blockers.extend(f"import is not allowed: {root}" for root in roots if root not in allowed_roots)
+            for alias in node.names:
+                blockers.extend(_import_blockers(alias.name, allowed_roots))
+                if alias.name == "trader":
+                    blockers.append("broad import is not allowed: trader")
         elif isinstance(node, ast.ImportFrom):
-            root = str(node.module or "").split(".", 1)[0]
-            if not root or root not in allowed_roots:
-                blockers.append(f"import is not allowed: {root or '<relative>'}")
+            module = str(node.module or "")
+            blockers.extend(_import_blockers(module, allowed_roots))
+            for alias in node.names:
+                blockers.extend(
+                    _import_blockers(f"{module}.{alias.name}", allowed_roots)
+                )
         elif isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name) and node.func.id in _FORBIDDEN_CALLS:
                 blockers.append(f"unsafe call is not allowed: {node.func.id}")
@@ -106,12 +147,27 @@ def source_safety_blockers(implementation: ImplementationVersion) -> tuple[str, 
                 and node.func.id in {"getattr", "globals", "input", "locals", "setattr", "vars"}
             ):
                 blockers.append(f"unsafe objective call is not allowed: {node.func.id}")
+        if isinstance(node, ast.Name) and node.id in _FORBIDDEN_NAMES:
+            blockers.append(f"unsafe name is not allowed: {node.id}")
+        if isinstance(node, ast.Attribute) and node.attr.startswith("__"):
+            blockers.append(f"dunder attribute is not allowed: {node.attr}")
         if implementation.implementation_kind == "optimization_objective":
             if isinstance(node, ast.Name) and node.id in _FORBIDDEN_OBJECTIVE_NAMES:
                 blockers.append(f"unsafe objective name is not allowed: {node.id}")
-            if isinstance(node, ast.Attribute) and node.attr.startswith("__"):
-                blockers.append(f"dunder objective attribute is not allowed: {node.attr}")
     return tuple(sorted(set(blockers)))
+
+
+def _import_blockers(module_name: str, allowed_roots: frozenset[str]) -> list[str]:
+    module = str(module_name or "")
+    root = module.split(".", 1)[0]
+    if not root or root not in allowed_roots:
+        return [f"import is not allowed: {root or '<relative>'}"]
+    if any(
+        module == prefix or module.startswith(f"{prefix}.")
+        for prefix in _FORBIDDEN_IMPORT_PREFIXES
+    ):
+        return [f"import is not allowed: {module}"]
+    return []
 
 
 def load_implementation(implementation: ImplementationVersion) -> object:

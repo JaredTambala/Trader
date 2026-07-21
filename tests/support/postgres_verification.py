@@ -21,7 +21,7 @@ from psycopg.types.json import Jsonb
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FREEZE_TAG = "verification-57i-freeze-v4"
+FREEZE_TAG = "verification-57i-freeze-v5"
 VERIFICATION_MARKER_ID = "trader_verification"
 VERIFICATION_SCHEMA = "verification_control"
 TEST_DATABASE_SUFFIXES = ("_test", "_testing")
@@ -38,6 +38,18 @@ MUTATION_GATE_NAMES = (
     "TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES",
 )
 _PHASE_ENABLED_MUTATION_GATES = {
+    "57O": frozenset(
+        {
+            "TRADER_MCP_ALLOW_BACKTESTS",
+            "TRADER_MCP_ALLOW_OPTIMIZATION",
+        }
+    ),
+    "57P": frozenset(
+        {
+            "TRADER_MCP_ALLOW_BACKTESTS",
+            "TRADER_MCP_ALLOW_OPTIMIZATION",
+        }
+    ),
     "57M": frozenset(
         {
             "TRADER_MCP_ALLOW_BACKTESTS",
@@ -50,8 +62,14 @@ _PHASE_ENABLED_MUTATION_GATES = {
             "TRADER_MCP_ALLOW_OPTIMIZATION",
         }
     ),
+    "57R": frozenset(
+        {
+            "TRADER_MCP_ALLOW_BACKTESTS",
+            "TRADER_MCP_ALLOW_OPTIMIZATION",
+        }
+    ),
 }
-_RETAINABLE_EVIDENCE_PHASES = frozenset({"57M", "57N"})
+_RETAINABLE_EVIDENCE_PHASES = frozenset({"57M", "57N", "57R"})
 
 RUNTIME_TABLES = (
     "runs",
@@ -899,6 +917,21 @@ def _ensure_control_schema(connection: psycopg.Connection[Any]) -> None:
             payload JSONB NOT NULL,
             recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             PRIMARY KEY (phase, freeze_revision, stage)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS verification_control.acceptance_records (
+            freeze_revision TEXT PRIMARY KEY,
+            status TEXT NOT NULL CHECK (status IN ('passed', 'blocked')),
+            mandatory_phases JSONB NOT NULL,
+            provider_profiles JSONB NOT NULL,
+            environment JSONB NOT NULL,
+            evidence_inventory JSONB NOT NULL,
+            commands JSONB NOT NULL,
+            residual_risks JSONB NOT NULL,
+            recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )
         """
     )

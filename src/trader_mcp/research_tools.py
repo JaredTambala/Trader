@@ -41,9 +41,7 @@ from trader_mcp.constants import (
     RESEARCH_VALIDATE_STRATEGY_SPECIFICATION_TOOL,
 )
 from trader_mcp.environment import McpEnvironment
-from trader_research.foundation import ApplicationResult, ResearchArtifactStore
 from trader_research.experiments import (
-    BacktestOptimizationTrialExecutor,
     ExperimentTrackingSinkRegistry,
     OptimizationEngineRegistry,
     compare_backtest_results,
@@ -70,6 +68,10 @@ from trader_research.experiments import (
     validate_risk_stack_specification,
     validate_strategy_implementation,
     validate_strategy_specification,
+)
+from trader_research.foundation import ApplicationResult, ResearchArtifactStore
+from trader_research.infrastructure.execution import (
+    PostgresBacktestOptimizationTrialExecutor,
 )
 
 
@@ -689,7 +691,7 @@ def register_research_tools(
                     "research_artifact_store_required",
                     "A ResearchArtifactStore is required.",
                 )
-            executor = BacktestOptimizationTrialExecutor(
+            executor = PostgresBacktestOptimizationTrialExecutor(
                 event_store=event_store_provider(),
                 config=backtest_config_provider(),
                 artifact_store=store,
@@ -771,7 +773,7 @@ def register_research_tools(
                         "and TRADER_MCP_ALLOW_OPTUNA_WRITES=true."
                     ),
                 )
-            executor = BacktestOptimizationTrialExecutor(
+            executor = PostgresBacktestOptimizationTrialExecutor(
                 event_store=event_store_provider(),
                 config=backtest_config_provider(),
                 artifact_store=store,

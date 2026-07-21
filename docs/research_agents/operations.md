@@ -188,7 +188,7 @@ export TRADER_MCP_ALLOW_OPTUNA_WRITES=false
 export TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES=false
 ```
 
-With a clean worktree whose product paths are byte-identical to `verification-57i-freeze-v4`, execute:
+With a clean worktree whose product paths are byte-identical to `verification-57i-freeze-v5`, execute:
 
 ```bash
 uv run python -m tests.support.postgres_verification provision --reset
@@ -378,6 +378,129 @@ WHERE phase = '57N';
 Do not copy verification rows into the operator database. The final acceptance record must distinguish passed,
 failed, not run, and optional profile not qualified. Optional-provider failure leaves that provider gated off and does
 not invalidate a passing built-in core unless canonical Trader state was affected.
+
+### 57O Restart, Resume, Fault, And Deadline Qualification
+
+57O proves that canonical Postgres state, rather than process memory, is sufficient to resume built-in optimisation.
+The controlled test compares an uninterrupted run with fresh-process recovery after a partial run and injects failures
+before/after trial and final-run persistence boundaries. It also proves bounded retries, terminal blocked-run reads,
+stable sequence/provider trial IDs, and Postgres child-process deadlines. A declared deadline is enforced by terminating
+the isolated child; an executor without that capability blocks before executing.
+
+Run with only backtests and optimisation enabled:
+
+```bash
+unset TRADER_VERIFICATION_RETAIN_PHASE
+export TRADER_MCP_ALLOW_BACKTESTS=true
+export TRADER_MCP_ALLOW_OPTIMIZATION=true
+export TRADER_MCP_ALLOW_EXTERNAL_RESEARCH_WRITES=false
+export TRADER_MCP_ALLOW_OPTUNA_WRITES=false
+export TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES=false
+uv run python -m tests.support.postgres_verification begin --phase 57O
+uv run pytest tests/test_postgres_optimization_recovery.py -m postgres -q -W error
+uv run python -m tests.support.postgres_verification end --phase 57O --outcome passed
+```
+
+### 57P Provider Independence Qualification
+
+57P starts a fresh stdio MCP process whose import hook makes both `optuna` and `mlflow` unavailable. It runs and resumes
+built-in grid, runs seeded random, recreates the server for each call, and reloads both ledgers from canonical Postgres.
+Only the two built-in profiles may appear in optimizer runtime metadata. This qualifies the mandatory no-provider
+product; it does not qualify an Optuna or tracking-sink adapter.
+
+```bash
+export TRADER_MCP_ALLOW_BACKTESTS=true
+export TRADER_MCP_ALLOW_OPTIMIZATION=true
+export TRADER_MCP_ALLOW_EXTERNAL_RESEARCH_WRITES=false
+export TRADER_MCP_ALLOW_OPTUNA_WRITES=false
+export TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES=false
+uv run python -m tests.support.postgres_verification begin --phase 57P
+uv run pytest tests/test_postgres_optimization_provider_independence.py -m postgres -q -W error
+uv run python -m tests.support.postgres_verification end --phase 57P --outcome passed
+```
+
+Until separate live-provider profiles pass, record `optuna_tpe` and MLflow tracking as `not_qualified` and keep their
+write gates false. Package presence or unit adapter tests are not provider qualification.
+
+### 57Q Policy, Security, And Resource Boundaries
+
+57Q runs with every mutation gate false at the phase boundary; individual MCP tests construct explicit isolated gate
+matrices internally. The test set challenges closed objective observations, finite scores, import and builtin escape
+surfaces, broad/restricted Trader imports, dependency-based permission expansion, database/broker mutation attempts,
+undeclared tunables, holdout/dataset/cost boundaries, retry/trial/deadline limits, bounded failure payloads, MCP gate
+independence, and Python package direction.
+
+```bash
+export TRADER_MCP_ALLOW_BACKTESTS=false
+export TRADER_MCP_ALLOW_OPTIMIZATION=false
+export TRADER_MCP_ALLOW_EXTERNAL_RESEARCH_WRITES=false
+export TRADER_MCP_ALLOW_OPTUNA_WRITES=false
+export TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES=false
+uv run python -m tests.support.postgres_verification begin --phase 57Q
+uv run pytest tests/test_parameter_optimization.py tests/test_mcp_optimization_tools.py \
+  tests/test_implementation_templates.py tests/test_package_boundaries.py -q -W error
+uv run python -m tests.support.postgres_verification end --phase 57Q --outcome passed
+```
+
+Implementation admission remains a bounded validation policy plus deterministic fixture execution. It is not an OS
+sandbox for hostile arbitrary Python; that limitation must remain in the 57S residual-risk record.
+
+### 57R Projection, Operator, And Bounded-Scale Qualification
+
+57R executes 64 real grid trials, 100 real seeded-random trials, and one three-symbol backtest with 1,000 bars per
+symbol. It records wall times, result-query times, database size, artifact count, and the principal trial-ledger query
+plan in `verification_control.bounded_scale_results`; it requires the run/sequence index and reconciles every artifact
+in the scale graph with its typed projection. The scale measurements are local bounded evidence, not universal service
+level objectives. The phase then reruns the public MCP evidence graph so the final retained product rows include
+Evaluation and Adversarial evidence while the scale control rows remain inspectable.
+
+```bash
+export TRADER_VERIFICATION_RETAIN_PHASE=57R
+export TRADER_MCP_ALLOW_BACKTESTS=true
+export TRADER_MCP_ALLOW_OPTIMIZATION=true
+export TRADER_MCP_ALLOW_EXTERNAL_RESEARCH_WRITES=false
+export TRADER_MCP_ALLOW_OPTUNA_WRITES=false
+export TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES=false
+uv run python -m tests.support.postgres_verification begin --phase 57R
+uv run pytest tests/test_postgres_optimization_bounded_scale.py \
+  tests/test_postgres_optimization_evidence_graph.py -m postgres -q -W error -s
+uv run python -m tests.support.postgres_verification end --phase 57R --outcome passed
+```
+
+Inspect the bounded measurements with:
+
+```sql
+SELECT profile, status, symbols, bars_per_symbol, trial_count, wall_seconds,
+       result_query_seconds, database_bytes, artifact_count, query_plan, payload
+FROM verification_control.bounded_scale_results
+WHERE phase = '57R'
+ORDER BY profile;
+```
+
+### 57S Acceptance Record
+
+57S reads, but does not recreate, the retained product evidence. It requires passed/isolated 57J-57R rows on one freeze,
+empty blockers, matching before/after operator fingerprints, all three 57R bounded profiles, and retained optimisation,
+Evaluation, and Adversarial refs. It writes one verification-only `acceptance_records` row. Built-in grid/random are
+qualified; Optuna and MLflow tracking remain explicitly not qualified and disabled in the default acceptance profile.
+
+```bash
+unset TRADER_VERIFICATION_RETAIN_PHASE
+export TRADER_MCP_ALLOW_BACKTESTS=false
+export TRADER_MCP_ALLOW_OPTIMIZATION=false
+export TRADER_MCP_ALLOW_EXTERNAL_RESEARCH_WRITES=false
+export TRADER_MCP_ALLOW_OPTUNA_WRITES=false
+export TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES=false
+uv run python -m tests.support.postgres_verification begin --phase 57S
+uv run pytest tests/test_postgres_optimization_acceptance.py -m postgres -q -W error
+uv run python -m tests.support.postgres_verification end --phase 57S --outcome passed
+```
+
+```sql
+SELECT freeze_revision, status, mandatory_phases, provider_profiles, environment,
+       evidence_inventory, commands, residual_risks, recorded_at
+FROM verification_control.acceptance_records;
+```
 
 ## Typical Local Checks
 
