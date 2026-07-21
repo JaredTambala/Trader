@@ -125,7 +125,7 @@ def test_docs_pin_knowledge_baseline_and_identify_next_delivery_focus() -> None:
     assert "| 56. Implementation Registry And Method-Card Decoupling | Done |" in tracker
     assert "| 56A. Canonical Implementation-Version Domain | Done |" in tracker
     assert "| 56D. Remove Method-Card Execution Coupling | Done |" in tracker
-    assert "| 57. Reproducible Strategy, Risk, Backtest, And Optimisation Specifications | In progress |" in tracker
+    assert "| 57. Reproducible Strategy, Risk, Backtest, And Optimisation Specifications | Done |" in tracker
     assert "| 57C. DB-First Specification Execution And Evaluation | Done |" in tracker
     assert "| 57D. Provider-Neutral Optimisation Ledger And Protocols | Done |" in tracker
     assert "| 57H. Provider-Neutral Experiment Tracking Projection | Done |" in tracker
@@ -198,7 +198,7 @@ def test_docs_define_current_research_architecture_and_refactor_lineage() -> Non
         assert "| Done |" in task_row
 
     assert "| 53A. Research Documentation Reader Journey | Done |" in tracker
-    assert "| 57O. Restart, Resume, And Fault-Injection Tests | Implemented |" in tracker
+    assert "| 57O. Restart, Resume, And Fault-Injection Tests | Done |" in tracker
 
 
 def test_active_docs_reference_current_research_source_paths() -> None:
@@ -379,7 +379,7 @@ def test_tracker_freezes_57i_surface_and_acceptance_matrix() -> None:
 
     assert "The controlled 57M stdio MCP graph proves the realistic behavior" in tracker
     assert "Passed / controlled 57M" in tracker
-    assert "Implemented / controlled 57S pending" in tracker
+    assert "Passed / controlled 57S" in tracker
 
 
 def test_docs_define_57j_isolated_postgres_runtime() -> None:
