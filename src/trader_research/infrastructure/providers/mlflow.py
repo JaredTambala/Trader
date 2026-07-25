@@ -41,7 +41,7 @@ class MLflowExperimentTrackingSink:
 
     def project(self, canonical_run: Mapping[str, Any]) -> Mapping[str, Any]:
         """Log a parent study and child trial runs derived only from canonical payloads."""
-        import mlflow  # type: ignore[import-not-found]
+        import mlflow  # type: ignore[import-not-found,unused-ignore]
 
         profile = self.profile()
         if not profile["available"]:

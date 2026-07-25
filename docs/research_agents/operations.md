@@ -9,8 +9,9 @@ surfaces. Current work is not expanding semantic extraction beyond the 33AB base
 areas should be limited to data integrity, citation correctness, security, dependency maintenance, and regression fixes
 unless the tracker explicitly reactivates composite methodology work.
 
-The implementation-to-evidence and provider-neutral parameter-optimisation tools are now registered. ML model lifecycle
-and broader robustness work remain planned. Use `mcp_get_config` for exact runtime gates and provider health.
+The implementation-to-evidence, provider-neutral parameter-optimisation, and ML deployment/runtime tools are now
+registered. ML feature/training/evaluation/registry/monitoring and broader robustness work remain planned. Use
+`mcp_get_config` for exact runtime gates and provider health.
 
 ## Start The Server
 
@@ -51,6 +52,8 @@ configuration. Runtime failures belong inside the affected tool envelope.
 | `TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES` | `false` | Enables configured analytical tracking projections with the master gate. |
 | `MLFLOW_TRACKING_URI` | empty | Configured optional MLflow sink/training tracking authority; never request-supplied. |
 | `TRADER_MLFLOW_OPTIMIZATION_EXPERIMENT` | `trader-backtest-optimization` | Disposable analytical projection namespace. |
+| `TRADER_MCP_ALLOW_ML_RUNTIME` | `false` | Enables deployment parity model loading and model-backed backtest inference. |
+| `TRADER_MLFLOW_INFERENCE_PROFILE` | `mlflow_local_pyfunc` | Names the configured immutable local-pyfunc adapter profile. |
 | `TRADER_MCP_ALLOW_BROKER_MUTATION` | `false` | Must remain false for research MCP tools. |
 | `TRADER_MCP_ALLOW_RAW_SQL` | `false` | Must remain false for research MCP tools. |
 
@@ -61,9 +64,11 @@ creating a study. Built-in grid/random remain available when the URL or Optuna p
 
 ### MLflow Runtime Boundary
 
-The current MLflow adapter supports only explicit non-authoritative projection of canonical backtest-optimisation
-evidence. Tasks 39A-39J will add authoritative ML training telemetry/model-registry behavior. The operational contract
-is:
+The current MLflow integration supports explicit non-authoritative optimisation projection and a separate lazy local
+pyfunc inference adapter. The adapter is registered only when `MLFLOW_TRACKING_URI` is configured; the MCP server still
+starts when MLflow/pandas are absent. `ml_create_deployment_manifest` is DB-only. `ml_validate_deployment` and
+model-backed backtests require `TRADER_MCP_ALLOW_ML_RUNTIME=true`, load only a pinned model URI, and never write to
+MLflow. Tasks 39A-G/J add authoritative training/registry/monitoring behavior. The operational contract is:
 
 - one configured tracking URI and registry URI, with callers unable to override them per tool request
 - authentication through environment/secret references that are never persisted in artifacts or tool envelopes
@@ -81,6 +86,15 @@ external-write and experiment-tracking-write gates.
 The MLflow artifact store remains the model-binary authority. Trader Postgres stores reconciled MLflow IDs/URIs,
 digests, signatures, source/data/environment hashes, and validation/promotion/deployment lineage. It does not duplicate
 model binaries into generic research artifact payloads.
+
+Deployment and validation rows are visible in `research_ml_deployments` and
+`research_ml_deployment_validations`; canonical payloads remain in `research_artifacts`. Runtime raw-output evidence is
+written to `prediction_events`, mapped strategy inputs to `signal_events`, and prediction lineage to
+`order_events.decision_evidence`. The local adapter qualification command is:
+
+```bash
+uv run --extra ml pytest tests/test_mlflow_inference_adapter.py -q
+```
 
 Quantitative Methods knowledge tools expect a configured knowledge store for production use. Postgres-backed knowledge
 storage is the normal runtime path; tests may inject isolated in-memory stores.

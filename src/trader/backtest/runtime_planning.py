@@ -87,4 +87,9 @@ def _signal_lookback_window(strategy: Strategy) -> int:
         window = getattr(signal, "window", None)
         if isinstance(window, int) and window > 0:
             windows.append(window)
-    return max(windows, default=0)
+    required_lookback = strategy.required_lookback
+    if isinstance(required_lookback, bool) or not isinstance(required_lookback, int):
+        raise ValueError("strategy required_lookback must be an integer")
+    if required_lookback < 0:
+        raise ValueError("strategy required_lookback must be non-negative")
+    return max([required_lookback, *windows], default=0)

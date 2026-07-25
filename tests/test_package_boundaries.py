@@ -558,8 +558,39 @@ def test_trader_package_does_not_depend_on_research_agent_packages() -> None:
                 "trader_research",
                 "trader_mcp",
                 "trader_agents",
+                "trader_mlflow",
             } or imported.startswith(
-                ("trader_research.", "trader_mcp.", "trader_agents.")
+                (
+                    "trader_research.",
+                    "trader_mcp.",
+                    "trader_agents.",
+                    "trader_mlflow.",
+                )
+            ):
+                offenders.append(f"{path}: imports {imported}")
+
+    assert offenders == []
+
+
+def test_mlflow_runtime_dependencies_stay_in_optional_adapter_package() -> None:
+    offenders: list[str] = []
+    for root in (Path("src/trader"), Path("src/trader_standard")):
+        for path in root.rglob("*.py"):
+            for imported in _imported_modules(path):
+                if imported in {"mlflow", "pandas", "trader_mlflow"} or imported.startswith(
+                    ("mlflow.", "pandas.", "trader_mlflow.")
+                ):
+                    offenders.append(f"{path}: imports {imported}")
+    allowed_research_adapter = Path(
+        "src/trader_research/infrastructure/providers/mlflow.py"
+    )
+    for path in Path("src/trader_research").rglob("*.py"):
+        for imported in _imported_modules(path):
+            if imported == "trader_mlflow" or imported.startswith("trader_mlflow."):
+                offenders.append(f"{path}: imports {imported}")
+            if path != allowed_research_adapter and (
+                imported in {"mlflow", "pandas"}
+                or imported.startswith(("mlflow.", "pandas."))
             ):
                 offenders.append(f"{path}: imports {imported}")
 

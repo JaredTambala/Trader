@@ -480,6 +480,16 @@ class CrossSectionalMomentumStrategy(Strategy):
         self._rebalance_cadence = str(rebalance_cadence or "every_bar")
 
     @property
+    def decision_scope(self) -> str:
+        """Require one synchronized decision over the configured universe."""
+        return "universe_snapshot"
+
+    @property
+    def required_lookback(self) -> int:
+        """Return the bars required for the declared return lookback."""
+        return self._lookback_period + 1
+
+    @property
     def strategy_id(self) -> str:
         """Return the configured strategy identifier used in run metadata and artifacts."""
         return self._strategy_id
@@ -600,6 +610,16 @@ class PairsMeanReversionStrategy(Strategy):
         self._max_pairs = max(1, int(max_pairs))
         self._pair_mode = pair_mode
         self._pairs = _disjoint_sorted_pairs(self._symbols, self._max_pairs)
+
+    @property
+    def decision_scope(self) -> str:
+        """Require one synchronized decision over every pair leg."""
+        return "universe_snapshot"
+
+    @property
+    def required_lookback(self) -> int:
+        """Return the bars required for spread estimation."""
+        return self._lookback_period
 
     @property
     def strategy_id(self) -> str:

@@ -17,9 +17,12 @@ from .artifacts import (
 from .errors import ResearchApplicationError, ResearchFailure
 from .identity import json_payload_hash, jsonable, source_hash, stable_research_id
 from .results import ApplicationResult, error_result, success_result
+from .predictions import PredictionDeploymentReader, PredictionMapperCatalog
 
 __all__ = [
     "ApplicationResult",
+    "PredictionDeploymentReader",
+    "PredictionMapperCatalog",
     "ArtifactReference",
     "InMemoryResearchArtifactStore",
     "ResearchArtifactNotFound",

@@ -17,6 +17,12 @@ MCP_HEALTH_TOOL: Final = "mcp_health"
 MCP_CONFIG_TOOL: Final = "mcp_get_config"
 """Tool name for MCP server configuration."""
 
+ML_CREATE_DEPLOYMENT_MANIFEST_TOOL: Final = "ml_create_deployment_manifest"
+"""Tool name for creating one immutable raw-inference deployment manifest."""
+
+ML_VALIDATE_DEPLOYMENT_TOOL: Final = "ml_validate_deployment"
+"""Tool name for validating deployment lineage and local model parity."""
+
 DATA_GET_INVENTORY_TOOL: Final = "data_get_inventory"
 """Tool name for read-only Data Agent inventory."""
 
@@ -207,6 +213,12 @@ DATA_TOOL_NAMES: Final = (
 )
 """Data Agent tool names exposed by the MCP server."""
 
+ML_TOOL_NAMES: Final = (
+    ML_CREATE_DEPLOYMENT_MANIFEST_TOOL,
+    ML_VALIDATE_DEPLOYMENT_TOOL,
+)
+"""ML Agent deployment tool names exposed by the MCP server."""
+
 KNOWLEDGE_TOOL_NAMES: Final = (
     KNOWLEDGE_REGISTER_SOURCE_TOOL,
     KNOWLEDGE_INGEST_DOCUMENTS_TOOL,
@@ -282,6 +294,7 @@ ADVERSARIAL_TOOL_NAMES: Final = (
 REGISTERED_TOOL_NAMES: Final = (
     *SUPPORT_TOOL_NAMES,
     *DATA_TOOL_NAMES,
+    *ML_TOOL_NAMES,
     *KNOWLEDGE_TOOL_NAMES,
     *MATH_TOOL_NAMES,
     *RESEARCH_TOOL_NAMES,
@@ -303,6 +316,16 @@ DATA_TOOL_DESCRIPTIONS: Final = {
     DATA_ENSURE_LOADED_TOOL: "Inspect, sample-load, or plan bounded market-data loading.",
 }
 """Descriptions for Data Agent tools exposed by the MCP server."""
+
+ML_TOOL_DESCRIPTIONS: Final = {
+    ML_CREATE_DEPLOYMENT_MANIFEST_TOOL: (
+        "Create an immutable ML-owned manifest for one pinned model, feature set, adapter, and raw output contract."
+    ),
+    ML_VALIDATE_DEPLOYMENT_TOOL: (
+        "Revalidate deployment lineage and execute the configured adapter parity fixture."
+    ),
+}
+"""Descriptions for ML Agent deployment tools exposed by the MCP server."""
 
 KNOWLEDGE_TOOL_DESCRIPTIONS: Final = {
     KNOWLEDGE_REGISTER_SOURCE_TOOL: "Register a local PDF, Markdown, or text source for Quant Methods evidence.",
@@ -412,6 +435,7 @@ CAPABILITY_REGISTRATION_FLAGS: Final = {
     "methodology_candidate_tools_registered": True,
     "math_method_tools_registered": True,
     "implementation_registry_tools_registered": True,
+    "ml_deployment_tools_registered": True,
     "canonical_specification_tools_registered": True,
     "backtest_tools_registered": True,
     "optimization_tools_registered": True,

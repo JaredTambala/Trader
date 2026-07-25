@@ -51,21 +51,24 @@ def fetch_recent_bars(
 
     if hasattr(connection, "cursor"):
         with connection.cursor() as cursor:
+            placeholder = "?" if connection.__class__.__module__.startswith("_duckdb") else "%s"
             query = f"""
                     SELECT ts, open, high, low, close, volume, vwap, trade_count
                     FROM {table}
-                    WHERE symbol = %s AND COALESCE(timeframe, '1Min') = %s
+                    WHERE symbol = {placeholder} AND COALESCE(timeframe, '1Min') = {placeholder}
                     ORDER BY ts DESC
-                    LIMIT %s
+                    LIMIT {placeholder}
                 """
             params = [symbol.upper(), timeframe, limit]
             if as_of_ts is not None:
                 query = f"""
                         SELECT ts, open, high, low, close, volume, vwap, trade_count
                         FROM {table}
-                        WHERE symbol = %s AND COALESCE(timeframe, '1Min') = %s AND ts <= %s
+                        WHERE symbol = {placeholder}
+                          AND COALESCE(timeframe, '1Min') = {placeholder}
+                          AND ts <= {placeholder}
                         ORDER BY ts DESC
-                        LIMIT %s
+                        LIMIT {placeholder}
                     """
                 params = [symbol.upper(), timeframe, as_of_ts, limit]
             cursor.execute(query, params)

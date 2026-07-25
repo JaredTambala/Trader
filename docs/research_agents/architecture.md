@@ -667,6 +667,21 @@ model registration, version selection, deployment evidence, prediction monitorin
 configured ML-training telemetry and model-registry service. Trader remains authoritative for generic research plans,
 trials, selections, backtests, trading-specific lineage, safety decisions, and runtime configuration.
 
+### Implemented Runtime Slice
+
+Tasks 39H-I implement the execution-side boundary while 39A-G/J remain planned. Core `trader.predictions` defines
+dependency-neutral feature batches, immutable model identity, requests, raw observations/batches, inference policy,
+runtime binding, and failure evidence. `trader_mlflow` supplies a lazy local `python_function` adapter;
+`trader_standard` supplies point-in-time bar features, maintained mappers, and a model-driven strategy. No core module
+imports MLflow, pandas, research services, MCP, or agents.
+
+The ML Agent now owns DB-backed deployment manifests and validation reports through
+`ml_create_deployment_manifest` and `ml_validate_deployment`. The Supervisor binds a passed deployment to a strategy
+requirement and owns mapper parameters and trading interpretation. Backtests resolve and load the predictor once,
+record raw prediction events before mapped signals/orders, and include complete binding evidence in canonical run
+identity. The runtime supports independent per-symbol decisions and exact synchronized-universe decisions. This slice
+does not create feature sets, train models, register model versions, monitor drift, or grant live eligibility.
+
 ### Authority Boundary
 
 MLflow and Trader must not become competing stores for the same responsibility.
@@ -740,8 +755,8 @@ The ML Agent should own immutable, DB-visible Trader artifacts that reference ML
    environment, tags, aliases observed at resolution time, and evaluation refs.
 8. `ml_model_promotion_report`: explicit policy decision and evidence for assigning or moving an approved alias. Alias
    mutation is never implied by a successful evaluation.
-9. `ml_deployment_manifest`: pinned model version, inference adapter, feature contract, output semantics, latency and
-   failure policy, strategy consumers, environment, and backtest/paper/live eligibility.
+9. `ml_deployment_manifest`: pinned model version, inference adapter, feature contract, raw output semantics, latency
+   and failure policy, environment, and backtest/paper eligibility. Strategy consumers and trading policy are excluded.
 10. `ml_prediction_artifact` and `ml_drift_report`: bounded prediction summaries, realized-target joins, input/output
     drift, calibration/performance decay, latency, stale-feature evidence, and exact deployed version.
 
@@ -750,8 +765,8 @@ until Trader has reconciled those records into passed validation and deployment 
 
 ### Runtime Integration
 
-The core `trader` package must remain independent of MLflow. It should define only stable prediction-domain contracts,
-such as a predictor interface, feature batch, prediction result, model identity, and inference failure policy. A model-
+The core `trader` package remains independent of MLflow. It defines stable prediction-domain contracts,
+including a predictor interface, feature batch, prediction result, model identity, and inference failure policy. A model-
 backed signal or strategy consumes those contracts in the same cycle path used by backtests and paper trading.
 
 The MLflow-specific client and model loader belong in an optional integration adapter, not in `trader`. Research
@@ -759,7 +774,7 @@ training/orchestration belongs in `trader_research.ml`; MCP transport belongs in
 signals or strategies may live in `trader_standard` while depending only on the core prediction protocol. This keeps
 MLflow, pandas, scikit-learn, PyTorch, and similar dependencies out of the platform core.
 
-Before a model-backed strategy can run, validation must prove:
+Before a model-backed strategy runs, validation proves:
 
 - the pinned model can be resolved and its digest, signature, and environment match the deployment manifest
 - offline and runtime feature calculation produce parity on deterministic fixtures
@@ -984,6 +999,7 @@ scope.
 - Optimisation execution additionally requires `TRADER_MCP_ALLOW_OPTIMIZATION=true`.
 - Optuna sampler writes require the generic external-research-write gate and the separate Optuna write gate.
 - Experiment-tracking projections require the generic external-research-write gate and tracking write gate.
+- Model loading for deployment parity and backtest inference requires `TRADER_MCP_ALLOW_ML_RUNTIME=true`.
 - Data loading is local-mutating and policy-gated by `TRADER_MCP_ALLOW_DATA_LOADING=true`.
 - Provider-catalog symbol discovery requires explicit provider discovery policy.
 - Generated code is source-backed and validation-gated before use in later workflows.

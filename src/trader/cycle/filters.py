@@ -13,6 +13,7 @@ def _allowed_cycle_event_types(config: Config) -> set[str]:
         "stock_bar_events",
         "crypto_bar_events",
         "config_kv",
+        "prediction_events",
     }
     if config.log_signal_events:
         allowed.add("signal_events")

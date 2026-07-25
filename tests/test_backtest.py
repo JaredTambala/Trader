@@ -30,6 +30,12 @@ class CycleRecorder:
         self.decision_times.append(kwargs["decision_ts"])
 
 
+class UniverseNoOpStrategy(NoOpStrategy):
+    @property
+    def decision_scope(self) -> str:
+        return "universe_snapshot"
+
+
 def _config(tmp_path: Path) -> Config:
     return Config(
         mode="once",
@@ -141,6 +147,65 @@ def test_backtest_runner_returns_empty_result_when_window_has_no_bars(tmp_path: 
     assert result.warnings == ("No bars found for backtest window.",)
     assert result.strategy_performance.start_equity is None
     assert result.benchmark_performance.start_equity is None
+
+
+def test_universe_backtest_runs_once_only_at_complete_aligned_timestamps(
+    monkeypatch, tmp_path: Path
+) -> None:
+    store = DuckDBEventStore(str(tmp_path / "universe.duckdb"))
+    base = datetime(2026, 1, 21, 12, 0, tzinfo=timezone.utc)
+    complete = base + timedelta(minutes=1)
+    for symbol, timestamps in {
+        "AAPL": (base, complete),
+        "MSFT": (complete,),
+    }.items():
+        for ts in timestamps:
+            store.record_event(
+                "stock_bar_events",
+                {
+                    "symbol": symbol,
+                    "timeframe": "1Min",
+                    "ts": ts,
+                    "ingested_at": ts,
+                    "open": 100.0,
+                    "high": 101.0,
+                    "low": 99.0,
+                    "close": 100.5,
+                    "volume": 10.0,
+                    "trade_count": None,
+                    "vwap": None,
+                    "source": "test",
+                },
+            )
+
+    calls: list[dict[str, object]] = []
+
+    def record_cycle(*args, **kwargs) -> None:
+        del args
+        calls.append(kwargs)
+        events = kwargs["market_data_source"].fetch()
+        assert {event.symbol for event in events} == {"AAPL", "MSFT"}
+        assert {event.ts for event in events} == {complete}
+
+    monkeypatch.setattr("trader.backtest.core.run_cycle", record_cycle)
+    runner = BacktestRunner(
+        _config(tmp_path),
+        BacktestSpec(start=base, end=complete, timeframe="1Min"),
+        symbols=["AAPL", "MSFT"],
+        asset_class="stocks",
+        event_store=store,
+        strategy=UniverseNoOpStrategy(),
+        risk_manager=NoOpRiskManager(),
+    )
+
+    result = runner.run()
+
+    assert [call["decision_ts"] for call in calls] == [complete]
+    assert calls[0]["config"].market_data_symbols == ("AAPL", "MSFT")
+    assert result.total_runs == 1
+    assert result.warnings == (
+        "Skipped 1 incomplete universe timestamps; exact symbol alignment is required.",
+    )
 
 
 def test_build_backtest_runtime_config_forces_backtest_dependencies(tmp_path: Path) -> None:

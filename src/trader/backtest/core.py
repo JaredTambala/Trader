@@ -21,6 +21,7 @@ from ..strategies import Strategy
 from ..risk import RiskManager
 from ..strategy_metadata import resolve_strategy_id
 from .data import (
+    BacktestMarketDataSource,
     _build_data_sources,
     _load_bars,
 )
@@ -204,6 +205,21 @@ class BacktestRunner:
         )
         symbol_schedule = _build_symbol_schedule(bars_by_symbol, self._spec.start, self._spec.end)
         timestamps = sorted(symbol_schedule.keys())
+        decision_scope = self._strategy.decision_scope
+        if decision_scope not in {"per_symbol", "universe_snapshot"}:
+            raise ValueError(f"unsupported strategy decision scope: {decision_scope}")
+        if decision_scope == "universe_snapshot":
+            expected_symbols = set(self._symbols)
+            incomplete = [
+                ts for ts in timestamps if set(symbol_schedule.get(ts, ())) != expected_symbols
+            ]
+            if incomplete:
+                warnings.append(
+                    f"Skipped {len(incomplete)} incomplete universe timestamps; exact symbol alignment is required."
+                )
+            timestamps = [
+                ts for ts in timestamps if set(symbol_schedule.get(ts, ())) == expected_symbols
+            ]
         if not timestamps:
             logger.warning("No bars found for backtest window")
             started_at = self._started_at or datetime.now(timezone.utc)
@@ -298,8 +314,12 @@ class BacktestRunner:
                 len(seeded_positions),
                 self._initial_cash,
             )
-        total_bars = _count_scheduled_symbol_runs(symbol_schedule, timestamps)
-        effective_limit = _resolve_effective_replay_limit(total_bars=total_bars, max_runs=limit)
+        total_runs = (
+            len(timestamps)
+            if decision_scope == "universe_snapshot"
+            else _count_scheduled_symbol_runs(symbol_schedule, timestamps)
+        )
+        effective_limit = _resolve_effective_replay_limit(total_bars=total_runs, max_runs=limit)
 
         data_sources_by_symbol = _build_data_sources(
             bars_by_symbol=bars_by_symbol,
@@ -310,23 +330,27 @@ class BacktestRunner:
             warnings=warnings,
         )
         configs_by_symbol = _build_symbol_runtime_configs(self._config, self._symbols)
+        universe_data_source = BacktestMarketDataSource(
+            bars_by_symbol=bars_by_symbol,
+            asset_class=self._asset_class,
+            timeframe=self._spec.timeframe,
+            symbols=self._symbols,
+            allow_latest_prior_bar=False,
+            warnings=warnings,
+        )
         portfolio = _build_initial_portfolio(seeded_positions, cash_balance=self._initial_cash)
         trade_stats: _TradeStats | None = None
         try:
             with _cycle_log_suppression(enabled=not log_cycle_details):
                 for ts in timestamps:
                     stop = False
-                    for symbol in sorted(symbol_schedule.get(ts, [])):
-                        data_source = data_sources_by_symbol.get(symbol)
-                        config = configs_by_symbol.get(symbol)
-                        if data_source is None or config is None:
-                            continue
-                        data_source.set_as_of(ts)
+                    if decision_scope == "universe_snapshot":
+                        universe_data_source.set_as_of(ts)
                         run_cycle(
                             event_store=self._event_store,
-                            config=config,
+                            config=self._config,
                             decision_ts=ts,
-                            market_data_source=data_source,
+                            market_data_source=universe_data_source,
                             strategy=strategy,
                             risk_manager=risk_manager,
                             broker=broker,
@@ -337,10 +361,35 @@ class BacktestRunner:
                         )
                         count += 1
                         if progress_callback:
-                            progress_callback(count, effective_limit or total_bars, ts if symbol_schedule else ts)
+                            progress_callback(count, effective_limit or total_runs, ts)
                         if limit is not None and count >= limit:
                             stop = True
-                            break
+                    else:
+                        for symbol in sorted(symbol_schedule.get(ts, [])):
+                            data_source = data_sources_by_symbol.get(symbol)
+                            config = configs_by_symbol.get(symbol)
+                            if data_source is None or config is None:
+                                continue
+                            data_source.set_as_of(ts)
+                            run_cycle(
+                                event_store=self._event_store,
+                                config=config,
+                                decision_ts=ts,
+                                market_data_source=data_source,
+                                strategy=strategy,
+                                risk_manager=risk_manager,
+                                broker=broker,
+                                portfolio=portfolio,
+                                ingest_market_data=False,
+                                run_id=run_id,
+                                run_type="backtest",
+                            )
+                            count += 1
+                            if progress_callback:
+                                progress_callback(count, effective_limit or total_runs, ts)
+                            if limit is not None and count >= limit:
+                                stop = True
+                                break
                     prices = price_state.advance(ts)
                     valuation = _compute_equity(portfolio, prices)
                     equity_curve.append(EquityPoint(ts=ts, equity=valuation.equity))

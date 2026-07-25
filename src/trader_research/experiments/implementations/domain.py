@@ -16,6 +16,11 @@ from trader_research.governance.artifacts import IMPLEMENTATION_VERSION
 IMPLEMENTATION_KINDS = frozenset(
     {"indicator", "signal", "strategy", "risk_manager", "optimization_objective"}
 )
+PREDICTION_CONSUMER_KINDS = frozenset(
+    {"directional", "ranking", "regime", "gating", "allocation"}
+)
+PREDICTION_INFERENCE_SCOPES = frozenset({"per_symbol", "cross_sectional", "portfolio"})
+PREDICTION_OUTPUT_SHAPES = frozenset({"scalar", "structured"})
 RUNTIME_CONTRACT_BY_KIND = {
     "indicator": "trader.indicators.Indicator",
     "signal": "trader.signals.Signal",
@@ -93,7 +98,10 @@ class ImplementationVersion:
         implementation_id = _required(payload, "implementation_version_id")
         dependencies = _strings(payload.get("dependencies"))
         capabilities = _strings(payload.get("capabilities"))
-        runtime_requirements = _mapping(payload.get("runtime_requirements") or {}, "runtime_requirements")
+        runtime_requirements = _normalize_runtime_requirements(
+            kind,
+            _mapping(payload.get("runtime_requirements") or {}, "runtime_requirements"),
+        )
         resource_bounds = _mapping(payload.get("resource_bounds") or {}, "resource_bounds")
         provenance_refs = _mappings(payload.get("provenance_refs"))
         metadata = _mapping(payload.get("metadata") or {}, "metadata")
@@ -179,7 +187,7 @@ def build_implementation_version(
         dependencies=_strings(dependencies),
         authoring_origin=str(authoring_origin or "supplied").strip(),
         capabilities=_strings(capabilities),
-        runtime_requirements=dict(runtime_requirements or {}),
+        runtime_requirements=_normalize_runtime_requirements(kind, runtime_requirements or {}),
         resource_bounds=dict(resource_bounds or {}),
         provenance_refs=_mappings(provenance_refs),
         metadata=dict(metadata or {}),
@@ -292,6 +300,75 @@ def _normalize_parameter_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(payload["required"], SequenceABC) or isinstance(payload["required"], (str, bytes)):
         raise ValueError("parameter_schema.required must be an array")
     return payload
+
+
+def _normalize_runtime_requirements(
+    implementation_kind: str,
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    payload = _mapping(value, "runtime_requirements")
+    unknown = sorted(set(payload).difference({"prediction_requirements"}))
+    if unknown:
+        raise ValueError(f"unknown runtime_requirements fields: {unknown}")
+    raw_requirements = payload.get("prediction_requirements")
+    if raw_requirements is None:
+        return {}
+    if implementation_kind != "strategy":
+        raise ValueError("prediction_requirements are only valid for strategy implementations")
+    if not isinstance(raw_requirements, SequenceABC) or isinstance(raw_requirements, (str, bytes)):
+        raise ValueError("runtime_requirements.prediction_requirements must be an array")
+    requirements: list[dict[str, Any]] = []
+    names: set[str] = set()
+    allowed_fields = {
+        "name",
+        "accepted_semantics",
+        "accepted_horizons",
+        "accepted_output_shapes",
+        "inference_scopes",
+        "consumer_kind",
+        "required",
+    }
+    for raw in raw_requirements:
+        item = _mapping(raw, "prediction requirement")
+        unknown_fields = sorted(set(item).difference(allowed_fields))
+        if unknown_fields:
+            raise ValueError(f"unknown prediction requirement fields: {unknown_fields}")
+        name = str(item.get("name") or "").strip()
+        if not name or name in names:
+            raise ValueError("prediction requirement names must be present and unique")
+        semantics = _required_strings(item.get("accepted_semantics"), "accepted_semantics")
+        horizons = _required_strings(item.get("accepted_horizons"), "accepted_horizons")
+        shapes = _required_strings(item.get("accepted_output_shapes"), "accepted_output_shapes")
+        scopes = _required_strings(item.get("inference_scopes"), "inference_scopes")
+        consumer_kind = str(item.get("consumer_kind") or "").strip()
+        if set(shapes).difference(PREDICTION_OUTPUT_SHAPES):
+            raise ValueError(f"unsupported prediction output shape in requirement {name}")
+        if set(scopes).difference(PREDICTION_INFERENCE_SCOPES):
+            raise ValueError(f"unsupported prediction inference scope in requirement {name}")
+        if consumer_kind not in PREDICTION_CONSUMER_KINDS:
+            raise ValueError(f"unsupported prediction consumer_kind in requirement {name}")
+        names.add(name)
+        requirements.append(
+            {
+                "name": name,
+                "accepted_semantics": list(semantics),
+                "accepted_horizons": list(horizons),
+                "accepted_output_shapes": list(shapes),
+                "inference_scopes": list(scopes),
+                "consumer_kind": consumer_kind,
+                "required": bool(item.get("required", True)),
+            }
+        )
+    if not requirements:
+        raise ValueError("prediction_requirements cannot be empty when supplied")
+    return {"prediction_requirements": sorted(requirements, key=lambda item: item["name"])}
+
+
+def _required_strings(value: Any, label: str) -> tuple[str, ...]:
+    values = tuple(sorted(set(_strings(value))))
+    if not values:
+        raise ValueError(f"prediction requirement {label} cannot be empty")
+    return values
 
 
 def _required(payload: Mapping[str, Any], name: str) -> str:

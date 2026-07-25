@@ -88,11 +88,13 @@ def write_strategy_specification(
         """
         INSERT INTO research_strategy_specifications (
             strategy_specification_id, implementation_version_id, status,
-            source_hash, tunable_fields, payload
-        ) VALUES (%s, %s, %s, %s, %s, %s)
+            source_hash, tunable_fields, decision_scope, prediction_binding_count, payload
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (strategy_specification_id) DO UPDATE SET
             status = EXCLUDED.status,
             tunable_fields = EXCLUDED.tunable_fields,
+            decision_scope = EXCLUDED.decision_scope,
+            prediction_binding_count = EXCLUDED.prediction_binding_count,
             payload = EXCLUDED.payload
         """,
         [
@@ -101,6 +103,8 @@ def write_strategy_specification(
             payload.get("status") or record.status,
             payload.get("source_hash") or record.source_hash,
             [str(item) for item in payload.get("tunable_fields", [])],
+            str(payload.get("decision_scope") or "per_symbol"),
+            len(payload.get("prediction_bindings") or []),
             json_value(payload),
         ],
     )

@@ -123,6 +123,16 @@ async def _generate_stream_orders(
     order_queue: asyncio.Queue[Mapping[str, object] | None],
 ) -> None:
     """Generate enriched order intents from fresh per-symbol market events."""
+    if runtime.strategy.decision_scope == "universe_snapshot":
+        await _generate_universe_snapshot_orders(
+            runtime=runtime,
+            state=state,
+            event_queue=event_queue,
+            order_queue=order_queue,
+        )
+        return
+    if runtime.strategy.decision_scope != "per_symbol":
+        raise ValueError(f"unsupported strategy decision scope: {runtime.strategy.decision_scope}")
     while True:
         event = await event_queue.get()
         if event is None:
@@ -166,6 +176,74 @@ async def _generate_stream_orders(
             )
             state.counters.orders_emitted += 1
             await order_queue.put(enriched)
+
+
+async def _generate_universe_snapshot_orders(
+    *,
+    runtime: CycleStreamRuntime,
+    state: CycleStreamState,
+    event_queue: asyncio.Queue[MarketDataEvent | None],
+    order_queue: asyncio.Queue[Mapping[str, object] | None],
+) -> None:
+    """Collect one complete same-time universe before invoking the strategy once."""
+    plans = []
+    while True:
+        event = await event_queue.get()
+        if event is None:
+            break
+        plan = _plan_cycle_stream_market_event(
+            event,
+            enforce_staleness=runtime.enforce_staleness,
+            now=datetime.now(timezone.utc),
+            max_age_seconds=runtime.max_age_seconds,
+        )
+        if plan.should_skip:
+            raise RuntimeError(
+                f"universe_snapshot contains stale market data for {plan.symbol} at {plan.decision_ts.isoformat()}"
+            )
+        plans.append(plan)
+    expected = tuple(str(item).strip().upper() for item in runtime.config.market_data_symbols)
+    actual = tuple(plan.symbol for plan in plans)
+    if len(set(actual)) != len(actual):
+        raise RuntimeError("universe_snapshot contains duplicate symbols")
+    if set(actual) != set(expected) or len(actual) != len(expected):
+        raise RuntimeError(
+            f"universe_snapshot requires exactly the configured symbols: expected={list(expected)} actual={list(actual)}"
+        )
+    timestamps = {plan.decision_ts for plan in plans}
+    if len(timestamps) != 1:
+        raise RuntimeError("universe_snapshot market data is not aligned to one decision timestamp")
+    decision_ts = timestamps.pop()
+    price_lookup = {plan.symbol: plan.close_price for plan in plans}
+    state.latest_prices.update(
+        {plan.symbol: (decision_ts, plan.close_price) for plan in plans}
+    )
+    async for order in runtime.strategy.order_stream(
+        run_id=runtime.run_id,
+        cycle_id=runtime.cycle_id,
+        decision_ts=decision_ts,
+        event_store=runtime.event_store,
+        portfolio=runtime.portfolio,
+    ):
+        enriched = _attach_order_metadata(
+            [order],
+            run_id=runtime.run_id,
+            cycle_id=runtime.cycle_id,
+            created_at=decision_ts,
+            price_lookup=price_lookup,
+            asset_class=runtime.asset_class,
+            time_in_force=runtime.time_in_force,
+        )[0]
+        _record_order_events(runtime.event_store, [enriched], status="created")
+        _log_order_status(
+            "created",
+            enriched,
+            run_id=runtime.run_id,
+            cycle_id=runtime.cycle_id,
+        )
+        state.counters.orders_emitted += 1
+        await order_queue.put(enriched)
+    await order_queue.put(None)
 
 
 async def _validate_stream_orders(

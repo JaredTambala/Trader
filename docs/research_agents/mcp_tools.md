@@ -23,7 +23,7 @@ MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded 
 | Tracking projections | `trader_research.experiments` |
 | Evaluation tools | `trader_research.review` |
 | Adversarial tools | `trader_research.review` |
-| ML Agent tools (planned, not registered) | `trader_research.ml` plus an optional `trader_mlflow` integration adapter |
+| ML Agent deployment tools | `trader_research.ml` plus the optional lazy `trader_mlflow` inference adapter |
 
 ## Support Tools
 
@@ -106,6 +106,17 @@ knowledge base. They are not currently being expanded toward autonomous book-sca
 - Composite claim-graph methodology work is deferred under tracker item 33AC. Maintenance continues for correctness,
   persistence integrity, citation validity, security, and regressions affecting existing supported workflows.
 
+## ML Agent Tools
+
+| Tool | Side effect | Primary output | Notes |
+| --- | --- | --- | --- |
+| `ml_create_deployment_manifest` | `local_mutating` | `ml_deployment_manifest`. | Pins passed model/feature evidence, adapter identity, raw output contract, inference policy/scope, parity fixture, and backtest/paper eligibility. It contains no trading thresholds or sizing policy. |
+| `ml_validate_deployment` | `local_mutating` | `ml_deployment_validation_report`. | Rechecks immutable lineage and adapter configuration, loads the pinned model, and executes parity. Requires `TRADER_MCP_ALLOW_ML_RUNTIME=true`. |
+
+Both tools require a configured `ResearchArtifactStore`; no filesystem fallback exists. The first tool does not load a
+model, but it rejects unknown or unavailable adapter profiles. The second is the controlled model-loading boundary.
+Neither tool writes to MLflow, changes an alias, starts a service, grants live eligibility, or mutates broker state.
+
 ## Quant Research Supervisor Tools
 
 | Tool | Side effect | Primary output | Notes |
@@ -162,6 +173,8 @@ The config envelope reports static registration flags plus runtime policy:
 - Optuna writes require `TRADER_MCP_ALLOW_EXTERNAL_RESEARCH_WRITES` and `TRADER_MCP_ALLOW_OPTUNA_WRITES`.
 - Tracking projection requires `TRADER_MCP_ALLOW_EXTERNAL_RESEARCH_WRITES` and
   `TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES`.
+- Deployment parity and model-backed backtest inference require `TRADER_MCP_ALLOW_ML_RUNTIME`; manifest creation is a
+  DB-only operation and remains callable with that gate false.
 - Data loading mutation is separately gated by `TRADER_MCP_ALLOW_DATA_LOADING`.
 - Provider-catalog symbol discovery is separately gated by symbol-provider discovery policy.
 - Mutating method/strategy/risk/portfolio/evaluation MCP flows require a configured or injected research artifact store.
@@ -184,10 +197,10 @@ The next planned tool work is not additional knowledge extraction. It is:
 None of those future surfaces should execute prompt text directly. AI-produced code is supplied as an explicit source
 artifact and passes the same validation and backtest-only restrictions as handwritten code.
 
-## Planned MLflow Tool Universe
+## Remaining Planned MLflow Tool Universe
 
-No tool in this section is registered yet. Tracker tasks 39A-39J define the intended deterministic services; task 40
-adds agent orchestration only after they are proven.
+The 39H-I deployment tools above are registered. The tools in this section remain planned; task 40 adds agent
+orchestration only after the deterministic lifecycle is proven.
 
 | Phase | Planned tools | Intended side effect and gate |
 | --- | --- | --- |
@@ -200,7 +213,6 @@ adds agent orchestration only after they are proven.
 | Model evaluation | `ml_evaluate_model`, `ml_compare_model_versions` | Bounded compute plus Trader/MLflow evaluation artifacts; no trading-profitability verdict. |
 | Registry | `ml_register_model_version`, `ml_get_model_version`, `ml_list_model_versions`, `ml_resolve_model_alias` | Registry writes use the external research mutation class; reads are read-only. |
 | Promotion | `ml_assign_model_alias` | External research mutation with an independent default-off promotion gate and passed promotion report. |
-| Deployment evidence | `ml_create_deployment_manifest`, `ml_validate_deployment` | Trader DB mutation; creates version-pinned backtest/paper configuration, not a live service change. |
 | Monitoring | `ml_summarize_predictions`, `ml_compute_drift_report` | Reads persisted prediction events and writes bounded ML-owned reports outside the hot path. |
 
 The side-effect vocabulary now includes `external_research_mutating`. `local_mutating` is accurate for Trader Postgres

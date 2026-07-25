@@ -29,6 +29,7 @@ class McpEnvironment:
         allow_external_research_writes: Whether any external research projection is allowed.
         allow_optuna_writes: Whether configured Optuna sampler state may be mutated.
         allow_experiment_tracking_writes: Whether tracking sinks may be mutated.
+        allow_ml_runtime: Whether configured model adapters may load models for parity or inference.
     """
 
     environment: str
@@ -51,12 +52,14 @@ class McpEnvironment:
     allow_external_research_writes: bool = False
     allow_optuna_writes: bool = False
     allow_experiment_tracking_writes: bool = False
+    allow_ml_runtime: bool = False
     optuna_storage_url: str = ""
     optuna_study_prefix: str = "trader"
     optuna_schema: str = "trader_optuna"
     optuna_role: str = "trader_optuna_writer"
     mlflow_tracking_uri: str = ""
     mlflow_optimization_experiment: str = "trader-backtest-optimization"
+    mlflow_inference_profile: str = "mlflow_local_pyfunc"
 
     def policy_flags(self) -> dict[str, bool]:
         """Return environment policy flags.
@@ -74,6 +77,7 @@ class McpEnvironment:
             "allow_external_research_writes": self.allow_external_research_writes,
             "allow_optuna_writes": self.allow_optuna_writes,
             "allow_experiment_tracking_writes": self.allow_experiment_tracking_writes,
+            "allow_ml_runtime": self.allow_ml_runtime,
         }
 
     def embeddings_env(self) -> dict[str, str]:
@@ -141,6 +145,7 @@ def load_local_environment(env_path: str | Path | None = None) -> McpEnvironment
         allow_experiment_tracking_writes=_optional_bool_env(
             "TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES", file_values
         ),
+        allow_ml_runtime=_optional_bool_env("TRADER_MCP_ALLOW_ML_RUNTIME", file_values),
         optuna_storage_url=_optional_env("TRADER_OPTUNA_STORAGE_URL", file_values),
         optuna_study_prefix=_optional_env("TRADER_OPTUNA_STUDY_PREFIX", file_values) or "trader",
         optuna_schema=_optional_env("TRADER_OPTUNA_SCHEMA", file_values) or "trader_optuna",
@@ -149,6 +154,10 @@ def load_local_environment(env_path: str | Path | None = None) -> McpEnvironment
         mlflow_optimization_experiment=(
             _optional_env("TRADER_MLFLOW_OPTIMIZATION_EXPERIMENT", file_values)
             or "trader-backtest-optimization"
+        ),
+        mlflow_inference_profile=(
+            _optional_env("TRADER_MLFLOW_INFERENCE_PROFILE", file_values)
+            or "mlflow_local_pyfunc"
         ),
     )
 

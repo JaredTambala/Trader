@@ -11,6 +11,7 @@ from mcp.types import CallToolResult
 
 from trader.config import Config
 from trader.event_store import EventStore
+from trader.predictions import PredictionRuntimeResolver
 from trader_mcp.adapters import result_to_mcp_result
 from trader_mcp.contracts import SideEffect, ToolEnvelope, error_envelope
 from trader_mcp.constants import (
@@ -69,7 +70,12 @@ from trader_research.experiments import (
     validate_strategy_implementation,
     validate_strategy_specification,
 )
-from trader_research.foundation import ApplicationResult, ResearchArtifactStore
+from trader_research.foundation import (
+    ApplicationResult,
+    PredictionDeploymentReader,
+    PredictionMapperCatalog,
+    ResearchArtifactStore,
+)
 from trader_research.infrastructure.execution import (
     PostgresBacktestOptimizationTrialExecutor,
 )
@@ -78,6 +84,8 @@ from trader_research.infrastructure.execution import (
 EventStoreProvider = Callable[[], EventStore]
 ToolConfigProvider = Callable[[], Config]
 ResearchArtifactStoreProvider = Callable[[], ResearchArtifactStore]
+PredictionDeploymentReaderProvider = Callable[[], PredictionDeploymentReader]
+PredictionRuntimeResolverProvider = Callable[[], PredictionRuntimeResolver]
 ServiceResult = ApplicationResult | ToolEnvelope
 
 
@@ -90,6 +98,9 @@ def register_research_tools(
     artifact_store_provider: ResearchArtifactStoreProvider | None = None,
     optimizer_registry: OptimizationEngineRegistry | None = None,
     tracking_sink_registry: ExperimentTrackingSinkRegistry | None = None,
+    prediction_deployment_reader_provider: PredictionDeploymentReaderProvider | None = None,
+    prediction_mapper_catalog: PredictionMapperCatalog | None = None,
+    prediction_runtime_resolver_provider: PredictionRuntimeResolverProvider | None = None,
 ) -> None:
     """Register implementation, specification, backtest, and optimisation tools."""
     engines = optimizer_registry or OptimizationEngineRegistry()
@@ -102,6 +113,13 @@ def register_research_tools(
 
     def _result(result: ServiceResult) -> CallToolResult:
         return CallToolResult(**result_to_mcp_result(result))
+
+    def _prediction_reader() -> PredictionDeploymentReader | None:
+        return (
+            prediction_deployment_reader_provider()
+            if prediction_deployment_reader_provider is not None
+            else None
+        )
 
     def _blocked(
         command: str, code: str, message: str, side_effect: SideEffect
@@ -404,6 +422,7 @@ def register_research_tools(
         execution_assumptions: dict[str, Any] | None = None,
         tunable_fields: list[str] | None = None,
         provenance_refs: list[dict[str, Any]] | None = None,
+        prediction_bindings: list[dict[str, Any]] | None = None,
     ) -> CallToolResult:
         return _result(
             create_strategy_specification(
@@ -415,6 +434,9 @@ def register_research_tools(
                 execution_assumptions=execution_assumptions,
                 tunable_fields=tunable_fields,
                 provenance_refs=provenance_refs,
+                prediction_bindings=prediction_bindings,
+                prediction_deployment_reader=_prediction_reader(),
+                prediction_mapper_catalog=prediction_mapper_catalog,
                 artifact_store=_store(),
             )
         )
@@ -435,6 +457,8 @@ def register_research_tools(
                 strategy_specification_id=strategy_specification_id,
                 strategy_specification_uri=strategy_specification_uri,
                 strategy_specification=strategy_specification,
+                prediction_deployment_reader=_prediction_reader(),
+                prediction_mapper_catalog=prediction_mapper_catalog,
                 artifact_store=_store(),
             )
         )
@@ -519,6 +543,8 @@ def register_research_tools(
                 parent_specification_ref=parent_specification_ref,
                 selection_origin_ref=selection_origin_ref,
                 variant_reason=variant_reason,
+                prediction_deployment_reader=_prediction_reader(),
+                prediction_mapper_catalog=prediction_mapper_catalog,
                 artifact_store=_store(),
             )
         )
@@ -539,6 +565,8 @@ def register_research_tools(
                 backtest_specification_id=backtest_specification_id,
                 backtest_specification_uri=backtest_specification_uri,
                 backtest_specification=backtest_specification,
+                prediction_deployment_reader=_prediction_reader(),
+                prediction_mapper_catalog=prediction_mapper_catalog,
                 artifact_store=_store(),
             )
         )
@@ -565,6 +593,14 @@ def register_research_tools(
                 event_store=event_store_provider(),
                 config=backtest_config_provider(),
                 backtest_specification_validation_ref=backtest_specification_validation_ref,
+                prediction_deployment_reader=_prediction_reader(),
+                prediction_mapper_catalog=prediction_mapper_catalog,
+                prediction_runtime_resolver=(
+                    prediction_runtime_resolver_provider()
+                    if environment.allow_ml_runtime
+                    and prediction_runtime_resolver_provider is not None
+                    else None
+                ),
                 artifact_store=_store(),
             )
 

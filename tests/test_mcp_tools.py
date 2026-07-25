@@ -216,6 +216,7 @@ def test_config_output_includes_data_tools_and_excludes_unsafe_tools() -> None:
             "external_research_writes_allowed": False,
             "optuna_writes_allowed": False,
             "experiment_tracking_writes_allowed": False,
+            "ml_runtime_allowed": False,
         }
 
     anyio.run(_run)

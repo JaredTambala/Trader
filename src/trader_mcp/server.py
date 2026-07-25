@@ -50,6 +50,8 @@ from trader_mcp.constants import (
     MATH_RUN_SIGNAL_FIXTURES_TOOL,
     MATH_TOOL_DESCRIPTIONS,
     MATH_TOOL_NAMES,
+    ML_TOOL_DESCRIPTIONS,
+    ML_TOOL_NAMES,
     REGISTERED_TOOL_NAMES,
     RESEARCH_GET_BACKTEST_RESULTS_TOOL,
     RESEARCH_GET_OPTIMIZER_RUNTIME_TOOL,
@@ -67,6 +69,7 @@ from trader_mcp.constants import (
 from trader_mcp.environment import McpEnvironment, load_local_environment
 from trader_mcp.evaluation_tools import register_evaluation_tools
 from trader_mcp.knowledge_tools import register_quant_methods_tools
+from trader_mcp.ml_tools import register_ml_tools
 from trader_mcp.research_tools import register_research_tools
 from trader_research.governance import agent_owner_for_tool
 from trader_research.foundation import ResearchArtifactStore, UnavailableResearchArtifactStore
@@ -98,6 +101,13 @@ from trader_research.knowledge import (
     embedding_runtime_summary,
 )
 from trader_research.experiments import ExperimentTrackingSinkRegistry, OptimizationEngineRegistry
+from trader_research.ml import (
+    ArtifactPredictionDeploymentReader,
+    ArtifactPredictionRuntimeResolver,
+    InferenceAdapterRegistry,
+)
+from trader_mlflow import MLflowLocalPyfuncAdapter
+from trader_standard.predictions import MaintainedPredictionMapperCatalog
 from trader_research.infrastructure.providers.alpaca import AlpacaSymbolCatalogProvider
 from trader_research.infrastructure.providers.mlflow import MLflowExperimentTrackingSink
 from trader_research.infrastructure.providers.optuna import OptunaOptimizationEngine
@@ -145,6 +155,8 @@ def create_server(
     backtest_config_provider: ToolConfigProvider | None = None,
     optimizer_registry: OptimizationEngineRegistry | None = None,
     tracking_sink_registry: ExperimentTrackingSinkRegistry | None = None,
+    inference_adapter_registry: InferenceAdapterRegistry | None = None,
+    prediction_mapper_catalog: MaintainedPredictionMapperCatalog | None = None,
 ) -> FastMCP:
     """Create the MCP server and register the configured bounded tool catalog.
 
@@ -182,6 +194,29 @@ def create_server(
             )
         ]
     )
+    resolved_inference_adapter_registry = inference_adapter_registry or InferenceAdapterRegistry(
+        adapters=(
+            MLflowLocalPyfuncAdapter(
+                profile_name=local_env.mlflow_inference_profile,
+                tracking_uri=local_env.mlflow_tracking_uri,
+            ),
+        )
+        if local_env.mlflow_tracking_uri
+        else ()
+    )
+    resolved_prediction_mapper_catalog = (
+        prediction_mapper_catalog or MaintainedPredictionMapperCatalog()
+    )
+
+    def _prediction_deployment_reader() -> ArtifactPredictionDeploymentReader:
+        return ArtifactPredictionDeploymentReader(resolved_research_artifact_store_provider())
+
+    def _prediction_runtime_resolver() -> ArtifactPredictionRuntimeResolver:
+        return ArtifactPredictionRuntimeResolver(
+            artifact_store=resolved_research_artifact_store_provider(),
+            adapter_registry=resolved_inference_adapter_registry,
+            mapper_catalog=resolved_prediction_mapper_catalog,
+        )
     resolved_data_loading_policy = data_loading_policy or DataEnsureLoadedPolicy(
         allow_data_loading=local_env.allow_data_loading,
         backfill_config_path=local_env.trader_config_path,
@@ -403,6 +438,12 @@ def create_server(
         artifact_store_provider=resolved_research_artifact_store_provider,
         method_generation_llm_client=method_generation_llm_client,
     )
+    register_ml_tools(
+        server,
+        local_env,
+        artifact_store_provider=resolved_research_artifact_store_provider,
+        adapter_registry=resolved_inference_adapter_registry,
+    )
     register_research_tools(
         server,
         local_env,
@@ -411,6 +452,9 @@ def create_server(
         artifact_store_provider=resolved_research_artifact_store_provider,
         optimizer_registry=resolved_optimizer_registry,
         tracking_sink_registry=resolved_tracking_sink_registry,
+        prediction_deployment_reader_provider=_prediction_deployment_reader,
+        prediction_mapper_catalog=resolved_prediction_mapper_catalog,
+        prediction_runtime_resolver_provider=_prediction_runtime_resolver,
     )
     register_evaluation_tools(server, local_env, artifact_store_provider=resolved_research_artifact_store_provider)
     register_adversarial_tools(server, artifact_store_provider=resolved_research_artifact_store_provider)
@@ -625,6 +669,15 @@ def build_config_envelope(
         {
             "name": tool_name,
             "agent_owner": agent_owner_for_tool(tool_name),
+            "side_effect": SideEffect.LOCAL_MUTATING.value,
+            "description": ML_TOOL_DESCRIPTIONS[tool_name],
+        }
+        for tool_name in ML_TOOL_NAMES
+    )
+    tool_metadata.extend(
+        {
+            "name": tool_name,
+            "agent_owner": agent_owner_for_tool(tool_name),
             "side_effect": SideEffect.LOCAL_MUTATING.value
             if tool_name
             in {
@@ -716,6 +769,7 @@ def build_config_envelope(
         "optuna_writes_allowed": local_env.allow_optuna_writes,
         "external_research_writes_allowed": local_env.allow_external_research_writes,
         "experiment_tracking_writes_allowed": local_env.allow_experiment_tracking_writes,
+        "ml_runtime_allowed": local_env.allow_ml_runtime,
     }
     return success_envelope(
         command=MCP_CONFIG_TOOL,
@@ -752,6 +806,13 @@ def build_config_envelope(
                 "canonical_store": "research_artifacts",
                 "mlflow_profile_configured": bool(local_env.mlflow_tracking_uri),
                 "authority": "analytical_projection_only",
+            },
+            "ml_inference_runtime": {
+                "canonical_store": "research_artifacts",
+                "profile_name": local_env.mlflow_inference_profile,
+                "mlflow_tracking_uri_configured": bool(local_env.mlflow_tracking_uri),
+                "runtime_allowed": local_env.allow_ml_runtime,
+                "resolution": "session_start_only",
             },
             "tool_count": len(tool_metadata),
             "tools": tool_metadata,

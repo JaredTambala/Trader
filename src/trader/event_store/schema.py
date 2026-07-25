@@ -15,6 +15,7 @@ POSTGRES_EVENT_TABLES: Final[frozenset[str]] = frozenset(
         "crypto_bar_events",
         "signal_events",
         "indicator_events",
+        "prediction_events",
         "order_events",
         "fill_events",
         "position_snapshots",
@@ -194,11 +195,19 @@ POSTGRES_SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
                 session_id TEXT,
                 cycle_id TEXT,
                 symbol TEXT,
+                signal_name TEXT,
                 signal_value DOUBLE PRECISION,
                 target_qty DOUBLE PRECISION,
-                generated_at TIMESTAMPTZ
+                generated_at TIMESTAMPTZ,
+                prediction_event_refs TEXT,
+                mapper_id TEXT,
+                payload TEXT
             )
             """,
+            "ALTER TABLE signal_events ADD COLUMN IF NOT EXISTS signal_name TEXT",
+            "ALTER TABLE signal_events ADD COLUMN IF NOT EXISTS prediction_event_refs TEXT",
+            "ALTER TABLE signal_events ADD COLUMN IF NOT EXISTS mapper_id TEXT",
+            "ALTER TABLE signal_events ADD COLUMN IF NOT EXISTS payload TEXT",
             """
             CREATE TABLE IF NOT EXISTS indicator_events (
                 run_id TEXT,
@@ -208,6 +217,29 @@ POSTGRES_SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
                 indicator_name TEXT,
                 value DOUBLE PRECISION,
                 bar_ts TIMESTAMPTZ,
+                payload TEXT
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS prediction_events (
+                prediction_event_id TEXT PRIMARY KEY,
+                run_id TEXT,
+                session_id TEXT,
+                cycle_id TEXT,
+                deployment_id TEXT,
+                deployment_validation_id TEXT,
+                model_version_id TEXT,
+                feature_set_id TEXT,
+                feature_batch_hash TEXT,
+                decision_ts TIMESTAMPTZ,
+                symbol TEXT,
+                output_name TEXT,
+                semantics TEXT,
+                horizon TEXT,
+                value_payload TEXT,
+                latency_ms DOUBLE PRECISION,
+                status TEXT,
+                error_message TEXT,
                 payload TEXT
             )
             """,
@@ -237,6 +269,7 @@ POSTGRES_SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
                 status TEXT,
                 broker_order_id TEXT,
                 rejection_reason TEXT,
+                decision_evidence TEXT,
                 created_at TIMESTAMPTZ
             )
             """,
@@ -247,6 +280,10 @@ POSTGRES_SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
             """
             ALTER TABLE order_events
             ADD COLUMN IF NOT EXISTS session_id TEXT
+            """,
+            """
+            ALTER TABLE order_events
+            ADD COLUMN IF NOT EXISTS decision_evidence TEXT
             """,
             """
             ALTER TABLE order_events
@@ -368,6 +405,18 @@ POSTGRES_SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
             """
             CREATE INDEX IF NOT EXISTS indicator_events_session_id_idx
             ON indicator_events(session_id)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS prediction_events_run_id_idx
+            ON prediction_events(run_id)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS prediction_events_session_id_idx
+            ON prediction_events(session_id)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS prediction_events_model_version_id_idx
+            ON prediction_events(model_version_id)
             """,
             """
             CREATE INDEX IF NOT EXISTS order_events_run_id_idx

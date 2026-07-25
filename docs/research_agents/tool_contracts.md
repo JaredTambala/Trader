@@ -23,7 +23,8 @@ implementation/specification cutover is complete: strategy/risk candidates, cand
 backtest requests, filesystem run identities, and `evaluation_generate_performance_report` are not registered. Current
 execution begins with content-addressed implementation versions and immutable specifications. Provider-neutral
 parameter optimisation, explicit tracking projection, sealed-holdout Evaluation, and independent Adversarial audit are
-registered. ML feature/training/model lifecycle tools and broader robustness remain planned.
+registered. ML deployment/runtime strategy integration is registered; ML feature/training/evaluation/registry and drift
+tools plus broader robustness remain planned.
 
 Canonical loaders recompute content-addressed IDs and validation lineage at use time. Optimisation startup rechecks the
 pinned base specification, implementation hashes, dataset/quality snapshots, objective source, and provider profile;
@@ -34,10 +35,10 @@ trial ledger, objective values, deterministic selection, and selected child refs
 Knowledge-base and bounded methodology contracts remain implemented and maintained at the 33AB baseline. Composite
 methodology expansion is deferred under 33AC.
 
-### Planned MLflow Contract Invariants
+### MLflow Contract Invariants
 
-Tasks 39A-39J will add the ML contracts; none are currently callable. All ML requests and artifacts must obey these
-rules:
+Tasks 39H-I implement the runtime/deployment subset; 39A-G/J remain planned. All current and future ML requests and
+artifacts obey these rules:
 
 - MLflow tracking and registry locations come from approved server configuration, not request payloads.
 - MLflow experiment/run/model refs are reconciled into Trader Postgres artifacts with source, dataset, feature,
@@ -213,7 +214,7 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | `ml_get_training_run`, `ml_reconcile_mlflow_run` | ML Agent | planned reconciled `mlflow_run_ref` |
 | `ml_evaluate_model`, `ml_compare_model_versions` | ML Agent | planned time-series model evaluation/comparison reports |
 | `ml_register_model_version`, `ml_get_model_version`, `ml_list_model_versions`, `ml_resolve_model_alias`, `ml_assign_model_alias` | ML Agent | planned immutable model-version and promotion artifacts |
-| `ml_create_deployment_manifest`, `ml_validate_deployment` | ML Agent | planned version-pinned deployment evidence |
+| `ml_create_deployment_manifest`, `ml_validate_deployment` | ML Agent | registered version-pinned deployment evidence and parity validation |
 | `ml_summarize_predictions`, `ml_compute_drift_report` | ML Agent | planned prediction and drift artifacts |
 | `hypothesis_create_card` | Hypothesis Agent | `hypothesis_card.json` |
 | `research_create_plan` | Quant Research Supervisor Agent | experiment plan |
@@ -256,7 +257,8 @@ because their module globals expose ambient interpreter modules. These are bound
 that arbitrary Python is an operating-system security sandbox.
 
 `research_create_strategy_specification` consumes one passed strategy implementation validation and explicit
-parameters, sizing, portfolio mode, runtime context, assumptions, tunable-field declarations, and optional provenance.
+parameters, sizing, portfolio mode, runtime context, assumptions, tunable-field declarations, optional provenance, and
+optional typed prediction bindings required by that implementation.
 Symbols, dates, timeframe, source, and live/broker/raw-SQL permissions are forbidden. The validation tool resolves the
 exact source hash again. Risk-stack creation similarly consumes an ordered non-empty array of passed risk implementation
 validations with explicit parameters and tunable fields, then revalidates order and every source hash.
@@ -276,6 +278,32 @@ ownership, status, specification, source hashes, dataset hashes, result identity
 revalidate. Drift blocks the call; valid persisted evidence is not overwritten or replayed.
 `research_get_backtest_results` accepts exactly one run ID or DB URI. Comparison accepts 2-50 canonical run refs plus a
 numeric ranking metric/order. No new execution service reads or returns a durable filesystem path.
+
+### Runtime Prediction And Deployment Contracts
+
+`ml_create_deployment_manifest` accepts passed immutable `ml_model_version_ref` and
+`ml_feature_set_validation_report` refs, one configured adapter profile, a typed raw-output contract, inference scope,
+bounded failure/latency policy, credential-free environment digest, deterministic parity fixture, and backtest/paper
+eligibility. It writes canonical `ml_deployment_manifest` evidence to Trader Postgres. Strategy thresholds, mapping,
+sizing, allocation, symbols, broker controls, credentials, mutable aliases, and live eligibility are rejected or absent.
+
+`ml_validate_deployment` accepts exactly one persisted deployment ID, URI, or matching inline payload. It rechecks
+model/feature snapshots, content-derived IDs, adapter version/configuration, and availability, then loads the pinned
+model and compares normalized parity output hashes. Model loading requires `TRADER_MCP_ALLOW_ML_RUNTIME=true`. A passed
+report remains subject to the same drift checks whenever a strategy specification or run resolves it.
+
+A strategy implementation declares named `prediction_requirements` in its closed `runtime_requirements`: accepted raw
+semantics, horizons, scalar/structured shapes, inference scopes, consumer kind, and required status. Its strategy
+specification binds each name to one passed deployment validation, selected output names, and a maintained versioned
+mapper with explicit parameters. The normalized deployment, output, and mapper snapshots contribute to the strategy
+specification and backtest-run identities. The deployment stays ML-owned; the Supervisor-owned binding contains the
+trading interpretation.
+
+At run composition, the resolver revalidates all evidence and constructs `FeatureProvider`, `Predictor`, and mapper
+objects once. `per_symbol` decisions use independent symbol callbacks. `universe_snapshot` decisions require an exact,
+synchronized configured universe and execute once per complete timestamp; stale, missing, duplicate, or misaligned
+members fail closed. Bounded `prediction_events` record model/deployment/feature hashes and raw outputs before mapped
+`signal_events`; created orders carry those refs in `decision_evidence` and still pass through normal risk processing.
 
 An optimisation plan consumes a passed selection-region backtest-spec validation, a sealed chronological holdout Data
 Agent manifest and matching quality report, one passed `optimization_objective` validation, direction, typed finite
@@ -708,7 +736,7 @@ Minimal allowlists:
 | Data Agent | `data_get_inventory`, `data_summarize_quality`, `data_ensure_loaded`, read-only health/config |
 | Quant Research Supervisor Agent | Specialist artifact reads, supervisor handoff tools, `research_*` tools |
 | Quantitative Methods Agent | `knowledge_*` retrieval/ingestion/citation tools, `math_list_method_contracts`, `math_validate_method_contract`, fixture, diagnostic, multiple-testing, method-packaging, and optional kernel tools |
-| ML Agent | Planned 39A-39J `ml_*` lifecycle tools only; none are registered yet. |
+| ML Agent | Registered `ml_create_deployment_manifest` and `ml_validate_deployment`; remaining 39A-G/J lifecycle tools are planned. |
 | Hypothesis Agent | Ingredient artifact reads, `hypothesis_create_card` |
 | Evaluation Agent | Canonical backtest reads, `evaluation_generate_parameter_optimization_report`, later broader reports |
 | Adversarial Agent | Canonical plan/run reads and registered parameter-optimisation audit tools |

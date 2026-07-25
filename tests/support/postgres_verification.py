@@ -99,6 +99,8 @@ KNOWLEDGE_TABLES = (
 )
 RESEARCH_TABLES = (
     "research_artifacts",
+    "research_ml_deployments",
+    "research_ml_deployment_validations",
     "research_implementation_versions",
     "research_implementation_validations",
     "research_strategy_specifications",

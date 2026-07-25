@@ -68,9 +68,13 @@ RESEARCH_ARTIFACT_SCHEMA_STATEMENTS: tuple[str, ...] = (
         status TEXT NOT NULL,
         source_hash TEXT NOT NULL,
         tunable_fields TEXT[] NOT NULL DEFAULT '{}',
+        decision_scope TEXT NOT NULL DEFAULT 'per_symbol',
+        prediction_binding_count INTEGER NOT NULL DEFAULT 0,
         payload JSONB NOT NULL
     )
     """,
+    "ALTER TABLE research_strategy_specifications ADD COLUMN IF NOT EXISTS decision_scope TEXT NOT NULL DEFAULT 'per_symbol'",
+    "ALTER TABLE research_strategy_specifications ADD COLUMN IF NOT EXISTS prediction_binding_count INTEGER NOT NULL DEFAULT 0",
     """
     CREATE TABLE IF NOT EXISTS research_strategy_specification_validations (
         validation_id TEXT PRIMARY KEY,
@@ -254,12 +258,39 @@ RESEARCH_ARTIFACT_SCHEMA_STATEMENTS: tuple[str, ...] = (
         payload JSONB NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS research_ml_deployments (
+        deployment_id TEXT PRIMARY KEY,
+        model_version_id TEXT NOT NULL,
+        feature_set_id TEXT NOT NULL,
+        adapter_profile TEXT NOT NULL,
+        inference_scope TEXT NOT NULL,
+        decision_scope TEXT NOT NULL,
+        eligibility TEXT[] NOT NULL DEFAULT '{}',
+        status TEXT NOT NULL,
+        payload JSONB NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS research_ml_deployment_validations (
+        validation_id TEXT PRIMARY KEY,
+        deployment_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        valid BOOLEAN NOT NULL,
+        adapter_status TEXT NOT NULL,
+        payload JSONB NOT NULL
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS research_artifacts_type_status_idx ON research_artifacts(artifact_type, status)",
     (
         "CREATE INDEX IF NOT EXISTS research_methodology_candidates_status_idx "
         "ON research_methodology_candidates(status)"
     ),
     "CREATE INDEX IF NOT EXISTS research_backtest_runs_kind_status_idx ON research_backtest_runs(backtest_kind, status)",
+    (
+        "CREATE INDEX IF NOT EXISTS research_ml_deployments_model_status_idx "
+        "ON research_ml_deployments(model_version_id, status)"
+    ),
     (
         "CREATE INDEX IF NOT EXISTS research_optimization_trials_run_sequence_idx "
         "ON research_parameter_optimization_trials(optimization_run_id, sequence)"

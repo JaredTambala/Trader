@@ -519,7 +519,7 @@ def test_tracker_records_57k_remediation_and_rerun_boundary() -> None:
         assert phrase in normalized_tracker
 
 
-def test_docs_define_complete_planned_mlflow_lifecycle_and_runtime_boundary() -> None:
+def test_docs_define_mlflow_lifecycle_and_implemented_runtime_boundary() -> None:
     architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
     agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
     catalog = (DOC_ROOT / "mcp_tools.md").read_text(encoding="utf-8")
@@ -532,10 +532,15 @@ def test_docs_define_complete_planned_mlflow_lifecycle_and_runtime_boundary() ->
     assert "Random train/test splitting must not be the default" in architecture
     assert "must never change model behavior merely because an MLflow alias was reassigned" in architecture
     assert "The trading hot path must not call MCP" in architecture
+    assert "### Implemented Runtime Slice" in architecture
     assert "## ML Lifecycle Ownership" in agents
-    assert "## Planned MLflow Tool Universe" in catalog
+    assert "## ML Agent Tools" in catalog
+    assert "## Remaining Planned MLflow Tool Universe" in catalog
+    assert "`ml_create_deployment_manifest`" in catalog
+    assert "`ml_validate_deployment`" in catalog
     assert "external_research_mutating" in contracts
-    assert "## Planned MLflow Model Lifecycle" in workflows
+    assert "### Runtime Prediction And Deployment Contracts" in contracts
+    assert "## MLflow Model Lifecycle And Runtime Integration" in workflows
     assert "| 39A. MLflow Runtime Adapter And Mutation Policy | Planned |" in tracker
     assert "| 39J. Prediction Monitoring And Drift | Planned |" in tracker
     assert "| 40. ML Agent Graph and Handoff | Deferred |" in tracker

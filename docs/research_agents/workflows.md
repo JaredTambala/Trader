@@ -97,9 +97,12 @@ The Data Agent owns symbol discovery, dataset manifests, data-quality reports, a
 strategy, backtest, and evaluation tools should consume Data Agent dataset/quality artifacts rather than loose symbols,
 timeframes, or date windows.
 
-## Planned MLflow Model Lifecycle
+## MLflow Model Lifecycle And Runtime Integration
 
-This workflow is the target for tasks 39A-39J; its `ml_*` tools are not registered yet.
+The feature/training/evaluation/registry stages remain planned under 39A-G, while deployment and model-backed execution
+are implemented by 39H-I. Until 39A-G is delivered, the registered deployment tools require passed feature-set and
+immutable model-version artifacts supplied through controlled direct/test setup rather than a complete MCP-only
+training graph.
 
 ```text
 configured MLflow tracking and registry instance
@@ -138,6 +141,24 @@ limited to backtest and paper environments; live runtime changes remain explicit
 Model evaluation and strategy evaluation remain separate. The ML Agent can establish predictive performance,
 calibration, stability, and leakage status. Only downstream strategy backtests and Evaluation reports can establish
 whether those predictions produce useful trading evidence after costs and risk controls.
+
+The implemented execution segment is:
+
+```text
+persisted immutable model version + passed feature-set validation
+  -> ml_create_deployment_manifest
+  -> ml_validate_deployment, with TRADER_MCP_ALLOW_ML_RUNTIME=true
+  -> strategy implementation declaring prediction_requirements
+  -> research_create_strategy_specification with typed prediction_bindings
+  -> strategy/backtest specification validation
+  -> research_run_backtest_specification with backtest and ML-runtime gates
+  -> prediction_events -> mapped signal_events -> order decision_evidence -> risk/fill/backtest evidence
+```
+
+Manifest creation is DB-only. Validation and backtest inference load the pinned model once through the configured
+adapter; neither resolves a mutable alias or calls MCP/MLflow tracking APIs per decision. Cross-sectional and portfolio
+deployments become `universe_snapshot` strategy decisions and run once only when the complete symbol set shares one
+decision timestamp.
 
 ## Parameter Optimisation And Independent Audit
 

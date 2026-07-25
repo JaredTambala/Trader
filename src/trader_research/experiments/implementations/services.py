@@ -8,6 +8,7 @@ from trader_research.foundation import ApplicationResult, error_result, success_
 from trader_research.foundation.artifacts import SCHEMA_VERSION
 
 from datetime import datetime, timezone
+from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from trader.event_store import NoOpEventStore
@@ -295,13 +296,45 @@ def _runtime_fixture(
     fixture: dict[str, Any]
     try:
         if implementation.implementation_kind == "strategy":
+            prediction_requirements = list(
+                implementation.runtime_requirements.get("prediction_requirements") or []
+            )
+            fixture_bindings = tuple(
+                _FixturePredictionBinding(
+                    binding_name=str(item["name"]),
+                    decision_scope=(
+                        "per_symbol"
+                        if item.get("inference_scopes") == ["per_symbol"]
+                        else "universe_snapshot"
+                    ),
+                )
+                for item in prediction_requirements
+            )
             strategy = instantiate_strategy(
                 implementation,
                 symbols=["SYNTH"],
                 asset_class="stocks",
                 timeframe="1Min",
                 parameters=parameters,
+                prediction_bindings=fixture_bindings if prediction_requirements else None,
             )
+            if prediction_requirements:
+                second = instantiate_strategy(
+                    implementation,
+                    symbols=["SYNTH"],
+                    asset_class="stocks",
+                    timeframe="1Min",
+                    parameters=parameters,
+                    prediction_bindings=fixture_bindings,
+                )
+                if strategy.strategy_id != second.strategy_id:
+                    blockers.append("model-backed strategy fixture identity is not deterministic")
+                fixture = {
+                    "status": "passed" if not blockers else "blocked",
+                    "orders_emitted": 0,
+                    "prediction_requirement_count": len(prediction_requirements),
+                }
+                return fixture, blockers
             orders_a = tuple(
                 strategy.generate_orders(
                     run_id="implementation-validation",
@@ -360,6 +393,27 @@ def _runtime_fixture(
     except Exception as exc:
         return {"status": "blocked"}, [f"runtime fixture failed: {exc}"]
     return fixture, blockers
+
+
+@dataclass(frozen=True)
+class _FixturePredictionBinding:
+    """Constructor-only placeholder for model-backed implementation validation."""
+
+    binding_name: str
+    decision_scope: str
+    required_lookback: int = 1
+    deployment_id: str = "fixture_deployment"
+    deployment_validation_id: str = "fixture_deployment_validation"
+    mapper: object = None
+
+    def __post_init__(self) -> None:
+        if self.mapper is None:
+            object.__setattr__(self, "mapper", _FixturePredictionMapper())
+
+
+@dataclass(frozen=True)
+class _FixturePredictionMapper:
+    mapper_id: str = "fixture_mapper:v1"
 
 
 def _error(command: str, code: str, message: str) -> ApplicationResult:

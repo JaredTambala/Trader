@@ -99,6 +99,7 @@ def test_local_env_loads_portable_configuration() -> None:
         "allow_external_research_writes": False,
         "allow_optuna_writes": False,
         "allow_experiment_tracking_writes": False,
+        "allow_ml_runtime": False,
     }
 
 
@@ -282,6 +283,7 @@ def test_config_tool_excludes_broker_raw_sql_and_gates_backtest_execution() -> N
             "external_research_writes_allowed": local_env.allow_external_research_writes,
             "optuna_writes_allowed": local_env.allow_optuna_writes,
             "experiment_tracking_writes_allowed": local_env.allow_experiment_tracking_writes,
+            "ml_runtime_allowed": local_env.allow_ml_runtime,
         }
 
     anyio.run(_run)

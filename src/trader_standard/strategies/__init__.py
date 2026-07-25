@@ -1,6 +1,7 @@
 """Standard strategy implementations."""
 
 from .noop import NoOpStrategy
+from .model_prediction import PredictionDrivenStrategy, build_prediction_driven_strategy
 from .policy_driven import (
     CompositeStopPolicy,
     EntryPolicy,
@@ -27,6 +28,7 @@ from .toggle import ToggleUnitStrategy
 
 __all__ = [
     "NoOpStrategy",
+    "PredictionDrivenStrategy",
     "SimpleStrategy",
     "RandomStrategy",
     "ToggleUnitStrategy",
@@ -48,4 +50,5 @@ __all__ = [
     "build_pairs_mean_reversion_strategy",
     "build_bollinger_band_strategy",
     "build_cross_sectional_momentum_strategy",
+    "build_prediction_driven_strategy",
 ]

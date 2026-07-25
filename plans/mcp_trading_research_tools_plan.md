@@ -283,9 +283,12 @@ Use this register as the source of truth for implementation status. Keep statuse
 | 39E. MLflow Run Reconciliation And Lineage | Planned | Implement with 39D. | Reconcile completed MLflow runs into DB-visible Trader refs, verify run/model/dataset/source identity, and fail closed on missing, partial, foreign, or inconsistent records. |
 | 39F. Time-Series Model Evaluation And Comparison | Planned | Follows successful fitting. | Evaluate fold/holdout predictions, calibration, predictive stability, leakage, baselines, and uncertainty; keep model metrics separate from strategy PnL conclusions. |
 | 39G. Model Registry Versioning And Promotion Evidence | Planned | Follows passed model evaluation. | Register immutable model versions, resolve aliases to pinned versions, compare candidates, and require an explicit gated promotion report before assigning aliases; do not use deprecated model stages. |
-| 39H. Runtime Prediction Contract And MLflow Adapter | Planned | Required before strategy integration. | Add MLflow-independent core prediction interfaces plus an optional MLflow loader/serving adapter, signature checks, feature parity fixtures, latency bounds, and explicit failure policies. |
-| 39I. Model-Backed Strategy And Deployment Integration | Planned | Follows 39H. | Create version-pinned deployment manifests, bind validated predictors into maintained or registered strategies, prove backtest/runtime parity, and restrict initial deployment eligibility to backtest and paper environments. |
-| 39J. Prediction Monitoring And Drift | Planned | Follows model-backed execution evidence. | Persist bounded prediction events with model/feature versions and compute input, output, calibration, performance, latency, and stale-feature/model drift reports without MCP calls in the hot path. |
+| 39H. Runtime Prediction Contract And MLflow Adapter | Done | `uv run pytest tests/test_predictions.py tests/test_mlflow_inference_adapter.py -q`; optional adapter also qualified with `uv run --extra ml pytest tests/test_mlflow_inference_adapter.py -q`; relevant package-boundary assertions pass. | Core now owns dependency-free, point-in-time feature and prediction values plus provider-neutral feature, predictor, mapper, fallback, and runtime-binding protocols. Prediction events are distinct from signals and preserve immutable model, feature-batch, output-contract, status, latency, and coverage evidence. The optional lazy `trader_mlflow` adapter loads one pinned local MLflow `python_function` model and proves deterministic parity without introducing MLflow or pandas imports into core. Serving remains unimplemented and requires a separate future adapter profile. |
+| 39I. Model-Backed Strategy And Deployment Integration | Done | 39I-A through 39I-C pass direct, MCP, backtest, paper-barrier, Postgres-projection, static, and broad non-Postgres regression checks recorded below. | A validated model is now an injected runtime dependency rather than an indicator, signal, strategy, or order authority. ML-owned deployment evidence remains separate from Supervisor-owned strategy interpretation; resulting predictions pass through maintained mappers, strategy policy, risk, and ordinary order/fill processing. Eligibility is limited to backtest and paper. Upstream feature engineering, training, evaluation, and model-version production remain 39B-G; current deployment creation therefore consumes pre-existing canonical model/feature artifacts. |
+| 39I-A. Deployment Manifest And Runtime Resolution | Done | `uv run pytest tests/test_ml_deployments.py tests/test_mcp_ml_tools.py -q`; isolated `trader_39i_test` Postgres run: `PG_TEST_*=... uv run pytest tests/test_ml_deployments.py -m postgres -q` (`1 passed`). | `ml_create_deployment_manifest` and gated `ml_validate_deployment` persist canonical artifacts and typed Postgres projections. They pin model/feature snapshots, adapter identity/configuration, output contract, scope, policy, environment, parity, and eligibility; reject credentials/provider locations, mutable alias URIs, drift, unavailable adapters, and non-passed evidence; and resolve one provider-neutral predictor at run composition rather than calling MCP or MLflow in the decision loop. |
+| 39I-B. Typed Strategy Prediction Bindings | Done | `uv run pytest tests/test_prediction_mappers.py tests/test_prediction_strategy_bindings.py tests/test_model_backtest_integration.py tests/test_mcp_ml_tools.py -q`. | Strategy implementation metadata declares closed prediction requirements. Canonical strategy specifications pin passed deployment validation, selected outputs, mapper identity/version/parameters, and policy ownership. Maintained directional, probability-threshold, categorical-regime, target-weight, and ranking consumers enforce compatible semantics instead of coercing every output into a scalar signal. Binding digests flow into backtest identity and resolved lineage. |
+| 39I-C. Universe-Snapshot Execution | Done | `uv run pytest tests/test_model_universe_backtest.py tests/test_backtest.py tests/test_cycle_events.py tests/test_model_backtest_integration.py -q`; the broader non-Postgres suite passes with the unrelated malformed recovery test and its AST-scanning package suite excluded. | Strategies declare `per_symbol` or `universe_snapshot` decision scope and required lookback. Backtests form complete timestamp-aligned snapshots and invoke a universe predictor exactly once per decision; incomplete snapshots are explicitly skipped. Paper scheduling buffers the declared universe behind a freshness/watermark barrier and fails closed on missing, stale, duplicate, or misaligned inputs. Raw prediction evidence is recorded before mapping and order evidence retains prediction refs. |
+| 39J. Prediction Monitoring And Drift | Planned | Follows model-backed execution evidence through 39I-C. | Persist bounded feature/prediction/signal/order lineage with model/feature versions and compute input, output, calibration, performance, latency, coverage, and stale-feature/model drift reports without MCP or MLflow tracking calls in the hot path. |
 | 40. ML Agent Graph and Handoff | Deferred | Implement only after 39A-39J deterministic services are proven. | The graph coordinates ML tools and returns ML-owned artifact refs; it cannot choose hidden data scope, execute arbitrary prompt text, approve final strategy performance, move aliases without policy, or mutate live trading. |
 | 41. Attribution Service and MCP Tool | Not started |  | Follow-on analysis after baseline backtests and performance reports exist. |
 | 42. Evaluation Critique Logic and MCP Tool | Not started |  | Extend beyond the first performance report into skeptical evaluation rules, data-quality blockers, cost sensitivity, and sample-size critique. |
@@ -366,7 +369,8 @@ The completed foundation and active implementation order are:
 5. `44` and `46`: generalise the delivered optimisation audit split so Adversarial plans and judges attacks while the
    Supervisor executes immutable backtest and optimisation variants.
 6. `39A-39J`: add the MLflow lifecycle from point-in-time feature engineering and gated fitting through immutable model
-   versions, deployment manifests, strategy integration, prediction events, and drift.
+   versions, provider-neutral prediction, raw-inference deployment manifests, typed strategy bindings, explicit
+   per-symbol/universe execution scopes, prediction events, and drift.
 7. `58` and `59`: compose the provider-neutral optimisation protocol inside each fold and add independent
    Evaluation/Adversarial interpretation only after the
    implementation, ML, and robustness foundations are proven.
@@ -415,6 +419,7 @@ src/trader_research/
   specifications/
     __init__.py          # Canonical strategy/risk/backtest specification exports
     strategy.py          # Implementation version plus validated strategy parameters/behavior
+    prediction_bindings.py # Strategy-owned prediction selection, mapping, thresholds, sizing, and allocation policy
     risk.py              # Ordered risk implementation versions and explicit policy parameters
     backtest.py          # Data Agent scope, costs, assumptions, seeds, and runtime policy
   backtests/
@@ -430,7 +435,7 @@ src/trader_research/
     tracking.py          # MLflow run reconciliation and lineage
     evaluation.py        # Time-series predictive evaluation and model comparison
     registry.py          # Immutable model versions, tags, aliases, and promotion evidence
-    deployment.py        # Version-pinned inference/deployment manifests and validation
+    deployment.py        # Version-pinned raw-inference manifests, validation, and resolved runtime identities
     monitoring.py        # Prediction summaries and drift analysis
   hypotheses.py          # Hypothesis-card creation and validation
   attribution.py         # Return attribution summaries
@@ -453,11 +458,11 @@ src/trader_mcp/
 
 src/trader/
   knowledge_store.py     # SQL-owning Postgres knowledge tables, full-text search, and pgvector retrieval
-  predictions/           # Dependency-neutral predictor, feature batch, result, identity, event, and failure contracts
+  predictions/           # Dependency-neutral feature batch, predictor, result, identity, event, scope, and failure contracts
 
 src/trader_mlflow/
   client.py              # Optional configured MLflow tracking/registry adapter
-  inference.py           # Pinned local-model or serving-endpoint predictor implementation
+  inference.py           # Pinned local-model predictor; serving is a separately qualified optional profile
 
 src/trader_agents/
   __init__.py
@@ -680,9 +685,12 @@ Backward-compatible aliases may be retained initially:
 | 39E. MLflow Run Reconciliation And Lineage | Make external run state inspectable and trustworthy inside Trader. | `src/trader_research/ml/tracking.py`, Postgres projections, MCP tools, tests | Add `ml_get_training_run` and `ml_reconcile_mlflow_run`. Persist `mlflow_run_ref` records containing tracking-server identity, experiment/run IDs, status, timestamps, dataset inputs/digests, logged model URI/digest, signature, parameters, metrics, tags, source and environment hashes, and client/server versions. Reconciliation verifies the run belongs to the configured namespace and expected training spec; partial, deleted, failed, foreign, or inconsistent runs block downstream registration. Retries are idempotent by training-spec and run identity. |
 | 39F. Time-Series Model Evaluation And Comparison | Produce ML-owned evidence that a fitted model predicts as declared. | `src/trader_research/ml/evaluation.py`, MLflow evaluation adapter, prediction artifacts, MCP tools, tests | Add `ml_evaluate_model` and `ml_compare_model_versions`. Evaluate chronological fold and untouched holdout predictions, naive and incumbent baselines, task-appropriate predictive metrics, calibration, threshold stability, residual/autocorrelation diagnostics where relevant, cross-symbol/regime stability, uncertainty, and leakage audit results. Persist bounded predictions or refs with model/dataset/fold identity. A passed model evaluation does not claim trading profitability; strategy PnL remains Evaluation Agent evidence after backtesting. |
 | 39G. Model Registry Versioning And Promotion Evidence | Reconcile MLflow Model Registry versions with Trader approval lineage. | `src/trader_research/ml/registry.py`, MLflow adapter, Postgres projections, MCP tools, tests | Add `ml_register_model_version`, `ml_get_model_version`, `ml_list_model_versions`, `ml_resolve_model_alias`, `ml_compare_model_versions`, and gated `ml_assign_model_alias`. Registration requires a reconciled successful run and passed model evaluation. Persist registered-model name, immutable version, source run, model URI/digest, signature, environment, tags, and observed aliases. Use tags and aliases rather than deprecated stages. Alias assignment requires an explicit `ml_model_promotion_report`, policy approval, and expected-current-version compare-and-set semantics to prevent races. Every consumer resolves aliases and pins the immutable version before use. |
-| 39H. Runtime Prediction Contract And MLflow Adapter | Add prediction to the trading platform without coupling core runtime to MLflow. | core `trader` prediction protocol/events, optional MLflow integration adapter, `trader_standard` consumers, tests | Define dependency-free feature-batch, predictor, prediction-result, model-identity, timeout, and failure-policy contracts in `trader`. Keep MLflow/pandas/framework dependencies in an optional adapter that loads a pinned MLflow model version or calls an approved serving endpoint. Validate digest/signature/environment, input ordering/types/nullability, output shape/semantics, deterministic fixture parity, latency bounds, and stale/error behavior. Never dynamically follow an alias during a run and never call MCP from the hot path. |
-| 39I. Model-Backed Strategy And Deployment Integration | Bind validated models to strategies and controlled runtime environments. | `src/trader_research/ml/deployment.py`, strategy implementation/versioning, `trader_standard` model-backed signals/strategies, backtest services, MCP tools, tests | Add `ml_create_deployment_manifest` and `ml_validate_deployment`. A manifest pins model version, feature-set version, inference adapter, prediction semantics/horizon, strategy consumers, thresholds, latency/failure policy, environment, and eligibility. Strategy validation proves offline/online feature and prediction parity; backtests use the same inference adapter as the trading loop. Initial eligibility is `backtest` or `paper`. The ML Agent cannot restart services, change runtime config, mutate broker state, or grant live eligibility; those remain explicit operator/promotion controls. |
-| 39J. Prediction Monitoring And Drift | Close the lifecycle with version-aware runtime evidence. | core prediction event schema, `src/trader_research/ml/monitoring.py`, Postgres projections, MCP tools, tests | Runtime code emits bounded prediction events containing decision/as-of timestamps, feature-set/model versions, prediction semantics, latency, status, and safe feature/payload hashes or summaries. Add `ml_summarize_predictions` and `ml_compute_drift_report` to join predictions with realized targets and compute input/output drift, calibration/performance decay, coverage, latency, stale features/models, and version changes. Monitoring runs outside the hot path and does not copy unrestricted feature matrices or call MLflow once per prediction. |
+| 39H. Runtime Prediction Contract And MLflow Adapter | Add prediction as a first-class runtime concept without coupling core execution to MLflow or misclassifying learned outputs as indicators, signals, or strategies. | `src/trader/predictions/`, feature adapters, prediction events, optional `trader_mlflow` inference adapter, tests | Define dependency-free `FeatureBatch`, `ModelIdentity`, `PredictionRequest`, `PredictionObservation`, `PredictionBatch`, `Predictor`, timeout, and failure-policy contracts in `trader`. Feature batches pin feature-set identity/schema, symbols, decision/as-of/availability times, deterministic input hash, and bounded values; prediction observations pin output name, semantics, horizon, units, optional uncertainty/symbol, status, and latency. Indicators may be adapted into feature transforms, but model outputs are recorded as predictions and become trading signals only through an explicit strategy-owned mapper. Keep MLflow/pandas/framework dependencies in a lazy optional adapter. First qualify a locally loaded, immutable MLflow `python_function` model; qualify serving endpoints separately. Validate model digest/signature/environment, feature ordering/types/nullability, output shape/semantics, deterministic offline/runtime fixture parity, latency, staleness, and failures. Resolve aliases before session creation, pin the immutable version, load once, and never call MCP or MLflow tracking/registry APIs in the hot path. |
+| 39I. Model-Backed Strategy And Deployment Integration | Coordinate the three bounded integration tranches without allowing deployment state to absorb strategy policy. | ML deployment domain, implementation/specification runtime requirements, `trader_standard` consumers, backtest/paper schedulers, Postgres evidence, MCP tools, tests | Complete 39I-A through 39I-C. A model remains a runtime dependency: it produces predictions but cannot place orders, inspect undeclared portfolio state, bypass a strategy, or approve its own deployment. Initial eligibility is `backtest` or `paper`; live eligibility, service restart/config mutation, and broker controls remain explicit operator responsibilities outside ML Agent authority. |
+| 39I-A. Deployment Manifest And Runtime Resolution | Make raw inference identity and behavior immutable before a strategy consumes it. | `src/trader_research/ml/deployment.py`, Postgres projections, optional predictor resolvers, MCP tools, tests | Add `ml_create_deployment_manifest` and `ml_validate_deployment`. The ML-owned manifest pins one passed immutable model version, one passed feature-set version, adapter profile/version/configuration digest, raw output schema and prediction semantics/horizon, inference scope (`per_symbol`, `cross_sectional`, or `portfolio`), timeout, stale/missing/error policy, environment, deterministic parity fixture, and eligibility. It deliberately excludes signal thresholds, ranking rules, sizing, allocation, and strategy consumers. Session composition resolves and validates the manifest once, constructs a provider-neutral `Predictor`, and records the resolved binding identity. Missing artifacts, signature/digest/environment drift, mutable aliases, unqualified adapters, or unsupported scope block session creation. |
+| 39I-B. Typed Strategy Prediction Bindings | Let canonical strategies interpret predictions explicitly while preserving implementation/specification authority. | task-56 implementation registry, `src/trader_research/specifications/strategy.py`, runtime binding resolver, maintained prediction mappers/strategies, MCP schemas, tests | Extend strategy implementation metadata with named prediction requirements: accepted semantics, output shape, horizon constraints, inference scope, and whether the consumer is directional, ranking, regime/gating, or allocation based. Extend `research_create_strategy_specification` and `research_validate_strategy_specification` with typed `prediction_bindings` that reference passed deployment validation, select raw outputs, and pin mapper implementation/version plus thresholds, calibration, ranking, gating, sizing, or allocation parameters. The Quant Research Supervisor owns this trading interpretation; the ML Agent supplies deployment evidence but cannot select strategy policy. Directional scalar outputs may become ordinary numeric strategy inputs through a maintained mapper. Regime and target-weight outputs use consumers that preserve their structured semantics rather than coercing them into scalar `Signal`. Backtest specifications and run IDs include the complete resolved binding digest. |
+| 39I-C. Universe-Snapshot Execution | Execute cross-sectional and portfolio predictors against a complete decision-time universe instead of repeating incomplete per-symbol inference. | core strategy execution capabilities, `src/trader/backtest/`, paper cycle scheduler, freshness/watermark policy, tests | Add a declared strategy `decision_scope` of `per_symbol` or `universe_snapshot` and make the deployment/strategy binding scopes compatible. The existing path remains valid for independently computable per-symbol models. For `universe_snapshot`, the backtester loads declared feature warmup, aligns the complete bounded universe, advances all symbols to one timestamp, invokes prediction/strategy once, and then applies risk/order processing deterministically. Paper execution buffers declared symbols behind a watermark/barrier with explicit freshness, missing-symbol, timeout, and carry-forward policy before one decision. Cache/deduplicate inference only by run, cycle, decision time, model digest, and feature-batch hash. Reject cross-sectional/portfolio deployments on the per-symbol scheduler; never approximate them from partial or stale symbol callbacks. |
+| 39J. Prediction Monitoring And Drift | Close the lifecycle with version-aware runtime evidence and unbroken decision lineage. | core prediction event schema, `src/trader_research/ml/monitoring.py`, Postgres projections, MCP tools, tests | Runtime code emits bounded prediction events containing run/cycle/decision/as-of timestamps, feature-set/model/deployment versions, feature-batch hash, prediction semantics/horizon, latency, status, coverage, and safe payload summaries. Signal events reference source prediction events and mapper identity/parameters; order evidence references the decision inputs that caused it, after which existing risk/fill lineage continues. Add `ml_summarize_predictions` and `ml_compute_drift_report` to join predictions with realized targets and compute input/output drift, calibration/performance decay, coverage, latency, stale features/models, and version changes. Monitoring runs outside the hot path and does not copy unrestricted feature matrices or call MLflow once per prediction. |
 | 40. ML Agent Graph and Handoff | Coordinate the proven deterministic ML lifecycle tools. | `src/trader_agents/ml_agent.py`, ML policy/state, `src/trader_agents/quant_research.py`, tests | Deferred until 39A-39J pass end-to-end evidence. The graph can route feature, dataset, training, evaluation, registry, deployment, prediction, and drift refs; retry bounded failed research steps; and stop on blockers. It cannot select undeclared Data Agent scope, execute arbitrary prompt code, forge evaluation/promotion, mutate live trading, or assign an alias unless the explicitly gated deterministic tool accepts a passed promotion report. |
 | 41. Attribution Service and MCP Tool | Add return attribution after baseline backtest artifacts exist. | `src/trader_research/attribution.py`, `src/trader_mcp/server.py`, tests | `research_analyze_return_attribution` summarizes PnL by symbol, period, side if available, and top trades using trade/equity artifacts without LLM interpretation. |
 | 42. Evaluation Critique Logic and MCP Tool | Extend performance reporting into stronger skeptical evaluation. | `src/trader_research/evaluation/performance.py`, `src/trader_mcp/server.py`, tests | `evaluation_generate_report` consumes data quality, backtest, performance, attribution, warning, cost, and sample-size evidence; weak baselines, missing data-quality reports, unexplained warnings, destroyed edge under costs, or thin samples produce blockers in `evaluation_report.json`. |
@@ -1767,8 +1775,80 @@ then orchestrate useful MCP tools rather than driving the architecture ahead of 
 Implement tasks 39A-39J after Slice 11D. The sequence is MLflow configuration and side-effect policy; point-in-time
 feature sets and training datasets; registered training pipelines and gated fitting; MLflow run reconciliation;
 time-series evaluation; immutable registry versions and explicit alias promotion; runtime prediction contracts;
-model-backed strategy/deployment integration; and prediction/drift monitoring. Task 40 adds the ML Agent graph only
-after this deterministic chain is proven. Hypothesis tasks 37-38 are not on the current critical path.
+raw-inference deployment resolution; typed strategy prediction binding; per-symbol then universe-snapshot execution; and
+prediction/drift monitoring. Task 40 adds the ML Agent graph only after this deterministic chain is proven. Hypothesis
+tasks 37-38 are not on the current critical path.
+
+#### 39H-I Runtime Prediction And Strategy Integration Design
+
+The runtime boundary is semantic, not an MLflow packaging shortcut:
+
+```text
+declared market/data state
+  -> point-in-time FeatureProvider
+  -> FeatureBatch
+  -> provider-neutral Predictor
+  -> PredictionBatch
+  -> strategy-owned prediction consumer / mapper
+  -> Strategy with portfolio state
+  -> order intent
+  -> RiskManager
+  -> broker/backtest fill
+```
+
+An `Indicator` remains a deterministic transformation of observed state and may be one input to a feature set. A
+`PredictionObservation` is a learned estimate with immutable model identity, target semantics, horizon, timing, and
+optional uncertainty. A `Signal` is a trading interpretation of observed or predicted state. A `Strategy` combines
+those inputs with portfolio and execution policy to create orders. A model package or serving endpoint is never itself
+registered as an indicator, signal, strategy, or risk manager, and a prediction cannot directly place an order.
+
+39H defines the following closed runtime values and protocols in core `trader`, with no imports from MLflow, pandas,
+training frameworks, research services, MCP, or agents:
+
+- `FeatureBatch`: feature-set ID/digest, ordered schema, symbols, decision/as-of/availability timestamps, bounded values,
+  missing/stale diagnostics, and deterministic input hash.
+- `ModelIdentity`: registered-model name, immutable version, model digest, signature digest, source run, and adapter
+  identity. Mutable aliases are not runtime identities.
+- `PredictionRequest`: run/cycle/decision identity, one feature batch, requested declared outputs, timeout, and trace
+  labels that contain no undeclared data access.
+- `PredictionObservation`: optional symbol, output name, structured or scalar value, semantics such as
+  `expected_return`, `probability`, `rank_score`, `regime`, or `target_weight`, target horizon, units, uncertainty, and
+  status.
+- `PredictionBatch`: model identity, input hash, observations, universe coverage, latency, warnings, and terminal
+  success/stale/timeout/error status.
+- `Predictor`: a synchronous deterministic local-inference protocol for the first qualified profile. A later async
+  serving adapter implements equivalent semantics without changing the domain values.
+- `InferencePolicy`: bounded timeout plus explicit missing-feature, stale-feature, model-error, and incomplete-universe
+  behavior. Permitted actions are fail closed, skip the decision, or use a separately validated bounded fallback;
+  flattening or holding a position remains strategy policy, not predictor behavior.
+
+39I-A owns raw inference deployment evidence. `ml_create_deployment_manifest` and `ml_validate_deployment` write and
+validate Postgres-backed artifacts that pin the model, feature set, adapter profile, output contract, inference scope,
+latency/failure policy, parity fixture, environment, and backtest/paper eligibility. The manifest contains no trading
+thresholds, ranking cutoffs, position sizing, allocation rules, or strategy identity. A composition-root resolver loads
+and verifies the model once when a run/session starts and injects only a provider-neutral `Predictor`; it does not call
+MCP or query MLflow tracking/registry state per decision.
+
+39I-B owns trading interpretation through the existing implementation and specification path. A validated strategy
+implementation declares named prediction requirements and accepted output semantics, horizon, shape, and scope.
+`research_create_strategy_specification` binds each requirement to one passed deployment validation and pins a versioned
+consumer/mapper plus thresholds, calibration, ranking, regime gating, sizing, or allocation parameters. Scalar
+directional predictions may map to numeric signals. Regime and target-weight predictions retain structured semantics and
+must be consumed by compatible maintained or registered strategy implementations. The normalized binding is part of the
+strategy-specification and backtest-run identity, so changing a threshold creates new canonical evidence without
+creating or mutating an MLflow model deployment.
+
+39I-C owns execution scope. `per_symbol` means every prediction is independently computable from one symbol's declared
+features and may use the existing incremental strategy path. `universe_snapshot` means cross-sectional or portfolio
+features/predictions require one complete synchronized decision batch. The backtester must advance all declared symbols
+to the timestamp and invoke the strategy once; paper execution must use a declared watermark/freshness barrier. Missing
+symbols, stale values, carry-forward, and timeout behavior are explicit specification fields. Cross-sectional and
+portfolio deployments fail validation on the per-symbol scheduler until the universe path passes parity tests.
+
+Runtime and evidence authority remain separate. MLflow owns the packaged model and training/registry records. Trader
+Postgres owns deployment validation, strategy bindings, run/session identity, feature-batch hashes, prediction events,
+signal mapping, orders, risk decisions, fills, backtests, Evaluation, and Adversarial evidence. Runtime prediction events
+are bounded operational records, not unrestricted feature-matrix copies.
 
 Evidence target:
 
@@ -1780,10 +1860,71 @@ Data Agent dataset and quality refs
   -> MLflow experiment run and logged model
   -> reconciled run and time-series model evaluation
   -> immutable registered-model version
-  -> version-pinned deployment manifest
-  -> model-backed strategy backtest
-  -> prediction and drift evidence
+  -> raw-inference deployment manifest and validation
+  -> typed strategy prediction binding
+  -> per-symbol or synchronized-universe model-backed strategy backtest
+  -> feature hash -> prediction -> mapped signal/input -> order -> risk -> fill lineage
+  -> predictive Evaluation, strategy Evaluation, and prediction/drift evidence
 ```
+
+39H-I verification must prove:
+
+1. Core prediction contracts, existing non-ML strategies, MCP startup, and canonical evidence reads work with MLflow and
+   training frameworks uninstalled.
+2. Offline fixtures, backtests, and paper execution use the same feature and predictor implementation and produce
+   matching bounded feature hashes and prediction outputs for identical inputs.
+3. Alias movement after session creation cannot change the pinned model; signature, digest, feature-schema,
+   environment, adapter-profile, or configuration drift fails closed before inference.
+4. Changing strategy thresholds, calibration, ranking, sizing, or allocation changes the strategy specification/run
+   identity but not the deployment identity.
+5. Per-symbol models run once for the intended symbol/decision, while universe models run exactly once per complete
+   timestamp and are rejected on partial/per-symbol execution paths.
+6. Probability, expected-return, rank, regime, and target-weight outputs are accepted only by consumers declaring the
+   matching semantics; unsupported scalar coercion is rejected.
+7. Timeout, stale/missing feature, incomplete universe, model error, and validated fallback behavior produce explicit
+   deterministic evidence and never silently reuse a mutable alias or undeclared prior prediction.
+8. Postgres lineage joins the immutable model/deployment, feature batch, prediction, mapping, strategy specification,
+   order, risk decision, fill, backtest, and Evaluation refs without requiring MLflow availability for historical reads.
+9. No runtime inference path invokes MCP, performs MLflow tracking/registry writes, mutates a deployment/strategy
+   specification, or lets model output bypass strategy and risk processing.
+
+Implementation record (2026-07-22):
+
+- Core runtime contracts live under `src/trader/predictions/`. `RuntimePredictionBinding` validates point-in-time
+  feature identity, complete requested output coverage, output semantics, horizon, units, and shape before invoking a
+  strategy-owned mapper. Failure policies produce bounded prediction evidence for fail-closed, skipped-decision, and
+  separately validated fallback outcomes.
+- The optional adapter lives under `src/trader_mlflow/` and is lazy-loaded. The qualified profile is local immutable
+  MLflow `python_function` inference only. It loads once from the manifest's pinned URI, normalizes raw output against
+  the closed output contract, and executes the deployment parity fixture. No MLflow tracking or registry call occurs
+  inside `Predictor.predict`.
+- ML deployment creation, validation, reading, and runtime resolution live under `src/trader_research/ml/`. Canonical
+  artifacts are `ml_deployment_manifest` and `ml_deployment_validation_report`; typed pgAdmin-visible projections are
+  `research_ml_deployments` and `research_ml_deployment_validations`. The MCP surface is
+  `ml_create_deployment_manifest` plus `ml_validate_deployment`, with runtime validation gated by
+  `TRADER_MCP_ALLOW_ML_RUNTIME`.
+- Task-56 implementation requirements and strategy specifications now accept typed prediction requirements/bindings.
+  The resolved deployment, output selection, mapper, parameters, strategy interpretation, and inference policy are
+  included in canonical specification and run identity. Deployment manifests intentionally contain no entry threshold,
+  ranking, sizing, allocation, position-management, or trading-policy field.
+- `trader_standard` supplies point-in-time bar feature adapters, closed maintained prediction mappers, and a maintained
+  model-prediction strategy. Numeric directional/ranking consumers, probability thresholding, categorical regime
+  values, and target weights retain distinct semantics. All resulting order intents still pass through the configured
+  `RiskManager` and normal broker/backtest path.
+- Backtest execution now supports timestamp-aligned `universe_snapshot` decisions with declared warmup and exact
+  universe coverage. Paper-cycle composition has the equivalent freshness/watermark barrier. Partial, stale,
+  duplicated, or misaligned universe state is rejected or explicitly skipped according to the closed policy; it is
+  never converted into repeated per-symbol inference.
+- Verification passed for the dependency-free core, real optional MLflow adapter, deployment drift and alias rejection,
+  mapper semantics, typed strategy bindings, synchronized model backtests, paper barriers, full MCP
+  deployment-to-backtest evidence graph, Postgres typed projections, docs/contracts, Ruff, compileall, mypy, and the
+  broad non-Postgres regression suite. The Postgres feature test used the disposable `trader_39i_test` database because
+  the controlled 57J freeze provisioner correctly rejects this intentionally changed worktree; this is integration
+  evidence, not a new controlled-release qualification.
+- 39H-I do not provide feature-set authoring, training-dataset construction, model fitting, MLflow run reconciliation,
+  predictive evaluation, model registry promotion, serving-endpoint inference, live eligibility, or drift reporting.
+  Those remain 39A-G/J. Until those tools exist, the deployment MCP chain requires pre-existing canonical
+  `ml_model_version_ref`, `ml_feature_set_spec`, and passed `ml_feature_set_validation_report` artifacts.
 
 ### Slice 15: Attribution, Critique, Robustness, and Recommendations
 
@@ -1871,13 +2012,17 @@ verification should be updated at every evidence checkpoint rather than saved fo
     Postgres lineage, and never accepts caller-supplied tracking URIs or persisted credentials.
 28. Time-series training requires point-in-time feature/target semantics, chronological fold plans, purge/embargo where
     needed, preprocessing fit scope, dataset digests, and explicit leakage checks before fitting.
-29. Every model-backed backtest, deployment, session, prediction, and drift artifact pins an immutable MLflow registered-
-    model version; mutable aliases are resolved only at controlled planning/promotion boundaries.
-30. The core trading runtime depends on a provider-neutral prediction contract, not MLflow. The same validated feature
-    and inference adapter is used in backtests and the trading loop, which never calls MCP in the hot path.
+29. Every model-backed deployment, strategy binding, backtest, session, prediction, and drift artifact pins an immutable
+    MLflow registered-model version; mutable aliases are resolved only at controlled planning/promotion boundaries and
+    cannot change an active run.
+30. The core trading runtime depends on provider-neutral feature-batch, prediction, identity, scope, timeout, and failure
+    contracts, not MLflow. Indicators may supply features; learned outputs remain predictions until an explicit
+    strategy-owned consumer maps them. The same validated feature and predictor implementation is used in backtests and
+    the trading loop, which never calls MCP or MLflow tracking/registry APIs in the hot path.
 31. One end-to-end ML MCP test proves: Data Agent refs -> feature set -> point-in-time training dataset/folds -> validated
-    trainer -> MLflow run -> reconciled/evaluated model -> immutable registry version -> deployment manifest -> model-
-    backed strategy backtest -> prediction/drift evidence.
+    trainer -> MLflow run -> reconciled/evaluated model -> immutable registry version -> raw-inference deployment
+    validation -> typed strategy prediction binding -> compatible per-symbol or synchronized-universe strategy backtest
+    -> prediction/signal/order/risk/fill lineage -> prediction/drift evidence.
 32. MLflow writes, fitting, alias promotion, and runtime deployment have distinct declared side effects and default-off
     policy gates; the ML Agent graph is added only after the deterministic 39A-39J services pass this evidence chain.
 33. Walk-forward validation for ML fitting remains part of 39C/39F, while full walk-forward optimisation is a later
@@ -1956,9 +2101,10 @@ verification should be updated at every evidence checkpoint rather than saved fo
 - Initial model flavors and trainer execution: choose a deliberately small supported set, likely beginning with
   `python_function` plus one maintained tabular framework, and define process/container isolation and resource controls
   for supplied training pipelines. Do not support arbitrary pickle execution.
-- Runtime inference mode: decide whether the first paper-trading adapter loads a pinned model locally or calls an
-  approved serving endpoint. The core prediction protocol and deployment manifest must support either without coupling
-  `trader` to MLflow, and backtest/runtime parity remains mandatory.
+- Runtime inference mode: resolved for the first qualified profile as a locally loaded, immutable MLflow
+  `python_function` model behind the provider-neutral `Predictor`. An approved serving endpoint is a later, independently
+  gated and qualified adapter using the same domain contracts; it cannot weaken backtest/runtime parity or add MLflow
+  tracking/registry calls to the hot path.
 - Natural-language planning: both the Data Agent and Quant Research Supervisor need real LLM-backed control. Add the Data
   Agent LLM loop first because its provider-aware tool surface is already complete and bounded. Add the Quant Research
   Supervisor LLM loop later after implementation/specification, backtest-run, and performance-report refs exist,

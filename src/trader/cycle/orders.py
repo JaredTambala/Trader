@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import json
 from typing import Mapping, Sequence
 
 from ..identifiers import deterministic_client_order_id
@@ -73,6 +74,7 @@ class CycleOrderEventPayload:
     broker_order_id: object | None
     rejection_reason: object | None
     created_at: datetime
+    decision_evidence: object | None = None
 
     def to_record(self) -> dict[str, object]:
         """Return an event-store-compatible order event mapping."""
@@ -89,6 +91,7 @@ class CycleOrderEventPayload:
             "status": self.status,
             "broker_order_id": self.broker_order_id,
             "rejection_reason": self.rejection_reason,
+            "decision_evidence": self.decision_evidence,
             "created_at": self.created_at,
         }
 
@@ -319,6 +322,11 @@ def build_order_lifecycle_event_payload(
         status=status,
         broker_order_id=broker_order_id,
         rejection_reason=order.get("rejection_reason"),
+        decision_evidence=(
+            json.dumps(order.get("decision_evidence"), sort_keys=True)
+            if order.get("decision_evidence") is not None
+            else None
+        ),
         created_at=created_at,
     )
 

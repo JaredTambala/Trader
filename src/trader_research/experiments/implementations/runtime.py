@@ -9,7 +9,7 @@ import inspect
 import json
 import math
 import types
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from trader.risk import RiskContext, RiskManager
 from trader.strategies import Strategy
@@ -194,10 +194,16 @@ def instantiate_strategy(
     timeframe: str,
     parameters: Mapping[str, Any],
     sizing: Mapping[str, Any] | None = None,
+    prediction_bindings: Sequence[object] | None = None,
 ) -> Strategy:
     """Instantiate a strategy factory using only declared context and parameters."""
     module = load_implementation(implementation)
     factory = _factory(module, implementation)
+    prediction_requirements = implementation.runtime_requirements.get("prediction_requirements") or []
+    if prediction_requirements and prediction_bindings is None:
+        raise ValueError("model-backed strategy implementation requires prediction_bindings")
+    if not prediction_requirements and prediction_bindings:
+        raise ValueError("strategy implementation does not declare prediction requirements")
     kwargs = {
         "symbols": symbols,
         "asset_class": asset_class,
@@ -205,6 +211,8 @@ def instantiate_strategy(
         **dict(parameters),
         **dict(sizing or {}),
     }
+    if prediction_requirements:
+        kwargs["prediction_bindings"] = tuple(prediction_bindings or ())
     instance = _call_supported(factory, kwargs)
     if not isinstance(instance, Strategy):
         raise ValueError("implementation factory did not return trader.strategies.Strategy")

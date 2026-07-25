@@ -18,6 +18,7 @@ def test_postgres_event_tables_cover_runtime_insert_paths() -> None:
             "crypto_bar_events",
             "signal_events",
             "indicator_events",
+            "prediction_events",
             "order_events",
             "fill_events",
             "position_snapshots",

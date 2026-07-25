@@ -11,7 +11,7 @@ registered in `src/trader_research/governance/artifacts.py`.
 | Quant Research Supervisor Agent | Coordinate research workflows and synthesize specialist-owned evidence. | Strategy/risk implementation versions, immutable strategy/risk/backtest specifications, canonical backtest runs, optimisation plans/runs/trials, tracking projection reports, comparisons, and planned walk-forward runs. | Registered implementation/specification/backtest/optimisation/projection `research_*` tools. |
 | Data Agent | Produce trustworthy bounded market-data manifests and quality evidence. | Symbol discovery reports, dataset manifests, data-quality reports, load result envelopes. | `mcp_health`, `mcp_get_config`, `data_discover_symbols`, `data_get_inventory`, `data_summarize_quality`, `data_ensure_loaded`. |
 | Quantitative Methods Agent | Produce auditable deterministic methods, method evidence, diagnostics, and statistical inference artifacts. | Knowledge manifests, methodology candidates, methodology evidence packets, methodology extraction/validation reports, canonical method cards and derived summaries, implementation manifests, validation reports, diagnostics, multiple-testing reports, method packages, optional kernel manifests. | `mcp_health`, `mcp_get_config`, `knowledge_*`, and current `math_*` tools. |
-| ML Agent | Coordinate point-in-time feature engineering, fitting, MLflow recording/registry, model evaluation, deployment evidence, predictions, and drift. | Planned feature-set specs, training datasets/splits/pipelines/specs, MLflow run refs, model evaluations and immutable version refs, promotion reports, deployment manifests, prediction artifacts, and drift reports. | Planned 39A-39J ML tools only; no ML tools are currently registered. |
+| ML Agent | Coordinate point-in-time feature engineering, fitting, MLflow recording/registry, model evaluation, deployment evidence, predictions, and drift. | Current deployment manifests and validation reports; planned feature/training/run/evaluation/version/promotion/drift artifacts. Runtime prediction events are platform evidence carrying ML lineage. | Registered `ml_create_deployment_manifest` and `ml_validate_deployment`; remaining 39A-G/J tools are planned. |
 | Hypothesis Agent | Produce explicit falsifiable strategy hypothesis cards. | Hypothesis cards. | Planned `hypothesis_create_card`. |
 | Evaluation Agent | Produce skeptical critique and performance evidence from research artifacts. | Untouched-holdout optimisation reports and planned stitched out-of-sample walk-forward reports. | `evaluation_generate_parameter_optimization_report` plus planned broader critique/walk-forward tooling. |
 | Adversarial Agent | Produce robustness and stress-test evidence for strategies and research procedures. | Parameter-optimisation audit plans/reports and planned walk-forward audits. | Registered parameter-optimisation audit tools; broader robustness remains planned. |
@@ -90,16 +90,16 @@ work:
 
 ## Current Versus Planned Status
 
-Current registered MCP surfaces include Data Agent tools; Quantitative Methods knowledge/math and optimisation-objective
+Current registered MCP surfaces include Data Agent tools; ML deployment creation/validation; Quantitative Methods knowledge/math and optimisation-objective
 tools; Supervisor implementation registration, immutable specifications, canonical backtests, grid/random/optional
 Optuna optimisation, result lookup, immutable variant execution, and tracking projection; untouched-holdout Evaluation;
 and parameter-optimisation Adversarial planning/judgment. Candidate/stack and loose baseline/portfolio backtest tools are
 not registered after the cutover.
 
-ML, Hypothesis, broader Adversarial/Evaluation critique, attribution, recommendation synthesis,
-and supervisor autonomy remain planned unless the MCP tool catalog marks them registered. The planned ML scope is the
-full 39A-39J MLflow lifecycle, not only model-card registration; task 40 remains deferred until those deterministic tools
-are proven.
+ML feature engineering, training, evaluation, registry management, and drift; Hypothesis; broader
+Adversarial/Evaluation critique; attribution; recommendation synthesis; and supervisor autonomy remain planned unless
+the MCP tool catalog marks them registered. Task 40 remains deferred until the full deterministic ML lifecycle is
+proven.
 
 ## Identity Checks
 

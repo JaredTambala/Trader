@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from trader_research.governance.artifacts import QUANT_RESEARCH_SUPERVISOR_OWNER
 
-from trader_research.foundation import ApplicationResult, success_result
+from trader_research.foundation import (
+    ApplicationResult,
+    PredictionDeploymentReader,
+    PredictionMapperCatalog,
+    success_result,
+)
 from trader_research.foundation.artifacts import SCHEMA_VERSION
 
 from typing import Any, Mapping, Sequence
@@ -55,6 +60,8 @@ def create_backtest_specification(
     parent_specification_ref: str | None = None,
     selection_origin_ref: str | None = None,
     variant_reason: str | None = None,
+    prediction_deployment_reader: PredictionDeploymentReader | None = None,
+    prediction_mapper_catalog: PredictionMapperCatalog | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ApplicationResult:
     """Bind validated behavior, Data Agent scope, costs, and execution policy."""
@@ -63,7 +70,10 @@ def create_backtest_specification(
         return specification_error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")
     try:
         strategy_specification, strategy_validation = load_passed_strategy_specification(
-            artifact_store, strategy_specification_validation_ref
+            artifact_store,
+            strategy_specification_validation_ref,
+            prediction_deployment_reader=prediction_deployment_reader,
+            prediction_mapper_catalog=prediction_mapper_catalog,
         )
         risk_specification = None
         risk_validation = None
@@ -136,6 +146,8 @@ def validate_backtest_specification(
     backtest_specification_id: str | None = None,
     backtest_specification_uri: str | None = None,
     backtest_specification: Mapping[str, Any] | None = None,
+    prediction_deployment_reader: PredictionDeploymentReader | None = None,
+    prediction_mapper_catalog: PredictionMapperCatalog | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ApplicationResult:
     """Validate immutable snapshots and all upstream passed specifications."""
@@ -155,7 +167,10 @@ def validate_backtest_specification(
             raise ValueError(f"artifact_type must be {BACKTEST_SPECIFICATION}")
         blockers: list[str] = []
         load_passed_strategy_specification(
-            artifact_store, str(payload.get("strategy_specification_validation_id") or "")
+            artifact_store,
+            str(payload.get("strategy_specification_validation_id") or ""),
+            prediction_deployment_reader=prediction_deployment_reader,
+            prediction_mapper_catalog=prediction_mapper_catalog,
         )
         risk_validation = payload.get("risk_stack_specification_validation_id")
         if risk_validation:
@@ -214,6 +229,9 @@ def validate_backtest_specification(
 def load_passed_backtest_specification(
     store: ResearchArtifactStore,
     validation_ref: str,
+    *,
+    prediction_deployment_reader: PredictionDeploymentReader | None = None,
+    prediction_mapper_catalog: PredictionMapperCatalog | None = None,
 ) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
     """Load a passed canonical backtest specification and validation report."""
     validation_id = str(validation_ref).rstrip("/").rsplit("/", 1)[-1]
@@ -267,7 +285,10 @@ def load_passed_backtest_specification(
     ) != report.get("validation_id"):
         raise ValueError("backtest specification validation ID does not match its evidence")
     strategy, _ = load_passed_strategy_specification(
-        store, str(specification.get("strategy_specification_validation_id") or "")
+        store,
+        str(specification.get("strategy_specification_validation_id") or ""),
+        prediction_deployment_reader=prediction_deployment_reader,
+        prediction_mapper_catalog=prediction_mapper_catalog,
     )
     if strategy.get("strategy_specification_id") != specification.get("strategy_specification_id"):
         raise ValueError("backtest strategy specification drifted after validation")

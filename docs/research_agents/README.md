@@ -80,14 +80,15 @@ used to infer current tools or import paths.
 3. [tool_contracts.md: Canonical Implementation, Specification, And Optimisation Contracts](tool_contracts.md#canonical-implementation-specification-and-optimisation-contracts)
 4. [operations.md: Controlled Verification Procedure](operations.md#controlled-verification-procedure)
 
-### Planned ML Lifecycle
+### ML Lifecycle And Runtime Prediction
 
 1. [architecture.md: ML Lifecycle Architecture](architecture.md#ml-lifecycle-architecture)
-2. [workflows.md: Planned MLflow Model Lifecycle](workflows.md#planned-mlflow-model-lifecycle)
+2. [workflows.md: MLflow Model Lifecycle And Runtime Integration](workflows.md#mlflow-model-lifecycle-and-runtime-integration)
 3. [agents.md: ML Lifecycle Ownership](agents.md#ml-lifecycle-ownership)
-4. [mcp_tools.md: Planned MLflow Tool Universe](mcp_tools.md#planned-mlflow-tool-universe)
+4. [mcp_tools.md: ML Agent Tools](mcp_tools.md#ml-agent-tools)
 
-The ML documents describe a roadmap. No `ml_*` MCP tools are currently registered.
+Runtime prediction, deployment validation, and strategy binding are implemented by 39H-I. Feature engineering,
+training, model evaluation/registration, and drift remain the 39A-G/J roadmap.
 
 ## Document Roles
 
@@ -113,16 +114,15 @@ following distinctions are important when assessing what the platform can do tod
 | Methodology evidence | Open-world identity discovery, claim spans, target-bound evidence packets, rich-field extraction, semantic validation, stable method-card sets, drafts, approval, and lineage. | Reliable for bounded locally identifiable methods; book-scale composite frameworks and source-discovered ontologies are not represented faithfully. Real sources can and should block before card creation. | Paused after 33AB; composite-method work is deferred. |
 | Method implementations | Maintained indicator/signal contracts plus content-addressed strategy, risk-manager, and optimisation-objective registration/validation. | Supplied, maintained, AI-produced, and methodology-produced source receives identical eligibility checks; no method card is required. | Maintain the decoupled registry boundary. |
 | Backtesting | Immutable strategy/risk/backtest specifications, gated canonical DB-backed execution, comparisons, and multi-asset risk evidence. | Candidate/stack and filesystem run contracts are retired; Data Agent quality and exact source hashes fail closed. | Foundation complete for ML and robustness work. |
-| ML | Agent ownership and preliminary feature/model/prediction/drift artifact names exist. | No MLflow adapter or registered feature engineering, time-series fitting, run reconciliation, model evaluation/versioning, deployment, prediction, or drift MCP tools exist yet; the trading runtime has no model inference contract. | Planned 39A-39J lifecycle after implementation intake/backtest specifications. |
+| ML | Provider-neutral feature/prediction contracts, lazy local MLflow pyfunc inference, DB-backed deployment manifests/validations, typed strategy bindings, maintained prediction mappers/strategy, bounded prediction/signal/order lineage, and synchronized-universe execution. | Upstream feature-set, training, evaluation, registry-version, and monitoring tools are not implemented; deployment MCP calls therefore require already persisted passed feature/model evidence. Live eligibility and runtime mutation are excluded. | 39H-I implemented; complete 39A-G and 39J around this boundary. |
 | Parameter optimisation and tracking | Provider-neutral plans/trial ledgers, deterministic grid/random engines, optional lazy Optuna TPE, explicit non-authoritative tracking projection, sealed-holdout Evaluation. | First slice is sequential, finite, single-objective, and has no pruning; Optuna/MLflow are optional. | Implemented foundation. |
 | Robustness and adversarial evaluation | Independent parameter-optimisation attack planning and judgment are registered. | Broader cost/data perturbation execution remains tasks 44/46. | Active next focus. |
 | Walk-forward optimisation | Provider-neutral optimisation contracts now exist for composition inside folds. | Fold construction, stitched OOS report, and walk-forward audit remain deferred tasks 58-59. | Build after ML integration and broader robustness primitives. |
 
-The implementation-to-evidence and parameter-optimisation foundations are present. The next product direction is the
-39A-39J MLflow lifecycle for point-in-time feature engineering, fitting, recording, evaluation, immutable model
-versioning, deployment evidence, strategy inference, predictions, and drift. Robustness/adversarial evidence follows
-those reproducible baselines. Knowledge and Data Agent tools remain supported dependencies, but further autonomous
-methodology-understanding work is not on the current critical path.
+The implementation-to-evidence, parameter-optimisation, and model-backed execution foundations are present. The next ML
+work is 39A-G/J: point-in-time feature engineering, fitting, recording, evaluation, immutable model versioning, and
+prediction monitoring around the implemented runtime boundary. Knowledge and Data Agent tools remain supported
+dependencies, but further autonomous methodology-understanding work is not on the current critical path.
 
 ## Sources Of Truth
 

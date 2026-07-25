@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from trader_research.governance.artifacts import QUANT_RESEARCH_SUPERVISOR_OWNER
 
-from trader_research.foundation import ApplicationResult, error_result, success_result
+from trader_research.foundation import (
+    ApplicationResult,
+    PredictionDeploymentReader,
+    PredictionMapperCatalog,
+    error_result,
+    json_payload_hash,
+    success_result,
+)
 from trader_research.foundation.artifacts import ArtifactReference, SCHEMA_VERSION
 
 from collections.abc import Iterable
@@ -15,6 +22,7 @@ from trader.backtest import BacktestResult, BacktestRunner, BacktestSpec, build_
 from trader.backtest.export_payloads import _build_equity_curve_csv_rows, _build_trade_csv_rows, serialize_backtest_result
 from trader.config import Config
 from trader.event_store import EventStore
+from trader.predictions import PredictionRuntimeResolver
 from trader.portfolio import Position
 from trader.risk import RiskContext, RiskManager
 from trader_standard.risk import NoOpRiskManager
@@ -101,6 +109,9 @@ def run_backtest_specification(
     config: Config,
     backtest_specification_validation_ref: str,
     artifact_store: ResearchArtifactStore | None,
+    prediction_deployment_reader: PredictionDeploymentReader | None = None,
+    prediction_mapper_catalog: PredictionMapperCatalog | None = None,
+    prediction_runtime_resolver: PredictionRuntimeResolver | None = None,
 ) -> ApplicationResult:
     """Execute one passed canonical backtest specification and persist the complete result."""
     command = RESEARCH_RUN_BACKTEST_SPECIFICATION
@@ -108,10 +119,16 @@ def run_backtest_specification(
         return _error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")
     try:
         specification, validation = load_passed_backtest_specification(
-            artifact_store, backtest_specification_validation_ref
+            artifact_store,
+            backtest_specification_validation_ref,
+            prediction_deployment_reader=prediction_deployment_reader,
+            prediction_mapper_catalog=prediction_mapper_catalog,
         )
         strategy_specification, _ = load_passed_strategy_specification(
-            artifact_store, str(specification["strategy_specification_validation_id"])
+            artifact_store,
+            str(specification["strategy_specification_validation_id"]),
+            prediction_deployment_reader=prediction_deployment_reader,
+            prediction_mapper_catalog=prediction_mapper_catalog,
         )
         strategy_implementation = ImplementationVersion.from_dict(
             load_artifact_ref(
@@ -121,6 +138,22 @@ def run_backtest_specification(
             )
         )
         dataset = dict(specification["dataset"]["payload"])
+        binding_evidence = list(strategy_specification.get("prediction_bindings") or [])
+        if binding_evidence and prediction_runtime_resolver is None:
+            raise ValueError("prediction runtime resolver is required for model-backed backtests")
+        runtime_bindings = (
+            tuple(
+                prediction_runtime_resolver.resolve(
+                    binding=binding,
+                    symbols=list(dataset["symbols"]),
+                    asset_class=str(dataset["asset_class"]),
+                    timeframe=str(dataset["timeframe"]),
+                )
+                for binding in binding_evidence
+            )
+            if prediction_runtime_resolver is not None
+            else ()
+        )
         strategy = instantiate_strategy(
             strategy_implementation,
             symbols=list(dataset["symbols"]),
@@ -128,6 +161,7 @@ def run_backtest_specification(
             timeframe=str(dataset["timeframe"]),
             parameters=dict(strategy_specification.get("parameters") or {}),
             sizing=dict(strategy_specification.get("sizing") or {}),
+            prediction_bindings=runtime_bindings if binding_evidence else None,
         )
         risk_manager, risk_lineage = _build_risk_pipeline(artifact_store, specification)
         positions = [
@@ -141,6 +175,11 @@ def run_backtest_specification(
                 "backtest_specification_validation_id": validation["validation_id"],
                 "strategy_source_hash": strategy_implementation.source_hash,
                 "risk_source_hashes": [item["source_hash"] for item in risk_lineage],
+                "prediction_binding_digest": (
+                    f"sha256:{json_payload_hash({'bindings': binding_evidence})}"
+                    if binding_evidence
+                    else None
+                ),
             },
         )
         persisted = _load_persisted_backtest_run(
@@ -218,6 +257,7 @@ def run_backtest_specification(
         "strategy_implementation_version_id": strategy_implementation.implementation_version_id,
         "risk_stack_specification_id": specification.get("risk_stack_specification_id"),
         "risk_lineage": risk_lineage,
+        "prediction_bindings": binding_evidence,
         "dataset_id": dataset["dataset_id"],
         "dataset_hash": specification["dataset"]["sha256"],
         "quality_hash": specification["data_quality"]["sha256"],
@@ -243,6 +283,7 @@ def run_backtest_specification(
                 "backtest_specification_validation": validation,
                 "strategy_source_hash": strategy_implementation.source_hash,
                 "risk_lineage": risk_lineage,
+                "prediction_bindings": binding_evidence,
             },
         },
     }
@@ -296,6 +337,7 @@ def _load_persisted_backtest_run(
         "strategy_implementation_version_id": strategy_implementation.implementation_version_id,
         "risk_stack_specification_id": specification.get("risk_stack_specification_id"),
         "risk_lineage": list(risk_lineage),
+        "prediction_bindings": list(strategy_specification.get("prediction_bindings") or []),
         "dataset_id": specification["dataset"]["payload"]["dataset_id"],
         "dataset_hash": specification["dataset"]["sha256"],
         "quality_hash": specification["data_quality"]["sha256"],
@@ -353,6 +395,7 @@ def _load_persisted_backtest_run(
         "backtest_specification_validation": validation,
         "strategy_source_hash": strategy_implementation.source_hash,
         "risk_lineage": list(risk_lineage),
+        "prediction_bindings": list(strategy_specification.get("prediction_bindings") or []),
     }
     if not isinstance(provenance, Mapping) or dict(provenance) != expected_provenance:
         raise ValueError("persisted backtest run provenance drifted")

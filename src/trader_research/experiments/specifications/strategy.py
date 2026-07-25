@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from trader_research.governance.artifacts import QUANT_RESEARCH_SUPERVISOR_OWNER
 
-from trader_research.foundation import ApplicationResult, success_result
+from trader_research.foundation import (
+    ApplicationResult,
+    PredictionDeploymentReader,
+    PredictionMapperCatalog,
+    success_result,
+)
 from trader_research.foundation.artifacts import SCHEMA_VERSION
 
 from typing import Any, Mapping, Sequence
@@ -18,6 +23,7 @@ from trader_research.governance.artifacts import (
 from trader_research.experiments.implementations import load_passed_implementation, validate_parameters
 
 from .common import resolve_exactly_one, specification_error
+from .predictions import build_prediction_bindings, revalidate_prediction_bindings
 
 
 RESEARCH_CREATE_STRATEGY_SPECIFICATION = "research_create_strategy_specification"
@@ -34,6 +40,9 @@ def create_strategy_specification(
     execution_assumptions: Mapping[str, Any] | None = None,
     tunable_fields: list[str] | None = None,
     provenance_refs: Sequence[Mapping[str, Any]] | None = None,
+    prediction_bindings: Sequence[Mapping[str, Any]] | None = None,
+    prediction_deployment_reader: PredictionDeploymentReader | None = None,
+    prediction_mapper_catalog: PredictionMapperCatalog | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ApplicationResult:
     """Create a data-scope-free strategy specification."""
@@ -50,6 +59,13 @@ def create_strategy_specification(
             raise ValueError(blockers[0])
         normalized_sizing = dict(sizing or {})
         normalized_execution = dict(execution_assumptions or {})
+        requirements = list(implementation.runtime_requirements.get("prediction_requirements") or [])
+        normalized_bindings, decision_scope = build_prediction_bindings(
+            requirements=requirements,
+            requested_bindings=prediction_bindings,
+            deployment_reader=prediction_deployment_reader,
+            mapper_catalog=prediction_mapper_catalog,
+        )
         _validate_no_scope(normalized_parameters, normalized_sizing, normalized_execution)
         _validate_no_live(normalized_execution)
         normalized_tunable = _validate_tunable_fields(tunable_fields or [], normalized_parameters, normalized_sizing)
@@ -64,6 +80,8 @@ def create_strategy_specification(
             "execution_assumptions": normalized_execution,
             "tunable_fields": normalized_tunable,
             "provenance_refs": [dict(item) for item in (provenance_refs or [])],
+            "prediction_bindings": normalized_bindings,
+            "decision_scope": decision_scope,
         }
         specification_id = stable_research_id("strategy_specification", identity)
         payload = {
@@ -96,6 +114,8 @@ def validate_strategy_specification(
     strategy_specification_id: str | None = None,
     strategy_specification_uri: str | None = None,
     strategy_specification: Mapping[str, Any] | None = None,
+    prediction_deployment_reader: PredictionDeploymentReader | None = None,
+    prediction_mapper_catalog: PredictionMapperCatalog | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ApplicationResult:
     """Revalidate implementation lineage and configuration for a strategy specification."""
@@ -123,6 +143,19 @@ def validate_strategy_specification(
             blockers.append("strategy specification source hash drifted")
         if validation.get("validation_id") != payload.get("implementation_validation_id"):
             blockers.append("strategy specification validation lineage drifted")
+        try:
+            _, decision_scope = revalidate_prediction_bindings(
+                requirements=list(
+                    implementation.runtime_requirements.get("prediction_requirements") or []
+                ),
+                persisted_bindings=list(payload.get("prediction_bindings") or []),
+                deployment_reader=prediction_deployment_reader,
+                mapper_catalog=prediction_mapper_catalog,
+            )
+            if decision_scope != payload.get("decision_scope"):
+                blockers.append("strategy specification decision scope drifted")
+        except ValueError as exc:
+            blockers.append(str(exc))
         _validate_no_scope(
             dict(payload.get("parameters") or {}),
             dict(payload.get("sizing") or {}),
@@ -162,6 +195,9 @@ def validate_strategy_specification(
 def load_passed_strategy_specification(
     store: ResearchArtifactStore,
     validation_ref: str,
+    *,
+    prediction_deployment_reader: PredictionDeploymentReader | None = None,
+    prediction_mapper_catalog: PredictionMapperCatalog | None = None,
 ) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
     """Load a passed strategy specification validation and exact specification."""
     report = store.load_artifact(STRATEGY_SPECIFICATION_VALIDATION_REPORT, _id_from_ref(validation_ref))
@@ -180,6 +216,8 @@ def load_passed_strategy_specification(
         "execution_assumptions": dict(specification.get("execution_assumptions") or {}),
         "tunable_fields": list(specification.get("tunable_fields") or []),
         "provenance_refs": list(specification.get("provenance_refs") or []),
+        "prediction_bindings": list(specification.get("prediction_bindings") or []),
+        "decision_scope": str(specification.get("decision_scope") or ""),
     }
     if stable_research_id("strategy_specification", identity) != specification_id:
         raise ValueError("strategy specification ID does not match its canonical content")
@@ -203,6 +241,14 @@ def load_passed_strategy_specification(
         raise ValueError("strategy implementation source hash drifted after specification validation")
     if validation.get("validation_id") != specification.get("implementation_validation_id"):
         raise ValueError("strategy implementation validation lineage drifted")
+    _, decision_scope = revalidate_prediction_bindings(
+        requirements=list(implementation.runtime_requirements.get("prediction_requirements") or []),
+        persisted_bindings=list(specification.get("prediction_bindings") or []),
+        deployment_reader=prediction_deployment_reader,
+        mapper_catalog=prediction_mapper_catalog,
+    )
+    if decision_scope != specification.get("decision_scope"):
+        raise ValueError("strategy specification decision scope drifted")
     return specification, report
 
 

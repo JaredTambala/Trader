@@ -84,6 +84,8 @@ def _truncate_research_artifact_tables(
     connection.execute(
         """
         TRUNCATE TABLE
+            research_ml_deployment_validations,
+            research_ml_deployments,
             research_parameter_optimization_robustness_reports,
             research_parameter_optimization_audit_plans,
             research_parameter_optimization_evaluations,

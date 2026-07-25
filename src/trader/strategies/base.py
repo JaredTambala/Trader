@@ -20,6 +20,16 @@ class Strategy(ABC):
     """
 
     @property
+    def decision_scope(self) -> str:
+        """Return whether decisions run independently or on one synchronized universe."""
+        return "per_symbol"
+
+    @property
+    def required_lookback(self) -> int:
+        """Return the minimum market-data warmup required before decisions."""
+        return 0
+
+    @property
     @abstractmethod
     def strategy_id(self) -> str:
         """Return the stable strategy/version identifier stored in run metadata and artifacts."""

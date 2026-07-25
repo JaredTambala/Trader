@@ -104,7 +104,8 @@ The event store provides the runtime’s persistence, transaction boundary, and 
 Primary responsibilities:
 
 - bootstrap schema
-- persist append-only market, signal, order, fill, run, session, metrics, and portfolio events
+- persist append-only market, prediction, signal, order, fill, run, session, metrics, and portfolio events
+- preserve bounded prediction-to-signal/order lineage
 - expose transactional writes and query access
 - support filtered writes based on runtime logging configuration
 
@@ -135,6 +136,18 @@ Representative standard implementations outside core:
 - `trader_standard.build_trend_following_strategy(...)`
 - `trader_standard.build_mean_reversion_strategy(...)`
 - `trader_standard.build_bollinger_band_strategy(...)`
+- `trader_standard.PredictionDrivenStrategy`
+
+Strategies declare a `decision_scope`. `per_symbol` strategies run independently for each symbol callback.
+`universe_snapshot` strategies run once only after the complete configured universe is synchronized at one decision
+timestamp. This distinction is used by cross-sectional and portfolio predictors and is enforced in both backtest and
+stream cycle paths.
+
+Core model inference lives in `trader.predictions` as provider-neutral contracts. A `FeatureProvider` produces a
+point-in-time, content-hashed `FeatureBatch`; a `Predictor` produces typed raw `PredictionObservation` records under an
+immutable `ModelIdentity`; and a strategy-owned `PredictionMapper` converts those outputs into strategy inputs. The
+model cannot emit orders directly. Optional MLflow loading and maintained feature/mapper/strategy implementations live
+outside core in `trader_mlflow` and `trader_standard` respectively.
 
 ### 4. Risk Layer
 
