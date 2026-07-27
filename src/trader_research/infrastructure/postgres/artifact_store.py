@@ -24,10 +24,29 @@ except ImportError:  # pragma: no cover - optional dependency
 
 RESEARCH_ARTIFACT_SCHEMA_STATEMENTS: tuple[str, ...] = (
     """
+    DO $$
+    BEGIN
+        IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'research_artifacts'
+              AND column_name = 'agent_owner'
+        ) THEN
+            RAISE EXCEPTION
+                'legacy research_artifacts schema detected; drop the table before the ORCH-GOV cutover';
+        END IF;
+    END
+    $$
+    """,
+    """
     CREATE TABLE IF NOT EXISTS research_artifacts (
         artifact_type TEXT NOT NULL,
         artifact_id TEXT NOT NULL,
-        agent_owner TEXT NOT NULL,
+        domain_owner TEXT NOT NULL,
+        producer_tool TEXT NOT NULL,
+        requested_by TEXT,
+        actor TEXT,
         status TEXT,
         schema_version TEXT NOT NULL,
         source_hash TEXT,
@@ -359,8 +378,11 @@ class PostgresResearchArtifactStore:
         *,
         artifact_type: str,
         artifact_id: str,
-        agent_owner: str,
+        domain_owner: str,
+        producer_tool: str,
         payload: Mapping[str, Any],
+        requested_by: str | None = None,
+        actor: str | None = None,
         status: str | None = None,
         metadata: Mapping[str, Any] | None = None,
         source_hash: str | None = None,
@@ -369,8 +391,11 @@ class PostgresResearchArtifactStore:
         record = build_artifact_record(
             artifact_type=artifact_type,
             artifact_id=artifact_id,
-            agent_owner=agent_owner,
+            domain_owner=domain_owner,
+            producer_tool=producer_tool,
             payload=payload,
+            requested_by=requested_by,
+            actor=actor,
             status=status,
             metadata=metadata,
             source_hash=source_hash,
@@ -379,12 +404,16 @@ class PostgresResearchArtifactStore:
             self._connection.execute(
                 """
                 INSERT INTO research_artifacts (
-                    artifact_type, artifact_id, agent_owner, status, schema_version,
-                    source_hash, metadata, payload
+                    artifact_type, artifact_id, domain_owner, producer_tool,
+                    requested_by, actor, status, schema_version, source_hash,
+                    metadata, payload
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (artifact_type, artifact_id) DO UPDATE SET
-                    agent_owner = EXCLUDED.agent_owner,
+                    domain_owner = EXCLUDED.domain_owner,
+                    producer_tool = EXCLUDED.producer_tool,
+                    requested_by = EXCLUDED.requested_by,
+                    actor = EXCLUDED.actor,
                     status = EXCLUDED.status,
                     schema_version = EXCLUDED.schema_version,
                     source_hash = EXCLUDED.source_hash,
@@ -395,7 +424,10 @@ class PostgresResearchArtifactStore:
                 [
                     record.artifact_type,
                     record.artifact_id,
-                    record.agent_owner,
+                    record.domain_owner,
+                    record.producer_tool,
+                    record.requested_by,
+                    record.actor,
                     record.status,
                     record.schema_version,
                     record.source_hash,
@@ -420,8 +452,9 @@ class PostgresResearchArtifactStore:
         """Load one full artifact record by type and ID."""
         row = self._connection.execute(
             """
-            SELECT artifact_type, artifact_id, agent_owner, status, schema_version,
-                   source_hash, created_at, updated_at, metadata, payload
+            SELECT artifact_type, artifact_id, domain_owner, producer_tool,
+                   requested_by, actor, status, schema_version, source_hash,
+                   created_at, updated_at, metadata, payload
             FROM research_artifacts
             WHERE artifact_type = %s AND artifact_id = %s
             """,
@@ -434,7 +467,10 @@ class PostgresResearchArtifactStore:
         return ResearchArtifactRecord(
             artifact_type=str(row["artifact_type"]),
             artifact_id=str(row["artifact_id"]),
-            agent_owner=str(row["agent_owner"]),
+            domain_owner=str(row["domain_owner"]),
+            producer_tool=str(row["producer_tool"]),
+            requested_by=row["requested_by"],
+            actor=row["actor"],
             status=row["status"],
             schema_version=str(row["schema_version"]),
             source_hash=row["source_hash"],
@@ -460,8 +496,9 @@ class PostgresResearchArtifactStore:
             where.append("artifact_id = ANY(%s)")
             params.append(list(artifact_ids))
         query = """
-            SELECT artifact_type, artifact_id, agent_owner, status, schema_version,
-                   source_hash, created_at, updated_at, metadata, payload
+            SELECT artifact_type, artifact_id, domain_owner, producer_tool,
+                   requested_by, actor, status, schema_version, source_hash,
+                   created_at, updated_at, metadata, payload
             FROM research_artifacts
         """
         if where:
@@ -472,7 +509,10 @@ class PostgresResearchArtifactStore:
             ResearchArtifactRecord(
                 artifact_type=str(row["artifact_type"]),
                 artifact_id=str(row["artifact_id"]),
-                agent_owner=str(row["agent_owner"]),
+                domain_owner=str(row["domain_owner"]),
+                producer_tool=str(row["producer_tool"]),
+                requested_by=row["requested_by"],
+                actor=row["actor"],
                 status=row["status"],
                 schema_version=str(row["schema_version"]),
                 source_hash=row["source_hash"],

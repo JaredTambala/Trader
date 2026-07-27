@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from trader_research.governance.artifacts import OWNER_BY_ARTIFACT_TYPE
+from trader_research.governance.artifacts import DOMAIN_OWNER_BY_ARTIFACT_TYPE
 
 from dataclasses import replace
 import hashlib
@@ -604,7 +604,8 @@ def test_validation_blocks_stale_packet_evidence_unit_hashes(tmp_path: Path) -> 
         role_copy["chunks"] = chunks_copy
         tampered_roles.append(role_copy)
     artifact_store.save_artifact(
-        agent_owner=OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_EVIDENCE_PACKET],
+        domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_EVIDENCE_PACKET],
+        producer_tool="test_methodology_fixture",
         artifact_type=METHODOLOGY_EVIDENCE_PACKET,
         artifact_id=packet["evidence_packet_id"],
         payload={**packet, "role_evidence": tampered_roles},
@@ -775,7 +776,8 @@ def test_shared_evidence_unit_supports_distinct_method_claim_spans(tmp_path: Pat
     )
     for candidate in candidates:
         artifact_store.save_artifact(
-            agent_owner=OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_CANDIDATE],
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_CANDIDATE],
+            producer_tool="test_methodology_fixture",
             artifact_type=METHODOLOGY_CANDIDATE,
             artifact_id=candidate.methodology_candidate_id,
             payload=candidate.to_dict(),
@@ -840,7 +842,8 @@ def test_shared_evidence_unit_supports_distinct_method_claim_spans(tmp_path: Pat
     )
     stale_candidate = replace(stale_candidate, extension_fields=stale_extensions)
     artifact_store.save_artifact(
-        agent_owner=OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_CANDIDATE],
+        domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_CANDIDATE],
+        producer_tool="test_methodology_fixture",
         artifact_type=METHODOLOGY_CANDIDATE,
         artifact_id=stale_candidate.methodology_candidate_id,
         payload=stale_candidate.to_dict(),
@@ -929,7 +932,8 @@ def test_real_pdf_shaped_oscillator_evidence_rejects_neighbor_method_claims(tmp_
         },
     )
     artifact_store.save_artifact(
-        agent_owner=OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_CANDIDATE],
+        domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_CANDIDATE],
+        producer_tool="test_methodology_fixture",
         artifact_type=METHODOLOGY_CANDIDATE,
         artifact_id=candidate.methodology_candidate_id,
         payload=candidate.to_dict(),
@@ -1020,7 +1024,8 @@ def test_field_synthesis_preserves_claim_spans_across_evidence_units(tmp_path: P
         },
     )
     artifact_store.save_artifact(
-        agent_owner=OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_CANDIDATE],
+        domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_CANDIDATE],
+        producer_tool="test_methodology_fixture",
         artifact_type=METHODOLOGY_CANDIDATE,
         artifact_id=candidate.methodology_candidate_id,
         payload=candidate.to_dict(),
@@ -1066,7 +1071,8 @@ def test_extraction_rejects_invalid_refs_and_blocks_missing_chunks(tmp_path: Pat
         chunk_ids=("missing_chunk",),
     )
     artifact_store.save_artifact(
-        agent_owner=OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_CANDIDATE],
+        domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_CANDIDATE],
+        producer_tool="test_methodology_fixture",
         artifact_type=METHODOLOGY_CANDIDATE,
         artifact_id=missing_chunk_candidate.methodology_candidate_id,
         payload=missing_chunk_candidate.to_dict(),

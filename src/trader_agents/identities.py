@@ -86,5 +86,5 @@ def _identity_from_definition(definition: AgentDefinition) -> AgentIdentity:
         display_name=definition.display_name,
         role_policy=_ROLE_POLICIES[definition.key],
         tool_allowlist=definition.initial_tools,
-        output_artifacts=definition.owned_artifacts,
+        output_artifacts=definition.produced_artifacts,
     )

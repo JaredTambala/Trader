@@ -302,6 +302,7 @@ def test_research_bounded_context_import_graph_is_directional_and_acyclic() -> N
         "infrastructure": Path("src/trader_research/infrastructure"),
     }
     allowed_edges = {
+        ("governance", "foundation"),
         ("data", "foundation"),
         ("knowledge", "foundation"),
         ("knowledge", "governance"),
@@ -472,6 +473,30 @@ def test_foundation_depends_only_on_python_standard_library() -> None:
                 ("trader", "trader_research", "trader_mcp", "trader_agents")
             ):
                 offenders.append(f"{path}: imports {imported}")
+    assert offenders == []
+
+
+def test_orchestration_contracts_do_not_import_service_implementations() -> None:
+    forbidden = (
+        "trader",
+        "trader_agents",
+        "trader_mcp",
+        "trader_research.data",
+        "trader_research.experiments",
+        "trader_research.infrastructure",
+        "trader_research.knowledge",
+        "trader_research.methodology",
+        "trader_research.ml",
+        "trader_research.review",
+    )
+    offenders: list[str] = []
+    for path in Path("src/trader_research/governance/orchestration").glob("*.py"):
+        for imported in sorted(_imported_modules(path)):
+            if imported in forbidden or imported.startswith(
+                tuple(f"{prefix}." for prefix in forbidden)
+            ):
+                offenders.append(f"{path}: imports {imported}")
+
     assert offenders == []
 
 

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from trader_research.governance.artifacts import ADVERSARIAL_AGENT_OWNER
-
 from trader_research.foundation import ApplicationResult, error_result, success_result
 from trader_research.foundation.artifacts import SCHEMA_VERSION
 
@@ -17,6 +15,7 @@ from trader_research.foundation.artifacts import (
 from trader_research.foundation import json_payload_hash
 from trader_research.foundation import stable_research_id
 from trader_research.governance.artifacts import (
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
     PARAMETER_OPTIMIZATION_AUDIT_PLAN,
     PARAMETER_OPTIMIZATION_ROBUSTNESS_REPORT,
 )
@@ -82,7 +81,8 @@ def create_parameter_optimization_audit_plan(
             "status": "created",
         }
         record = artifact_store.save_artifact(
-            agent_owner=ADVERSARIAL_AGENT_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_AUDIT_PLAN],
+            producer_tool=ADVERSARIAL_CREATE_PARAMETER_OPTIMIZATION_AUDIT_PLAN,
             artifact_type=PARAMETER_OPTIMIZATION_AUDIT_PLAN,
             artifact_id=plan_id,
             payload=payload,
@@ -156,7 +156,8 @@ def generate_parameter_optimization_audit(
             "warnings": warnings,
         }
         record = artifact_store.save_artifact(
-            agent_owner=ADVERSARIAL_AGENT_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_ROBUSTNESS_REPORT],
+            producer_tool=ADVERSARIAL_GENERATE_PARAMETER_OPTIMIZATION_AUDIT,
             artifact_type=PARAMETER_OPTIMIZATION_ROBUSTNESS_REPORT,
             artifact_id=report_id,
             payload=report,

@@ -12,7 +12,7 @@ from trader_research.foundation.artifacts import (
     ResearchArtifactStore,
 )
 from trader_research.governance.artifacts import (
-    ML_AGENT_OWNER,
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
     ML_DEPLOYMENT_MANIFEST,
     ML_DEPLOYMENT_VALIDATION_REPORT,
     ML_FEATURE_SET_SPEC,
@@ -102,7 +102,8 @@ def _seed_upstream(store: ResearchArtifactStore) -> None:
         store.save_artifact(
             artifact_type=artifact_type,
             artifact_id=artifact_id,
-            agent_owner=ML_AGENT_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[artifact_type],
+            producer_tool="test_ml_deployment_fixture",
             payload=payload,
             status=status,
         )
@@ -203,7 +204,8 @@ def test_deployment_validation_blocks_unavailable_adapter_and_upstream_drift() -
     store.save_artifact(
         artifact_type=ML_MODEL_VERSION_REF,
         artifact_id="ml_model_version_1",
-        agent_owner=ML_AGENT_OWNER,
+        domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[ML_MODEL_VERSION_REF],
+        producer_tool="test_ml_deployment_fixture",
         payload=model,
         status="registered",
     )
@@ -229,7 +231,8 @@ def test_deployment_creation_rejects_provider_locations_and_mutable_aliases() ->
     store.save_artifact(
         artifact_type=ML_MODEL_VERSION_REF,
         artifact_id="ml_model_version_1",
-        agent_owner=ML_AGENT_OWNER,
+        domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[ML_MODEL_VERSION_REF],
+        producer_tool="test_ml_deployment_fixture",
         payload=model,
         status="registered",
     )
@@ -246,7 +249,8 @@ def test_deployment_creation_rejects_provider_locations_and_mutable_aliases() ->
     store.save_artifact(
         artifact_type=ML_MODEL_VERSION_REF,
         artifact_id="ml_model_version_1",
-        agent_owner=ML_AGENT_OWNER,
+        domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[ML_MODEL_VERSION_REF],
+        producer_tool="test_ml_deployment_fixture",
         payload=model,
         status="registered",
     )

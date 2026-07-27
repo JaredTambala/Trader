@@ -20,7 +20,7 @@ from trader_research.foundation.artifacts import (
     load_artifact_ref,
 )
 from trader_research.governance.artifacts import (
-    ML_AGENT_OWNER,
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
     ML_DEPLOYMENT_MANIFEST,
     ML_DEPLOYMENT_VALIDATION_REPORT,
     ML_FEATURE_SET_SPEC,
@@ -131,7 +131,8 @@ def create_deployment_manifest(
             },
         }
         record = artifact_store.save_artifact(
-            agent_owner=ML_AGENT_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[ML_DEPLOYMENT_MANIFEST],
+            producer_tool=ML_CREATE_DEPLOYMENT_MANIFEST,
             artifact_type=ML_DEPLOYMENT_MANIFEST,
             artifact_id=deployment_id,
             payload=payload,
@@ -210,7 +211,8 @@ def validate_deployment(
     }
     try:
         record = artifact_store.save_artifact(
-            agent_owner=ML_AGENT_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[ML_DEPLOYMENT_VALIDATION_REPORT],
+            producer_tool=ML_VALIDATE_DEPLOYMENT,
             artifact_type=ML_DEPLOYMENT_VALIDATION_REPORT,
             artifact_id=report["validation_id"],
             payload=report,

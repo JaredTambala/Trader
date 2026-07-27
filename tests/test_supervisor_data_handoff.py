@@ -59,8 +59,10 @@ def test_supervisor_consumes_data_agent_graph_handoff_without_fetching_raw_data(
         assert output["status"] == "blocked"
         assert output["data_manifest"]["dataset_id"] == data_output["dataset_manifest"]["dataset_id"]
         assert output["data_quality_report"]["report_id"] == data_output["quality_report"]["report_id"]
-        assert output["artifact_slots"][DATASET_MANIFEST]["handoff"]["agent_owner"] == "Data Agent"
-        assert output["artifact_slots"][DATA_QUALITY_REPORT]["handoff"]["agent_owner"] == "Data Agent"
+        assert output["artifact_slots"][DATASET_MANIFEST]["handoff"]["domain_owner"] == "Data"
+        assert output["artifact_slots"][DATASET_MANIFEST]["handoff"]["actor"] == "Data Agent"
+        assert output["artifact_slots"][DATA_QUALITY_REPORT]["handoff"]["domain_owner"] == "Data"
+        assert output["artifact_slots"][DATA_QUALITY_REPORT]["handoff"]["actor"] == "Data Agent"
         assert "missing_indicator_metadata" in blocker_codes
         assert "missing_hypothesis_card" in blocker_codes
         assert "missing_evaluation_report" in blocker_codes

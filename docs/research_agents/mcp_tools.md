@@ -7,6 +7,11 @@ and capability flags are defined in `src/trader_mcp/constants.py`; owner lookup 
 Every tool returns a shared `ToolEnvelope` through MCP `structuredContent` and text content. See
 [tool_contracts.md](tool_contracts.md) for detailed request and artifact schemas.
 
+Owner labels in this catalog describe executable tool allowlists/stewardship only. ORCH-GOV has separated canonical
+artifact authority into `domain_owner`, `producer_tool`, `requested_by` and `actor`; these catalog labels do not replace
+that provenance and do not authenticate the caller. Approved target decisions are defined in
+[agents.md](agents.md#approved-decision-boundaries).
+
 ## Backing Service Packages
 
 MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded `trader_research` packages.
@@ -193,6 +198,11 @@ The next planned tool work is not additional knowledge extraction. It is:
   evaluation evidence, and lifecycle state
 - broader robustness variants linked to immutable baseline backtests, including cost, perturbation, split, and
   concentration attacks
+
+Higher-level orchestration initially composes the registered tools in this catalog; it is not a new generic MCP tool
+that bypasses their contracts. Current orchestration state and remaining dependencies are recorded in
+[product_state.md](product_state.md#target-orchestration-position) and the
+[capability roadmap](../../plans/research_capability_roadmap.md#orchestration).
 
 None of those future surfaces should execute prompt text directly. AI-produced code is supplied as an explicit source
 artifact and passes the same validation and backtest-only restrictions as handwritten code.

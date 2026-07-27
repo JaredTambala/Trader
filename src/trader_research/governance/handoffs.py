@@ -7,6 +7,12 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from trader_research.foundation import (
+    ResearchArtifactStoreError,
+    parse_research_artifact_uri,
+    research_artifact_uri,
+)
+
 from .artifacts import (
     DATASET_MANIFEST,
     DATA_QUALITY_REPORT,
@@ -16,7 +22,7 @@ from .artifacts import (
     HYPOTHESIS_CARD,
     INDICATOR_METADATA,
     MODEL_CARD,
-    OWNER_BY_ARTIFACT_TYPE,
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
     PREDICTION_ARTIFACT,
     ROBUSTNESS_REPORT,
     SUPPORTED_ARTIFACT_TYPES,
@@ -234,9 +240,12 @@ class SpecialistHandoff:
 
     Attributes:
         handoff_id: Stable handoff identifier.
-        agent_owner: Producing agent display name.
+        domain_owner: Bounded context authoritative for the artifact.
+        producer_tool: Deterministic tool or service operation that produced it.
+        requested_by: Operator request or workflow reference requiring the operation.
+        actor: Operator or agent identity that routed the operation.
         artifact_type: Stable artifact type.
-        artifact_path: Optional local artifact path.
+        artifact_uri: Optional canonical Postgres artifact URI.
         payload: Optional structured artifact summary.
         source_request: Source request or parameters that produced the artifact.
         provenance_refs: Provenance references back to results, graph state, or runs.
@@ -245,9 +254,12 @@ class SpecialistHandoff:
     """
 
     handoff_id: str
-    agent_owner: str
+    domain_owner: str
+    producer_tool: str
+    requested_by: str
+    actor: str
     artifact_type: str
-    artifact_path: str | None = None
+    artifact_uri: str | None = None
     payload: Mapping[str, Any] = field(default_factory=dict)
     source_request: Mapping[str, Any] = field(default_factory=dict)
     provenance_refs: Mapping[str, Any] = field(default_factory=dict)
@@ -255,26 +267,46 @@ class SpecialistHandoff:
     blockers: tuple[ResearchIssue, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
-        """Validate artifact ownership and payload shape."""
+        """Validate artifact authority, provenance, and payload shape."""
         if not self.handoff_id.strip():
             raise ValueError("handoff_id is required")
-        if not self.agent_owner.strip():
-            raise ValueError("agent_owner is required")
+        if not self.domain_owner.strip():
+            raise ValueError("domain_owner is required")
+        if not self.producer_tool.strip():
+            raise ValueError("producer_tool is required")
+        if not self.requested_by.strip():
+            raise ValueError("requested_by is required")
+        if not self.actor.strip():
+            raise ValueError("actor is required")
         if self.artifact_type not in SUPPORTED_ARTIFACT_TYPES:
             raise ValueError(f"unsupported artifact type: {self.artifact_type}")
-        expected_owner = OWNER_BY_ARTIFACT_TYPE.get(self.artifact_type)
-        if expected_owner is not None and self.agent_owner != expected_owner:
-            raise ValueError(f"{self.artifact_type} must be owned by {expected_owner}")
-        if self.artifact_path is None and not self.payload:
-            raise ValueError("artifact_path or payload is required")
+        expected_owner = DOMAIN_OWNER_BY_ARTIFACT_TYPE.get(self.artifact_type)
+        if expected_owner is not None and self.domain_owner != expected_owner:
+            raise ValueError(
+                f"{self.artifact_type} must be owned by the {expected_owner} domain"
+            )
+        if self.artifact_uri is None and not self.payload:
+            raise ValueError("artifact_uri or payload is required")
+        if self.artifact_uri is not None:
+            try:
+                uri_type, _ = parse_research_artifact_uri(self.artifact_uri)
+            except ResearchArtifactStoreError as exc:
+                raise ValueError(str(exc)) from exc
+            if uri_type != self.artifact_type:
+                raise ValueError(
+                    f"artifact_uri type {uri_type} does not match {self.artifact_type}"
+                )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the handoff while normalizing payloads, provenance, warnings, and blockers for agents."""
         payload = {
             "handoff_id": self.handoff_id,
-            "agent_owner": self.agent_owner,
+            "domain_owner": self.domain_owner,
+            "producer_tool": self.producer_tool,
+            "requested_by": self.requested_by,
+            "actor": self.actor,
             "artifact_type": self.artifact_type,
-            "artifact_path": self.artifact_path,
+            "artifact_uri": self.artifact_uri,
             "payload": _jsonable(self.payload),
             "source_request": _jsonable(self.source_request),
             "provenance_refs": _jsonable(self.provenance_refs),
@@ -295,10 +327,13 @@ class SpecialistHandoff:
         """
         return cls(
             handoff_id=str(payload.get("handoff_id") or ""),
-            agent_owner=str(payload.get("agent_owner") or ""),
+            domain_owner=str(payload.get("domain_owner") or ""),
+            producer_tool=str(payload.get("producer_tool") or ""),
+            requested_by=str(payload.get("requested_by") or ""),
+            actor=str(payload.get("actor") or ""),
             artifact_type=str(payload.get("artifact_type") or ""),
-            artifact_path=str(payload["artifact_path"])
-            if payload.get("artifact_path") is not None
+            artifact_uri=str(payload["artifact_uri"])
+            if payload.get("artifact_uri") is not None
             else None,
             payload=_mapping(payload.get("payload")),
             source_request=_mapping(payload.get("source_request")),
@@ -321,7 +356,7 @@ class SpecialistArtifactSlot:
     Attributes:
         slot_key: Stable state slot key.
         artifact_type: Required or optional artifact type.
-        agent_owner: Owning specialist agent.
+        domain_owner: Bounded context authoritative for the artifact.
         required: Whether absence is a blocker.
         status: Slot status such as missing, accepted, blocked, or optional_missing.
         handoff: Optional accepted specialist handoff.
@@ -330,7 +365,7 @@ class SpecialistArtifactSlot:
 
     slot_key: str
     artifact_type: str
-    agent_owner: str
+    domain_owner: str
     required: bool
     status: str = "missing"
     handoff: SpecialistHandoff | None = None
@@ -341,7 +376,7 @@ class SpecialistArtifactSlot:
         return {
             "slot_key": self.slot_key,
             "artifact_type": self.artifact_type,
-            "agent_owner": self.agent_owner,
+            "domain_owner": self.domain_owner,
             "required": self.required,
             "status": self.status,
             "handoff": self.handoff.to_dict() if self.handoff is not None else None,
@@ -380,38 +415,56 @@ class ExperimentPlan:
 class ArtifactReportRef:
     """Typed pointer to a specialist-produced report or artifact file.
 
-    Construction verifies that the artifact type is known, that ownership matches
-    the registered agent for that artifact, and that a stable artifact ID exists.
+    Construction verifies that the artifact type is known, that domain authority
+    matches the registry, and that a stable artifact ID exists.
     The reference is used when a supervisor needs to cite or require an artifact
     without loading the full report payload into the current message.
     """
 
     artifact_id: str
     artifact_type: str
-    agent_owner: str
-    path: str | None = None
+    domain_owner: str
+    uri: str
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Validate artifact type, expected owner, and non-empty artifact identity."""
+        """Validate artifact type, domain authority, and non-empty identity."""
         if self.artifact_type not in SUPPORTED_ARTIFACT_TYPES:
             raise ValueError(f"unsupported artifact type: {self.artifact_type}")
-        if OWNER_BY_ARTIFACT_TYPE[self.artifact_type] != self.agent_owner:
+        if DOMAIN_OWNER_BY_ARTIFACT_TYPE[self.artifact_type] != self.domain_owner:
             raise ValueError(
-                f"{self.artifact_type} must be owned by {OWNER_BY_ARTIFACT_TYPE[self.artifact_type]}"
+                f"{self.artifact_type} must be owned by the "
+                f"{DOMAIN_OWNER_BY_ARTIFACT_TYPE[self.artifact_type]} domain"
             )
         if not self.artifact_id.strip():
             raise ValueError("artifact_id is required")
+        try:
+            uri_type, uri_id = parse_research_artifact_uri(self.uri)
+        except ResearchArtifactStoreError as exc:
+            raise ValueError(str(exc)) from exc
+        if uri_type != self.artifact_type or uri_id != self.artifact_id:
+            raise ValueError("artifact URI identity does not match artifact reference")
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize artifact identity, ownership, optional path, and normalized metadata for review."""
+        """Serialize artifact identity, authority, URI, and normalized metadata."""
         return {
             "artifact_id": self.artifact_id,
             "artifact_type": self.artifact_type,
-            "agent_owner": self.agent_owner,
-            "path": self.path,
+            "domain_owner": self.domain_owner,
+            "uri": self.uri,
             "metadata": _jsonable(self.metadata),
         }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ArtifactReportRef":
+        """Build an artifact reference from JSON-compatible data."""
+        return cls(
+            artifact_id=str(payload.get("artifact_id") or ""),
+            artifact_type=str(payload.get("artifact_type") or ""),
+            domain_owner=str(payload.get("domain_owner") or ""),
+            uri=str(payload.get("uri") or ""),
+            metadata=_mapping(payload.get("metadata")),
+        )
 
 
 @dataclass(frozen=True)
@@ -439,24 +492,20 @@ class ResearchVerdict:
         }
 
 
-def artifact_report_ref(
-    artifact_type: str, artifact_id: str, *, path: str | Path | None = None
-) -> ArtifactReportRef:
+def artifact_report_ref(artifact_type: str, artifact_id: str) -> ArtifactReportRef:
     """Build a generic typed artifact reference.
 
     Args:
         artifact_type: Stable artifact type.
         artifact_id: Stable artifact identifier.
-        path: Optional local artifact path.
-
     Returns:
         Typed artifact report reference.
     """
     return ArtifactReportRef(
         artifact_id=artifact_id,
         artifact_type=artifact_type,
-        agent_owner=OWNER_BY_ARTIFACT_TYPE[artifact_type],
-        path=str(path) if path is not None else None,
+        domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[artifact_type],
+        uri=research_artifact_uri(artifact_type, artifact_id),
     )
 
 

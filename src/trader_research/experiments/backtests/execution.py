@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from trader_research.governance.artifacts import QUANT_RESEARCH_SUPERVISOR_OWNER
-
 from trader_research.foundation import (
     ApplicationResult,
     PredictionDeploymentReader,
@@ -37,6 +35,7 @@ from trader_research.foundation import stable_research_id
 from trader_research.governance.artifacts import (
     BACKTEST_RUN,
     COMPARISON_REPORT,
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
     IMPLEMENTATION_VERSION,
 )
 from trader_research.experiments.implementations import ImplementationVersion, instantiate_risk_manager, instantiate_strategy
@@ -289,7 +288,8 @@ def run_backtest_specification(
     }
     try:
         record = artifact_store.save_artifact(
-            agent_owner=QUANT_RESEARCH_SUPERVISOR_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[BACKTEST_RUN],
+            producer_tool=command,
             artifact_type=BACKTEST_RUN,
             artifact_id=run_id,
             payload=payload,
@@ -347,8 +347,10 @@ def _load_persisted_backtest_run(
     }
     if record.artifact_type != BACKTEST_RUN or record.artifact_id != run_id:
         raise ValueError("persisted backtest run record identity drifted")
-    if record.agent_owner != QUANT_RESEARCH_SUPERVISOR_OWNER:
-        raise ValueError("persisted backtest run owner drifted")
+    if record.domain_owner != DOMAIN_OWNER_BY_ARTIFACT_TYPE[BACKTEST_RUN]:
+        raise ValueError("persisted backtest run domain authority drifted")
+    if record.producer_tool != RESEARCH_RUN_BACKTEST_SPECIFICATION:
+        raise ValueError("persisted backtest run producer tool drifted")
     for key, value in expected.items():
         if payload.get(key) != value:
             raise ValueError(f"persisted backtest run {key} drifted")
@@ -502,7 +504,8 @@ def compare_backtest_results(
             "ranked_runs": ranked,
         }
         record = artifact_store.save_artifact(
-            agent_owner=QUANT_RESEARCH_SUPERVISOR_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[COMPARISON_REPORT],
+            producer_tool=command,
             artifact_type=COMPARISON_REPORT,
             artifact_id=report_id,
             payload=payload,

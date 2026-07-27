@@ -9,8 +9,12 @@ from trader_research.governance.ownership import AGENT_DEFINITIONS
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DOC_ROOT = REPO_ROOT / "docs" / "research_agents"
+PRODUCT_STATE_PATH = DOC_ROOT / "product_state.md"
+ROADMAP_PATH = REPO_ROOT / "plans" / "research_capability_roadmap.md"
+LEGACY_TRACKER_PATH = REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md"
 CURRENT_DOCS = (
     "README.md",
+    "product_state.md",
     "architecture.md",
     "agents.md",
     "mcp_tools.md",
@@ -92,6 +96,19 @@ def test_canonical_readme_links_resolve() -> None:
         assert (readme_path.parent / path_target).exists(), target
 
 
+def test_product_state_and_roadmap_links_resolve() -> None:
+    for source_path in (PRODUCT_STATE_PATH, ROADMAP_PATH, LEGACY_TRACKER_PATH):
+        content = source_path.read_text(encoding="utf-8")
+        for target in re.findall(r"\]\(([^)]+)\)", content):
+            if target.startswith(("http://", "https://", "#")):
+                continue
+            path_target, _, _ = target.partition("#")
+            assert (source_path.parent / path_target).exists(), (
+                source_path.relative_to(REPO_ROOT),
+                target,
+            )
+
+
 def test_semantic_extraction_doc_is_canonical_and_preserves_overlap_invariant() -> None:
     semantic_doc = (DOC_ROOT / "semantic_extraction.md").read_text(encoding="utf-8")
     required_phrases = (
@@ -111,36 +128,29 @@ def test_semantic_extraction_doc_is_canonical_and_preserves_overlap_invariant() 
 
 
 def test_docs_pin_knowledge_baseline_and_identify_next_delivery_focus() -> None:
-    readme = (DOC_ROOT / "README.md").read_text(encoding="utf-8")
+    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
     semantic_doc = (DOC_ROOT / "semantic_extraction.md").read_text(encoding="utf-8")
     contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
     workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
-    tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(encoding="utf-8")
+    roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
 
-    assert "The knowledge-base and methodology work is now a maintained subsystem" in readme
+    assert "| Methodology extraction and method cards | implemented | integration |" in product_state
     assert "The implemented subsystem is pinned at the 33AB baseline" in semantic_doc
     assert "execution begins with content-addressed implementation versions" in contracts
     assert "Handwritten code and AI-produced code" in workflows
-    assert "| 33AC. Composite Methodology Architecture | Deferred |" in tracker
-    assert "| 56. Implementation Registry And Method-Card Decoupling | Done |" in tracker
-    assert "| 56A. Canonical Implementation-Version Domain | Done |" in tracker
-    assert "| 56D. Remove Method-Card Execution Coupling | Done |" in tracker
-    assert "| 57. Reproducible Strategy, Risk, Backtest, And Optimisation Specifications | Done |" in tracker
-    assert "| 57C. DB-First Specification Execution And Evaluation | Done |" in tracker
-    assert "| 57D. Provider-Neutral Optimisation Ledger And Protocols | Done |" in tracker
-    assert "| 57H. Provider-Neutral Experiment Tracking Projection | Done |" in tracker
-    assert "research_register_strategy_implementation" in tracker
-    assert "A strategy or risk implementation with no methodology" in tracker
-    assert "There is no compatibility interval" in tracker
-    assert "Durable filesystem bundle paths are neither required nor returned" in tracker
+    assert "| KNOW-1 | Composite methodology representation | deferred | BASE-KNOW |" in roadmap
+    assert "| BASE-IMPL | Knowledge-independent implementation admission through 56A-D |" in roadmap
+    assert "| BASE-EXP | Strategy, risk-stack and backtest specifications through 57A-C |" in roadmap
+    assert "| BASE-OPT | Provider-neutral optimisation and independent review through 57D-H |" in roadmap
+    assert "Knowledge provenance is optional" not in roadmap
+    assert "KNOWLEDGE ── optional provenance" in roadmap
 
 
 def test_docs_define_current_research_architecture_and_refactor_lineage() -> None:
     readme = (DOC_ROOT / "README.md").read_text(encoding="utf-8")
     architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
-    tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(
-        encoding="utf-8"
-    )
+    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
 
     required_readme_phrases = (
         "## What Trader Research Does",
@@ -187,18 +197,11 @@ def test_docs_define_current_research_architecture_and_refactor_lineage() -> Non
     for phrase in historical_architecture_phrases:
         assert phrase not in architecture
 
-    for task_number in range(1, 13):
-        assert f"TRR-{task_number}." in tracker
-
-    for completed_task in range(1, 13):
-        assert f"| TRR-{completed_task}." in tracker
-        task_row = next(
-            line for line in tracker.splitlines() if line.startswith(f"| TRR-{completed_task}.")
-        )
-        assert "| Done |" in task_row
-
-    assert "| 53A. Research Documentation Reader Journey | Done |" in tracker
-    assert "| 57O. Restart, Resume, And Fault-Injection Tests | Done |" in tracker
+    assert "| BASE-ARCH | `trader_research` bounded-context cutover through TRR-12 |" in roadmap
+    assert "| 53-54 and TRR-1 through TRR-12 |" in roadmap
+    assert "`verification-57i-freeze-v6`" in product_state
+    assert "Current operational state" in product_state
+    assert "Target state" in product_state
 
 
 def test_active_docs_reference_current_research_source_paths() -> None:
@@ -292,24 +295,8 @@ def test_docs_define_provider_neutral_optimization_and_independent_review() -> N
 def test_docs_define_controlled_verification_profiles_and_stop_conditions() -> None:
     operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
     normalized_operations = " ".join(operations.split())
-    tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(
-        encoding="utf-8"
-    )
-
-    for task in (
-        "57I. Freeze Revision And Build Acceptance Matrix",
-        "57J. Provision Isolated Verification Runtime",
-        "57K. Static, Contract, And Regression Gate",
-        "57L. Realistic Deterministic Evidence Fixture",
-        "57M. Postgres-Native MCP Evidence Graph",
-        "57N. Determinism, Integrity, And Leakage Tests",
-        "57O. Restart, Resume, And Fault-Injection Tests",
-        "57P. Provider Independence And Adapter Qualification",
-        "57Q. Policy, Security, And Resource-Boundary Tests",
-        "57R. Projection, Operator, And Bounded-Scale Checks",
-        "57S. Acceptance Record And Release Decision",
-    ):
-        assert task in tracker
+    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
 
     required_phrases = (
         "one frozen Git revision",
@@ -333,6 +320,11 @@ def test_docs_define_controlled_verification_profiles_and_stop_conditions() -> N
     for phrase in required_phrases:
         assert phrase in normalized_operations
 
+    assert "## Qualification Baselines" in product_state
+    assert "`verification-57i-freeze-v6`" in product_state
+    assert "`verification_control.acceptance_records`" in product_state
+    assert "| 57I-S | Frozen Postgres/MCP qualification and acceptance |" in roadmap
+
     contracts = " ".join(
         (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8").split()
     )
@@ -345,52 +337,217 @@ def test_docs_define_controlled_verification_profiles_and_stop_conditions() -> N
         assert phrase in contracts
 
 
-def test_tracker_freezes_57i_surface_and_acceptance_matrix() -> None:
-    tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(
-        encoding="utf-8"
+def test_product_state_separates_implementation_qualification_and_availability() -> None:
+    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+
+    for heading in (
+        "## How To Read Capability State",
+        "## Executive State",
+        "## Capability Matrix",
+        "## Agent State",
+        "## Target Orchestration Position",
+        "## Qualification Baselines",
+        "## Known Product Limits",
+    ):
+        assert heading in product_state
+
+    for phrase in (
+        "`absent`, `partial`, `implemented`",
+        "`none`, `focused`, `integration`, `controlled`",
+        "`unregistered`, `registered`, `gated`, `operator_only`, `deferred`",
+        "`Implemented` does not mean autonomously orchestrated",
+        "The principal product gap is orchestration",
+        "commit `577c774`",
+        "but they are not part of the",
+    ):
+        assert phrase in product_state
+
+
+def test_docs_define_cross_cutting_target_artifact_orchestration() -> None:
+    architecture = " ".join(
+        (DOC_ROOT / "architecture.md").read_text(encoding="utf-8").split()
+    )
+    agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
+
+    for phrase in (
+        "Higher-Level Orchestration Architecture",
+        "Orchestration is a cross-cutting control capability",
+        "does not call the registered implementation",
+        "`ResearchObjective`",
+        "`CapabilityDefinition`",
+        "`WorkflowPlan`",
+        "`WorkflowStepResult`",
+        "`WorkflowOutcome`",
+        "Planning is target-artifact driven",
+        "Operational graph state and product evidence have separate authority",
+        "Trader should not build one graph containing every possible research activity",
+        "does not require rewriting a universal state machine",
+    ):
+        assert phrase in architecture
+
+    assert "Ownership definitions do not imply that every named agent has an operational graph" in agents
+    assert "(product_state.md#agent-state)" in agents
+    assert "(../../plans/research_capability_roadmap.md#target-agent-capability-map)" in agents
+
+
+def test_docs_define_non_overlapping_experiment_research_decisions() -> None:
+    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
+    agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
+    catalog = (DOC_ROOT / "mcp_tools.md").read_text(encoding="utf-8")
+    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
+    roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
+    combined = "\n".join((product_state, architecture, agents, workflows))
+
+    for role in (
+        "Research Coordinator",
+        "Data Agent",
+        "Experiment Design Agent",
+        "Robustness Agent",
+        "Evaluation Agent",
+        "Quantitative Methods Agent",
+        "ML Agent",
+    ):
+        assert role in combined
+
+    for phrase in (
+        "Agents own bounded decisions. Domain contexts own canonical artifacts.",
+        "`ExperimentProtocol`",
+        "The experiment protocol is a proposal until material assumptions are explicitly approved",
+        "The workflow executor is not an agent",
+        "Robustness findings feed Evaluation",
+        "`domain_owner`",
+        "`producer_tool`",
+        "`requested_by`",
+        "`actor`",
+        "No Backtest Agent, Optimisation Agent, Strategy Agent or Risk Agent is required",
+    ):
+        assert phrase in combined
+
+    assert "| ORCH-GOV | Decision authority and domain ownership redesign | complete |" in roadmap
+    assert "| ORCH-1 | Capability and workflow contracts | complete | ORCH-GOV |" in roadmap
+    assert "| ORCH-2 | Operational checkpoint and handoff model | ready | ORCH-1 |" in roadmap
+    assert "| AGENT-1 | Specialist graph contract and common policy shell | ready | ORCH-1 |" in roadmap
+    assert "The workflow executor owns no research claim and is not an agent" in roadmap
+    assert "Owner labels in this catalog describe executable tool allowlists/stewardship only" in catalog
+    assert "## Target Orchestrated Supplied-Strategy Workflow" in workflows
+
+
+def test_docs_define_orch_1_contract_scope_without_claiming_execution() -> None:
+    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
+    contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
+    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
+    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
+    combined = "\n".join(
+        (product_state, architecture, contracts, workflows, operations)
     )
 
-    required_inventory = (
-        "#### 57I Frozen Surface Inventory",
-        "`verification-57i-freeze-v6`",
-        "`research_register_strategy_implementation`",
-        "`research_register_optimization_objective`",
-        "`research_run_backtest_specification`",
-        "`research_run_parameter_optimization`",
-        "`research_project_experiment_tracking`",
-        "`evaluation_generate_parameter_optimization_report`",
-        "`adversarial_generate_parameter_optimization_audit`",
-        "`parameter_optimization_trial`",
-        "`research_parameter_optimization_trials`",
-        "`TRADER_MCP_ALLOW_BACKTESTS`",
-        "`TRADER_MCP_ALLOW_OPTIMIZATION`",
-        "`TRADER_MCP_ALLOW_OPTUNA_WRITES`",
-        "`TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES`",
-        "`research_create_strategy_candidate`",
-        "`research_run_portfolio_backtest`",
-        "`research_evaluation_reports`",
-        "#### 57I Acceptance Matrix",
+    for phrase in (
+        "`ResearchObjective`",
+        "`ExperimentProtocol`",
+        "`CapabilityDefinition`",
+        "`Prerequisite`",
+        "`ArtifactSlot`",
+        "`WorkflowPlan`",
+        "`WorkflowStepResult`",
+        "`Approval`",
+        "sealed holdout",
+        "dependency cycles",
+        "ORCH-1 adds no MCP tools",
+        "contract-only release",
+        "No current MCP command accepts a `WorkflowPlan`",
+    ):
+        assert phrase in combined
+
+
+def test_active_roadmap_is_dependency_driven_and_legacy_tracker_is_deprecated() -> None:
+    roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
+    legacy = LEGACY_TRACKER_PATH.read_text(encoding="utf-8")
+
+    for heading in (
+        "## Capability Dependency Graph",
+        "## Accepted Baseline",
+        "## Active Work Graph",
+        "## Current Ready Queue",
+        "## Target Agent Capability Map",
+        "## Historical Lineage Index",
+    ):
+        assert heading in roadmap
+
+    assert "This is a choice of parallel frontiers" in roadmap
+    assert "Orchestration is a cross-cutting capability" in roadmap
+    assert "Status: deprecated on 2026-07-25" in legacy
+    assert "Do not add tasks" in legacy
+    assert "git show 577c774:plans/mcp_trading_research_tools_plan.md" in legacy
+    assert "## Incremental Build Slices" not in legacy
+    assert len(legacy.splitlines()) < 60
+
+
+def test_active_roadmap_dependencies_reference_known_nodes_and_are_acyclic() -> None:
+    roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
+    node_pattern = re.compile(
+        r"^(?:BASE|ORCH|ML|QUAL|ROB|REV|REC|WFO|AGENT|DATA|KNOW|RUNNER|PERF)-[A-Z0-9-]+$"
     )
-    for phrase in required_inventory:
-        assert phrase in tracker
+    status_values = {"ready", "in_progress", "blocked", "deferred", "complete"}
+    rows: list[list[str]] = []
+    node_ids: set[str] = set()
 
-    for invariant in range(36, 62):
-        assert f"| {invariant} |" in tracker
+    for line in roadmap.splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if cells and node_pattern.fullmatch(cells[0]):
+            node_ids.add(cells[0])
+            rows.append(cells)
 
-    assert "The controlled 57M stdio MCP graph proves the realistic behavior" in tracker
-    assert "Passed / controlled 57M" in tracker
-    assert "Passed / controlled 57S" in tracker
+    assert {
+        "BASE-EXP",
+        "BASE-OPT",
+        "BASE-ML-RUNTIME",
+        "ORCH-GOV",
+        "ORCH-1",
+        "ML-1",
+        "ROB-1",
+    } <= node_ids
+
+    dependencies: dict[str, set[str]] = {node_id: set() for node_id in node_ids}
+    for cells in rows:
+        if len(cells) < 4 or cells[2] not in status_values:
+            continue
+        for dependency in cells[3].split(","):
+            dependency_id = dependency.strip()
+            if dependency_id == "None":
+                continue
+            assert node_pattern.fullmatch(dependency_id), (cells[0], dependency_id)
+            assert dependency_id in node_ids, (cells[0], dependency_id)
+            dependencies[cells[0]].add(dependency_id)
+
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(node_id: str) -> None:
+        if node_id in visited:
+            return
+        assert node_id not in visiting, f"roadmap dependency cycle at {node_id}"
+        visiting.add(node_id)
+        for dependency_id in dependencies[node_id]:
+            visit(dependency_id)
+        visiting.remove(node_id)
+        visited.add(node_id)
+
+    for node_id in sorted(node_ids):
+        visit(node_id)
 
 
 def test_docs_define_57j_isolated_postgres_runtime() -> None:
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
-    tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(encoding="utf-8")
-    combined = "\n".join((readme, operations, tracker))
+    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    combined = "\n".join((readme, operations, product_state))
     normalized_readme = " ".join(readme.split())
 
     required_phrases = (
-        "#### 57J Isolated Runtime Contract",
         "PG_TEST_HOST",
         "PG_OPERATOR_HOST",
         "PG_OPTUNA_TEST_HOST",
@@ -398,7 +555,7 @@ def test_docs_define_57j_isolated_postgres_runtime() -> None:
         "verification_control.runtime_marker",
         "verification_control.operator_fingerprints",
         "tests.support.postgres_verification provision --reset",
-        "before every `TRUNCATE`",
+        "immediately before each `TRUNCATE`",
         "byte-identical to `verification-57i-freeze-v6`",
         "isolation_status",
         "qualification_status",
@@ -414,10 +571,8 @@ def test_docs_define_57j_isolated_postgres_runtime() -> None:
 
 def test_docs_define_57l_as_postgres_only_direct_service_qualification() -> None:
     operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
-    tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(
-        encoding="utf-8"
-    )
-    combined = "\n".join((operations, tracker))
+    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    combined = "\n".join((operations, product_state))
 
     required_phrases = (
         "57L Postgres-Only Fixture Qualification",
@@ -434,42 +589,37 @@ def test_docs_define_57l_as_postgres_only_direct_service_qualification() -> None
     for phrase in required_phrases:
         assert phrase in combined
 
-    assert "| 57L. Realistic Deterministic Evidence Fixture | Done |" in tracker
+    assert "`verification-57i-freeze-v6`" in product_state
 
 
 def test_docs_define_57m_as_retained_postgres_stdio_mcp_evidence() -> None:
     operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
-    tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(
-        encoding="utf-8"
-    )
-    combined = "\n".join((operations, tracker))
+    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    combined = "\n".join((operations, product_state))
+    normalized = " ".join(combined.split())
 
     required_phrases = (
         "57M Stdio MCP Evidence Graph",
-        "57M Controlled Stdio MCP Execution Evidence",
         "actual MCP `ClientSession` over stdio",
         "TRADER_VERIFICATION_RETAIN_PHASE=57M",
         "exactly `TRADER_MCP_ALLOW_BACKTESTS=true`",
         "research_parameter_optimization_trials",
-        "Supervisor executes the declared seed",
+        "service executes the declared seed variant",
         "tests/test_postgres_optimization_evidence_graph.py",
-        "canonical responses/rows contain no filesystem authority",
-        "87 canonical artifacts across 15 artifact types",
+        "no canonical filesystem path may be present",
     )
     for phrase in required_phrases:
-        assert phrase in combined
+        assert phrase in normalized
 
-    assert "| 57M. Postgres-Native MCP Evidence Graph | Done |" in tracker
+    assert "`verification_control.acceptance_records`" in product_state
 
 
 def test_docs_define_57n_determinism_integrity_and_leakage_controls() -> None:
     architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
     contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
     operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
-    tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(
-        encoding="utf-8"
-    )
-    combined = "\n".join((architecture, contracts, operations, tracker))
+    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    combined = "\n".join((architecture, contracts, operations, product_state))
     normalized = " ".join(combined.split())
 
     required_phrases = (
@@ -483,40 +633,12 @@ def test_docs_define_57n_determinism_integrity_and_leakage_controls() -> None:
         "finished_at",
         "duration_seconds",
         "complete trial ledger",
-        "All 14 hostile mutations",
-        "57N Controlled Determinism And Integrity Evidence",
-        "dacabc75a30a0c8b2d79d32d5dbba73fea14f2986cdfb651902f5be8e4bd9923",
+        "Each public MCP consumer must fail closed",
     )
     for phrase in required_phrases:
         assert phrase in normalized
 
-    assert "| 57N. Determinism, Integrity, And Leakage Tests | Done |" in tracker
-
-
-def test_tracker_records_57k_remediation_and_rerun_boundary() -> None:
-    tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(encoding="utf-8")
-    normalized_tracker = " ".join(tracker.split())
-
-    required_phrases = (
-        "| 57K. Static, Contract, And Regression Gate | Done |",
-        "| 57K-R. Candidate Retirement And Warning Remediation | Done |",
-        "#### Initial 57K Execution Evidence And Blockers",
-        "#### 57K-R Candidate Retirement And Warning Remediation",
-        "#### Replacement 57I-57K Execution Evidence",
-        "The candidate-era retirement is incomplete.",
-        "Warnings-as-errors does not collect the suite.",
-        "691 tests",
-        "zero skips",
-        "Do not start 57L from the current revision.",
-        "create a new 57I freeze",
-        "verification-57i-freeze-v2",
-        "qualification_status",
-        "700 tests",
-        "58 tests",
-        "767511c4af43ad276f0955b296442474b37a7552",
-    )
-    for phrase in required_phrases:
-        assert phrase in normalized_tracker
+    assert "`verification-57i-freeze-v6`" in product_state
 
 
 def test_docs_define_mlflow_lifecycle_and_implemented_runtime_boundary() -> None:
@@ -525,7 +647,8 @@ def test_docs_define_mlflow_lifecycle_and_implemented_runtime_boundary() -> None
     catalog = (DOC_ROOT / "mcp_tools.md").read_text(encoding="utf-8")
     contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
     workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
-    tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(encoding="utf-8")
+    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
 
     assert "## ML Lifecycle Architecture" in architecture
     assert "MLflow is authoritative for" in architecture
@@ -533,7 +656,7 @@ def test_docs_define_mlflow_lifecycle_and_implemented_runtime_boundary() -> None
     assert "must never change model behavior merely because an MLflow alias was reassigned" in architecture
     assert "The trading hot path must not call MCP" in architecture
     assert "### Implemented Runtime Slice" in architecture
-    assert "## ML Lifecycle Ownership" in agents
+    assert "## ML Lifecycle Decision Boundary" in agents
     assert "## ML Agent Tools" in catalog
     assert "## Remaining Planned MLflow Tool Universe" in catalog
     assert "`ml_create_deployment_manifest`" in catalog
@@ -541,29 +664,29 @@ def test_docs_define_mlflow_lifecycle_and_implemented_runtime_boundary() -> None
     assert "external_research_mutating" in contracts
     assert "### Runtime Prediction And Deployment Contracts" in contracts
     assert "## MLflow Model Lifecycle And Runtime Integration" in workflows
-    assert "| 39A. MLflow Runtime Adapter And Mutation Policy | Planned |" in tracker
-    assert "| 39J. Prediction Monitoring And Drift | Planned |" in tracker
-    assert "| 40. ML Agent Graph and Handoff | Deferred |" in tracker
+    assert "| ML-1 | MLflow runtime and mutation policy | ready | BASE-OPT |" in roadmap
+    assert "| ML-7 | Prediction monitoring and drift | ready | BASE-ML-RUNTIME |" in roadmap
+    assert "| ML Agent | Ownership and deployment MCP tools exist; no ML Agent graph exists." in product_state
 
 
 def test_docs_defer_walk_forward_optimization_but_keep_validation_foundational() -> None:
-    readme = (DOC_ROOT / "README.md").read_text(encoding="utf-8")
+    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
     architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
     agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
     catalog = (DOC_ROOT / "mcp_tools.md").read_text(encoding="utf-8")
     contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
     workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
-    tracker = (REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md").read_text(encoding="utf-8")
+    roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
 
-    assert "| Walk-forward optimisation |" in readme
+    assert "| Walk-forward optimisation | absent | none | deferred |" in product_state
     assert "## Walk-Forward Validation And Optimisation" in architecture
     assert "Chronological walk-forward validation is foundational model-fitting correctness" in architecture
-    assert "## Walk-Forward Optimisation Ownership" in agents
+    assert "## Optimisation And Walk-Forward Decisions" in agents
     assert "## Deferred Walk-Forward Tool Universe" in catalog
     assert "### Deferred Walk-Forward Contract Invariants" in contracts
     assert "## Deferred Walk-Forward Optimisation Workflow" in workflows
-    assert "| 58. Walk-Forward Optimisation Core | Deferred |" in tracker
-    assert "| 59. Walk-Forward Evaluation And Adversarial Audit | Deferred |" in tracker
+    assert "| WFO-1 | Strategy walk-forward core | blocked | BASE-OPT, ROB-1 |" in roadmap
+    assert "| WFO-2 | Stitched OOS Evaluation and independent audit | blocked | WFO-1, ROB-2 |" in roadmap
 
 
 def _current_markdown_docs() -> tuple[Path, ...]:

@@ -128,7 +128,11 @@ _FALSE_VALUES = frozenset({"", "0", "false", "no", "off"})
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 _PRODUCT_PATHS = ("src", "pyproject.toml", "uv.lock", "env.template")
 _HARNESS_PATH_PREFIXES = ("docs/", "tests/")
-_HARNESS_PATHS = ("README.md", "plans/mcp_trading_research_tools_plan.md")
+_HARNESS_PATHS = (
+    "README.md",
+    "plans/mcp_trading_research_tools_plan.md",
+    "plans/research_capability_roadmap.md",
+)
 _KNOWLEDGE_FINGERPRINT_EXPRESSIONS = {
     "knowledge_sources": (
         "jsonb_build_object('source_id', t.source_id, 'file_hash', t.file_hash, "

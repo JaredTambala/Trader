@@ -6,7 +6,10 @@ from typing import Any, Mapping, Sequence
 
 from trader_research.foundation import ApplicationResult, error_result, stable_research_id, success_result
 from trader_research.foundation.artifacts import ResearchArtifactStore, ResearchArtifactStoreError, SCHEMA_VERSION
-from trader_research.governance.artifacts import PARAMETER_OPTIMIZATION_PLAN, QUANT_RESEARCH_SUPERVISOR_OWNER
+from trader_research.governance.artifacts import (
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
+    PARAMETER_OPTIMIZATION_PLAN,
+)
 from trader_research.experiments.implementations import load_passed_implementation
 from trader_research.experiments.specifications import (
     load_passed_backtest_specification,
@@ -100,7 +103,8 @@ def create_parameter_optimization_plan(
             "status": "created",
         }
         record = artifact_store.save_artifact(
-            agent_owner=QUANT_RESEARCH_SUPERVISOR_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_PLAN],
+            producer_tool=RESEARCH_CREATE_PARAMETER_OPTIMIZATION_PLAN,
             artifact_type=PARAMETER_OPTIMIZATION_PLAN,
             artifact_id=plan_id,
             payload=payload,

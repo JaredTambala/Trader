@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from trader_research.governance.artifacts import EVALUATION_AGENT_OWNER
-
 from trader_research.foundation import ApplicationResult, error_result, success_result
 from trader_research.foundation.artifacts import SCHEMA_VERSION
 
@@ -12,6 +10,7 @@ from typing import Any, Mapping
 from trader_research.foundation.artifacts import ResearchArtifactStore, ResearchArtifactStoreError
 from trader_research.foundation import stable_research_id
 from trader_research.governance.artifacts import (
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
     PARAMETER_OPTIMIZATION_EVALUATION_REPORT,
 )
 from trader_research.experiments.reads import StoreBackedExperimentEvidenceReader
@@ -69,7 +68,8 @@ def generate_parameter_optimization_report(
             "warnings": list(holdout.get("warnings") or []),
         }
         record = artifact_store.save_artifact(
-            agent_owner=EVALUATION_AGENT_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_EVALUATION_REPORT],
+            producer_tool=EVALUATION_GENERATE_PARAMETER_OPTIMIZATION_REPORT,
             artifact_type=PARAMETER_OPTIMIZATION_EVALUATION_REPORT,
             artifact_id=report_id,
             payload=report,

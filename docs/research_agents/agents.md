@@ -1,12 +1,16 @@
 # Research Agent Definitions
 
-This document describes the current agent identities, ownership boundaries, and tool allowlists. The implementation
-source of truth for agent and tool ownership is `src/trader_research/governance/ownership.py`; artifact ownership is
-registered in `src/trader_research/governance/artifacts.py`.
+This document describes current agent identities, approved decision boundaries, and tool allowlists. The implementation
+source of truth for tool allowlists and decision authorities is `src/trader_research/governance/ownership.py`;
+bounded-context artifact authority is registered in `src/trader_research/governance/artifacts.py`.
+
+Ownership definitions do not imply that every named agent has an operational graph. See
+[product_state.md](product_state.md#agent-state) for current graph maturity and the
+[capability roadmap](../../plans/research_capability_roadmap.md#target-agent-capability-map) for remaining agent work.
 
 ## Agent Map
 
-| Agent | Mission | Current owned artifacts | Current MCP/tool access |
+| Agent | Mission | Current tool-produced outputs | Current MCP/tool access |
 | --- | --- | --- | --- |
 | Quant Research Supervisor Agent | Coordinate research workflows and synthesize specialist-owned evidence. | Strategy/risk implementation versions, immutable strategy/risk/backtest specifications, canonical backtest runs, optimisation plans/runs/trials, tracking projection reports, comparisons, and planned walk-forward runs. | Registered implementation/specification/backtest/optimisation/projection `research_*` tools. |
 | Data Agent | Produce trustworthy bounded market-data manifests and quality evidence. | Symbol discovery reports, dataset manifests, data-quality reports, load result envelopes. | `mcp_health`, `mcp_get_config`, `data_discover_symbols`, `data_get_inventory`, `data_summarize_quality`, `data_ensure_loaded`. |
@@ -16,43 +20,112 @@ registered in `src/trader_research/governance/artifacts.py`.
 | Evaluation Agent | Produce skeptical critique and performance evidence from research artifacts. | Untouched-holdout optimisation reports and planned stitched out-of-sample walk-forward reports. | `evaluation_generate_parameter_optimization_report` plus planned broader critique/walk-forward tooling. |
 | Adversarial Agent | Produce robustness and stress-test evidence for strategies and research procedures. | Parameter-optimisation audit plans/reports and planned walk-forward audits. | Registered parameter-optimisation audit tools; broader robustness remains planned. |
 
+The table above describes executable identities and their current tool allowlists. It does not assign canonical
+artifact ownership. For example, Supervisor-allowlisted tools currently produce Experiment-domain records, while
+Quantitative-Methods-allowlisted tools can produce either Knowledge/Methodology records or Experiment-domain objective
+implementations. The MCP `agent_owner` label records intended tool stewardship, not artifact authority or actual caller
+identity.
+
+## Approved Decision Boundaries
+
+ORCH-GOV approves the smallest set of target roles with distinct research decisions. The executable registry is
+`DECISION_AUTHORITIES`; registration there does not imply that a role already has an operational graph.
+
+| Target role | Owns this decision | Produces | Must not own or decide |
+| --- | --- | --- | --- |
+| Research Coordinator | Which approved workflow and prerequisites should happen next? | Research objectives, workflow plans, approval requests, handoff summaries and workflow outcomes. | Implementations, specifications, runs, trials, robustness findings, Evaluation reports or research-quality verdicts. |
+| Data Agent | Is the explicit market-data scope available and fit for the proposed protocol? | Dataset manifests, quality reports and load evidence through Data tools. | Strategy logic, optimisation design or performance conclusions. |
+| Experiment Design Agent | What fair reproducible protocol should test the supplied strategy/risk set? | Approval-aware experiment-protocol proposals. | Executing tools, changing the protocol after seeing results or judging strategy quality. |
+| Robustness Agent | Which claims and assumptions should be attacked, and what sensitivity did executed variants reveal? | Immutable attack plans and per-attack robustness findings. | Executing variants, mutating the baseline or issuing the overall strategy-quality verdict. |
+| Evaluation Agent | What does the complete evidence support after data, holdout, costs, risk and robustness are considered? | Independent attribution and final research-quality assessment. | Repairing the protocol, selecting parameters, executing variants or routing workflows. |
+| Quantitative Methods Agent | What optional source-backed or computational-method evidence can be supplied? | Knowledge, methodology and method-validation artifacts. | Concrete data scope, experiment execution or final quality. |
+| ML Agent | What optional model lifecycle and predictive evidence can be supplied? | Feature, training, model-version, deployment and drift artifacts. | Trading policy, risk approval or final strategy quality. |
+
+Quantitative Methods and ML are optional producer agents for the core supplied-implementation workflow. A separate
+Hypothesis Agent is deferred until it has a decision that is not already represented by the experiment protocol.
+
+Validators, backtest runners, optimisation engines, risk pipelines, specification compilers and workflow executors are
+deterministic services, not agents. They execute approved inputs and produce canonical domain artifacts without making
+research-design or quality decisions.
+
+## Canonical Artifact Authority
+
+Agent identity and domain ownership are separate:
+
+| Domain authority | Artifact families |
+| --- | --- |
+| Data | Dataset, quality and loading evidence. |
+| Knowledge/Methodology | Source, evidence, method-card and method-validation evidence. |
+| Experiments | Implementation, validation, specification, backtest, comparison, optimisation and tracking evidence. |
+| ML | Feature, training, model, deployment and monitoring evidence. |
+| Review | Attribution, Evaluation, attack-plan and robustness evidence. |
+| Orchestration | Research objective, workflow plan, approval and outcome records only. |
+
+Every canonical artifact record stores `domain_owner`, `producer_tool`, `requested_by` and `actor`. Domain and producer
+are required. Direct pre-orchestration service calls may leave `requested_by` and `actor` null because the current MCP
+transport does not authenticate a workflow or caller identity. ORCH-1 requires both on typed objective, workflow,
+approval and step-result values; ORCH-2/3 must propagate them into canonical writes. Missing identity is represented as
+null, never inferred from the MCP allowlist label. Requesting a tool does not transfer artifact authority.
+
 ## Handoff Rules
 
-- Every handoff includes `agent_owner`, artifact type, DB artifact URI or payload, source inputs, parameters, side-effect
-  class, warnings, blockers, and provenance refs.
-- The supervisor can request more work, reject insufficient evidence, or mark a path blocked.
-- The supervisor must not rewrite specialist artifacts to make a strategy look better.
+- Every handoff includes `domain_owner`, `producer_tool`, `requested_by`, `actor`, artifact type, DB artifact URI or
+  payload, source inputs, warnings, blockers, and provenance refs.
+- Handoff construction checks `domain_owner` against the canonical artifact registry. Producer, requester and actor are
+  required for a cross-agent handoff even though they are nullable on a direct canonical store record.
+- The Research Coordinator can request more work, reject insufficient evidence, request approval, or mark a path
+  blocked.
+- The Research Coordinator must not rewrite Experiment, Data, ML, Evaluation or Robustness artifacts.
+- The Experiment Design Agent must expose material assumptions for approval and cannot silently invent costs, risk
+  limits, search spaces, budgets or holdout boundaries.
+- Robustness findings feed Evaluation; the Robustness Agent does not issue the final strategy-quality assessment.
 - Promotion to paper trading remains a human-reviewed proposal, not an autonomous action.
 
-## Methodology Ownership
+## Orchestration Contract Boundary
 
-- The Quantitative Methods Agent owns source registration, full-document ingestion, retrieval, methodology candidate
-  discovery, family-role evidence assembly, evidence-backed field extraction, candidate validation, method-card drafts, and
-  method-card publishing.
+The implemented ORCH-1 types are declarative governance values, not new agents:
+
+- the operator supplies a `ResearchObjective`;
+- the Experiment Design Agent may propose an `ExperimentProtocol`, but it cannot mark material assumptions approved
+  without explicit `Approval` decisions;
+- the Research Coordinator may select registered `CapabilityDefinition` values and compose a `WorkflowPlan` from typed
+  `Prerequisite` and `ArtifactSlot` values;
+- a future non-agent executor returns `WorkflowStepResult` values and cannot make experiment or review decisions.
+
+Capabilities contain producer-tool names and schema metadata only. They do not contain callables, service instances,
+MCP clients or provider objects. Workflow plans reject undeclared capabilities and configuration, so an agent cannot
+turn prose into an invented action. The current Supervisor graph still uses its earlier bounded request and handoff
+state; ORCH-2/3, rather than a compatibility alias, will replace that operational shape.
+
+## Methodology Decision Boundary
+
+- The Quantitative Methods Agent decides source registration, retrieval and methodology-evidence actions through its
+  allowlisted tools. Those tools produce Knowledge/Methodology-domain records for full-document ingestion, candidates,
+  evidence assembly, field extraction, validation, method-card drafts and publishing.
 - The Quantitative Methods Agent does not create strategies, risk managers, portfolio backtests, or Evaluation reports.
 - Approved method cards may be optional provenance for evidence-required implementation producers. Maintained
   computational implementations whose catalog contracts do not require methodology evidence remain provenance-neutral. The Supervisor does
   not edit card evidence, and generated source still passes normal implementation validation.
-- The Data Agent remains the only owner of dataset manifests and quality reports. Method cards must not carry
+- Dataset manifests and quality reports remain Data-domain artifacts produced through Data tools. Method cards must not carry
   symbols, timeframes, date windows, source filters, or load decisions.
 - The Evaluation Agent consumes backtest and risk evidence after immutable specifications are validated and executed; it
   does not approve methods or repair missing methodology-field citations.
 
-## ML Lifecycle Ownership
+## ML Lifecycle Decision Boundary
 
-- The Data Agent owns raw market-data scope, dataset manifests, and quality evidence. The ML Agent consumes explicit
+- The Data Agent decides whether explicit raw market-data scope is available and fit. The ML Agent consumes explicit
   Data Agent refs and must not silently widen symbols, dates, timeframes, sources, or row scope.
-- The Quantitative Methods Agent may own reusable mathematical feature implementations. The ML Agent owns feature-set
-  composition, point-in-time availability rules, target construction, training datasets, folds, fitting, and ML model
-  evidence.
+- Quantitative Methods may produce reusable mathematical feature implementations. The ML Agent decides feature-set
+  composition, point-in-time availability rules, target construction, training datasets, folds, fitting, and predictive
+  model evidence; resulting canonical records have ML domain authority.
 - MLflow owns ML training runs, logged model packages, registered-model versions, tags, and aliases. Generic parameter
-  optimisation plans, trials, selections, backtests, and audits remain canonical in Trader. The ML Agent owns
-  Trader artifacts that reconcile and validate those external records against Data Agent, source, and environment refs.
+  optimisation plans, trials, selections, backtests, and audits remain canonical in Trader. ML-domain Trader artifacts
+  reconcile and validate those external records against Data, source, and environment refs.
 - The ML Agent may execute only registered, validated, bounded training pipelines through explicitly gated tools.
   Handwritten and AI-produced training code receive the same source-hash, dependency, interface, resource, and safety
   validation. Prompt text is never an executable training input.
-- The ML Agent may prepare evaluation, promotion, and deployment evidence, but passed model metrics do not establish
-  strategy profitability. The Evaluation Agent owns trading-performance conclusions after backtesting.
+- The ML Agent may prepare predictive evaluation, promotion, and deployment evidence, but passed model metrics do not
+  establish strategy profitability. Evaluation owns the independent research-quality decision after backtesting.
 - Alias mutation requires explicit policy and approval. The ML Agent cannot hot-swap a running model, mutate trading
   runtime configuration, place broker orders, or grant live eligibility.
 - The Quant Research Supervisor binds a passed, immutable model deployment ref to a strategy and backtest. Every run
@@ -60,28 +133,31 @@ registered in `src/trader_research/governance/artifacts.py`.
 - Runtime prediction occurs through core platform prediction contracts and an optional MLflow adapter. The trading hot
   path does not call MCP; the ML Agent consumes persisted prediction events later for monitoring and drift.
 
-## Walk-Forward Optimisation Ownership
+## Optimisation And Walk-Forward Decisions
 
 The following split is already enforced for single-region parameter optimisation and is reused by later walk-forward
 work:
 
-- The Quant Research Supervisor owns provider-neutral plans, canonical trial ledgers, selections, and immutable variant
-  execution. It can use maintained grid/random engines or a configured optional engine through the same protocol.
-- The Quantitative Methods Agent owns versioned closed-input optimisation objectives and their validation reports.
-- The Evaluation Agent owns the matching sealed-holdout report and cannot change the selected specification.
-- The Adversarial Agent owns attack plans and final robustness judgment. It does not execute the original optimiser;
-  the Supervisor executes requested variants and returns immutable refs.
-- Tracking sinks own no product evidence. Their projection reports remain Supervisor-owned, non-authoritative Trader
-  records.
+- Current Supervisor-allowlisted tools produce Experiments-domain provider-neutral plans, canonical trial ledgers,
+  selections and immutable variant executions. They can use maintained grid/random engines or a configured optional
+  engine through the same protocol.
+- Quantitative Methods decides and validates versioned closed-input optimisation objectives; the resulting implementation
+  and validation records belong to the Experiments domain.
+- Evaluation owns the matching sealed-holdout judgment and cannot change the selected specification; its report has
+  Review domain authority.
+- Robustness owns attack selection and sensitivity judgment. It does not execute the original optimiser; deterministic
+  Experiment services execute requested variants and return immutable refs.
+- Tracking sinks own no product evidence. Projection reports are non-authoritative Experiments-domain Trader records.
 
-- The Quant Research Supervisor owns the immutable optimisation plan and procedural run. It coordinates declared folds,
+- Deterministic Experiment services produce the immutable optimisation plan and procedural run. The future Research
+  Coordinator routes declared folds,
   candidate parameters/models, child specifications, selections, and out-of-sample backtests without issuing a
   performance or robustness verdict.
 - The ML Agent participates only where a fold engineers features, fits a model, evaluates predictions, or registers an
   immutable model version. Generic strategy-parameter optimisation is not an ML Agent artifact.
-- The Evaluation Agent owns the stitched out-of-sample performance report and must exclude in-sample/selection returns
+- Evaluation owns the stitched out-of-sample performance decision and must exclude in-sample/selection returns
   from reported walk-forward performance.
-- The Adversarial Agent owns the independent audit of fold boundaries, window lengths, neighboring selections,
+- Robustness owns the independent audit decision over fold boundaries, window lengths, neighboring selections,
   parameter/model stability, costs, concentration, degradation, search budget, and selection bias. It does not run the
   original optimiser or rewrite its selections.
 - Walk-forward optimisation cannot promote a strategy/model, assign an MLflow alias, change runtime configuration, or
@@ -103,6 +179,7 @@ proven.
 
 ## Identity Checks
 
-Agent display names, allowlists, and output artifacts are executable metadata. Update this document when
+Agent display names, allowlists, produced outputs, approved decision authorities and artifact-domain mappings are
+executable metadata. Update this document when
 `src/trader_research/governance/ownership.py` or `src/trader_research/governance/artifacts.py` changes, and update the
 documentation consistency test so every agent remains covered.

@@ -14,9 +14,9 @@ from trader_research.foundation.artifacts import (
     ResearchArtifactStoreError,
 )
 from trader_research.governance.artifacts import (
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
     METHODOLOGY_CANDIDATE,
     METHODOLOGY_CANDIDATE_VALIDATION_REPORT,
-    QUANTITATIVE_METHODS_OWNER,
 )
 
 from .domain import (
@@ -149,7 +149,8 @@ def validate_methodology_candidate(
     )
     try:
         candidate_record = artifact_store.save_artifact(
-            agent_owner=QUANTITATIVE_METHODS_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_CANDIDATE],
+            producer_tool=KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE,
             artifact_type=METHODOLOGY_CANDIDATE,
             artifact_id=candidate.methodology_candidate_id,
             payload=candidate.to_dict(),
@@ -162,7 +163,8 @@ def validate_methodology_candidate(
         )
         report = replace(report, candidate_ref=candidate_record.reference().to_dict())
         report_record = artifact_store.save_artifact(
-            agent_owner=QUANTITATIVE_METHODS_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_CANDIDATE_VALIDATION_REPORT],
+            producer_tool=KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE,
             artifact_type=METHODOLOGY_CANDIDATE_VALIDATION_REPORT,
             artifact_id=report.validation_id,
             payload=report.to_dict(),

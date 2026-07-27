@@ -12,7 +12,7 @@ from trader_research.governance import (
     DATA_AGENT_OWNER,
     DATA_QUALITY_REPORT,
     DATASET_MANIFEST,
-    OWNER_BY_ARTIFACT_TYPE,
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
     ResearchIssue,
     SpecialistArtifactSlot,
     SpecialistHandoff,
@@ -77,6 +77,7 @@ def data_agent_handoffs_from_state(data_state: Mapping[str, Any]) -> list[dict[s
         ResearchIssue(code="data_agent_warning", message=str(warning))
         for warning in data_state.get("warnings", [])
     )
+    requested_by = stable_research_id("data_request", request)
     handoffs: list[dict[str, Any]] = []
     manifest = mapping_or_empty(data_state.get("dataset_manifest"))
     if manifest:
@@ -86,7 +87,10 @@ def data_agent_handoffs_from_state(data_state: Mapping[str, Any]) -> list[dict[s
                     "handoff",
                     {"artifact_type": DATASET_MANIFEST, "payload": manifest, "source_request": request},
                 ),
-                agent_owner=DATA_AGENT_OWNER,
+                domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[DATASET_MANIFEST],
+                producer_tool="data_get_inventory",
+                requested_by=requested_by,
+                actor=DATA_AGENT_OWNER,
                 artifact_type=DATASET_MANIFEST,
                 payload=manifest,
                 source_request=request,
@@ -106,7 +110,10 @@ def data_agent_handoffs_from_state(data_state: Mapping[str, Any]) -> list[dict[s
                     "handoff",
                     {"artifact_type": DATA_QUALITY_REPORT, "payload": quality_report, "source_request": request},
                 ),
-                agent_owner=DATA_AGENT_OWNER,
+                domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[DATA_QUALITY_REPORT],
+                producer_tool="data_summarize_quality",
+                requested_by=requested_by,
+                actor=DATA_AGENT_OWNER,
                 artifact_type=DATA_QUALITY_REPORT,
                 payload=quality_report,
                 source_request=request,
@@ -157,7 +164,7 @@ def _supervise(state: QuantResearchSupervisorState) -> QuantResearchSupervisorSt
         slots[handoff.artifact_type] = SpecialistArtifactSlot(
             slot_key=slot.slot_key,
             artifact_type=slot.artifact_type,
-            agent_owner=slot.agent_owner,
+            domain_owner=slot.domain_owner,
             required=slot.required,
             status="accepted",
             handoff=handoff,
@@ -177,13 +184,13 @@ def _supervise(state: QuantResearchSupervisorState) -> QuantResearchSupervisorSt
         if slot.required:
             blocker = ResearchIssue(
                 code=f"missing_{artifact_type}",
-                message=f"Missing required {artifact_type} artifact from {slot.agent_owner}.",
+                message=f"Missing required {artifact_type} artifact from the {slot.domain_owner} domain.",
             )
             blockers.append(blocker.to_dict())
             slots[artifact_type] = SpecialistArtifactSlot(
                 slot_key=slot.slot_key,
                 artifact_type=slot.artifact_type,
-                agent_owner=slot.agent_owner,
+                domain_owner=slot.domain_owner,
                 required=slot.required,
                 status="blocked",
                 blockers=(blocker,),
@@ -192,7 +199,7 @@ def _supervise(state: QuantResearchSupervisorState) -> QuantResearchSupervisorSt
             slots[artifact_type] = SpecialistArtifactSlot(
                 slot_key=slot.slot_key,
                 artifact_type=slot.artifact_type,
-                agent_owner=slot.agent_owner,
+                domain_owner=slot.domain_owner,
                 required=slot.required,
                 status="optional_missing",
             )
@@ -221,7 +228,7 @@ def _initial_slots(request: BoundedResearchRequest) -> dict[str, SpecialistArtif
         slots[artifact_type] = SpecialistArtifactSlot(
             slot_key=_slot_key(artifact_type),
             artifact_type=artifact_type,
-            agent_owner=OWNER_BY_ARTIFACT_TYPE[artifact_type],
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[artifact_type],
             required=True,
         )
     for artifact_type in request.optional_artifacts:
@@ -230,7 +237,7 @@ def _initial_slots(request: BoundedResearchRequest) -> dict[str, SpecialistArtif
             SpecialistArtifactSlot(
                 slot_key=_slot_key(artifact_type),
                 artifact_type=artifact_type,
-                agent_owner=OWNER_BY_ARTIFACT_TYPE[artifact_type],
+                domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[artifact_type],
                 required=False,
             ),
         )
@@ -241,8 +248,8 @@ def _validate_data_handoff_window(handoff: SpecialistHandoff, request: BoundedRe
     """Validate that Data Agent handoffs match the bounded request."""
     if handoff.artifact_type not in {DATASET_MANIFEST, DATA_QUALITY_REPORT}:
         return
-    if handoff.agent_owner != DATA_AGENT_OWNER:
-        raise ValueError("Data handoffs must be owned by Data Agent")
+    if handoff.domain_owner != DOMAIN_OWNER_BY_ARTIFACT_TYPE[handoff.artifact_type]:
+        raise ValueError("Data handoffs must carry Data domain authority")
     data_requirement = request.data_requirement.to_dict()
     source_request = dict(handoff.source_request)
     payload_request = _request_from_payload(handoff.payload)

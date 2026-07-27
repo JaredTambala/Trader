@@ -12,8 +12,9 @@ store, brokers, strategy/risk interfaces, backtesting, live runtime, operations,
 
 ## Research Agents and MCP
 
-Use [research_agents/README.md](research_agents/README.md) for research-agent architecture, agent identities, MCP tool
-catalogs, workflows, operations, detailed contracts, and implementation plans for agent-facing tooling.
+Start with [research_agents/product_state.md](research_agents/product_state.md) for the current research capability and
+qualification baseline. Use [research_agents/README.md](research_agents/README.md) for architecture, agent identities,
+MCP catalogs, workflows, operations, detailed contracts, and the active capability roadmap.
 
 ## History
 

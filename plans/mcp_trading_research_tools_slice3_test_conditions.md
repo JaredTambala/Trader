@@ -14,7 +14,8 @@ data_summarize_quality
 Data Agent graph completes the same workflow through MCP tools only
 ```
 
-This document is the intermediate acceptance contract for the slice. Do not mark a Slice 3 chunk `Done` in `plans/mcp_trading_research_tools_plan.md` unless the relevant conditions below are covered by tests, docs, or reproducible command output.
+This is a historical acceptance contract for the deprecated linear delivery model. Current work and acceptance state
+are recorded in `plans/research_capability_roadmap.md`; do not use this document to create new slice tasks.
 
 ## Pre-Slice Checkpoint
 

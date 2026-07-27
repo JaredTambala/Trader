@@ -22,7 +22,7 @@ reintroduced.
 | Package | Responsibility |
 | --- | --- |
 | `trader_research.foundation` | Dependency-light identity/digest helpers, typed application outcomes and failures, artifact values, and persistence ports. |
-| `trader_research.governance` | Agent/tool ownership declarations, artifact ownership, and typed cross-agent handoffs. |
+| `trader_research.governance` | Agent tool allowlists, decision authorities, artifact-domain authority, and typed cross-agent handoffs. |
 | `trader_research.infrastructure.postgres` | Canonical Postgres artifact adapter plus registered context-owned projection writers. |
 | `trader_research.infrastructure.providers` | Optional provider SDK adapters for Alpaca, Optuna, and MLflow. |
 | `trader_research.data` | Data Agent discovery, inventory, quality, provider context, and explicit loading services. |
@@ -38,10 +38,10 @@ reintroduced.
 layer. The current package structure is a hard-cutover architecture: deleted root hubs and former top-level context
 paths have no compatibility aliases or fallback readers.
 
-The pre-refactor inventory, dependency findings, migration sequence, and qualification evidence remain in tracker
-tasks TRR-1 through TRR-12 in the
-[active implementation plan](../../plans/mcp_trading_research_tools_plan.md). They are historical delivery evidence,
-not part of this current-state architecture description.
+The pre-refactor inventory, dependency findings, migration sequence and qualification evidence remain available in the
+[deprecated tracker snapshot](../../plans/mcp_trading_research_tools_plan.md) and Git history. The
+[active capability roadmap](../../plans/research_capability_roadmap.md) maps TRR-1 through TRR-12 to the accepted
+bounded-context baseline without repeating the historical migration narrative here.
 
 ### Context Map
 
@@ -55,8 +55,8 @@ src/trader_research/
       domain.py                 # Artifact refs and immutable records
       store.py                  # Store protocol and in-memory test adapter
   governance/
-    ownership.py                # Agent and tool ownership declarations
-    artifacts.py                # Artifact-type ownership declarations
+    ownership.py                # Agent allowlists and decision-authority declarations
+    artifacts.py                # Artifact-type domain-authority declarations
     handoffs.py                 # Cross-agent request/handoff value objects
   data/
     domain.py                   # Inventory, manifest, quality, and load models
@@ -117,7 +117,7 @@ by a cohesive responsibility and an enforceable import rule, not by line-count t
 | Context | Owns | May depend on | Must not depend on |
 | --- | --- | --- | --- |
 | Foundation | Stable identity, typed failures, artifact refs/records, store ports. | Python standard library. | Data, knowledge, methodology, experiments, review, MCP, agents, optional providers. |
-| Governance | Agent ownership and cross-agent handoff value objects. | Foundation. | Service implementations, stores, platform runtime, MCP transport. |
+| Governance | Tool allowlists, decision authority, artifact-domain mapping, and cross-agent handoff values. | Foundation. | Service implementations, stores, platform runtime, MCP transport. |
 | Data | Dataset discovery, manifests, quality, bounded loading application services. | Foundation and core `trader` data ports. | Knowledge, methodology, experiments, review, MCP. |
 | Knowledge | Sources, evidence units, retrieval, evidence assembly, candidate validation, and the single canonical method-card lifecycle. | Foundation. | Method implementation registries, experiments, review, MCP. |
 | Methodology engineering | Computational method contracts, diagnostics, fixtures, and optional source-backed code producers. | Foundation and the public approved-card read port from Knowledge. | Knowledge storage internals, experiment internals, MCP. |
@@ -252,10 +252,10 @@ boundary is outside this research-layer refactor.
 
 ### Refactor Record
 
-The completed TRR-1 through TRR-12 delivery sequence, its acceptance evidence, and the passed
-`verification-57i-freeze-v6` Core/Trader-Postgres qualification are recorded in the
-[active tracker](../../plans/mcp_trading_research_tools_plan.md). That sequence explains how the architecture was
-reached; it is not part of the reader-facing architecture contract.
+The [research product state](product_state.md) records the accepted bounded-context baseline and the passed
+`verification-57i-freeze-v6` Core/Trader-Postgres qualification. The
+[active capability roadmap](../../plans/research_capability_roadmap.md) preserves compact legacy-task lineage. The
+complete historical sequence remains available from the deprecated tracker's pinned Git snapshot.
 
 ## Control Plane And Execution Plane
 
@@ -281,6 +281,170 @@ product identity.
 LangGraph is the agent identity and orchestration layer. Agent graphs decide which MCP tools are allowed, how state is
 retained, how specialist handoffs are routed, and which artifact must be produced. Agent code should call MCP tools
 rather than core platform internals when a tool exists.
+
+## Higher-Level Orchestration Architecture
+
+Orchestration is a cross-cutting control capability over deterministic tools, not the final step of a linear delivery
+plan. It can coordinate capabilities that are already implemented while additional ML, robustness, review and
+methodology tools develop independently.
+
+The current operational baseline is deliberately limited:
+
+- The Data Agent has bounded deterministic and LLM-policy tool-calling graphs.
+- The Quant Research Supervisor graph validates a bounded request and supplied Data Agent handoffs, but does not call
+  the registered implementation, specification, backtest, optimisation or review MCP tools.
+- Quantitative Methods, ML, Evaluation, Adversarial and Hypothesis identity/allowlist definitions exist without
+  complete specialist execution graphs.
+
+ORCH-GOV removed the old artifact `agent_owner` map. Canonical records now carry bounded-context authority separately
+from producer operation, requesting workflow and actor. MCP still exposes `agent_owner` as the intended tool allowlist
+label; it is not canonical artifact provenance and is never used to infer caller identity.
+
+### Decision Authority Model
+
+Agents own bounded decisions. Domain contexts own canonical artifacts. Deterministic services execute approved inputs.
+
+| Role | Exclusive decision authority | Explicit exclusion |
+| --- | --- | --- |
+| Research Coordinator | Which bounded workflow and prerequisites should happen next? | Experiment parameters, data fitness, variant findings and strategy-quality verdicts. |
+| Data Agent | Is the explicit data scope available and fit for the proposed experiment? | Strategy logic, optimisation design and performance conclusions. |
+| Experiment Design Agent | What fair, reproducible protocol should test the supplied strategy and risk stack? | Running the experiment, changing the protocol after results or judging quality. |
+| Robustness Agent | Which assumptions and claims should be attacked, and what sensitivity did executed variants reveal? | Executing variants, mutating the baseline or issuing the overall quality verdict. |
+| Evaluation Agent | What does the complete evidence support after data, costs, holdout, risk and robustness are considered? | Protocol repair, parameter selection, variant execution and workflow routing. |
+| Quantitative Methods Agent | What optional source-backed or computational-method evidence can be supplied? | Concrete data scope, experiment execution and quality verdicts. |
+| ML Agent | What optional model lifecycle and predictive evidence can be supplied? | Trading policy, risk approval and final strategy quality. |
+
+No Backtest Agent, Optimisation Agent, Strategy Agent or Risk Agent is required for the supplied-implementation
+workflow. Validators, runners, engines and risk pipelines are deterministic services. A separate Hypothesis Agent is
+not on the core path while the experiment protocol can carry the explicit research question and falsification criteria.
+
+The target control flow is:
+
+```text
+operator research brief with supplied strategy/risk refs
+  -> Research Coordinator resolves prerequisites
+  -> Data Agent produces scope and quality evidence
+  -> deterministic services validate supplied implementations
+  -> Experiment Design Agent proposes an experiment protocol
+  -> operator approves material assumptions
+  -> deterministic compiler creates immutable specifications
+  -> workflow executor runs baseline, optimisation and sealed holdout
+  -> Robustness Agent declares attacks
+  -> workflow executor runs immutable variants
+  -> Robustness Agent reports sensitivity findings
+  -> Evaluation Agent issues the final research-quality assessment
+  -> Research Coordinator reports refs, blockers and permitted next actions
+```
+
+ORCH-1 implements the provider-neutral orchestration contracts:
+
+- `ResearchObjective`: the operator's bounded desired outcome and declared constraints.
+- `ExperimentProtocol`: the proposed strategy/risk refs, Data requirements, baseline assumptions, costs, initial state,
+  selection/holdout policy, tunable dimensions, objective, constraints, robustness requirements, evaluation questions
+  and material approvals. It is immutable after approval.
+- `CapabilityDefinition`: one registered action's domain, producer tool, required inputs, produced artifact types, side
+  effects and policy gates.
+- `WorkflowPlan`: a content-addressed graph of required capabilities, artifact slots, dependencies and approval points.
+- `WorkflowStepResult`: the public tool envelope, produced artifact refs, warnings, blockers and retry classification.
+- `SpecialistHandoff`: a domain-authority-preserving transfer of immutable artifact refs and bounded issues.
+- `WorkflowOutcome`: a public summary of satisfied goals, unresolved blockers, review verdict refs and next permitted
+  actions.
+
+The implementation lives in `trader_research.governance.orchestration` and imports no service contexts. Contract
+construction is deliberately fail closed:
+
+- approved protocols require an approved decision for every material assumption;
+- optimisation requires role-labelled selection data and a sealed holdout;
+- capability snapshots declare domain, producer tool, side effect, artifact inputs/outputs, policy gates and accepted
+  configuration keys, with no callable or provider object;
+- artifact slots validate canonical artifact type, bounded-context owner and cardinality;
+- workflow plans reject unknown capabilities, invented configuration, bad slot bindings, unresolved readiness gates
+  and dependency cycles; and
+- step results expose bounded public data, canonical artifact refs, issues, idempotency and retry classification rather
+  than raw execution state.
+
+`ResearchObjective`, `ExperimentProtocol`, `WorkflowPlan` and approval records have canonical artifact-type
+declarations in the authority registry. ORCH-1 deliberately provides no persistence operation or MCP tool for them.
+It also provides no capability registry, protocol compiler, executor or checkpointer. `WorkflowOutcome` remains a
+target execution summary for ORCH-3; the ORCH-1 acceptance boundary ends at typed step results.
+
+The experiment protocol is a proposal until material assumptions are explicitly approved. The Experiment Design Agent
+must not silently invent transaction costs, risk limits, optimisation dimensions, search budgets, data boundaries or
+holdout policy. Missing choices become approval requirements or blockers. A deterministic compiler, not the agent,
+turns the approved protocol into existing strategy, risk-stack, backtest and optimisation specifications.
+
+Planning is target-artifact driven. A workflow asks which validated artifacts must exist to satisfy an objective, then
+selects only registered capabilities that can produce them. It does not plan from legacy task numbers, invent tool
+names, move Data Agent scope into another domain, override the approved experiment protocol or use prose to repair
+failed evidence.
+
+Reusable workflow templates provide the safe initial execution boundary. Examples include supplied implementation to
+backtest evidence, parameter selection to sealed-holdout review, and immutable model deployment to model-backed
+backtest. A bounded policy planner may later choose a template, resolve optional branches and request missing
+specialist evidence. It cannot construct an unrestricted arbitrary graph or bypass a template's mandatory validation,
+approval, Evaluation or Adversarial nodes.
+
+### Domain Authority And Actor Identity
+
+Canonical provenance must distinguish four concepts:
+
+| Field | Meaning |
+| --- | --- |
+| `domain_owner` | The bounded context authoritative for the artifact contract and lifecycle. |
+| `producer_tool` | The deterministic tool/service operation that created the artifact. |
+| `requested_by` | The operator request or workflow-plan/run ref that required the operation. |
+| `actor` | The operator or agent identity that proposed or routed the action. |
+
+An agent may request or route an artifact without becoming its owner. The approved authority map is:
+
+| Domain | Canonical artifacts |
+| --- | --- |
+| Data | Dataset manifests, quality reports and load evidence. |
+| Knowledge/Methodology | Sources, evidence, method cards and method-validation artifacts. |
+| Experiments | Implementations, validations, specifications, backtests, comparisons, optimisation plans/runs/trials and tracking projections. |
+| ML | Feature, training, model-version, deployment and drift artifacts. |
+| Review | Attribution, Evaluation, attack-plan and robustness artifacts. |
+| Orchestration | Research objectives, workflow plans, approval requests, bounded handoff summaries and workflow outcomes only. |
+
+`domain_owner` and `producer_tool` are required on every canonical `ResearchArtifactRecord`. `requested_by` and `actor`
+are nullable for current direct service calls because MCP does not yet authenticate a workflow/caller. Typed
+cross-agent handoffs require all four fields. ORCH-1 requires requester and actor in its orchestration values; ORCH-2/3
+must carry them into orchestrated writes rather than infer either value from MCP tool stewardship.
+
+### Checkpoints And Evidence
+
+Operational graph state and product evidence have separate authority:
+
+| State | Purpose | Authority |
+| --- | --- | --- |
+| LangGraph checkpoint | Resume node position, bounded pending actions and retry state after interruption. | Operational only; replaceable and not evidence for a research claim. |
+| Workflow plan/outcome summary | Expose the declared procedure, public decisions, blockers and terminal status. | Orchestration-domain bounded record, persisted only through an approved service boundary. |
+| Tool-produced research artifact | Establish implementation, data, run, trial, evaluation or robustness evidence. | Canonical owning context and Trader Postgres. |
+| Specialist handoff | Preserve artifact identity, domain authority, producer/request/actor provenance, warnings and blockers across graphs. | Governance contract; cannot change artifact authority. |
+
+Checkpoints must not contain hidden reasoning, unrestricted prompts, credentials, feature matrices or copies of complete
+artifact payloads. Resumption revalidates referenced product artifacts and capability configuration before continuing.
+An idempotent tool result may be reused only when its canonical request identity and upstream hashes still match.
+
+### Composition Shape
+
+Trader should not build one graph containing every possible research activity. The Research Coordinator composes small
+specialist subgraphs and deterministic workflow templates through typed artifact slots:
+
+```text
+Data Agent ─────────────────────┐
+validated supplied code ────────┼──> Experiment Design ──> approved protocol
+optional Quant Methods/ML ──────┘                           │
+                                                           v
+                                                 deterministic execution
+                                                           │
+                                             Robustness findings ──> Evaluation
+```
+
+Adding a specialist capability extends the capability registry and one or more workflow templates. It does not require
+rewriting a universal state machine. The active dependency graph and delivery status live in the
+[capability roadmap](../../plans/research_capability_roadmap.md); current agent maturity lives in
+[product_state.md](product_state.md).
 
 ## Canonical Method Card Architecture
 
@@ -541,7 +705,7 @@ The Quant Research Supervisor can:
 - create and execute provider-neutral optimisation plans and Adversarial-requested immutable variants
 - project completed canonical evidence to configured analytical tracking sinks
 - pass untouched-holdout evidence to Evaluation and variant evidence to Adversarial
-- preserve specialist artifact ownership in handoffs
+- preserve domain authority and producer/request/actor provenance in handoffs
 
 The Quant Research Supervisor cannot:
 
@@ -551,7 +715,7 @@ The Quant Research Supervisor cannot:
 - bypass strategy/risk validation
 - treat a failed validation report as sufficient evidence
 
-The Data Agent owns market-data scope. It is the only agent that should produce dataset manifests and data-quality
+The Data Agent decides whether explicit market-data scope is fit. Data tools produce the authoritative manifests and quality
 evidence. Method cards describe a methodology's data requirements, not the concrete data scope for a run.
 
 The Evaluation Agent owns skeptical interpretation. It consumes backtest, risk, method, and data-quality evidence and
@@ -934,21 +1098,22 @@ and runs an untouched out-of-sample backtest. It depends on capabilities that mu
 - point-in-time ML training/evaluation and version-pinned model-backed strategy integration through task 39I
 - cost, parameter, scope, and data perturbation primitives from tasks 44 and 46
 
-Assigning the complete process to the Adversarial Agent would let the same owner create the selected evidence and judge
-its robustness. Ownership is therefore split:
+Assigning the complete process to the Robustness Agent would let the same decision-maker create selected evidence and
+judge its robustness. Decision authority and artifact authority are therefore split:
 
-- The Quant Research Supervisor owns `walk_forward_optimization_plan` and `walk_forward_optimization_run` procedural
-  artifacts. It declares folds, search space, objective, constraints, costs, seeds, budgets, and child-run refs.
-- The Data Agent owns the dataset and quality refs consumed by each fold. The optimiser cannot manufacture or widen
+- `walk_forward_optimization_plan` and `walk_forward_optimization_run` are Experiments-domain procedural artifacts.
+  Experiment Design declares folds, search space, objective, constraints, costs, seeds and budgets before deterministic
+  services produce child-run refs.
+- Data-domain dataset and quality refs are consumed by each fold. The optimiser cannot manufacture or widen
   market-data scope.
-- The ML Agent owns per-fold training specs, MLflow runs, evaluations, and immutable model versions when a fold fits a
-  predictive model.
-- The Quantitative Methods Agent owns reusable objective/statistical contracts and multiple-testing evidence where
+- ML-domain records cover per-fold training specs, reconciled MLflow runs, predictive evaluations and immutable model
+  versions when a fold fits a predictive model.
+- Quantitative Methods decides reusable objective/statistical contracts and multiple-testing evidence where
   requested; it does not choose the final trading verdict.
-- The Evaluation Agent owns `walk_forward_evaluation_report`, built only from stitched untouched out-of-sample fold
-  evidence.
-- The Adversarial Agent owns `walk_forward_robustness_report`, which attacks the optimisation procedure and its apparent
-  stability without changing the selected parameters/models.
+- Evaluation decides the conclusion in `walk_forward_evaluation_report`, built only from stitched untouched
+  out-of-sample fold evidence.
+- Robustness decides the findings in `walk_forward_robustness_report`, which attacks the optimisation procedure and its
+  apparent stability without changing the selected parameters/models. Both reports have Review domain authority.
 
 Every plan must be immutable before execution and record training, selection, and test boundaries separately. Selection
 may use only declared in-sample or inner-validation evidence. The out-of-sample result for a fold cannot be fed back into
@@ -1006,10 +1171,11 @@ scope.
 - Supervisor state stores public artifact refs, decisions, blockers, warnings, and tool evidence, not hidden reasoning
   traces or raw scratchpads.
 
-## Artifact Ownership
+## Authority Enforcement
 
-Agents are separated by the artifacts they own. Artifact ownership lives in
-`src/trader_research/governance/artifacts.py`, while agent and tool ownership lives in
-`src/trader_research/governance/ownership.py`. The Quant Research Supervisor may coordinate workflows and consume
-specialist outputs, but it must preserve specialist ownership and must not forge Data, Quantitative Methods, ML,
-Hypothesis, Evaluation, or Adversarial artifacts.
+Domain contexts are separated by the artifacts for which they are authoritative. The closed domain vocabulary lives
+in `trader_research.foundation.artifacts`; artifact-type mapping lives in
+`src/trader_research/governance/artifacts.py`; tool allowlists and approved target decisions live in
+`src/trader_research/governance/ownership.py`. The Research Coordinator may route workflows and consume canonical refs,
+but it cannot change Data, Knowledge/Methodology, Experiments, ML or Review authority, rewrite specialist findings, or
+claim deterministic execution as its own research judgment.

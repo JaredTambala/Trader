@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from trader_research.governance.artifacts import QUANTITATIVE_METHODS_OWNER
-
 from trader_research.foundation import ApplicationResult, error_result, success_result
 from trader_research.foundation.artifacts import ArtifactReference
 from trader_research.methodology.implementation.io import write_json_artifact
@@ -16,6 +14,7 @@ from typing import Any, Mapping, Sequence
 from trader_research.foundation.artifacts import ResearchArtifactStore, ResearchArtifactStoreError, load_artifact_ref
 from trader_research.foundation import stable_research_id
 from trader_research.governance.artifacts import (
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
     INDICATOR_VALIDATION_REPORT,
     METHOD_PACKAGE_MANIFEST,
     SIGNAL_IMPLEMENTATION_VALIDATION_REPORT,
@@ -225,7 +224,8 @@ def package_method_artifact(
     manifest_payload = manifest.to_dict()
     if artifact_store is not None:
         manifest_record = artifact_store.save_artifact(
-            agent_owner=QUANTITATIVE_METHODS_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[METHOD_PACKAGE_MANIFEST],
+            producer_tool=MATH_PACKAGE_METHOD_ARTIFACT,
             artifact_type=METHOD_PACKAGE_MANIFEST,
             artifact_id=manifest.package_id,
             payload=manifest_payload,

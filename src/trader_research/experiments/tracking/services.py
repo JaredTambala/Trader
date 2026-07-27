@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from trader_research.governance.artifacts import QUANT_RESEARCH_SUPERVISOR_OWNER
-
 from trader_research.foundation import ApplicationResult, error_result, success_result
 from trader_research.foundation.artifacts import SCHEMA_VERSION
 
@@ -17,6 +15,7 @@ from trader_research.foundation.artifacts import (
 from trader_research.foundation import json_payload_hash
 from trader_research.foundation import stable_research_id
 from trader_research.governance.artifacts import (
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
     EXPERIMENT_TRACKING_PROJECTION_REPORT,
     PARAMETER_OPTIMIZATION_RUN,
 )
@@ -107,7 +106,8 @@ def project_experiment_tracking(
             "blockers": blockers,
         }
         record = artifact_store.save_artifact(
-            agent_owner=QUANT_RESEARCH_SUPERVISOR_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[EXPERIMENT_TRACKING_PROJECTION_REPORT],
+            producer_tool=RESEARCH_PROJECT_EXPERIMENT_TRACKING,
             artifact_type=EXPERIMENT_TRACKING_PROJECTION_REPORT,
             artifact_id=projection_id,
             payload=report,

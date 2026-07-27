@@ -70,13 +70,16 @@ def test_supervisor_can_make_ml_artifacts_optional() -> None:
     anyio.run(_run)
 
 
-def test_supervisor_rejects_forged_data_agent_owner() -> None:
+def test_supervisor_rejects_forged_data_domain_authority() -> None:
     graph = build_quant_research_supervisor_graph()
     state = _state(
         incoming_handoffs=[
             {
                 "handoff_id": "handoff_forged",
-                "agent_owner": "Quant Research Supervisor Agent",
+                "domain_owner": "Experiments",
+                "producer_tool": "data_get_inventory",
+                "requested_by": "request_demo",
+                "actor": "Quant Research Supervisor Agent",
                 "artifact_type": DATASET_MANIFEST,
                 "payload": {"dataset_id": "dataset_demo", "complete": True},
                 "source_request": {
@@ -95,7 +98,7 @@ def test_supervisor_rejects_forged_data_agent_owner() -> None:
 
         assert output["status"] == "failed"
         assert output["errors"][0]["code"] == "invalid_handoff"
-        assert "must be owned by Data Agent" in output["errors"][0]["message"]
+        assert "must be owned by the Data domain" in output["errors"][0]["message"]
         assert output["called_tools"] == []
 
     anyio.run(_run)
@@ -107,7 +110,10 @@ def test_supervisor_rejects_mismatched_data_handoff_window() -> None:
         incoming_handoffs=[
             {
                 "handoff_id": "handoff_manifest",
-                "agent_owner": "Data Agent",
+                "domain_owner": "Data",
+                "producer_tool": "data_get_inventory",
+                "requested_by": "request_demo",
+                "actor": "Data Agent",
                 "artifact_type": DATASET_MANIFEST,
                 "payload": {"dataset_id": "dataset_demo", "complete": True},
                 "source_request": {
@@ -144,7 +150,10 @@ def test_supervisor_accepts_data_handoffs_and_preserves_missing_specialist_block
         incoming_handoffs=[
             {
                 "handoff_id": "handoff_manifest",
-                "agent_owner": "Data Agent",
+                "domain_owner": "Data",
+                "producer_tool": "data_get_inventory",
+                "requested_by": "request_demo",
+                "actor": "Data Agent",
                 "artifact_type": DATASET_MANIFEST,
                 "payload": {
                     "dataset_id": "dataset_amd",
@@ -160,7 +169,10 @@ def test_supervisor_accepts_data_handoffs_and_preserves_missing_specialist_block
             },
             {
                 "handoff_id": "handoff_quality",
-                "agent_owner": "Data Agent",
+                "domain_owner": "Data",
+                "producer_tool": "data_summarize_quality",
+                "requested_by": "request_demo",
+                "actor": "Data Agent",
                 "artifact_type": DATA_QUALITY_REPORT,
                 "payload": {
                     "report_id": "dq_amd",
@@ -186,7 +198,8 @@ def test_supervisor_accepts_data_handoffs_and_preserves_missing_specialist_block
         assert output["status"] == "blocked"
         assert output["data_manifest"]["dataset_id"] == "dataset_amd"
         assert output["data_quality_report"]["report_id"] == "dq_amd"
-        assert output["artifact_slots"][DATASET_MANIFEST]["handoff"]["agent_owner"] == "Data Agent"
+        assert output["artifact_slots"][DATASET_MANIFEST]["handoff"]["domain_owner"] == "Data"
+        assert output["artifact_slots"][DATASET_MANIFEST]["handoff"]["actor"] == "Data Agent"
         assert output["artifact_slots"][DATA_QUALITY_REPORT]["status"] == "accepted"
         assert "data_quality_incomplete" in blocker_codes
         assert "missing_hypothesis_card" in blocker_codes

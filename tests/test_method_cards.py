@@ -6,7 +6,7 @@ from trader_research.foundation.artifacts import InMemoryResearchArtifactStore
 from trader_research.governance.artifacts import (
     METHODOLOGY_CANDIDATE,
     METHODOLOGY_CANDIDATE_VALIDATION_REPORT,
-    OWNER_BY_ARTIFACT_TYPE,
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
 )
 from trader_research.knowledge.approved_cards import StoreBackedApprovedMethodCardReader
 from trader_research.knowledge.chunking import chunk_sections
@@ -333,7 +333,8 @@ def _persist_pairs_methodology_validation(
         lineage={"evidence_packet_id": "methodology_evidence_packet_pairs_card"},
     )
     candidate_record = artifact_store.save_artifact(
-        agent_owner=OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_CANDIDATE],
+        domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_CANDIDATE],
+        producer_tool="test_method_card_fixture",
         artifact_type=METHODOLOGY_CANDIDATE,
         artifact_id=candidate.methodology_candidate_id,
         payload=candidate.to_dict(),
@@ -359,7 +360,8 @@ def _persist_pairs_methodology_validation(
         },
     )
     artifact_store.save_artifact(
-        agent_owner=OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_CANDIDATE_VALIDATION_REPORT],
+        domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_CANDIDATE_VALIDATION_REPORT],
+        producer_tool="test_method_card_fixture",
         artifact_type=METHODOLOGY_CANDIDATE_VALIDATION_REPORT,
         artifact_id=report.validation_id,
         payload=report.to_dict(),

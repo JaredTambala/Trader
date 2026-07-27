@@ -35,7 +35,7 @@ date bounds, provider scope, and market-data quality.
 
 Trader Postgres is canonical for implementations, specifications, runs, trial ledgers, Evaluation, and Adversarial
 evidence. MCP is the control-plane API over deterministic services. LangGraph agents constrain tool access and preserve
-artifact ownership. Research tools cannot place live orders, mutate broker state, clear halts, or expose raw SQL.
+artifact authority. Research tools cannot place live orders, mutate broker state, clear halts, or expose raw SQL.
 
 ## Start Here
 
@@ -44,7 +44,7 @@ product flow.
 
 | Step | Read | Question it answers |
 | ---: | --- | --- |
-| 1 | [Current Capability Baseline](#current-capability-baseline) | What works now, what is maintained, and what is only planned? |
+| 1 | [product_state.md](product_state.md) | What works now, how strongly is it qualified, and what can agents orchestrate? |
 | 2 | [architecture.md](architecture.md#bounded-context-architecture) | Which package owns each responsibility, and which dependencies are allowed? |
 | 3 | [agents.md](agents.md) | Which agent owns each artifact and decision boundary? |
 | 4 | [workflows.md](workflows.md) | How do tools compose into useful evidence-producing procedures? |
@@ -52,9 +52,10 @@ product flow.
 | 6 | [tool_contracts.md](tool_contracts.md) | What are the exact request, envelope, artifact, and fail-closed contracts? |
 | 7 | [operations.md](operations.md) | How is MCP configured, gated, persisted, inspected, and verified? |
 
-The [active tracker](../../plans/mcp_trading_research_tools_plan.md) records delivery lineage and acceptance evidence.
-It is not the introductory product manual. Files under [history/](history/) explain superseded designs and should not be
-used to infer current tools or import paths.
+The [active capability roadmap](../../plans/research_capability_roadmap.md) records remaining work, hard dependencies,
+parallel workstreams and compact delivery lineage. The [deprecated linear tracker](../../plans/mcp_trading_research_tools_plan.md)
+is a migration pointer only. Files under [history/](history/) explain superseded designs and should not be used to infer
+current tools or import paths.
 
 ## Topic Reading Paths
 
@@ -90,39 +91,32 @@ used to infer current tools or import paths.
 Runtime prediction, deployment validation, and strategy binding are implemented by 39H-I. Feature engineering,
 training, model evaluation/registration, and drift remain the 39A-G/J roadmap.
 
+### Higher-Level Orchestration
+
+1. [product_state.md: Target Decision Architecture](product_state.md#target-decision-architecture)
+2. [architecture.md: Higher-Level Orchestration Architecture](architecture.md#higher-level-orchestration-architecture)
+3. [agents.md: Approved Decision Boundaries](agents.md#approved-decision-boundaries)
+4. [workflows.md: Target Orchestrated Supplied-Strategy Workflow](workflows.md#target-orchestrated-supplied-strategy-workflow)
+5. [Active capability roadmap: Orchestration](../../plans/research_capability_roadmap.md#orchestration)
+
 ## Document Roles
 
 | Document | Use it for | Do not use it for |
 | --- | --- | --- |
+| [product_state.md](product_state.md) | Current capability, qualification, availability, agent state and product limits. | Detailed schemas or historical delivery sequencing. |
 | [architecture.md](architecture.md) | Current package boundaries, authority, persistence, safety, and subsystem designs. | Tool availability or historical refactor sequencing. |
-| [agents.md](agents.md) | Agent missions, artifact ownership, allowlists, and handoffs. | Detailed request schemas. |
+| [agents.md](agents.md) | Agent missions, decision authority, tool allowlists, artifact domains, and handoffs. | Detailed request schemas. |
 | [mcp_tools.md](mcp_tools.md) | Registered tool catalog, owners, side effects, and capability gates. | Service internals. |
 | [workflows.md](workflows.md) | End-to-end procedures and artifact flow. | Exact field-level contracts. |
 | [tool_contracts.md](tool_contracts.md) | Request fields, envelopes, validation, and artifact contracts. | Introductory reading. |
 | [operations.md](operations.md) | Startup, environment, Postgres, policy gates, and qualification. | Conceptual domain ownership. |
 | [semantic_extraction.md](semantic_extraction.md) | Claim-level methodology evidence and method-card extraction semantics. | Generic strategy execution. |
 
-## Current Capability Baseline
+## Current Product State
 
-The knowledge-base and methodology work is now a maintained subsystem rather than the active delivery focus. The
-following distinctions are important when assessing what the platform can do today:
-
-| Area | Functionally available | Current boundary | Delivery posture |
-| --- | --- | --- | --- |
-| Data Agent | Symbol discovery, bounded inventory, quality reports, dataset manifests, and gated loading evidence. | Calendar-aware equity quality remains a backlog item; agents do not choose hidden data scope. | Maintain and fix regressions. |
-| Knowledge-base creation | Postgres-first source registration, full-document PDF/Markdown/text ingestion, schema-v2 evidence units, lexical/vector indexes, semantic retrieval, bounded dereferencing, ingestion status, and source listing. | OCR is not provided for image-only pages; registration alone does not ingest a document. | Maintain and protect stored-data integrity. |
-| Methodology evidence | Open-world identity discovery, claim spans, target-bound evidence packets, rich-field extraction, semantic validation, stable method-card sets, drafts, approval, and lineage. | Reliable for bounded locally identifiable methods; book-scale composite frameworks and source-discovered ontologies are not represented faithfully. Real sources can and should block before card creation. | Paused after 33AB; composite-method work is deferred. |
-| Method implementations | Maintained indicator/signal contracts plus content-addressed strategy, risk-manager, and optimisation-objective registration/validation. | Supplied, maintained, AI-produced, and methodology-produced source receives identical eligibility checks; no method card is required. | Maintain the decoupled registry boundary. |
-| Backtesting | Immutable strategy/risk/backtest specifications, gated canonical DB-backed execution, comparisons, and multi-asset risk evidence. | Candidate/stack and filesystem run contracts are retired; Data Agent quality and exact source hashes fail closed. | Foundation complete for ML and robustness work. |
-| ML | Provider-neutral feature/prediction contracts, lazy local MLflow pyfunc inference, DB-backed deployment manifests/validations, typed strategy bindings, maintained prediction mappers/strategy, bounded prediction/signal/order lineage, and synchronized-universe execution. | Upstream feature-set, training, evaluation, registry-version, and monitoring tools are not implemented; deployment MCP calls therefore require already persisted passed feature/model evidence. Live eligibility and runtime mutation are excluded. | 39H-I implemented; complete 39A-G and 39J around this boundary. |
-| Parameter optimisation and tracking | Provider-neutral plans/trial ledgers, deterministic grid/random engines, optional lazy Optuna TPE, explicit non-authoritative tracking projection, sealed-holdout Evaluation. | First slice is sequential, finite, single-objective, and has no pruning; Optuna/MLflow are optional. | Implemented foundation. |
-| Robustness and adversarial evaluation | Independent parameter-optimisation attack planning and judgment are registered. | Broader cost/data perturbation execution remains tasks 44/46. | Active next focus. |
-| Walk-forward optimisation | Provider-neutral optimisation contracts now exist for composition inside folds. | Fold construction, stitched OOS report, and walk-forward audit remain deferred tasks 58-59. | Build after ML integration and broader robustness primitives. |
-
-The implementation-to-evidence, parameter-optimisation, and model-backed execution foundations are present. The next ML
-work is 39A-G/J: point-in-time feature engineering, fitting, recording, evaluation, immutable model versioning, and
-prediction monitoring around the implemented runtime boundary. Knowledge and Data Agent tools remain supported
-dependencies, but further autonomous methodology-understanding work is not on the current critical path.
+The canonical capability, qualification, availability and agent-orchestration baseline is
+[product_state.md](product_state.md). It deliberately separates implemented behavior from controlled acceptance and
+from agent automation. Do not duplicate its capability matrix in this README.
 
 ## Sources Of Truth
 
@@ -134,4 +128,5 @@ When documentation and implementation disagree, inspect these current sources an
 - Artifact types and ownership: `src/trader_research/governance/artifacts.py`.
 - Public research application surfaces: the `__init__.py` facade in each `trader_research` bounded context.
 - Canonical Postgres persistence and projection registration: `src/trader_research/infrastructure/postgres/`.
-- Implementation status and roadmap: `plans/mcp_trading_research_tools_plan.md`.
+- Current capability and qualification baseline: `docs/research_agents/product_state.md`.
+- Remaining work and dependencies: `plans/research_capability_roadmap.md`.

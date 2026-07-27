@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from trader_research.governance.artifacts import QUANT_RESEARCH_SUPERVISOR_OWNER
-
 from trader_research.foundation import (
     ApplicationResult,
     PredictionDeploymentReader,
@@ -17,6 +15,7 @@ from typing import Any, Mapping, Sequence
 from trader_research.foundation.artifacts import ResearchArtifactStore, ResearchArtifactStoreError
 from trader_research.foundation import stable_research_id
 from trader_research.governance.artifacts import (
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
     STRATEGY_SPECIFICATION,
     STRATEGY_SPECIFICATION_VALIDATION_REPORT,
 )
@@ -92,7 +91,8 @@ def create_strategy_specification(
             "status": "created",
         }
         record = artifact_store.save_artifact(
-            agent_owner=QUANT_RESEARCH_SUPERVISOR_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[STRATEGY_SPECIFICATION],
+            producer_tool=RESEARCH_CREATE_STRATEGY_SPECIFICATION,
             artifact_type=STRATEGY_SPECIFICATION,
             artifact_id=specification_id,
             payload=payload,
@@ -167,7 +167,8 @@ def validate_strategy_specification(
     report = _validation_report(payload, blockers)
     try:
         record = artifact_store.save_artifact(
-            agent_owner=QUANT_RESEARCH_SUPERVISOR_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[STRATEGY_SPECIFICATION_VALIDATION_REPORT],
+            producer_tool=RESEARCH_VALIDATE_STRATEGY_SPECIFICATION,
             artifact_type=STRATEGY_SPECIFICATION_VALIDATION_REPORT,
             artifact_id=report["validation_id"],
             payload=report,

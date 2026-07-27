@@ -7,9 +7,9 @@ from typing import Any, Mapping
 from trader_research.foundation import ApplicationResult, error_result, stable_research_id, success_result
 from trader_research.foundation.artifacts import ResearchArtifactStore, ResearchArtifactStoreError, SCHEMA_VERSION
 from trader_research.governance.artifacts import (
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
     PARAMETER_OPTIMIZATION_RUN,
     PARAMETER_OPTIMIZATION_TRIAL,
-    QUANT_RESEARCH_SUPERVISOR_OWNER,
 )
 from trader_research.experiments.implementations import evaluate_objective
 
@@ -135,7 +135,8 @@ def run_parameter_optimization(
                 "attempts": attempts,
             }
             artifact_store.save_artifact(
-                agent_owner=QUANT_RESEARCH_SUPERVISOR_OWNER,
+                domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_TRIAL],
+                producer_tool=RESEARCH_RUN_PARAMETER_OPTIMIZATION,
                 artifact_type=PARAMETER_OPTIMIZATION_TRIAL,
                 artifact_id=trial_id,
                 payload=trial_payload,
@@ -189,7 +190,8 @@ def run_parameter_optimization(
             "blockers": ["no passed optimization trial"] if selected is None and exhausted else [],
         }
         record = artifact_store.save_artifact(
-            agent_owner=QUANT_RESEARCH_SUPERVISOR_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_RUN],
+            producer_tool=RESEARCH_RUN_PARAMETER_OPTIMIZATION,
             artifact_type=PARAMETER_OPTIMIZATION_RUN,
             artifact_id=run_id,
             payload=payload,

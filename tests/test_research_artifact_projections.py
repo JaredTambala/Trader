@@ -4,7 +4,8 @@ from typing import Any
 
 import pytest
 
-from trader_research.foundation.artifacts import build_artifact_record
+from trader_research.foundation.artifacts import ResearchArtifactStoreError, build_artifact_record
+from trader_research.governance.artifacts import EXPERIMENTS_DOMAIN_OWNER
 from trader_research.infrastructure.postgres.projections import (
     combine_projection_writers,
     default_projection_registry,
@@ -15,9 +16,42 @@ def _record(artifact_type: str = "demo_artifact"):
     return build_artifact_record(
         artifact_type=artifact_type,
         artifact_id="demo_1",
-        agent_owner="Test Owner",
+        domain_owner=EXPERIMENTS_DOMAIN_OWNER,
+        producer_tool="test_projection_fixture",
         payload={"status": "passed"},
     )
+
+
+def test_artifact_record_exposes_authority_and_producer_provenance() -> None:
+    record = build_artifact_record(
+        artifact_type="demo_artifact",
+        artifact_id="demo_1",
+        domain_owner=EXPERIMENTS_DOMAIN_OWNER,
+        producer_tool="research_demo",
+        requested_by="workflow_run_1",
+        actor="Research Coordinator",
+        payload={"status": "passed"},
+    )
+
+    assert record.domain_owner == "Experiments"
+    assert record.producer_tool == "research_demo"
+    assert record.requested_by == "workflow_run_1"
+    assert record.actor == "Research Coordinator"
+    assert record.reference().metadata["domain_owner"] == "Experiments"
+
+
+def test_artifact_record_rejects_unknown_domain_authority() -> None:
+    with pytest.raises(
+        ResearchArtifactStoreError,
+        match="unsupported research artifact domain_owner",
+    ):
+        build_artifact_record(
+            artifact_type="demo_artifact",
+            artifact_id="demo_1",
+            domain_owner="Quant Research Supervisor Agent",
+            producer_tool="research_demo",
+            payload={"status": "passed"},
+        )
 
 
 def test_projection_registry_dispatches_only_registered_artifact_type() -> None:

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from trader_research.governance.artifacts import QUANTITATIVE_METHODS_OWNER
-
 from trader_research.foundation import ApplicationResult, error_result, success_result
 from trader_research.foundation.artifacts import ArtifactReference
 from trader_research.methodology.implementation.io import write_json_artifact
@@ -17,7 +15,10 @@ from trader.signals import Signal
 
 from trader_research.foundation.artifacts import ResearchArtifactStore, load_artifact_ref
 from trader_research.foundation import stable_research_id
-from trader_research.governance.artifacts import METHOD_IMPLEMENTATION_MANIFEST
+from trader_research.governance.artifacts import (
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
+    METHOD_IMPLEMENTATION_MANIFEST,
+)
 from trader_research.knowledge.approved_cards import ApprovedMethodCardReader
 from trader_research.methodology.implementation.fixture_defaults import default_indicator_fixtures, default_signal_fixtures
 from trader_research.methodology.implementation.fixture_helpers import run_indicator_fixture, run_signal_fixture
@@ -303,7 +304,8 @@ def _finish_validation(
     updated_manifest = replace(manifest, status="validated" if not blockers else "blocked")
     if artifact_store is not None:
         report_record = artifact_store.save_artifact(
-            agent_owner=QUANTITATIVE_METHODS_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[report_artifact_type],
+            producer_tool=command,
             artifact_type=report_artifact_type,
             artifact_id=validation_id,
             payload=report,
@@ -312,7 +314,8 @@ def _finish_validation(
             metadata={"implementation_id": manifest.implementation_id, "method_id": manifest.method_id},
         )
         manifest_record = artifact_store.save_artifact(
-            agent_owner=QUANTITATIVE_METHODS_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[METHOD_IMPLEMENTATION_MANIFEST],
+            producer_tool=command,
             artifact_type=METHOD_IMPLEMENTATION_MANIFEST,
             artifact_id=updated_manifest.implementation_id,
             payload=updated_manifest.to_dict(),

@@ -12,9 +12,9 @@ from trader_research.foundation.artifacts import (
     ResearchArtifactStoreError,
 )
 from trader_research.governance.artifacts import (
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
     METHODOLOGY_CANDIDATE,
     METHODOLOGY_FIELD_EXTRACTION_REPORT,
-    QUANTITATIVE_METHODS_OWNER,
 )
 
 from .domain import (
@@ -92,7 +92,8 @@ def extract_methodology_fields(
         )
         try:
             record = artifact_store.save_artifact(
-                agent_owner=QUANTITATIVE_METHODS_OWNER,
+                domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_FIELD_EXTRACTION_REPORT],
+                producer_tool=KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS,
                 artifact_type=METHODOLOGY_FIELD_EXTRACTION_REPORT,
                 artifact_id=report.extraction_id,
                 payload=report.to_dict(),
@@ -130,7 +131,8 @@ def extract_methodology_fields(
     )
     try:
         candidate_record = artifact_store.save_artifact(
-            agent_owner=QUANTITATIVE_METHODS_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_CANDIDATE],
+            producer_tool=KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS,
             artifact_type=METHODOLOGY_CANDIDATE,
             artifact_id=updated_candidate.methodology_candidate_id,
             payload=updated_candidate.to_dict(),
@@ -143,7 +145,8 @@ def extract_methodology_fields(
         )
         report = replace(report, candidate_ref=candidate_record.reference().to_dict())
         report_record = artifact_store.save_artifact(
-            agent_owner=QUANTITATIVE_METHODS_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_FIELD_EXTRACTION_REPORT],
+            producer_tool=KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS,
             artifact_type=METHODOLOGY_FIELD_EXTRACTION_REPORT,
             artifact_id=report.extraction_id,
             payload=report.to_dict(),

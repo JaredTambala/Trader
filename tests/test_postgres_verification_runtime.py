@@ -35,6 +35,7 @@ from tests.support.postgres_verification import (
         ("docs/research_agents/operations.md", True),
         ("tests/conftest.py", True),
         ("plans/mcp_trading_research_tools_plan.md", True),
+        ("plans/research_capability_roadmap.md", True),
         ("src/trader_research/optimization/service.py", False),
         ("pyproject.toml", False),
         ("env.template", False),

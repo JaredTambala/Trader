@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from trader_research.governance.artifacts import QUANTITATIVE_METHODS_OWNER
-
 from trader_research.foundation import ApplicationResult, error_result, success_result
 
 from pathlib import Path
@@ -12,7 +10,10 @@ from typing import Any, Mapping, Sequence
 
 from trader_research.foundation.artifacts import ResearchArtifactStore, ResearchArtifactStoreError
 from trader_research.foundation import stable_research_id
-from trader_research.governance.artifacts import METHODOLOGY_CANDIDATE
+from trader_research.governance.artifacts import (
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
+    METHODOLOGY_CANDIDATE,
+)
 
 from .domain import KnowledgeChunk, KnowledgeSourceManifest, MethodologyCandidate
 from .embeddings import EmbeddingProvider
@@ -215,7 +216,8 @@ def discover_methodology_candidates(
         for candidate in candidates:
             records.append(
                 artifact_store.save_artifact(
-                    agent_owner=QUANTITATIVE_METHODS_OWNER,
+                    domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_CANDIDATE],
+                    producer_tool=KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES,
                     artifact_type=METHODOLOGY_CANDIDATE,
                     artifact_id=candidate.methodology_candidate_id,
                     payload=candidate.to_dict(),

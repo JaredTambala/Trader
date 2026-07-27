@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from trader_research.governance.artifacts import QUANTITATIVE_METHODS_OWNER
-
 from trader_research.foundation import ApplicationResult, error_result, success_result
 from trader_research.foundation.artifacts import ArtifactReference
 
@@ -22,7 +20,10 @@ from trader.signals import Signal
 
 from trader_research.foundation.artifacts import ResearchArtifactStore
 from trader_research.foundation import stable_research_id
-from trader_research.governance.artifacts import METHOD_IMPLEMENTATION_MANIFEST
+from trader_research.governance.artifacts import (
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
+    METHOD_IMPLEMENTATION_MANIFEST,
+)
 from trader_research.knowledge.approved_cards import ApprovedMethodCardReadError, ApprovedMethodCardReader
 from trader_research.methodology.registry import get_method
 from trader_research.methodology.implementation.io import file_sha256, local_mutating_error, save_manifest
@@ -180,7 +181,8 @@ def register_method_implementation(
     manifest_payload = manifest.to_dict()
     if artifact_store is not None:
         manifest_record = artifact_store.save_artifact(
-            agent_owner=QUANTITATIVE_METHODS_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[METHOD_IMPLEMENTATION_MANIFEST],
+            producer_tool=MATH_REGISTER_METHOD_IMPLEMENTATION,
             artifact_type=METHOD_IMPLEMENTATION_MANIFEST,
             artifact_id=manifest.implementation_id,
             payload=manifest_payload,

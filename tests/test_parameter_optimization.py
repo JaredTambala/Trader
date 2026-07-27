@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from trader_research.governance.artifacts import OWNER_BY_ARTIFACT_TYPE
+from trader_research.governance.artifacts import DOMAIN_OWNER_BY_ARTIFACT_TYPE
 
 from dataclasses import dataclass
 from copy import deepcopy
@@ -286,7 +286,8 @@ def test_grid_resume_selection_projection_evaluation_and_audit_are_separate() ->
         "blockers": [],
     }
     store.save_artifact(
-        agent_owner=OWNER_BY_ARTIFACT_TYPE[BACKTEST_RUN],
+        domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[BACKTEST_RUN],
+        producer_tool="test_parameter_optimization_fixture",
         artifact_type=BACKTEST_RUN,
         artifact_id="holdout-run",
         payload=holdout,
@@ -734,7 +735,8 @@ def test_seeded_random_retry_evidence_and_base_snapshot_drift_are_deterministic(
     changed = deepcopy(drift_store.load_artifact(BACKTEST_SPECIFICATION, base_id))
     changed["dataset"]["payload"]["dataset_id"] = "silently-replaced-selection"
     drift_store.save_artifact(
-        agent_owner=OWNER_BY_ARTIFACT_TYPE[BACKTEST_SPECIFICATION],
+        domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[BACKTEST_SPECIFICATION],
+        producer_tool="test_parameter_optimization_fixture",
         artifact_type=BACKTEST_SPECIFICATION,
         artifact_id=base_id,
         payload=changed,
@@ -806,7 +808,8 @@ def test_results_fail_closed_on_canonical_selection_evidence_tamper(target: str)
         changed = deepcopy(run)
         changed["selected_trial_id"] = "parameter_optimization_trial_tampered"
         store.save_artifact(
-            agent_owner=OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_RUN],
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_RUN],
+            producer_tool="test_parameter_optimization_fixture",
             artifact_type=PARAMETER_OPTIMIZATION_RUN,
             artifact_id=run["optimization_run_id"],
             payload=changed,
@@ -817,7 +820,8 @@ def test_results_fail_closed_on_canonical_selection_evidence_tamper(target: str)
         changed = deepcopy(store.load_artifact(PARAMETER_OPTIMIZATION_TRIAL, trial_id))
         changed["objective_value"] = float(changed["objective_value"]) + 100.0
         store.save_artifact(
-            agent_owner=OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_TRIAL],
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_TRIAL],
+            producer_tool="test_parameter_optimization_fixture",
             artifact_type=PARAMETER_OPTIMIZATION_TRIAL,
             artifact_id=trial_id,
             payload=changed,

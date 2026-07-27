@@ -8,10 +8,10 @@ deterministic trader_research services
   -> LangGraph agent identities in trader_agents
 ```
 
-MCP is the tool boundary. LangGraph is the agent identity and orchestration layer. Tools must produce structured
-artifacts that match the owning agent's responsibilities in [agents.md](agents.md).
-The Quant Research Supervisor Agent may coordinate specialist work, but each specialist-owned artifact keeps its own
-`agent_owner`.
+MCP is the tool boundary. LangGraph is the agent identity and orchestration layer. Tools produce structured artifacts
+under the bounded-context authority declared in [agents.md](agents.md). The MCP `agent_owner` envelope field identifies
+the intended tool allowlist/stewardship role; it does not establish canonical artifact ownership or authenticated
+caller identity.
 
 Use [mcp_tools.md](mcp_tools.md) for the current registered MCP catalog. This file is the detailed contract appendix for
 request fields, envelope shapes, artifact payloads, and validation behavior.
@@ -135,7 +135,8 @@ Fields:
 
 - `ok`: command success.
 - `command`: stable MCP tool identifier.
-- `agent_owner`: agent that owns the artifact and decision boundary.
+- `agent_owner`: intended agent allowlist/stewardship label for this tool. It is transport metadata, not artifact
+  authority or authenticated caller identity.
 - `side_effect`: declared side-effect class.
 - `schema_version`: envelope schema version.
 - `generated_at`: UTC timestamp.
@@ -146,7 +147,33 @@ Fields:
 
 Canonical MCP research artifact refs use `research://postgres/{artifact_type}/{artifact_id}`. New implementation,
 specification, backtest, optimisation, Evaluation, and Adversarial services require the structured store and have no
-filesystem authority or fallback.
+filesystem authority or fallback. Canonical `research_artifacts` rows use required `domain_owner` and `producer_tool`
+columns plus nullable `requested_by` and `actor`. Direct calls leave unavailable requester/actor provenance null;
+ORCH-1 values require it explicitly, and ORCH-2/3 must propagate it into orchestrated calls.
+
+`SpecialistHandoff` is a separate governance contract. It requires non-empty `domain_owner`, `producer_tool`,
+`requested_by` and `actor`, validates domain authority against the artifact type, and carries either a canonical
+artifact reference/payload together with source request, warnings, blockers and provenance refs. It has no
+`agent_owner` field and cannot transfer authority to the coordinator.
+
+## Orchestration Contracts
+
+ORCH-1 adds no MCP tools. It defines immutable JSON-safe contracts used before and after future tool calls:
+
+| Contract | Purpose | Fail-closed checks |
+| --- | --- | --- |
+| `ResearchObjective` | Operator outcome, success criteria, constraints and supplied refs. | Requires stable identity plus explicit requester and actor. |
+| `ExperimentProtocol` | Fair test design over supplied implementation and Data requirements. | Approved means every material assumption has an explicit approved decision; optimisation requires selection plus sealed holdout. |
+| `CapabilityDefinition` | Versioned declarative action metadata. | Restricts side effects to research-safe classes and declares exact artifact slots, policy gates and configuration keys. |
+| `Prerequisite` | Required artifact, capability, policy or approval condition. | Resolution evidence and blockers must agree with status. |
+| `ArtifactSlot` | Typed input/output requirement or bounded resolved ref set. | Artifact type, domain owner, cardinality, refs and status must agree. |
+| `WorkflowPlan` | Capability DAG selected from a bounded template. | Rejects unknown steps, bindings, configuration, prerequisites, approvals, cycles and false readiness. |
+| `WorkflowStepResult` | Public result from one future executor attempt. | Carries only canonical refs, bounded public data, issues, identity, idempotency and retry classification. |
+| `Approval` | Operator decision over one material assumption. | Requested records cannot contain decisions; approved/rejected records require decision actor and rationale. |
+
+These contracts do not load artifacts, call services, write Postgres, invoke MCP or hold LangGraph checkpoint state.
+Existing MCP `ToolEnvelope` remains the transport result. ORCH-3 will adapt a validated envelope into a
+`WorkflowStepResult`; it must not persist arbitrary raw payloads or hidden model reasoning.
 
 ## Side Effects
 
@@ -247,8 +274,9 @@ bounded parameter schema, dependency declarations, authoring origin, capabilitie
 optional generic provenance refs, and metadata. IDs are content-addressed over normalized identity and source hash.
 Validation accepts exactly one implementation ID, URI, or inline payload and writes an
 `implementation_validation_report` after import/call safety checks, kind-specific interface construction, parameter
-validation, and a deterministic fixture. Strategy/risk implementations are Supervisor-owned; optimisation objectives
-are Quantitative Methods-owned. Method cards and packages are not eligibility requirements. Dependency declarations
+validation, and a deterministic fixture. Strategy/risk/objective implementation records all have Experiments-domain
+authority; current tool allowlists route strategy/risk admission through the Supervisor identity and objective
+admission through Quantitative Methods. Method cards and packages are not eligibility requirements. Dependency declarations
 are descriptive lock/provenance data; they never expand the executable import allowlist. Validation blocks broad
 `trader` imports, restricted Trader database/broker/runtime submodules, filesystem/network/database/subprocess/tool
 imports, unsafe dynamic builtins, dangerous mutation calls, and dunder-based introspection. Objective modules receive a
@@ -274,7 +302,7 @@ and fails on hash or scope drift. Loose scope and filesystem refs are not accept
 canonical `backtest_run` containing summary metrics, complete result, curves, trades, positions, symbol metrics,
 exposure, risk decisions/breaches/measures, warnings, blockers, and full implementation/specification/dataset lineage.
 Execution is idempotent by deterministic run ID: a complete persisted run is returned only after record identity,
-ownership, status, specification, source hashes, dataset hashes, result identity, sidecar completeness, and provenance
+domain authority, producer operation, status, specification, source hashes, dataset hashes, result identity, sidecar completeness, and provenance
 revalidate. Drift blocks the call; valid persisted evidence is not overwritten or replayed.
 `research_get_backtest_results` accepts exactly one run ID or DB URI. Comparison accepts 2-50 canonical run refs plus a
 numeric ranking metric/order. No new execution service reads or returns a durable filesystem path.
@@ -296,8 +324,8 @@ A strategy implementation declares named `prediction_requirements` in its closed
 semantics, horizons, scalar/structured shapes, inference scopes, consumer kind, and required status. Its strategy
 specification binds each name to one passed deployment validation, selected output names, and a maintained versioned
 mapper with explicit parameters. The normalized deployment, output, and mapper snapshots contribute to the strategy
-specification and backtest-run identities. The deployment stays ML-owned; the Supervisor-owned binding contains the
-trading interpretation.
+specification and backtest-run identities. The deployment remains ML-domain evidence; the Experiments-domain binding
+contains the trading interpretation.
 
 At run composition, the resolver revalidates all evidence and constructs `FeatureProvider`, `Predictor`, and mapper
 objects once. `per_symbol` decisions use independent symbol callbacks. `universe_snapshot` decisions require an exact,

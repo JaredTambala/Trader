@@ -5,6 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping
 
+from trader_research.foundation import (
+    DATA_DOMAIN_OWNER,
+    EXPERIMENTS_DOMAIN_OWNER,
+    KNOWLEDGE_METHODOLOGY_DOMAIN_OWNER,
+    ML_DOMAIN_OWNER,
+    ORCHESTRATION_DOMAIN_OWNER,
+    REVIEW_DOMAIN_OWNER,
+)
+
 
 @dataclass(frozen=True)
 class AgentDefinition:
@@ -14,15 +23,27 @@ class AgentDefinition:
         key: Stable machine-readable agent key.
         display_name: Human-readable agent name used in results and docs.
         mission: Short description of the agent's responsibility boundary.
-        owned_artifacts: Artifact filenames or types owned by the agent.
+        produced_artifacts: Artifact filenames or types the agent's tools may produce.
         initial_tools: Tool names initially allowlisted for the agent.
     """
 
     key: str
     display_name: str
     mission: str
-    owned_artifacts: tuple[str, ...]
+    produced_artifacts: tuple[str, ...]
     initial_tools: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DecisionAuthority:
+    """Approved research decision boundary for a target orchestration role."""
+
+    key: str
+    display_name: str
+    decision: str
+    artifact_domains: tuple[str, ...]
+    prohibited_authority: tuple[str, ...]
+    optional_producer: bool = False
 
 
 READ_ONLY_SUPPORT_TOOLS = ("mcp_health", "mcp_get_config")
@@ -150,7 +171,7 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
         key="quant_research_supervisor",
         display_name="Quant Research Supervisor Agent",
         mission="Coordinate research workflows and synthesize specialist-owned evidence.",
-        owned_artifacts=(
+        produced_artifacts=(
             "experiment_plan.json",
             "research_suite.json",
             "comparison_report.json",
@@ -177,7 +198,7 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
         key="data_agent",
         display_name="Data Agent",
         mission="Produce trustworthy bounded market-data manifests and quality evidence.",
-        owned_artifacts=(
+        produced_artifacts=(
             "symbol_discovery_report.json",
             "dataset_manifest.json",
             "data_quality_report.json",
@@ -192,7 +213,7 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
             "Produce auditable deterministic method contracts, validation reports, diagnostics, and statistical "
             "inference artifacts."
         ),
-        owned_artifacts=(
+        produced_artifacts=(
             "indicator_contract.json",
             "statistical_test_contract.json",
             "method_implementation_manifest.json",
@@ -229,7 +250,7 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
             "Coordinate point-in-time feature engineering, fitting, MLflow model lineage, deployment evidence, "
             "predictions, and drift without live-trading authority."
         ),
-        owned_artifacts=(
+        produced_artifacts=(
             "ml_feature_set_spec.json",
             "ml_feature_set_validation_report.json",
             "ml_training_dataset_manifest.json",
@@ -252,14 +273,14 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
         key="hypothesis_agent",
         display_name="Hypothesis Agent",
         mission="Produce explicit falsifiable strategy hypothesis cards.",
-        owned_artifacts=("hypothesis_card.json",),
+        produced_artifacts=("hypothesis_card.json",),
         initial_tools=HYPOTHESIS_AGENT_TOOLS,
     ),
     AgentDefinition(
         key="evaluation_agent",
         display_name="Evaluation Agent",
         mission="Produce skeptical critique artifacts from research evidence.",
-        owned_artifacts=(
+        produced_artifacts=(
             "evaluation_report.json",
             "parameter_optimization_evaluation_report.json",
             "walk_forward_evaluation_report.json",
@@ -270,13 +291,96 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
         key="adversarial_agent",
         display_name="Adversarial Agent",
         mission="Produce robustness and stress-test artifacts for candidate strategies.",
-        owned_artifacts=(
+        produced_artifacts=(
             "robustness_report.json",
             "parameter_optimization_audit_plan.json",
             "parameter_optimization_robustness_report.json",
             "walk_forward_robustness_report.json",
         ),
         initial_tools=ADVERSARIAL_AGENT_TOOLS,
+    ),
+)
+
+DECISION_AUTHORITIES: tuple[DecisionAuthority, ...] = (
+    DecisionAuthority(
+        key="research_coordinator",
+        display_name="Research Coordinator",
+        decision="Select an approved workflow and resolve its prerequisites.",
+        artifact_domains=(ORCHESTRATION_DOMAIN_OWNER,),
+        prohibited_authority=(
+            "experiment design",
+            "experiment execution evidence",
+            "robustness findings",
+            "research quality verdicts",
+        ),
+    ),
+    DecisionAuthority(
+        key="data_agent",
+        display_name="Data Agent",
+        decision="Determine whether explicit market-data scope is available and fit.",
+        artifact_domains=(DATA_DOMAIN_OWNER,),
+        prohibited_authority=(
+            "strategy logic",
+            "optimization design",
+            "performance conclusions",
+        ),
+    ),
+    DecisionAuthority(
+        key="experiment_design_agent",
+        display_name="Experiment Design Agent",
+        decision="Propose a fair, reproducible, approval-aware experiment protocol.",
+        artifact_domains=(EXPERIMENTS_DOMAIN_OWNER,),
+        prohibited_authority=(
+            "experiment execution",
+            "post-result protocol changes",
+            "strategy quality verdicts",
+        ),
+    ),
+    DecisionAuthority(
+        key="robustness_agent",
+        display_name="Robustness Agent",
+        decision="Define attacks and judge sensitivity evidence from immutable variants.",
+        artifact_domains=(REVIEW_DOMAIN_OWNER,),
+        prohibited_authority=(
+            "variant execution",
+            "baseline mutation",
+            "overall strategy quality verdicts",
+        ),
+    ),
+    DecisionAuthority(
+        key="evaluation_agent",
+        display_name="Evaluation Agent",
+        decision="Judge what the complete research evidence supports.",
+        artifact_domains=(REVIEW_DOMAIN_OWNER,),
+        prohibited_authority=(
+            "protocol repair",
+            "parameter selection",
+            "experiment execution",
+        ),
+    ),
+    DecisionAuthority(
+        key="quant_methods_agent",
+        display_name="Quantitative Methods Agent",
+        decision="Produce optional source-backed and computational-method evidence.",
+        artifact_domains=(KNOWLEDGE_METHODOLOGY_DOMAIN_OWNER,),
+        prohibited_authority=(
+            "market-data scope",
+            "experiment execution",
+            "strategy quality verdicts",
+        ),
+        optional_producer=True,
+    ),
+    DecisionAuthority(
+        key="ml_agent",
+        display_name="ML Agent",
+        decision="Produce optional model-lifecycle and predictive evidence.",
+        artifact_domains=(ML_DOMAIN_OWNER,),
+        prohibited_authority=(
+            "trading policy",
+            "risk approval",
+            "strategy quality verdicts",
+        ),
+        optional_producer=True,
     ),
 )
 
@@ -297,6 +401,9 @@ def _normalize_lookup(value: str) -> str:
 
 
 _AGENTS_BY_KEY: Mapping[str, AgentDefinition] = {agent.key: agent for agent in AGENT_DEFINITIONS}
+_DECISION_AUTHORITIES_BY_KEY: Mapping[str, DecisionAuthority] = {
+    authority.key: authority for authority in DECISION_AUTHORITIES
+}
 _AGENT_ALIASES: Mapping[str, str] = {
     **{agent.key: agent.key for agent in AGENT_DEFINITIONS},
     **{_normalize_lookup(agent.display_name): agent.key for agent in AGENT_DEFINITIONS},
@@ -304,7 +411,7 @@ _AGENT_ALIASES: Mapping[str, str] = {
     "math_coder": "quant_methods_agent",
 }
 
-TOOL_OWNER_BY_NAME: Mapping[str, str] = {
+TOOL_STEWARD_BY_NAME: Mapping[str, str] = {
     **{tool: "Data Agent" for tool in DATA_AGENT_TOOLS},
     **{tool: "Quantitative Methods Agent" for tool in QUANTITATIVE_METHODS_TOOLS},
     **{tool: "Quantitative Methods Agent" for tool in QUANTITATIVE_METHODS_COMPATIBILITY_TOOLS},
@@ -314,6 +421,14 @@ TOOL_OWNER_BY_NAME: Mapping[str, str] = {
     **{tool: "Evaluation Agent" for tool in EVALUATION_AGENT_TOOLS},
     **{tool: "Adversarial Agent" for tool in ADVERSARIAL_AGENT_TOOLS},
 }
+
+
+def get_decision_authority(authority_key: str) -> DecisionAuthority:
+    """Return one approved target decision authority by stable key."""
+    try:
+        return _DECISION_AUTHORITIES_BY_KEY[authority_key]
+    except KeyError as exc:
+        raise KeyError(f"Unknown research decision authority: {authority_key}") from exc
 
 
 def get_agent_definition(agent_key_or_name: str) -> AgentDefinition:
@@ -336,18 +451,18 @@ def get_agent_definition(agent_key_or_name: str) -> AgentDefinition:
 
 
 def agent_owner_for_tool(tool_name: str) -> str:
-    """Return the display name of the agent that owns a planned tool.
+    """Return the display name of the agent allowlisted for a planned tool.
 
     Args:
         tool_name: Stable tool command identifier.
 
     Returns:
-        Display name of the owning agent.
+        Display name of the allowlisted agent.
 
     Raises:
         KeyError: If the tool name is not registered.
     """
     try:
-        return TOOL_OWNER_BY_NAME[tool_name]
+        return TOOL_STEWARD_BY_NAME[tool_name]
     except KeyError as exc:
         raise KeyError(f"Unknown research tool: {tool_name}") from exc

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from trader_research.governance.artifacts import OWNER_BY_ARTIFACT_TYPE
+from trader_research.governance.artifacts import DOMAIN_OWNER_BY_ARTIFACT_TYPE
 
 import pytest
 
@@ -19,6 +19,12 @@ from trader_research.infrastructure.postgres import (
 
 def test_research_schema_has_canonical_optimization_tables_without_retired_projections() -> None:
     schema = "\n".join(RESEARCH_ARTIFACT_SCHEMA_STATEMENTS)
+    assert "domain_owner TEXT NOT NULL" in schema
+    assert "producer_tool TEXT NOT NULL" in schema
+    assert "requested_by TEXT" in schema
+    assert "actor TEXT" in schema
+    assert "agent_owner TEXT" not in schema
+    assert "legacy research_artifacts schema detected" in schema
     for table in (
         "research_parameter_optimization_plans",
         "research_parameter_optimization_runs",
@@ -48,7 +54,8 @@ def test_optimization_artifacts_have_typed_pgadmin_visible_projections(
 ) -> None:
     store = postgres_research_artifact_store
     store.save_artifact(
-        agent_owner=OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_PLAN],
+        domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_PLAN],
+        producer_tool="test_postgres_optimization_fixture",
         artifact_type=PARAMETER_OPTIMIZATION_PLAN,
         artifact_id="plan-1",
         payload={
@@ -64,7 +71,8 @@ def test_optimization_artifacts_have_typed_pgadmin_visible_projections(
         status="created",
     )
     store.save_artifact(
-        agent_owner=OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_RUN],
+        domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_RUN],
+        producer_tool="test_postgres_optimization_fixture",
         artifact_type=PARAMETER_OPTIMIZATION_RUN,
         artifact_id="run-1",
         payload={
@@ -84,7 +92,8 @@ def test_optimization_artifacts_have_typed_pgadmin_visible_projections(
         status="completed",
     )
     store.save_artifact(
-        agent_owner=OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_TRIAL],
+        domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[PARAMETER_OPTIMIZATION_TRIAL],
+        producer_tool="test_postgres_optimization_fixture",
         artifact_type=PARAMETER_OPTIMIZATION_TRIAL,
         artifact_id="trial-1",
         payload={
@@ -121,6 +130,14 @@ def test_optimization_artifacts_have_typed_pgadmin_visible_projections(
         """,
         ["trial-1"],
     ).fetchone()
+    authority = store.connection().execute(
+        """
+        SELECT domain_owner, producer_tool, requested_by, actor
+        FROM research_artifacts
+        WHERE artifact_type = %s AND artifact_id = %s
+        """,
+        [PARAMETER_OPTIMIZATION_RUN, "run-1"],
+    ).fetchone()
 
     assert run == {
         "optimization_plan_id": "plan-1",
@@ -133,3 +150,9 @@ def test_optimization_artifacts_have_typed_pgadmin_visible_projections(
     assert trial["status"] == "passed"
     assert trial["objective_value"] == 1.25
     assert trial["parameters"] == {"/strategy/parameters/period": 10}
+    assert authority == {
+        "domain_owner": "Experiments",
+        "producer_tool": "test_postgres_optimization_fixture",
+        "requested_by": None,
+        "actor": None,
+    }

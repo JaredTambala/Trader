@@ -5,7 +5,7 @@ import json
 import pytest
 
 import trader_research.governance.artifacts as research_artifacts
-from trader_research.foundation import stable_research_id
+from trader_research.foundation import SUPPORTED_DOMAIN_OWNERS, stable_research_id
 from trader_research.governance.artifacts import (
     BACKTEST_RUN,
     BACKTEST_SPECIFICATION,
@@ -13,11 +13,13 @@ from trader_research.governance.artifacts import (
     COMPARISON_REPORT,
     DATA_QUALITY_REPORT,
     DATASET_MANIFEST,
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
     CITATION_VALIDATION_REPORT,
     CXX_KERNEL_MANIFEST,
     EVIDENCE_RETRIEVAL_REPORT,
     EVALUATION_REPORT,
     EXPERIMENT_TRACKING_PROJECTION_REPORT,
+    EXPERIMENT_PROTOCOL,
     FEATURE_MANIFEST,
     HYPOTHESIS_CARD,
     INDICATOR_METADATA,
@@ -37,12 +39,14 @@ from trader_research.governance.artifacts import (
     PARAMETER_OPTIMIZATION_RUN,
     PARAMETER_OPTIMIZATION_TRIAL,
     ROBUSTNESS_REPORT,
+    RESEARCH_OBJECTIVE,
     RISK_STACK_SPECIFICATION,
     RISK_STACK_SPECIFICATION_VALIDATION_REPORT,
     SIGNAL_DIAGNOSTIC_REPORT,
     STATISTICAL_TEST_REPORT,
     STRATEGY_SPECIFICATION,
     STRATEGY_SPECIFICATION_VALIDATION_REPORT,
+    WORKFLOW_PLAN,
 )
 from trader_research.governance.handoffs import (
     BoundedResearchRequest,
@@ -86,6 +90,16 @@ def test_retired_candidate_domain_contracts_are_absent() -> None:
     ] == []
 
 
+def test_artifact_domain_authority_registry_is_closed_and_exhaustive() -> None:
+    assert set(research_artifacts.DOMAIN_OWNER_BY_ARTIFACT_TYPE.values()) == set(
+        SUPPORTED_DOMAIN_OWNERS
+    )
+    assert set(research_artifacts.SUPPORTED_ARTIFACT_TYPES) == set(
+        research_artifacts.DOMAIN_OWNER_BY_ARTIFACT_TYPE
+    )
+    assert not hasattr(research_artifacts, "OWNER_BY_ARTIFACT_TYPE")
+
+
 def test_research_request_and_handoff_round_trip_json() -> None:
     request = BoundedResearchRequest(
         request_id=stable_research_id("research_request", {"objective": "demo"}),
@@ -95,7 +109,10 @@ def test_research_request_and_handoff_round_trip_json() -> None:
     warning = ResearchIssue(code="data_agent_warning", message="Partial coverage.")
     handoff = SpecialistHandoff(
         handoff_id="handoff_demo",
-        agent_owner="Data Agent",
+        domain_owner="Data",
+        producer_tool="data_get_inventory",
+        requested_by=request.request_id,
+        actor="Data Agent",
         artifact_type=DATASET_MANIFEST,
         payload={
             "dataset_id": "dataset_demo",
@@ -120,7 +137,12 @@ def test_research_request_and_handoff_round_trip_json() -> None:
         BoundedResearchRequest.from_dict(request_payload).to_dict() == request_payload
     )
     assert SpecialistHandoff.from_dict(handoff_payload).to_dict() == handoff_payload
-    assert handoff_payload["agent_owner"] == "Data Agent"
+    assert handoff_payload["domain_owner"] == "Data"
+    assert handoff_payload["producer_tool"] == "data_get_inventory"
+    assert handoff_payload["requested_by"] == request.request_id
+    assert handoff_payload["actor"] == "Data Agent"
+    assert "agent_owner" not in handoff_payload
+    assert "artifact_path" not in handoff_payload
     assert handoff_payload["warnings"] == [
         {"code": "data_agent_warning", "message": "Partial coverage.", "details": {}}
     ]
@@ -132,26 +154,45 @@ def test_domain_validation_rejects_missing_bounds_and_bad_handoffs() -> None:
         DataRequirement(
             symbols=(), asset_class="stocks", timeframe="1Min", start="s", end="e"
         )
-    with pytest.raises(ValueError, match="agent_owner is required"):
+    with pytest.raises(ValueError, match="domain_owner is required"):
         SpecialistHandoff(
             handoff_id="handoff",
-            agent_owner="",
+            domain_owner="",
+            producer_tool="data_get_inventory",
+            requested_by="request_demo",
+            actor="Data Agent",
             artifact_type=DATASET_MANIFEST,
             payload={"ok": True},
         )
     with pytest.raises(ValueError, match="unsupported artifact type"):
         SpecialistHandoff(
             handoff_id="handoff",
-            agent_owner="Data Agent",
+            domain_owner="Data",
+            producer_tool="data_get_inventory",
+            requested_by="request_demo",
+            actor="Data Agent",
             artifact_type="raw_bars",
             payload={"ok": True},
         )
-    with pytest.raises(ValueError, match="must be owned by Data Agent"):
+    with pytest.raises(ValueError, match="must be owned by the Data domain"):
         SpecialistHandoff(
             handoff_id="handoff",
-            agent_owner="Quant Research Supervisor Agent",
+            domain_owner="Experiments",
+            producer_tool="data_summarize_quality",
+            requested_by="request_demo",
+            actor="Quant Research Supervisor Agent",
             artifact_type=DATA_QUALITY_REPORT,
             payload={"complete": True},
+        )
+    with pytest.raises(ValueError, match="artifact_uri type backtest_run"):
+        SpecialistHandoff(
+            handoff_id="handoff",
+            domain_owner="Data",
+            producer_tool="data_get_inventory",
+            requested_by="request_demo",
+            actor="Data Agent",
+            artifact_type=DATASET_MANIFEST,
+            artifact_uri="research://postgres/backtest_run/run_demo",
         )
 
 
@@ -176,6 +217,9 @@ def test_planned_artifact_reference_types_are_json_safe() -> None:
         artifact_report_ref(STATISTICAL_TEST_REPORT, "stat_demo"),
         artifact_report_ref(FEATURE_MANIFEST, "feature_demo"),
         artifact_report_ref(MODEL_CARD, "model_demo"),
+        artifact_report_ref(RESEARCH_OBJECTIVE, "objective_demo"),
+        artifact_report_ref(EXPERIMENT_PROTOCOL, "protocol_demo"),
+        artifact_report_ref(WORKFLOW_PLAN, "workflow_demo"),
         artifact_report_ref(IMPLEMENTATION_VERSION, "implementation_demo"),
         artifact_report_ref(
             IMPLEMENTATION_VALIDATION_REPORT, "implementation_validation_demo"
@@ -216,9 +260,16 @@ def test_planned_artifact_reference_types_are_json_safe() -> None:
     ]
 
     payload = [ref.to_dict() for ref in refs]
-    owner_by_type = {item["artifact_type"]: item["agent_owner"] for item in payload}
+    assert all(
+        item["uri"].startswith(
+            f"research://postgres/{item['artifact_type']}/"
+        )
+        for item in payload
+    )
+    assert all("path" not in item for item in payload)
+    owner_by_type = {item["artifact_type"]: item["domain_owner"] for item in payload}
 
-    assert owner_by_type[HYPOTHESIS_CARD] == "Hypothesis Agent"
+    assert owner_by_type[HYPOTHESIS_CARD] == "Experiments"
     for artifact_type in (
         METHODOLOGY_CANDIDATE,
         METHODOLOGY_FIELD_EXTRACTION_REPORT,
@@ -233,9 +284,9 @@ def test_planned_artifact_reference_types_are_json_safe() -> None:
         INDICATOR_METADATA,
         STATISTICAL_TEST_REPORT,
     ):
-        assert owner_by_type[artifact_type] == "Quantitative Methods Agent"
-    assert owner_by_type[FEATURE_MANIFEST] == "ML Agent"
-    assert owner_by_type[MODEL_CARD] == "ML Agent"
+        assert owner_by_type[artifact_type] == "Knowledge/Methodology"
+    assert owner_by_type[FEATURE_MANIFEST] == "ML"
+    assert owner_by_type[MODEL_CARD] == "ML"
     for artifact_type in (
         IMPLEMENTATION_VERSION,
         IMPLEMENTATION_VALIDATION_REPORT,
@@ -252,12 +303,17 @@ def test_planned_artifact_reference_types_are_json_safe() -> None:
         EXPERIMENT_TRACKING_PROJECTION_REPORT,
         COMPARISON_REPORT,
     ):
-        assert owner_by_type[artifact_type] == "Quant Research Supervisor Agent"
-    assert owner_by_type[EVALUATION_REPORT] == "Evaluation Agent"
-    assert owner_by_type[PARAMETER_OPTIMIZATION_EVALUATION_REPORT] == "Evaluation Agent"
-    assert owner_by_type[ROBUSTNESS_REPORT] == "Adversarial Agent"
-    assert owner_by_type[PARAMETER_OPTIMIZATION_AUDIT_PLAN] == "Adversarial Agent"
-    assert (
-        owner_by_type[PARAMETER_OPTIMIZATION_ROBUSTNESS_REPORT] == "Adversarial Agent"
-    )
+        assert owner_by_type[artifact_type] == "Experiments"
+    for artifact_type in (
+        EVALUATION_REPORT,
+        PARAMETER_OPTIMIZATION_EVALUATION_REPORT,
+        ROBUSTNESS_REPORT,
+        PARAMETER_OPTIMIZATION_AUDIT_PLAN,
+        PARAMETER_OPTIMIZATION_ROBUSTNESS_REPORT,
+    ):
+        assert owner_by_type[artifact_type] == "Review"
+    assert owner_by_type == {
+        artifact_type: DOMAIN_OWNER_BY_ARTIFACT_TYPE[artifact_type]
+        for artifact_type in owner_by_type
+    }
     json.dumps(payload)

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from trader_research.governance.artifacts import QUANT_RESEARCH_SUPERVISOR_OWNER
-
 from trader_research.foundation import ApplicationResult, error_result, success_result
 from trader_research.foundation.artifacts import SCHEMA_VERSION
 
@@ -16,6 +14,7 @@ from trader.portfolio import Portfolio
 from trader_research.foundation.artifacts import ResearchArtifactStore, ResearchArtifactStoreError, load_artifact_ref
 from trader_research.foundation import stable_research_id
 from trader_research.governance.artifacts import (
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
     IMPLEMENTATION_VALIDATION_REPORT,
     IMPLEMENTATION_VERSION,
 )
@@ -78,7 +77,8 @@ def register_implementation(
             metadata=metadata,
         )
         record = artifact_store.save_artifact(
-            agent_owner=QUANT_RESEARCH_SUPERVISOR_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[IMPLEMENTATION_VERSION],
+            producer_tool=command,
             artifact_type=IMPLEMENTATION_VERSION,
             artifact_id=implementation.implementation_version_id,
             payload=implementation.to_dict(),
@@ -154,7 +154,8 @@ def validate_implementation(
     }
     try:
         record = artifact_store.save_artifact(
-            agent_owner=QUANT_RESEARCH_SUPERVISOR_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[IMPLEMENTATION_VALIDATION_REPORT],
+            producer_tool=command,
             artifact_type=IMPLEMENTATION_VALIDATION_REPORT,
             artifact_id=validation_id,
             payload=report,

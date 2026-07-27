@@ -4,7 +4,13 @@ import trader_agents
 import trader_mcp
 import trader_research
 from trader_agents import build_agent_identity
-from trader_research.governance.ownership import AGENT_DEFINITIONS, agent_owner_for_tool, get_agent_definition
+from trader_research.governance.ownership import (
+    AGENT_DEFINITIONS,
+    DECISION_AUTHORITIES,
+    agent_owner_for_tool,
+    get_agent_definition,
+    get_decision_authority,
+)
 
 
 def test_new_research_packages_import_cleanly() -> None:
@@ -68,6 +74,29 @@ def test_agent_registry_keys_and_display_names_are_unique() -> None:
         "Evaluation Agent",
         "Adversarial Agent",
     }
+
+
+def test_target_decision_authorities_are_explicit_and_non_executing() -> None:
+    authorities = {item.display_name: item for item in DECISION_AUTHORITIES}
+
+    assert set(authorities) == {
+        "Research Coordinator",
+        "Data Agent",
+        "Experiment Design Agent",
+        "Robustness Agent",
+        "Evaluation Agent",
+        "Quantitative Methods Agent",
+        "ML Agent",
+    }
+    assert authorities["Research Coordinator"].artifact_domains == ("Orchestration",)
+    assert authorities["Data Agent"].artifact_domains == ("Data",)
+    assert authorities["Experiment Design Agent"].artifact_domains == ("Experiments",)
+    assert authorities["Robustness Agent"].artifact_domains == ("Review",)
+    assert authorities["Evaluation Agent"].artifact_domains == ("Review",)
+    assert authorities["Quantitative Methods Agent"].optional_producer is True
+    assert authorities["ML Agent"].optional_producer is True
+    assert all(authority.prohibited_authority for authority in authorities.values())
+    assert get_decision_authority("research_coordinator") == authorities["Research Coordinator"]
 
 
 def test_agent_lookup_accepts_key_or_display_name() -> None:

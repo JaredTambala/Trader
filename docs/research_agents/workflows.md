@@ -3,6 +3,12 @@
 Research workflows are built as deterministic MCP tool chains first, then composed by LangGraph agents once the tool
 surface is useful. All workflows stay outside live trading.
 
+The procedures in this document describe callable tool graphs, not current autonomous behavior. The Data Agent is the
+only specialist with an operational tool-calling graph. The Quant Research Supervisor currently validates bounded
+requests and supplied handoffs but does not execute the implementation-to-evidence workflow. See
+[product_state.md](product_state.md#agent-state) and the
+[orchestration roadmap](../../plans/research_capability_roadmap.md#orchestration).
+
 ## Current Delivery Focus
 
 Knowledge-base creation and bounded methodology extraction are now maintained dependencies, not the active expansion
@@ -29,6 +35,51 @@ a prerequisite for testing an explicitly supplied implementation.
 
 Implementation intake, specifications, canonical backtests, parameter optimisation, holdout Evaluation, and
 optimisation audit are implemented. ML versioning and broader cost/data perturbation tooling remain planned.
+
+## Target Orchestrated Supplied-Strategy Workflow
+
+This is the planned higher-level orchestration path, not a currently executable agent graph:
+
+```text
+operator brief with supplied strategy and risk-manager refs
+  -> Research Coordinator resolves prerequisites
+  -> Data Agent returns scope and quality evidence
+  -> deterministic services validate the supplied implementations
+  -> Experiment Design Agent proposes an experiment protocol
+  -> operator approves material assumptions
+  -> deterministic compiler creates immutable specifications
+  -> workflow executor runs baseline, optimisation and sealed holdout
+  -> Robustness Agent declares attacks
+  -> workflow executor runs immutable variants
+  -> Robustness Agent reports sensitivity findings
+  -> Evaluation Agent issues the final research-quality assessment
+  -> Research Coordinator returns refs, blockers and permitted next actions
+```
+
+The experiment protocol owns the proposed test design: strategy/risk refs, Data requirements, costs, initial state,
+selection/holdout policy, tunable dimensions, objective, constraints, search budget, robustness requirements,
+evaluation questions and approval points. It cannot be rewritten after observing results. The workflow executor is not
+an agent and makes no design, selection or quality judgment.
+
+Quantitative Methods and ML are optional producers. Neither is required when the operator supplies validated
+strategy/risk implementations and no model lifecycle work is requested.
+
+### ORCH-1 Procedure Description
+
+The target flow now has a concrete declaration vocabulary even though it is not executable end to end:
+
+1. A `ResearchObjective` fixes operator intent, success criteria, supplied refs and constraints.
+2. An `ExperimentProtocol` fixes implementation refs, role-labelled Data requirements, costs, initial state,
+   optimisation design, robustness requirements, falsification criteria and material approval decisions.
+3. A `WorkflowPlan` selects only versioned `CapabilityDefinition` entries, binds their inputs and outputs to typed
+   `ArtifactSlot` values, and names all `Prerequisite` and approval gates.
+4. Plan construction validates the dependency graph and readiness. It rejects invented capabilities or arguments,
+   artifact authority mismatches and dependency cycles before an executor can run.
+5. A future deterministic executor will adapt each MCP result to a bounded `WorkflowStepResult`; operational resume
+   state remains separate and is the next ORCH-2 concern.
+
+No current MCP command accepts a `WorkflowPlan`, and no current agent executes one. The types make the intended
+procedure testable without implying that orchestration has already been delivered.
 
 ## Worked Implementation-To-Evidence Walkthrough
 
@@ -67,8 +118,8 @@ content-addressed implementation boundary.
    `evaluation_generate_parameter_optimization_report` from the complete optimisation ledger and matching holdout run.
 8. **Challenge the procedure independently.** Call `adversarial_create_parameter_optimization_audit_plan`; the
    Supervisor executes the requested immutable variants through `research_run_parameter_optimization_variants`; then
-   `adversarial_generate_parameter_optimization_audit` judges the supplied evidence. Adversarial owns the attack and
-   verdict, while the Supervisor owns execution.
+   `adversarial_generate_parameter_optimization_audit` judges the supplied evidence. Robustness owns attack selection
+   and sensitivity judgment, while deterministic Experiment services execute variants.
 
 | Evidence stage | What it proves | What it does not prove |
 | --- | --- | --- |
@@ -93,7 +144,7 @@ mcp_health
   -> data_summarize_quality
 ```
 
-The Data Agent owns symbol discovery, dataset manifests, data-quality reports, and explicit load evidence. Downstream
+The Data domain is authoritative for symbol discovery, dataset manifests, data-quality reports, and explicit load evidence. Downstream
 strategy, backtest, and evaluation tools should consume Data Agent dataset/quality artifacts rather than loose symbols,
 timeframes, or date windows.
 
@@ -201,7 +252,8 @@ validated immutable strategy or model-backed deployment
   -> Adversarial-owned walk-forward audit
 ```
 
-The Supervisor owns optimisation procedure artifacts, not the performance or robustness verdict. ML folds delegate
+Optimisation procedure artifacts have Experiments-domain authority; neither their current Supervisor tool steward nor
+the workflow coordinator owns the performance or robustness verdict. ML folds delegate
 feature/training/run/version work to ML tools; generic strategy folds create parameterized child backtest specs. The OOS
 result for a fold is never fed back into that fold's selection.
 
@@ -359,7 +411,8 @@ prose; Evaluation blocks when required risk telemetry is absent.
 ## Handoff And Blockers
 
 - Each tool returns warnings for non-fatal caveats and blockers/errors for conditions that make downstream use unsafe.
-- Agent handoffs preserve the original artifact owner and provenance.
-- Supervisor workflows stop early when required specialist artifacts are missing, failed, blocked, or owned by the wrong
-  agent.
+- Agent handoffs preserve `domain_owner`, `producer_tool`, `requested_by`, `actor`, warnings, blockers and canonical
+  artifact identity.
+- Coordinator workflows stop early when required specialist artifacts are missing, failed, blocked, or declare the
+  wrong domain authority.
 - Research outputs may become human-reviewed promotion proposals, but they do not trigger live trading.

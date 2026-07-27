@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from trader_research.governance.artifacts import QUANTITATIVE_METHODS_OWNER
-
 from trader_research.foundation import ApplicationResult, error_result, success_result
 
 from pathlib import Path
@@ -17,6 +15,7 @@ from trader_research.foundation.artifacts import (
 )
 from trader_research.foundation import stable_research_id
 from trader_research.governance.artifacts import (
+    DOMAIN_OWNER_BY_ARTIFACT_TYPE,
     METHODOLOGY_CANDIDATE,
     METHODOLOGY_EVIDENCE_PACKET,
 )
@@ -183,7 +182,8 @@ def assemble_methodology_evidence(
     )
     try:
         record = artifact_store.save_artifact(
-            agent_owner=QUANTITATIVE_METHODS_OWNER,
+            domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[METHODOLOGY_EVIDENCE_PACKET],
+            producer_tool=KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE,
             artifact_type=METHODOLOGY_EVIDENCE_PACKET,
             artifact_id=packet.evidence_packet_id,
             payload=packet.to_dict(),

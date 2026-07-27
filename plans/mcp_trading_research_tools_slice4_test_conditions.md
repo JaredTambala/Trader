@@ -15,8 +15,8 @@ missing specialist artifacts become explicit blockers
 ```
 
 This document is the intermediate acceptance contract for the slice. Do not mark a Slice 4 chunk `Done` in
-`plans/mcp_trading_research_tools_plan.md` unless the relevant conditions below are covered by tests, docs, or
-reproducible command output.
+the deprecated linear tracker unless the relevant conditions below were covered by tests, docs, or reproducible
+command output. New work uses `plans/research_capability_roadmap.md`.
 
 ## Pre-Slice Checkpoint
 

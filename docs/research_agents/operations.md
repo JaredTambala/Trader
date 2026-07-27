@@ -150,7 +150,7 @@ candidate-era research data.
 
 ## Controlled Verification Procedure
 
-Tasks 57I-57S in the [active tracker](../../plans/mcp_trading_research_tools_plan.md) are the release-qualification procedure
+The 57I-57S baseline summarized in [product_state.md](product_state.md) is the release-qualification procedure
 for the implementation/specification/backtest/optimisation cutover. Run them in order. Use one frozen Git
 revision. Record the exact revision, dependency lock hash, credential-free environment/profile digests, commands,
 results, evidence refs, and database fingerprints. A code, schema, fixture, lockfile, or policy change invalidates its
@@ -284,14 +284,58 @@ manifest records and rechecks this exact policy profile at `end`; configuration 
 The graph obtains selection and holdout inventory/quality evidence from Data Agent MCP tools, registers and validates
 the handwritten strategy, risk manager, and closed objective, creates immutable specifications, runs the selection
 backtest and four-trial built-in grid, executes the selected holdout specification, obtains a passed Evaluation report,
-and asks Adversarial to plan `seed_sensitivity` plus `multiple_testing`. The Supervisor executes the declared seed
-variant and Adversarial judges the supplied canonical evidence. Optuna and MLflow are not used.
+and asks Adversarial to plan `seed_sensitivity` plus `multiple_testing`. The current Supervisor-allowlisted Experiment
+service executes the declared seed variant; Robustness judges the supplied canonical evidence. Optuna and MLflow are not
+used.
 
 Ordinary Postgres tests still clean their rows. Controlled 57M and 57N commands may set their matching
 `TRADER_VERIFICATION_RETAIN_PHASE`; any other phase value fails closed. This leaves the resulting bars and research
 artifacts in `trader_verification_test` after pytest exits so they can be inspected in pgAdmin. The retained phase is
 part of the credential-free runtime manifest and must match both `begin` and `end`. A later destructive phase may
 explicitly replace these disposable verification rows; they are never copied to the operator database.
+
+ORCH-GOV is a hard schema cutover. Startup fails with `legacy research_artifacts schema detected` when the canonical
+table still has `agent_owner`; there is no compatibility reader or data migration. For a disposable development or
+verification database, explicitly clear all research projections and drop only the legacy canonical table before
+starting the new code:
+
+```sql
+DO $$
+DECLARE
+    target RECORD;
+BEGIN
+    FOR target IN
+        SELECT schemaname, tablename
+        FROM pg_tables
+        WHERE schemaname = 'public'
+          AND tablename LIKE 'research_%'
+    LOOP
+        EXECUTE format(
+            'TRUNCATE TABLE %I.%I CASCADE',
+            target.schemaname,
+            target.tablename
+        );
+    END LOOP;
+END
+$$;
+
+DROP TABLE IF EXISTS public.research_artifacts;
+```
+
+The next `PostgresResearchArtifactStore` startup recreates `research_artifacts` with the ORCH-GOV columns. Do not run
+this destructive reset against a database whose research evidence must be retained.
+
+### ORCH-1 Operational Impact
+
+ORCH-1 is a contract-only release. It adds canonical authority declarations for `research_objective`,
+`experiment_protocol`, `workflow_plan`, `approval_request` and the future `workflow_outcome`, but it does not add
+tables, projections, MCP registration, policy flags, background workers or graph execution. Operators should not
+expect new rows from these artifact types yet.
+
+The contracts can be imported and round-tripped as JSON for design and test work. Existing direct MCP procedures
+continue unchanged and may still persist null `requested_by`/`actor` values. ORCH-2/3 must introduce explicit
+persistence and execution boundaries before any orchestration artifact is operational evidence. A workflow plan or
+step result supplied as arbitrary JSON is not evidence merely because it satisfies the dataclass schema.
 
 Run the controlled graph with the complete explicit verification environment:
 
@@ -307,7 +351,8 @@ uv run python -m tests.support.postgres_verification end --phase 57M --outcome p
 Inspect the retained canonical and typed evidence without relying on filesystem paths:
 
 ```sql
-SELECT artifact_type, artifact_id, status, agent_owner
+SELECT artifact_type, artifact_id, status, domain_owner, producer_tool,
+       requested_by, actor
 FROM public.research_artifacts
 ORDER BY artifact_type, artifact_id;
 
