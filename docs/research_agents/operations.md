@@ -333,9 +333,34 @@ tables, projections, MCP registration, policy flags, background workers or graph
 expect new rows from these artifact types yet.
 
 The contracts can be imported and round-tripped as JSON for design and test work. Existing direct MCP procedures
-continue unchanged and may still persist null `requested_by`/`actor` values. ORCH-2/3 must introduce explicit
-persistence and execution boundaries before any orchestration artifact is operational evidence. A workflow plan or
-step result supplied as arbitrary JSON is not evidence merely because it satisfies the dataclass schema.
+continue unchanged and may still persist null `requested_by`/`actor` values. ORCH-2 adds operational persistence only;
+ORCH-3 must introduce the execution and canonical-outcome boundaries before an orchestration artifact is product
+evidence. A workflow plan or step result supplied as arbitrary JSON is not evidence merely because it satisfies the
+dataclass schema.
+
+### ORCH-2 Checkpoint Operations
+
+ORCH-2 adds replaceable Postgres-backed LangGraph operational state, not a canonical research artifact writer. Set a
+dedicated connection string explicitly:
+
+```bash
+export TRADER_AGENTS_CHECKPOINT_DSN='postgresql://checkpoint_role:...@localhost:5432/trader'
+```
+
+Run `open_postgres_checkpointer(setup=True)` once under an operator-controlled setup path to apply the maintained
+checkpointer's idempotent schema. Normal runtime opens it without `setup=True`. The configuration summary reports only
+whether Postgres persistence is configured; it never exposes the DSN or credentials. There is no fallback to
+`TRADER_RESEARCH_ARTIFACT_STORE_DSN`, filesystem artifacts or in-memory state.
+
+LangGraph owns its checkpoint migrations, checkpoints, blobs and pending-write tables. These tables record node
+position, bounded retry/result summaries and canonical refs so a workflow thread can resume after a process or
+connection interruption. They are not included in Trader research projections, do not establish a research claim and
+may be expired or deleted according to an operational retention policy after terminal workflow evidence is confirmed.
+Do not grant the checkpoint role broker/runtime mutation privileges.
+
+ORCH-2 does not register MCP tools, execute capabilities or create `workflow_outcome` artifacts. A successful resume
+test proves checkpoint continuity and idempotency only. ORCH-3 must independently prove MCP execution, artifact
+revalidation, requester/actor propagation and canonical terminal evidence.
 
 Run the controlled graph with the complete explicit verification environment:
 

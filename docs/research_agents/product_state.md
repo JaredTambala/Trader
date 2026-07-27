@@ -165,7 +165,7 @@ There is no registered MCP-only path producing the prerequisite model and featur
 | Data Agent | Tool-calling deterministic and bounded LLM policy graphs exist for discovery, inventory, quality and gated loading. | Reliable specialist subgraph producing accepted Data Agent handoffs for larger research workflows. | Integration into a resumable Supervisor workflow and broader calendar-aware quality. |
 | Experiment Design Agent | Decision boundary and typed protocol/approval contracts exist, but no executable identity, graph or protocol writer exists. Experiment-design decisions are currently distributed across operator inputs, Supervisor-allowlisted tools and optimisation contracts. | Formulate an explicit, approval-aware experiment protocol from supplied strategy/risk implementations and Data requirements. | Protocol persistence, specialist graph and deterministic specification compiler. |
 | Quantitative Methods Agent | Allowlist, approved decision boundary and deterministic MCP tools exist. No complete specialist graph coordinates them. | Optional source/evidence/methodology and computational-method producer that returns canonical refs and blockers. | Bounded planning and handoff graph; composite-method representation remains deferred. It is not a prerequisite for supplied implementations. |
-| Quant Research Supervisor | A deterministic skeleton validates bounded requests and supplied Data-domain handoffs. Declarative ORCH-1 workflow contracts exist, but the skeleton does not use them or call registered research MCP tools. | Narrow Research Coordinator that selects bounded workflows, resolves prerequisites, requests approvals and reports terminal state without Experiment or Review decision authority. | Capability registry/templates, checkpointing, approval routing, deterministic execution and recovery. |
+| Quant Research Supervisor | A deterministic skeleton validates bounded requests and supplied Data-domain handoffs. ORCH-1 contracts and the separate ORCH-2 resumable coordinator shell exist, but the skeleton does not compile plans or call registered research MCP tools. | Narrow Research Coordinator that selects bounded workflows, resolves prerequisites, requests approvals and reports terminal state without Experiment or Review decision authority. | Capability registry/templates, approval routing, MCP execution, envelope adaptation and canonical workflow outcomes. |
 | ML Agent | Ownership and deployment MCP tools exist; no ML Agent graph exists. | Optional producer coordinating point-in-time features, training, evaluation, registry evidence, deployment validation and monitoring for model-backed strategies. | Deterministic ML lifecycle tools must be built before the graph can be useful. |
 | Evaluation Agent | Optimisation Evaluation service/tool exists; no Evaluation graph exists. | Determine what the complete data, baseline, selection, holdout, cost, risk and robustness evidence supports. | Broader evaluation tools and specialist graph. |
 | Adversarial Agent | Optimisation audit planning and judgment tools exist; no Adversarial graph exists. | Robustness specialist that identifies attacks and reports sensitivity findings without issuing the overall strategy-quality verdict. | General robustness tools and specialist graph. |
@@ -254,8 +254,20 @@ ORCH-1 implements the provider-neutral declaration layer in
 
 These are immutable JSON-safe contracts, not operational behavior. ORCH-1 does not persist these values, register
 capabilities from MCP, compile protocols, execute tools, resume workflows or replace the current lightweight
-Supervisor request/handoff skeleton. ORCH-2 owns checkpoint and recovery semantics; ORCH-3 owns deterministic
-compilation and execution.
+Supervisor request/handoff skeleton.
+
+ORCH-2 implements the operational resume boundary in `trader_agents.checkpointing`. A ready `WorkflowPlan` compiles
+into a LangGraph shell that interrupts once per ordered step and waits for an external `WorkflowStepResult`. Its
+checkpoint records only plan identity and digest, cursor, retry count, bounded attempt summaries, canonical artifact
+refs, issue summaries and idempotency digests. It excludes complete plans, raw tool payloads, arbitrary
+`WorkflowStepResult.public_data`, artifact bodies, prompts, credentials and feature matrices. Exact repeated results
+are ignored, reused keys with different content fail, and resuming against a changed plan digest fails.
+
+The maintained Postgres saver is configured independently with `TRADER_AGENTS_CHECKPOINT_DSN`. Its LangGraph tables
+are replaceable operational state and are not `research_artifacts`, typed research projections or evidence for any
+claim. ORCH-2 contains no MCP calls and creates no canonical workflow outcome. ORCH-3 remains responsible for
+capability registration, protocol compilation, deterministic MCP execution, artifact revalidation and terminal
+evidence.
 
 ## Qualification Baselines
 
@@ -277,7 +289,8 @@ v6 controlled acceptance record. A future qualification task must preserve that 
 - Complex source-discovered composite methodologies are not represented faithfully.
 - ML training, model evaluation, registry promotion and monitoring are not an end-to-end toolchain.
 - General robustness and walk-forward optimisation are not implemented.
-- Agent orchestration is not yet a substitute for an operator submitting explicit MCP tool graphs.
+- Resumable orchestration state exists, but agent orchestration is not yet a substitute for an operator submitting
+  explicit MCP tool graphs because ORCH-3 execution is not implemented.
 - Implementation validation is a bounded admission check, not an operating-system sandbox.
 - Backtest, holdout and audit evidence can support a research conclusion; none independently grants deployment
   permission.

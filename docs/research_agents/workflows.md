@@ -64,9 +64,10 @@ an agent and makes no design, selection or quality judgment.
 Quantitative Methods and ML are optional producers. Neither is required when the operator supplies validated
 strategy/risk implementations and no model lifecycle work is requested.
 
-### ORCH-1 Procedure Description
+### ORCH-1 Declaration And ORCH-2 Resume Procedure
 
-The target flow now has a concrete declaration vocabulary even though it is not executable end to end:
+The target flow has a concrete declaration vocabulary and an operational resume shell, but it is not executable end
+to end:
 
 1. A `ResearchObjective` fixes operator intent, success criteria, supplied refs and constraints.
 2. An `ExperimentProtocol` fixes implementation refs, role-labelled Data requirements, costs, initial state,
@@ -75,11 +76,17 @@ The target flow now has a concrete declaration vocabulary even though it is not 
    `ArtifactSlot` values, and names all `Prerequisite` and approval gates.
 4. Plan construction validates the dependency graph and readiness. It rejects invented capabilities or arguments,
    artifact authority mismatches and dependency cycles before an executor can run.
-5. A future deterministic executor will adapt each MCP result to a bounded `WorkflowStepResult`; operational resume
-   state remains separate and is the next ORCH-2 concern.
+5. ORCH-2 compiles the ready plan into a deterministic LangGraph shell. The next step emits a bounded interrupt naming
+   the plan, capability, producer tool, side effect, attempt and configuration digest.
+6. An external caller resumes the same `thread_id` with a `WorkflowStepResult`. The shell validates identity, attempt,
+   command, side effect and output cardinality, then checkpoints only a bounded summary and canonical refs.
+7. Retryable blockers repeat the same step with an incremented attempt. Exact duplicate result keys are ignored;
+   conflicting content, changed plan digests and invalid refs fail closed.
 
-No current MCP command accepts a `WorkflowPlan`, and no current agent executes one. The types make the intended
-procedure testable without implying that orchestration has already been delivered.
+The Postgres checkpoint can survive a connection restart, but it is operational state rather than research evidence.
+No current MCP command accepts a `WorkflowPlan`, and neither the shell nor a current agent executes its tools. ORCH-3
+must resolve the capability from a registry, invoke MCP, adapt the envelope into `WorkflowStepResult`, revalidate
+canonical artifacts and write a bounded terminal outcome.
 
 ## Worked Implementation-To-Evidence Walkthrough
 

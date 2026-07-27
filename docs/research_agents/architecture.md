@@ -368,6 +368,12 @@ declarations in the authority registry. ORCH-1 deliberately provides no persiste
 It also provides no capability registry, protocol compiler, executor or checkpointer. `WorkflowOutcome` remains a
 target execution summary for ORCH-3; the ORCH-1 acceptance boundary ends at typed step results.
 
+ORCH-2 implements the checkpointer without expanding that declaration layer into an executor. The
+`trader_agents.checkpointing` package compiles one ready plan into a deterministic shell, interrupts at each ordered
+step and accepts a validated external `WorkflowStepResult` on resume. It imports governance contracts but no MCP,
+Data, Experiment, ML or Review implementation. ORCH-3 will supply the registry and executor that actually turn an
+interrupt request into an MCP call.
+
 The experiment protocol is a proposal until material assumptions are explicitly approved. The Experiment Design Agent
 must not silently invent transaction costs, risk limits, optimisation dimensions, search budgets, data boundaries or
 holdout policy. Missing choices become approval requirements or blockers. A deterministic compiler, not the agent,
@@ -408,8 +414,9 @@ An agent may request or route an artifact without becoming its owner. The approv
 
 `domain_owner` and `producer_tool` are required on every canonical `ResearchArtifactRecord`. `requested_by` and `actor`
 are nullable for current direct service calls because MCP does not yet authenticate a workflow/caller. Typed
-cross-agent handoffs require all four fields. ORCH-1 requires requester and actor in its orchestration values; ORCH-2/3
-must carry them into orchestrated writes rather than infer either value from MCP tool stewardship.
+cross-agent handoffs require all four fields. ORCH-1 requires requester and actor in its orchestration values; ORCH-2
+retains them in operational state, and ORCH-3 must carry them into orchestrated writes rather than infer either value
+from MCP tool stewardship.
 
 ### Checkpoints And Evidence
 
@@ -425,6 +432,18 @@ Operational graph state and product evidence have separate authority:
 Checkpoints must not contain hidden reasoning, unrestricted prompts, credentials, feature matrices or copies of complete
 artifact payloads. Resumption revalidates referenced product artifacts and capability configuration before continuing.
 An idempotent tool result may be reused only when its canonical request identity and upstream hashes still match.
+
+The implemented ORCH-2 checkpoint state is a strict whitelist: workflow/plan identity, plan digest, cursor, next
+attempt, pending step, bounded attempt summaries, canonical handoff/artifact refs, bounded issues and result-content
+digests. `WorkflowStepResult.public_data` is deliberately discarded before persistence. Public state is a second,
+smaller projection that omits plan and idempotency digests. Plan digest is rechecked on every node; exact duplicate
+result keys are ignored, while key reuse with different content and plan drift fail closed.
+
+Persistence uses the maintained asynchronous LangGraph Postgres saver through the dedicated
+`TRADER_AGENTS_CHECKPOINT_DSN`. Its checkpoint tables are operational infrastructure, may be deleted under an
+operator retention policy, and must never be joined or projected as Trader research evidence. The saver performs its
+own idempotent setup when explicitly requested. There is no fallback to the research artifact store, filesystem or
+in-memory persistence in the configured product path.
 
 ### Composition Shape
 

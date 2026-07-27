@@ -64,8 +64,9 @@ Agent identity and domain ownership are separate:
 Every canonical artifact record stores `domain_owner`, `producer_tool`, `requested_by` and `actor`. Domain and producer
 are required. Direct pre-orchestration service calls may leave `requested_by` and `actor` null because the current MCP
 transport does not authenticate a workflow or caller identity. ORCH-1 requires both on typed objective, workflow,
-approval and step-result values; ORCH-2/3 must propagate them into canonical writes. Missing identity is represented as
-null, never inferred from the MCP allowlist label. Requesting a tool does not transfer artifact authority.
+approval and step-result values. ORCH-2 retains them in bounded operational state; ORCH-3 must propagate them into
+canonical writes. Missing identity is represented as null, never inferred from the MCP allowlist label. Requesting a
+tool does not transfer artifact authority.
 
 ## Handoff Rules
 
@@ -90,12 +91,15 @@ The implemented ORCH-1 types are declarative governance values, not new agents:
   without explicit `Approval` decisions;
 - the Research Coordinator may select registered `CapabilityDefinition` values and compose a `WorkflowPlan` from typed
   `Prerequisite` and `ArtifactSlot` values;
-- a future non-agent executor returns `WorkflowStepResult` values and cannot make experiment or review decisions.
+- the ORCH-2 non-agent coordinator shell accepts external `WorkflowStepResult` values and cannot make experiment or
+  review decisions.
 
 Capabilities contain producer-tool names and schema metadata only. They do not contain callables, service instances,
 MCP clients or provider objects. Workflow plans reject undeclared capabilities and configuration, so an agent cannot
-turn prose into an invented action. The current Supervisor graph still uses its earlier bounded request and handoff
-state; ORCH-2/3, rather than a compatibility alias, will replace that operational shape.
+turn prose into an invented action. ORCH-2 checkpoints plan identity, cursor, retries, bounded attempt/handoff
+summaries and canonical refs through the maintained Postgres LangGraph saver. It does not call MCP or own canonical
+evidence. The current Supervisor graph still uses its earlier bounded request and handoff state; ORCH-3, rather than a
+compatibility alias, will connect the new shell to registered tool execution.
 
 ## Methodology Decision Boundary
 

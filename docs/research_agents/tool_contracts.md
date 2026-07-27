@@ -149,7 +149,8 @@ Canonical MCP research artifact refs use `research://postgres/{artifact_type}/{a
 specification, backtest, optimisation, Evaluation, and Adversarial services require the structured store and have no
 filesystem authority or fallback. Canonical `research_artifacts` rows use required `domain_owner` and `producer_tool`
 columns plus nullable `requested_by` and `actor`. Direct calls leave unavailable requester/actor provenance null;
-ORCH-1 values require it explicitly, and ORCH-2/3 must propagate it into orchestrated calls.
+ORCH-1 values require it explicitly, ORCH-2 retains it in checkpoint state, and ORCH-3 must propagate it into
+orchestrated calls.
 
 `SpecialistHandoff` is a separate governance contract. It requires non-empty `domain_owner`, `producer_tool`,
 `requested_by` and `actor`, validates domain authority against the artifact type, and carries either a canonical
@@ -174,6 +175,22 @@ ORCH-1 adds no MCP tools. It defines immutable JSON-safe contracts used before a
 These contracts do not load artifacts, call services, write Postgres, invoke MCP or hold LangGraph checkpoint state.
 Existing MCP `ToolEnvelope` remains the transport result. ORCH-3 will adapt a validated envelope into a
 `WorkflowStepResult`; it must not persist arbitrary raw payloads or hidden model reasoning.
+
+### Operational Resume Contract
+
+ORCH-2 uses `WorkflowStepResult` as the only resume input to a checkpointed step. The checkpoint shell validates the
+plan ID, pending step, attempt, producer command, side-effect class and required output artifact cardinality. It stores
+only result identity/status/retry, canonical artifact refs and bounded issues. Arbitrary `public_data` remains an
+ephemeral transport projection and is not checkpointed.
+
+The shell emits an interrupt containing only workflow/plan/step/capability identity, producer tool, side effect,
+attempt and a configuration digest. It does not accept an arbitrary callable or MCP payload. The operational
+idempotency key is retained with a content digest: replaying identical content is a no-op, while reusing the key for
+different content terminates the workflow. The operator-visible state excludes plan and result digests.
+
+Postgres checkpoint rows are not `ToolEnvelope` artifacts, canonical `ResearchArtifactRecord` values or evidence that
+a tool ran successfully. ORCH-3 must create `WorkflowStepResult` only after validating the actual MCP envelope and its
+canonical refs.
 
 ## Side Effects
 

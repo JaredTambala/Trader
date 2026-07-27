@@ -674,6 +674,28 @@ def test_trader_agents_do_not_import_data_platform_or_mcp_server_boundaries() ->
     assert offenders == []
 
 
+def test_workflow_checkpointing_depends_only_on_governance_contracts() -> None:
+    allowed_research_imports = {
+        "trader_research.foundation",
+        "trader_research.governance",
+        "trader_research.governance.handoffs",
+    }
+    offenders: list[str] = []
+    for path in Path("src/trader_agents/checkpointing").rglob("*.py"):
+        for imported in _imported_modules(path):
+            if imported in {"trader", "trader_mcp"} or imported.startswith(
+                ("trader.", "trader_mcp.")
+            ):
+                offenders.append(f"{path}: imports {imported}")
+            if (
+                imported.startswith("trader_research.")
+                and imported not in allowed_research_imports
+            ):
+                offenders.append(f"{path}: imports {imported}")
+
+    assert offenders == []
+
+
 def test_data_context_has_one_public_facade_and_no_retired_provider_package() -> None:
     retired_paths = (
         Path("src/trader_research/data/services.py"),

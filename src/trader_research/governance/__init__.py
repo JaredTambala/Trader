@@ -17,6 +17,7 @@ from .artifacts import (
     WORKFLOW_PLAN,
 )
 from .handoffs import (
+    ArtifactReportRef,
     BoundedResearchRequest,
     DataRequirement,
     ResearchIssue,
@@ -72,6 +73,7 @@ __all__ = [
     "AgentDefinition",
     "Approval",
     "ApprovalStatus",
+    "ArtifactReportRef",
     "ArtifactCardinality",
     "ArtifactSlot",
     "ArtifactSlotStatus",

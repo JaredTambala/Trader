@@ -426,7 +426,8 @@ def test_docs_define_non_overlapping_experiment_research_decisions() -> None:
 
     assert "| ORCH-GOV | Decision authority and domain ownership redesign | complete |" in roadmap
     assert "| ORCH-1 | Capability and workflow contracts | complete | ORCH-GOV |" in roadmap
-    assert "| ORCH-2 | Operational checkpoint and handoff model | ready | ORCH-1 |" in roadmap
+    assert "| ORCH-2 | Operational checkpoint and handoff model | complete | ORCH-1 |" in roadmap
+    assert "| ORCH-3 | Deterministic implementation-to-evidence workflow | ready |" in roadmap
     assert "| AGENT-1 | Specialist graph contract and common policy shell | ready | ORCH-1 |" in roadmap
     assert "The workflow executor owns no research claim and is not an agent" in roadmap
     assert "Owner labels in this catalog describe executable tool allowlists/stewardship only" in catalog
@@ -459,6 +460,41 @@ def test_docs_define_orch_1_contract_scope_without_claiming_execution() -> None:
         "No current MCP command accepts a `WorkflowPlan`",
     ):
         assert phrase in combined
+
+
+def test_docs_define_orch_2_resume_without_claiming_mcp_execution() -> None:
+    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
+    contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
+    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
+    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
+    roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
+    combined = "\n".join(
+        (
+            product_state,
+            architecture,
+            contracts,
+            workflows,
+            operations,
+            roadmap,
+        )
+    )
+
+    for phrase in (
+        "`TRADER_AGENTS_CHECKPOINT_DSN`",
+        "maintained Postgres LangGraph saver",
+        "replaceable operational state",
+        "Exact duplicate",
+        "plan drift",
+        "does not call MCP",
+        "ORCH-3",
+    ):
+        assert phrase in combined
+
+    assert (
+        "| ORCH-2 | Operational checkpoint and handoff model | complete |"
+        in roadmap
+    )
 
 
 def test_active_roadmap_is_dependency_driven_and_legacy_tracker_is_deprecated() -> None:
