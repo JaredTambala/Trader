@@ -1,4 +1,9 @@
-"""Neutral research ports for deployment and prediction-mapper evidence."""
+"""Define neutral ports for prediction deployments and mapper evidence.
+
+Specification and runtime services depend on these protocols to resolve passed
+ML artifacts and immutable mapper configurations without importing model
+providers or the ML persistence implementation.
+"""
 
 from __future__ import annotations
 

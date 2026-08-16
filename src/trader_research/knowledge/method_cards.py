@@ -1,4 +1,9 @@
-"""Canonical method-card publication and lifecycle facade."""
+"""Coordinate method-card drafting, publication, approval, and retirement.
+
+Lifecycle operations validate evidence and revision-set invariants before
+changing visible pointers. Publication does not grant implementation admission;
+generated or supplied code still follows the normal validation path.
+"""
 
 from __future__ import annotations
 

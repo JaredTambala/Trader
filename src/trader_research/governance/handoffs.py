@@ -1,4 +1,9 @@
-"""Typed research-domain schemas for supervisor handoffs."""
+"""Define bounded, typed payloads exchanged between research roles.
+
+Handoffs carry canonical references, decision metadata, warnings, and blockers
+instead of complete artifacts or hidden reasoning. Construction validates role
+ownership so coordination cannot silently transfer specialist authority.
+"""
 
 from __future__ import annotations
 
@@ -209,7 +214,11 @@ class BoundedResearchRequest:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "BoundedResearchRequest":
-        """Build a bounded request from JSON-compatible data.
+        """Build and validate a bounded research request from plain data.
+
+        Missing artifact collections use the maintained required and optional
+        defaults. Nested Data requirements are parsed through their own contract,
+        and constructor validation rejects blank identity or unsupported types.
 
         Args:
             payload: Mapping containing request fields.
@@ -298,7 +307,12 @@ class SpecialistHandoff:
                 )
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize the handoff while normalizing payloads, provenance, warnings, and blockers for agents."""
+        """Serialize a handoff to bounded agent-visible plain data.
+
+        Payload, source request, and provenance values are normalized recursively;
+        warnings and blockers retain their structured issue shapes. The result
+        contains no hidden reasoning or complete artifact loaded from its URI.
+        """
         payload = {
             "handoff_id": self.handoff_id,
             "domain_owner": self.domain_owner,
@@ -317,7 +331,11 @@ class SpecialistHandoff:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "SpecialistHandoff":
-        """Build a handoff from JSON-compatible data.
+        """Build and validate a specialist handoff from plain data.
+
+        Nested issues and mappings are normalized before constructor validation
+        checks domain ownership, required provenance, supported artifact type, and
+        URI/type agreement.
 
         Args:
             payload: Mapping containing handoff fields.

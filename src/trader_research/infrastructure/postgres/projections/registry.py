@@ -1,4 +1,9 @@
-"""Registry for context-owned Postgres artifact projections."""
+"""Register context-owned Postgres artifact projection writers.
+
+The registry maps each artifact type to exactly one writer and invokes it inside
+the canonical store transaction. Combining registries fails on duplicate types,
+protecting bounded-context ownership from import-order overrides.
+"""
 
 from __future__ import annotations
 
@@ -45,7 +50,11 @@ class ProjectionRegistry:
 def combine_projection_writers(
     *groups: Mapping[str, ProjectionWriter],
 ) -> ProjectionRegistry:
-    """Combine context writer groups while rejecting duplicate ownership."""
+    """Combine context writer mappings into one immutable registry.
+
+    Duplicate artifact types across groups raise ``ValueError`` before any writer
+    can override another context by argument or import order.
+    """
     combined: dict[str, ProjectionWriter] = {}
     for group in groups:
         duplicates = set(combined).intersection(group)

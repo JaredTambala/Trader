@@ -1,4 +1,9 @@
-"""Postgres projection writers for ML deployment artifacts."""
+"""Write typed Postgres projections for ML deployment evidence.
+
+The writers expose deployment lineage, adapter identity, eligibility, and
+validation status from canonical ML records. They do not load models or make
+promotion and runtime-eligibility decisions.
+"""
 
 from __future__ import annotations
 
@@ -14,7 +19,12 @@ from trader_research.governance.artifacts import (
 def write_ml_deployment(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one immutable raw-inference deployment manifest."""
+    """Upsert query fields for one immutable ML deployment manifest.
+
+    Model and feature lineage, adapter profile, inference and decision scopes,
+    eligibility, status, and the complete payload are stored through the caller's
+    transaction. No model or adapter is loaded by this writer.
+    """
     payload = dict(record.payload)
     connection.execute(
         """
@@ -50,7 +60,12 @@ def write_ml_deployment(
 def write_ml_deployment_validation(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one deployment validation result."""
+    """Upsert query fields for one ML deployment-validation report.
+
+    Validation and deployment identity, status, validity, adapter fixture status,
+    and the complete payload are projected. Database errors propagate to preserve
+    atomicity with the canonical artifact record.
+    """
     payload = dict(record.payload)
     adapter_evidence = dict(payload.get("adapter_evidence") or {})
     connection.execute(

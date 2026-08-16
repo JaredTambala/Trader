@@ -1,4 +1,9 @@
-"""Knowledge sources domain models."""
+"""Define registered source, extracted document, and chunk domain models.
+
+Values preserve approval status, content identity, locators, and generation
+lineage from registration through indexing. Construction normalizes external
+metadata before it reaches retrieval or methodology services.
+"""
 
 from __future__ import annotations
 
@@ -325,7 +330,12 @@ class KnowledgeIngestionReport:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "KnowledgeIngestionReport":
-        """Parse a stored ingestion report while normalizing optional collections, status, and counts."""
+        """Parse and validate a stored knowledge-ingestion report.
+
+        Source and run identity, status, generation, chunk and embedding counts,
+        optional artifacts, warnings, blockers, and timestamps are normalized.
+        Constructor rules reject inconsistent counts or unsupported lifecycle state.
+        """
         return cls(
             ingestion_id=str(payload.get("ingestion_id") or ""),
             source_ids=_string_tuple(payload.get("source_ids")),

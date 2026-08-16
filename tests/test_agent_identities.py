@@ -34,11 +34,12 @@ def test_data_agent_identity_has_only_initial_data_allowlist() -> None:
     assert set(identity.tool_allowlist) == {
         "mcp_health",
         "mcp_get_config",
-        "data_discover_symbols",
-        "data_get_inventory",
-        "data_summarize_quality",
-        "data_ensure_loaded",
-    }
+            "data_discover_symbols",
+            "data_get_inventory",
+            "data_summarize_quality",
+            "data_ensure_loaded",
+            "data_create_research_snapshot",
+        }
     assert "symbol_discovery_report.json" in identity.output_artifacts
     assert "dataset_manifest.json" in identity.output_artifacts
     assert "data_quality_report.json" in identity.output_artifacts

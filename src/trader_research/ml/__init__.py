@@ -1,4 +1,10 @@
-"""Public ML lifecycle capability for immutable runtime deployments."""
+"""Expose immutable ML deployment and runtime-resolution contracts.
+
+The implemented surface begins from pre-existing model-version and feature-set
+evidence, validates provider adapters, and creates deployment manifests for
+backtests. Training, promotion, and model-registry mutation are outside this
+current package facade.
+"""
 
 from trader_research.foundation import PredictionDeploymentReader
 

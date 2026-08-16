@@ -1,4 +1,9 @@
-"""Optional MLflow sink for analytical projections of canonical Trader studies."""
+"""Project canonical Trader study evidence into an optional MLflow sink.
+
+The adapter initializes MLflow lazily, records only derived non-secret metrics
+and tags, and returns provider identifiers as projection metadata. MLflow state
+is never treated as the authoritative optimization ledger.
+"""
 
 from __future__ import annotations
 
@@ -17,7 +22,12 @@ class MLflowExperimentTrackingSink:
         self._experiment_name = str(experiment_name)
 
     def profile(self) -> Mapping[str, Any]:
-        """Return configured identity without exposing connection credentials."""
+        """Return non-secret MLflow identity and current availability.
+
+        Package metadata is inspected without importing MLflow. The configuration
+        digest includes only a credential-free endpoint identity and experiment
+        name, and the profile explicitly marks the sink as an analytical projection.
+        """
         try:
             version = metadata.version("mlflow")
             available = bool(self._tracking_uri and self._experiment_name)
@@ -40,7 +50,19 @@ class MLflowExperimentTrackingSink:
         }
 
     def project(self, canonical_run: Mapping[str, Any]) -> Mapping[str, Any]:
-        """Log a parent study and child trial runs derived only from canonical payloads."""
+        """Log parent and child MLflow runs from canonical optimization evidence.
+
+        The configured experiment receives one parent run plus a nested run for
+        each canonical trial. Parameters, finite objective values, status, and
+        Trader lineage are derived from the supplied payload; provider-generated
+        metrics or tags are not accepted as inputs.
+
+        Returns:
+            MLflow parent and child run IDs as non-authoritative projection metadata.
+
+        Raises:
+            ValueError: If the configured sink is unavailable.
+        """
         import mlflow  # type: ignore[import-not-found,unused-ignore]
 
         profile = self.profile()

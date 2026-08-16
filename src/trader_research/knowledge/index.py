@@ -1,4 +1,9 @@
-"""Knowledge indexing and hybrid retrieval helpers."""
+"""Build and query deterministic lexical and vector knowledge indexes.
+
+Index helpers combine normalized chunk text, optional embeddings, and source
+filters into bounded retrieval results with stable scores and locators. They do
+not decide methodology relevance or mutate approved source metadata.
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,9 @@
-"""Built-in deterministic fixtures for maintained method implementations."""
+"""Provide deterministic fixture inputs for maintained method implementations.
+
+Fixtures use bounded synthetic series and explicit parameters to exercise known
+method contracts reproducibly. They contain no market-data reads, network calls,
+or runtime state from live trading.
+"""
 
 from __future__ import annotations
 

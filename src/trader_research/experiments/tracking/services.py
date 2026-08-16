@@ -1,4 +1,9 @@
-"""Explicit non-authoritative experiment-tracking projection services."""
+"""Coordinate explicit projections to configured experiment-tracking sinks.
+
+The service derives metrics and tags only from a validated canonical run, sends
+that bounded projection to the selected sink, and records projection evidence.
+It does not accept caller-supplied metrics or treat provider state as canonical.
+"""
 
 from __future__ import annotations
 
@@ -57,7 +62,17 @@ def project_experiment_tracking(
     artifact_store: ResearchArtifactStore | None,
     sink_registry: ExperimentTrackingSinkRegistry | None = None,
 ) -> ApplicationResult:
-    """Project one canonical optimization run without accepting caller metrics or tags."""
+    """Project one canonical optimization run to a configured tracking sink.
+
+    The run and complete trial ledger are revalidated first. Metrics, parameters,
+    tags, and lineage are derived exclusively from that evidence, sent to the
+    selected sink, and summarized in a canonical projection report. Caller-
+    supplied provider fields are never accepted.
+
+    Returns:
+        A result containing projection evidence and provider metadata, or a
+        structured profile, integrity, provider, or persistence failure.
+    """
     if artifact_store is None:
         return _error("research_artifact_store_required", "A ResearchArtifactStore is required.")
     registry = sink_registry or ExperimentTrackingSinkRegistry()

@@ -1,4 +1,9 @@
-"""Transport-neutral outcomes returned by research application services."""
+"""Construct transport-neutral outcomes for research application services.
+
+Results carry normalized data, canonical artifact references, warnings, and
+structured errors without MCP-specific fields. Adapters may wrap these values
+but should not reinterpret success, failure, or artifact identity.
+"""
 
 from __future__ import annotations
 
@@ -45,7 +50,15 @@ def success_result(
     artifacts: Mapping[str, Any] | None = None,
     warnings: Sequence[str] | None = None,
 ) -> ApplicationResult:
-    """Build a successful application result."""
+    """Build a successful transport-neutral application result.
+
+    Data and artifact mappings are copied, warnings are de-duplicated in caller
+    order, and the error collection is empty. No payload is persisted or sent by
+    this helper.
+
+    Returns:
+        An immutable result with ``ok`` set to true.
+    """
     return ApplicationResult(
         ok=True,
         operation=command,
@@ -64,7 +77,15 @@ def error_result(
     artifacts: Mapping[str, Any] | None = None,
     warnings: Sequence[str] | None = None,
 ) -> ApplicationResult:
-    """Build a failed application result with one structured error."""
+    """Build a failed result containing one structured application error.
+
+    Optional partial data, artifact references, and warnings are preserved so a
+    caller can inspect bounded evidence produced before the failure. The error
+    code and message are normalized but not logged or raised by this helper.
+
+    Returns:
+        An immutable result with ``ok`` false and exactly one error entry.
+    """
     return ApplicationResult(
         ok=False,
         operation=command,

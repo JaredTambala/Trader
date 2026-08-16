@@ -1,4 +1,9 @@
-"""Canonical DB-backed backtest specification services."""
+"""Create, validate, and load canonical backtest specifications.
+
+Backtest specifications bind passed strategy and risk evidence to an exact Data
+manifest, quality report, costs, initial state, and deterministic runtime policy.
+Validation detects changed upstream artifacts before a run can execute.
+"""
 
 from __future__ import annotations
 
@@ -63,7 +68,17 @@ def create_backtest_specification(
     prediction_mapper_catalog: PredictionMapperCatalog | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ApplicationResult:
-    """Bind validated behavior, Data Agent scope, costs, and execution policy."""
+    """Bind passed behavior to exact Data, cost, and execution assumptions.
+
+    The function resolves passed strategy and optional risk validations,
+    normalizes the manifest and matching quality report, snapshots both Data
+    inputs, validates portfolio state and runtime limits, and derives an immutable
+    backtest specification ID. It creates evidence but does not execute a run.
+
+    Returns:
+        A result containing the persisted specification and canonical reference,
+        or a structured input, lineage, or persistence failure.
+    """
     command = RESEARCH_CREATE_BACKTEST_SPECIFICATION
     if artifact_store is None:
         return specification_error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")
@@ -150,7 +165,17 @@ def validate_backtest_specification(
     prediction_mapper_catalog: PredictionMapperCatalog | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ApplicationResult:
-    """Validate immutable snapshots and all upstream passed specifications."""
+    """Validate a backtest specification and all sealed dependencies.
+
+    Exactly one inline, ID, or URI input is resolved. Strategy, optional risk,
+    prediction, manifest, and quality evidence are reloaded or recomputed and
+    compared with the embedded snapshots and content-derived specification ID.
+    Both passed and blocked validation reports are persisted.
+
+    Returns:
+        A result containing the canonical validation report. ``ok`` is false
+        when any blocker is present or the input cannot be resolved or stored.
+    """
     command = RESEARCH_VALIDATE_BACKTEST_SPECIFICATION
     if artifact_store is None:
         return specification_error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")
@@ -234,7 +259,19 @@ def load_passed_backtest_specification(
     prediction_deployment_reader: PredictionDeploymentReader | None = None,
     prediction_mapper_catalog: PredictionMapperCatalog | None = None,
 ) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
-    """Load a passed canonical backtest specification and validation report."""
+    """Load and revalidate a passed backtest specification pair.
+
+    The report must be passed, valid, and blocker-free; its content-derived ID
+    must match the requested specification. The specification is then validated
+    again against current canonical strategy, risk, Data, and prediction evidence.
+
+    Returns:
+        The exact specification and its passed validation payload.
+
+    Raises:
+        ValueError: If status, identity, content, or upstream lineage has drifted.
+        ResearchArtifactStoreError: If a required artifact cannot be loaded.
+    """
     validation_id = str(validation_ref).rstrip("/").rsplit("/", 1)[-1]
     report = store.load_artifact(BACKTEST_SPECIFICATION_VALIDATION_REPORT, validation_id)
     if report.get("status") != "passed" or report.get("valid") is not True or report.get("blockers"):

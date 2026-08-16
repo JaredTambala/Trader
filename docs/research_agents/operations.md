@@ -327,16 +327,13 @@ this destructive reset against a database whose research evidence must be retain
 
 ### ORCH-1 Operational Impact
 
-ORCH-1 is a contract-only release. It adds canonical authority declarations for `research_objective`,
-`experiment_protocol`, `workflow_plan`, `approval_request` and the future `workflow_outcome`, but it does not add
-tables, projections, MCP registration, policy flags, background workers or graph execution. Operators should not
-expect new rows from these artifact types yet.
+ORCH-1 was a contract-only release. At that delivery boundary it added canonical authority declarations for
+`research_objective`, `experiment_protocol`, `workflow_plan`, `approval_request` and `workflow_outcome`, but no
+persistence or execution. ORCH-3 now supplies the explicit persistence and execution boundaries described below.
 
-The contracts can be imported and round-tripped as JSON for design and test work. Existing direct MCP procedures
-continue unchanged and may still persist null `requested_by`/`actor` values. ORCH-2 adds operational persistence only;
-ORCH-3 must introduce the execution and canonical-outcome boundaries before an orchestration artifact is product
-evidence. A workflow plan or step result supplied as arbitrary JSON is not evidence merely because it satisfies the
-dataclass schema.
+The contracts can be imported and round-tripped as JSON for design and test work. Existing direct MCP procedures may
+still persist null `requested_by`/`actor` values. A workflow plan or step result supplied as arbitrary JSON is not
+evidence merely because it satisfies the dataclass schema.
 
 ### ORCH-2 Checkpoint Operations
 
@@ -359,8 +356,62 @@ may be expired or deleted according to an operational retention policy after ter
 Do not grant the checkpoint role broker/runtime mutation privileges.
 
 ORCH-2 does not register MCP tools, execute capabilities or create `workflow_outcome` artifacts. A successful resume
-test proves checkpoint continuity and idempotency only. ORCH-3 must independently prove MCP execution, artifact
-revalidation, requester/actor propagation and canonical terminal evidence.
+test proves checkpoint continuity and idempotency only.
+
+### ORCH-3 Deterministic Workflow Operations
+
+Before compiling a protocol, create canonical Data records for every baseline/selection/holdout region with
+`data_create_research_snapshot`. The tool requires one exact scope plus `requested_by` and `actor`; it fails closed when
+the research artifact store is unavailable. Use the returned `research://postgres/dataset_manifest/...` and
+`research://postgres/data_quality_report/...` refs in `ProtocolDataset`.
+
+ORCH-3 is invoked through the Python library, not a generic MCP workflow command:
+
+```python
+compiled = compile_supplied_implementation_workflow(
+    objective=approved_objective,
+    protocol=approved_protocol,
+    artifact_store=artifact_store,
+)
+execution = await execute_compiled_research_workflow(
+    compiled=compiled,
+    workflow_id=workflow_id,
+    tool_client=mcp_client,
+    checkpointer=checkpointer,
+    artifact_store=artifact_store,
+)
+```
+
+The executor first calls `research_register_experiment_workflow`, then drives the compiled steps through MCP and finally
+calls `research_record_workflow_outcome`. Enable `TRADER_MCP_ALLOW_BACKTESTS=true` for any executable template and
+`TRADER_MCP_ALLOW_OPTIMIZATION=true` when the protocol contains optimisation. Existing Optuna and external-tracking
+gates remain independent. A disabled gate yields a terminal blocked outcome; it does not skip the node or continue into
+holdout/review.
+
+Every compiled input and produced artifact is reloaded and payload-hashed. Changing a pinned record after compilation
+blocks before the dependent tool executes. Transport retries stop after three attempts. To pause deliberately, pass
+`max_tool_calls`; `WorkflowExecutionInterrupted.public_state` reports the bounded state and the same workflow ID,
+compiled plan and checkpointer resume at the next unaccepted step.
+
+The generic `research_artifacts` table remains canonical. The following typed projections are for inspection:
+
+```sql
+SELECT * FROM public.research_objectives ORDER BY objective_id;
+SELECT * FROM public.research_experiment_protocols ORDER BY protocol_id;
+SELECT * FROM public.research_workflow_plans ORDER BY plan_id;
+SELECT * FROM public.research_workflow_outcomes ORDER BY outcome_id;
+
+SELECT artifact_type, artifact_id, domain_owner, producer_tool,
+       requested_by, actor, status
+FROM public.research_artifacts
+WHERE requested_by = :workflow_id
+ORDER BY created_at, artifact_type, artifact_id;
+```
+
+The typed rows expose workflow navigation; their JSONB payloads and the matching `research_artifacts` records remain the
+canonical values. Checkpoint tables remain replaceable operational state. Current ORCH-3 qualification is in-process MCP
+integration plus lower-level Postgres projection checks; fresh-process Postgres execution and operator isolation remain
+ORCH-6 work.
 
 Run the controlled graph with the complete explicit verification environment:
 

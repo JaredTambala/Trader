@@ -1,4 +1,9 @@
-"""Immutable experiment-evidence queries exposed to independent reviewers."""
+"""Expose read-only experiment evidence to independent review services.
+
+The reader loads canonical plans, runs, trials, and backtests through integrity-
+checking query paths. It grants no persistence or experiment-execution authority
+to Evaluation or Adversarial callers.
+"""
 
 from __future__ import annotations
 

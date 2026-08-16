@@ -10,6 +10,7 @@ from trader.event_store import NoOpEventStore
 from trader.market_data.sample import load_sample_market_data_csv
 from trader_mcp.constants import (
     CAPABILITY_REGISTRATION_FLAGS,
+    DATA_CREATE_RESEARCH_SNAPSHOT_TOOL,
     DATA_DISCOVER_SYMBOLS_TOOL,
     DATA_ENSURE_LOADED_TOOL,
     DATA_GET_INVENTORY_TOOL,
@@ -205,6 +206,7 @@ def test_config_output_includes_data_tools_and_excludes_unsafe_tools() -> None:
         assert DATA_GET_INVENTORY_TOOL in tool_names
         assert DATA_SUMMARIZE_QUALITY_TOOL in tool_names
         assert DATA_ENSURE_LOADED_TOOL in tool_names
+        assert DATA_CREATE_RESEARCH_SNAPSHOT_TOOL in tool_names
         assert "research_run_backtest_specification" in tool_names
         assert "research_run_backtest" not in tool_names
         assert data["safety"] == {

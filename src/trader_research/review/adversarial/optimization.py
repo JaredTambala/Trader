@@ -1,4 +1,9 @@
-"""Adversarial planning and judgment for parameter-optimization procedures."""
+"""Plan and judge attacks on parameter-optimization procedures.
+
+Audit plans pin a canonical baseline and declare immutable variant requests.
+Judgment consumes only the supplied canonical variant and stress evidence,
+reports sensitivity, and never changes the baseline selection or reruns trials.
+"""
 
 from __future__ import annotations
 
@@ -48,7 +53,17 @@ def create_parameter_optimization_audit_plan(
     attacks: Sequence[Mapping[str, Any]] | None = None,
     artifact_store: ResearchArtifactStore | None,
 ) -> ApplicationResult:
-    """Declare immutable attacks without modifying the baseline selection."""
+    """Declare immutable attacks against one validated optimization baseline.
+
+    The baseline run and plan are revalidated, attack types and configurations are
+    normalized, and each request is classified by the separate evidence it needs.
+    The content-addressed Review-owned plan references but never changes baseline
+    trials, selected parameters, data, costs, or objective.
+
+    Returns:
+        A result containing the persisted audit plan and canonical reference, or
+        a structured baseline, attack-contract, or persistence failure.
+    """
     command = ADVERSARIAL_CREATE_PARAMETER_OPTIMIZATION_AUDIT_PLAN
     if artifact_store is None:
         return _error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")
@@ -105,7 +120,18 @@ def generate_parameter_optimization_audit(
     stress_backtest_run_refs: Sequence[str] | None = None,
     artifact_store: ResearchArtifactStore | None,
 ) -> ApplicationResult:
-    """Judge supplied immutable variants while preserving the baseline run and selection."""
+    """Judge supplied variant evidence against an immutable baseline selection.
+
+    The audit plan and baseline are revalidated, every supplied optimization or
+    stress run must match a declared attack and required lineage, and sensitivity
+    findings are derived without executing new work. Missing required evidence is
+    retained as a blocker in the Review-owned robustness report.
+
+    Returns:
+        A result containing the canonical robustness report and reference.
+        ``ok`` is false when the review is blocked or evidence cannot be resolved
+        or persisted.
+    """
     command = ADVERSARIAL_GENERATE_PARAMETER_OPTIMIZATION_AUDIT
     if artifact_store is None:
         return _error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")

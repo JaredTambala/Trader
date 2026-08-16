@@ -1,4 +1,9 @@
-"""Artifact I/O helpers for method implementation workflows."""
+"""Read and write local artifacts for method implementation workflows.
+
+Paths are resolved beneath an explicit artifact root and JSON is serialized in a
+stable form for reproducible build evidence. These local files are non-canonical
+when a research artifact store is configured.
+"""
 
 from __future__ import annotations
 
@@ -22,7 +27,12 @@ def file_sha256(path: Path) -> str:
 
 
 def write_json_artifact(payload: Mapping[str, Any], path: str | Path) -> Path:
-    """Write a non-canonical implementation build artifact as stable JSON."""
+    """Write one non-canonical implementation build artifact as stable JSON.
+
+    Parent directories are created and any existing target is overwritten with
+    sorted, indented UTF-8 JSON. Callers must choose a path beneath the workflow's
+    explicit artifact root.
+    """
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(

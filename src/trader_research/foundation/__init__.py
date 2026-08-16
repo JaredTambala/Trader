@@ -1,4 +1,9 @@
-"""Dependency-light primitives shared by research contexts."""
+"""Expose dependency-light primitives shared by all research contexts.
+
+Foundation owns stable identities, result envelopes, artifact references,
+persistence ports, and cross-context errors. It must remain independent of Data,
+Experiments, Knowledge, ML, Review, transport, and provider implementations.
+"""
 
 from .artifacts import (
     DATA_DOMAIN_OWNER,
@@ -9,6 +14,7 @@ from .artifacts import (
     REVIEW_DOMAIN_OWNER,
     SUPPORTED_DOMAIN_OWNERS,
     ArtifactReference,
+    ContextualResearchArtifactStore,
     InMemoryResearchArtifactStore,
     ResearchArtifactNotFound,
     ResearchArtifactRecord,
@@ -36,6 +42,7 @@ __all__ = [
     "PredictionDeploymentReader",
     "PredictionMapperCatalog",
     "ArtifactReference",
+    "ContextualResearchArtifactStore",
     "InMemoryResearchArtifactStore",
     "ResearchArtifactNotFound",
     "ResearchArtifactRecord",

@@ -696,6 +696,29 @@ def test_workflow_checkpointing_depends_only_on_governance_contracts() -> None:
     assert offenders == []
 
 
+def test_workflow_compiler_and_executor_do_not_import_domain_services() -> None:
+    forbidden = (
+        "trader",
+        "trader_mcp.server",
+        "trader_research.data",
+        "trader_research.experiments",
+        "trader_research.infrastructure",
+        "trader_research.knowledge",
+        "trader_research.methodology",
+        "trader_research.ml",
+        "trader_research.review",
+    )
+    offenders: list[str] = []
+    for path in Path("src/trader_agents/orchestration").rglob("*.py"):
+        for imported in _imported_modules(path):
+            if imported in forbidden or imported.startswith(
+                tuple(f"{prefix}." for prefix in forbidden)
+            ):
+                offenders.append(f"{path}: imports {imported}")
+
+    assert offenders == []
+
+
 def test_data_context_has_one_public_facade_and_no_retired_provider_package() -> None:
     retired_paths = (
         Path("src/trader_research/data/services.py"),

@@ -1,4 +1,9 @@
-"""Knowledge fields domain models."""
+"""Define typed methodology field groups used by method cards.
+
+The models organize entry, exit, sizing, risk, data, and implementation details
+without assuming every field can be extracted. Nullable values retain explicit
+evidence status rather than being filled with generated defaults.
+"""
 
 from __future__ import annotations
 
@@ -262,4 +267,3 @@ def _serialize_methodology_field_groups(
         group: {name: field.to_dict() for name, field in fields.items()}
         for group, fields in groups.items()
     }
-

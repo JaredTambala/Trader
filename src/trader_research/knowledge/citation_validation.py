@@ -1,4 +1,9 @@
-"""Citation validation for knowledge-backed method artifacts."""
+"""Validate citations attached to knowledge-backed method artifacts.
+
+The service resolves cited sources and chunks, checks quoted or claimed spans
+against stored evidence, and returns structured warnings and blockers. It does
+not infer missing support or approve the artifact it inspects.
+"""
 
 from __future__ import annotations
 

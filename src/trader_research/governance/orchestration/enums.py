@@ -1,4 +1,9 @@
-"""Closed vocabularies for provider-neutral research orchestration."""
+"""Declare closed vocabularies for provider-neutral orchestration records.
+
+These enums stabilize persisted statuses, side-effect classes, authority labels,
+artifact cardinalities, and retry outcomes. Parsers fail on unknown values so
+new workflow semantics cannot enter canonical records implicitly.
+"""
 
 from __future__ import annotations
 
@@ -109,6 +114,14 @@ class WorkflowStepStatus(str, Enum):
     """Terminal public outcomes for one workflow-step attempt."""
 
     SUCCEEDED = "succeeded"
+    BLOCKED = "blocked"
+    FAILED = "failed"
+
+
+class WorkflowOutcomeStatus(str, Enum):
+    """Terminal statuses for one deterministic workflow execution."""
+
+    COMPLETED = "completed"
     BLOCKED = "blocked"
     FAILED = "failed"
 

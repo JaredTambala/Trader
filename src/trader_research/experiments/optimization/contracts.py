@@ -1,4 +1,10 @@
-"""Provider-neutral optimization and trial-execution contracts."""
+"""Define provider-neutral optimization and trial-execution ports.
+
+The contracts isolate scalar observations, immutable engine profiles,
+sequential ask/tell sessions, trial executors, and optional tracking sinks.
+Implementations must not expose credentials or provider state as canonical
+research evidence.
+"""
 
 from __future__ import annotations
 
@@ -19,7 +25,16 @@ class OptimizationObservation:
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "OptimizationObservation":
-        """Validate and normalize one observation without exposing runtime objects."""
+        """Normalize one backtest observation to the closed objective schema.
+
+        All maintained sections are required and unknown top-level fields are
+        rejected. Scalars, counts, and bounded nested mappings are normalized so
+        runtime objects and unbounded payloads cannot reach objective code.
+
+        Raises:
+            ValueError: If fields, schema version, scalar types, or bounded JSON
+                sections violate the observation contract.
+        """
         unknown = sorted(set(value).difference(_OBSERVATION_FIELDS))
         missing = sorted(_OBSERVATION_FIELDS.difference(value))
         if unknown:

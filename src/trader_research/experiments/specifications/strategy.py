@@ -1,4 +1,9 @@
-"""Immutable strategy specification services."""
+"""Create, validate, and load immutable strategy specifications.
+
+Strategy specifications bind one passed implementation to parameters, sizing,
+runtime requirements, and optional prediction deployments without choosing a
+dataset. Validation rechecks implementation and prediction lineage before use.
+"""
 
 from __future__ import annotations
 
@@ -44,7 +49,18 @@ def create_strategy_specification(
     prediction_mapper_catalog: PredictionMapperCatalog | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ApplicationResult:
-    """Create a data-scope-free strategy specification."""
+    """Create a strategy specification without selecting a dataset.
+
+    A passed strategy implementation is bound to normalized parameters, sizing,
+    portfolio mode, runtime context, assumptions, tunable paths, provenance, and
+    optional prediction bindings. Implementation and binding identity contribute
+    to the content-derived specification ID; Data scope is added only by the
+    backtest specification.
+
+    Returns:
+        A result containing the persisted specification and canonical reference,
+        or a structured validation, dependency, or persistence failure.
+    """
     command = RESEARCH_CREATE_STRATEGY_SPECIFICATION
     if artifact_store is None:
         return specification_error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")
@@ -118,7 +134,17 @@ def validate_strategy_specification(
     prediction_mapper_catalog: PredictionMapperCatalog | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ApplicationResult:
-    """Revalidate implementation lineage and configuration for a strategy specification."""
+    """Revalidate strategy configuration and all implementation lineage.
+
+    Exactly one specification input is resolved. The passed implementation,
+    source hash, parameter schema, sizing, tunable paths, runtime requirements,
+    prediction bindings, and content-derived identity are checked before a
+    separate passed or blocked report is persisted.
+
+    Returns:
+        A result containing the validation report; ``ok`` is false when blockers
+        or resolution and persistence errors prevent admission.
+    """
     command = RESEARCH_VALIDATE_STRATEGY_SPECIFICATION
     if artifact_store is None:
         return specification_error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")
@@ -200,7 +226,19 @@ def load_passed_strategy_specification(
     prediction_deployment_reader: PredictionDeploymentReader | None = None,
     prediction_mapper_catalog: PredictionMapperCatalog | None = None,
 ) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
-    """Load a passed strategy specification validation and exact specification."""
+    """Load a passed strategy validation and revalidate its exact specification.
+
+    The validation must be blocker-free, content-addressed to the specification,
+    and consistent with current implementation and optional prediction evidence.
+
+    Returns:
+        The canonical strategy specification and passed validation payload.
+
+    Raises:
+        ValueError: If status, identity, configuration, or dependency lineage has
+            drifted since validation.
+        ResearchArtifactStoreError: If a required artifact cannot be loaded.
+    """
     report = store.load_artifact(STRATEGY_SPECIFICATION_VALIDATION_REPORT, _id_from_ref(validation_ref))
     if report.get("status") != "passed" or report.get("valid") is not True or report.get("blockers"):
         raise ValueError("strategy specification validation must be passed, valid, and blocker-free")

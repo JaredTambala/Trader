@@ -12,8 +12,8 @@ Ownership definitions do not imply that every named agent has an operational gra
 
 | Agent | Mission | Current tool-produced outputs | Current MCP/tool access |
 | --- | --- | --- | --- |
-| Quant Research Supervisor Agent | Coordinate research workflows and synthesize specialist-owned evidence. | Strategy/risk implementation versions, immutable strategy/risk/backtest specifications, canonical backtest runs, optimisation plans/runs/trials, tracking projection reports, comparisons, and planned walk-forward runs. | Registered implementation/specification/backtest/optimisation/projection `research_*` tools. |
-| Data Agent | Produce trustworthy bounded market-data manifests and quality evidence. | Symbol discovery reports, dataset manifests, data-quality reports, load result envelopes. | `mcp_health`, `mcp_get_config`, `data_discover_symbols`, `data_get_inventory`, `data_summarize_quality`, `data_ensure_loaded`. |
+| Quant Research Supervisor Agent | Coordinate research workflows and synthesize specialist-owned evidence. | Strategy/risk implementation versions, immutable strategy/risk/backtest specifications, canonical backtest runs, optimisation plans/runs/trials, tracking projection reports, comparisons, and planned walk-forward runs. Orchestration-domain objective/plan/outcome records are separately produced through its workflow persistence allowlist. | Registered implementation/specification/backtest/optimisation/projection `research_*` tools plus `research_register_experiment_workflow` and `research_record_workflow_outcome`. |
+| Data Agent | Produce trustworthy bounded market-data manifests and quality evidence. | Symbol discovery reports, dataset manifests, data-quality reports, load result envelopes. | `mcp_health`, `mcp_get_config`, `data_discover_symbols`, `data_get_inventory`, `data_summarize_quality`, `data_create_research_snapshot`, `data_ensure_loaded`. |
 | Quantitative Methods Agent | Produce auditable deterministic methods, method evidence, diagnostics, and statistical inference artifacts. | Knowledge manifests, methodology candidates, methodology evidence packets, methodology extraction/validation reports, canonical method cards and derived summaries, implementation manifests, validation reports, diagnostics, multiple-testing reports, method packages, optional kernel manifests. | `mcp_health`, `mcp_get_config`, `knowledge_*`, and current `math_*` tools. |
 | ML Agent | Coordinate point-in-time feature engineering, fitting, MLflow recording/registry, model evaluation, deployment evidence, predictions, and drift. | Current deployment manifests and validation reports; planned feature/training/run/evaluation/version/promotion/drift artifacts. Runtime prediction events are platform evidence carrying ML lineage. | Registered `ml_create_deployment_manifest` and `ml_validate_deployment`; remaining 39A-G/J tools are planned. |
 | Hypothesis Agent | Produce explicit falsifiable strategy hypothesis cards. | Hypothesis cards. | Planned `hypothesis_create_card`. |
@@ -62,11 +62,10 @@ Agent identity and domain ownership are separate:
 | Orchestration | Research objective, workflow plan, approval and outcome records only. |
 
 Every canonical artifact record stores `domain_owner`, `producer_tool`, `requested_by` and `actor`. Domain and producer
-are required. Direct pre-orchestration service calls may leave `requested_by` and `actor` null because the current MCP
-transport does not authenticate a workflow or caller identity. ORCH-1 requires both on typed objective, workflow,
-approval and step-result values. ORCH-2 retains them in bounded operational state; ORCH-3 must propagate them into
-canonical writes. Missing identity is represented as null, never inferred from the MCP allowlist label. Requesting a
-tool does not transfer artifact authority.
+are required. Direct pre-orchestration service calls may leave `requested_by` and `actor` null. ORCH-1 requires both on
+typed objective, workflow, approval and step-result values. ORCH-2 retains them in bounded operational state; ORCH-3
+propagates the workflow ID and `workflow_executor` actor into canonical writes. Missing identity is represented as null,
+never inferred from the MCP allowlist label. Requesting a tool does not transfer artifact authority.
 
 ## Handoff Rules
 
@@ -92,14 +91,16 @@ The implemented ORCH-1 types are declarative governance values, not new agents:
 - the Research Coordinator may select registered `CapabilityDefinition` values and compose a `WorkflowPlan` from typed
   `Prerequisite` and `ArtifactSlot` values;
 - the ORCH-2 non-agent coordinator shell accepts external `WorkflowStepResult` values and cannot make experiment or
-  review decisions.
+  review decisions;
+- the ORCH-3 non-agent executor compiles one approved supplied-implementation template and mechanically obtains those
+  step results through registered MCP tools.
 
 Capabilities contain producer-tool names and schema metadata only. They do not contain callables, service instances,
 MCP clients or provider objects. Workflow plans reject undeclared capabilities and configuration, so an agent cannot
 turn prose into an invented action. ORCH-2 checkpoints plan identity, cursor, retries, bounded attempt/handoff
 summaries and canonical refs through the maintained Postgres LangGraph saver. It does not call MCP or own canonical
-evidence. The current Supervisor graph still uses its earlier bounded request and handoff state; ORCH-3, rather than a
-compatibility alias, will connect the new shell to registered tool execution.
+evidence. ORCH-3 connects that shell to registered tool execution through a closed compiler and `McpToolClient`, while
+the current Supervisor graph still uses its earlier bounded request and handoff state.
 
 ## Methodology Decision Boundary
 
@@ -170,9 +171,9 @@ work:
 
 ## Current Versus Planned Status
 
-Current registered MCP surfaces include Data Agent tools; ML deployment creation/validation; Quantitative Methods knowledge/math and optimisation-objective
+Current registered MCP surfaces include Data Agent tools and canonical Data snapshots; ML deployment creation/validation; Quantitative Methods knowledge/math and optimisation-objective
 tools; Supervisor implementation registration, immutable specifications, canonical backtests, grid/random/optional
-Optuna optimisation, result lookup, immutable variant execution, and tracking projection; untouched-holdout Evaluation;
+Optuna optimisation, result lookup, immutable variant execution, tracking projection and workflow record persistence; untouched-holdout Evaluation;
 and parameter-optimisation Adversarial planning/judgment. Candidate/stack and loose baseline/portfolio backtest tools are
 not registered after the cutover.
 

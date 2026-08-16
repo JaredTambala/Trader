@@ -1,4 +1,9 @@
-"""Knowledge common domain models."""
+"""Define small value objects shared by knowledge-domain contracts.
+
+The values normalize timestamps, identifiers, statuses, and other common fields
+at construction time so source, evidence, methodology, and card models do not
+pass partially validated dictionaries between services.
+"""
 
 from __future__ import annotations
 

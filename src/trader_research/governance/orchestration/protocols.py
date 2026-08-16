@@ -1,4 +1,10 @@
-"""Research-objective, experiment-protocol, and approval contracts."""
+"""Define research objectives, experiment protocols, and material approvals.
+
+Contracts pin supplied implementations, Data requirements, costs, initial state,
+optimization intent, review questions, and approved assumptions into immutable
+JSON-safe values. Validation rejects unresolved or internally inconsistent
+protocols before a workflow plan can be compiled.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +15,8 @@ from trader_research.foundation import ORCHESTRATION_DOMAIN_OWNER, jsonable
 
 from ..artifacts import (
     APPROVAL_REQUEST,
+    DATASET_MANIFEST,
+    DATA_QUALITY_REPORT,
     EXPERIMENT_PROTOCOL,
     IMPLEMENTATION_VERSION,
     RESEARCH_OBJECTIVE,
@@ -98,7 +106,12 @@ class ResearchObjective:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize the objective as a canonical artifact payload."""
+        """Serialize the objective as its canonical governance payload.
+
+        Success criteria, constraints, supplied refs, requester, actor, and status
+        are emitted in stable plain-data form together with objective identity and
+        artifact type.
+        """
         return {
             "artifact_type": self.artifact_type,
             "objective_id": self.objective_id,
@@ -115,7 +128,12 @@ class ResearchObjective:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ResearchObjective":
-        """Parse a research objective from JSON-compatible data."""
+        """Parse and validate a research objective from plain data.
+
+        Artifact type, constraints, supplied references, status, identity, intent,
+        and request provenance are normalized through their typed contracts.
+        Unknown enum values or incomplete objectives fail during construction.
+        """
         _validate_payload_artifact_type(payload, RESEARCH_OBJECTIVE)
         return cls(
             objective_id=str(payload.get("objective_id") or ""),
@@ -146,11 +164,23 @@ class ProtocolDataset:
     requirement_id: str
     role: DatasetRole
     requirement: DataRequirement
+    dataset_manifest_ref: ArtifactReportRef
+    data_quality_report_ref: ArtifactReportRef
     sealed: bool = False
 
     def __post_init__(self) -> None:
         """Validate dataset identity and holdout sealing."""
         _required_text(self.requirement_id, "dataset requirement_id")
+        _validate_ref_type(
+            self.dataset_manifest_ref,
+            DATASET_MANIFEST,
+            "protocol dataset manifest",
+        )
+        _validate_ref_type(
+            self.data_quality_report_ref,
+            DATA_QUALITY_REPORT,
+            "protocol data quality report",
+        )
         if self.role is DatasetRole.HOLDOUT and not self.sealed:
             raise ValueError("holdout dataset requirements must be sealed")
         if self.role is not DatasetRole.HOLDOUT and self.sealed:
@@ -162,19 +192,195 @@ class ProtocolDataset:
             "requirement_id": self.requirement_id,
             "role": self.role.value,
             "requirement": self.requirement.to_dict(),
+            "dataset_manifest_ref": self.dataset_manifest_ref.to_dict(),
+            "data_quality_report_ref": self.data_quality_report_ref.to_dict(),
             "sealed": self.sealed,
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProtocolDataset":
-        """Parse a protocol dataset requirement."""
+        """Parse and validate one role-labeled protocol dataset requirement.
+
+        Nested Data scope and canonical manifest/quality references are rebuilt,
+        then constructor rules enforce their artifact types and require sealing
+        exactly for holdout roles.
+        """
         return cls(
             requirement_id=str(payload.get("requirement_id") or ""),
             role=_enum_value(DatasetRole, payload.get("role"), "dataset role"),
             requirement=DataRequirement.from_dict(
                 _mapping(payload.get("requirement"))
             ),
+            dataset_manifest_ref=ArtifactReportRef.from_dict(
+                _mapping(payload.get("dataset_manifest_ref"))
+            ),
+            data_quality_report_ref=ArtifactReportRef.from_dict(
+                _mapping(payload.get("data_quality_report_ref"))
+            ),
             sealed=bool(payload.get("sealed", False)),
+        )
+
+
+@dataclass(frozen=True)
+class ProtocolStrategy:
+    """Pinned strategy implementation and exact executable configuration."""
+
+    implementation_ref: ArtifactReportRef
+    parameters: Mapping[str, Any] = field(default_factory=dict)
+    sizing: Mapping[str, Any] = field(default_factory=dict)
+    portfolio_mode: str = "single_or_multi_asset"
+    required_runtime_context: Mapping[str, Any] = field(default_factory=dict)
+    execution_assumptions: Mapping[str, Any] = field(default_factory=dict)
+    tunable_fields: tuple[str, ...] = ()
+    provenance_refs: tuple[Mapping[str, Any], ...] = ()
+    prediction_bindings: tuple[Mapping[str, Any], ...] = ()
+
+    def __post_init__(self) -> None:
+        """Validate implementation identity and tunable JSON pointers."""
+        _validate_ref_type(
+            self.implementation_ref,
+            IMPLEMENTATION_VERSION,
+            "protocol strategy implementation",
+        )
+        _required_text(self.portfolio_mode, "strategy portfolio_mode")
+        _required_text_sequence(
+            self.tunable_fields,
+            "strategy tunable fields",
+            allow_empty=True,
+        )
+        for path in self.tunable_fields:
+            parameter_prefix = "/strategy/parameters/"
+            sizing_prefix = "/strategy/sizing/"
+            if path.startswith(parameter_prefix):
+                field_name = path.removeprefix(parameter_prefix)
+                configured_fields = self.parameters
+            elif path.startswith(sizing_prefix):
+                field_name = path.removeprefix(sizing_prefix)
+                configured_fields = self.sizing
+            else:
+                raise ValueError(
+                    "strategy tunable fields must target parameters or sizing"
+                )
+            if (
+                not field_name
+                or "/" in field_name
+                or field_name not in configured_fields
+            ):
+                raise ValueError(
+                    "strategy tunable fields must target configured values"
+                )
+        _unique(self.tunable_fields, "strategy tunable fields")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the complete pinned strategy configuration.
+
+        Implementation identity, parameters, sizing, runtime context, execution
+        assumptions, tunable paths, provenance, and prediction bindings are
+        normalized without adding Data scope.
+        """
+        return {
+            "implementation_ref": self.implementation_ref.to_dict(),
+            "parameters": jsonable(self.parameters),
+            "sizing": jsonable(self.sizing),
+            "portfolio_mode": self.portfolio_mode,
+            "required_runtime_context": jsonable(
+                self.required_runtime_context
+            ),
+            "execution_assumptions": jsonable(self.execution_assumptions),
+            "tunable_fields": list(self.tunable_fields),
+            "provenance_refs": jsonable(self.provenance_refs),
+            "prediction_bindings": jsonable(self.prediction_bindings),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProtocolStrategy":
+        """Parse and validate a pinned strategy configuration.
+
+        Nested implementation evidence and JSON mappings are normalized before
+        constructor checks enforce implementation type, portfolio mode, unique
+        tunable paths, and targets that exist in configured parameters or sizing.
+        """
+        return cls(
+            implementation_ref=ArtifactReportRef.from_dict(
+                _mapping(payload.get("implementation_ref"))
+            ),
+            parameters=_mapping(payload.get("parameters")),
+            sizing=_mapping(payload.get("sizing")),
+            portfolio_mode=str(
+                payload.get("portfolio_mode") or "single_or_multi_asset"
+            ),
+            required_runtime_context=_mapping(
+                payload.get("required_runtime_context")
+            ),
+            execution_assumptions=_mapping(
+                payload.get("execution_assumptions")
+            ),
+            tunable_fields=_text_tuple(payload.get("tunable_fields")),
+            provenance_refs=tuple(
+                _mapping_sequence(payload.get("provenance_refs"))
+            ),
+            prediction_bindings=tuple(
+                _mapping_sequence(payload.get("prediction_bindings"))
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class ProtocolRiskManager:
+    """One ordered risk implementation and exact executable configuration."""
+
+    implementation_ref: ArtifactReportRef
+    parameters: Mapping[str, Any]
+    tunable_fields: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Validate implementation identity and risk tunable pointers."""
+        _validate_ref_type(
+            self.implementation_ref,
+            IMPLEMENTATION_VERSION,
+            "protocol risk implementation",
+        )
+        _required_text_sequence(
+            self.tunable_fields,
+            "risk tunable fields",
+            allow_empty=True,
+        )
+        for path in self.tunable_fields:
+            parts = path.split("/")
+            if (
+                len(parts) != 5
+                or parts[0] != ""
+                or parts[1] != "risk"
+                or not parts[2].isdigit()
+                or parts[3] != "parameters"
+                or parts[4] not in self.parameters
+            ):
+                raise ValueError(
+                    "risk tunable fields must target configured "
+                    "/risk/{index}/parameters/{name} values"
+                )
+        _unique(self.tunable_fields, "risk tunable fields")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize this ordered risk configuration."""
+        return {
+            "implementation_ref": self.implementation_ref.to_dict(),
+            "parameters": jsonable(self.parameters),
+            "tunable_fields": list(self.tunable_fields),
+        }
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any],
+    ) -> "ProtocolRiskManager":
+        """Parse one ordered risk configuration."""
+        return cls(
+            implementation_ref=ArtifactReportRef.from_dict(
+                _mapping(payload.get("implementation_ref"))
+            ),
+            parameters=_mapping(payload.get("parameters")),
+            tunable_fields=_text_tuple(payload.get("tunable_fields")),
         )
 
 
@@ -213,14 +419,21 @@ class InitialPosition:
 
     symbol: str
     quantity: float
+    avg_price: float | None = None
 
     def __post_init__(self) -> None:
         """Validate position symbol."""
         _required_text(self.symbol, "initial position symbol")
+        if self.avg_price is not None and self.avg_price < 0:
+            raise ValueError("initial position avg_price cannot be negative")
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize this initial position."""
-        return {"symbol": self.symbol, "quantity": self.quantity}
+        return {
+            "symbol": self.symbol,
+            "quantity": self.quantity,
+            "avg_price": self.avg_price,
+        }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "InitialPosition":
@@ -228,6 +441,11 @@ class InitialPosition:
         return cls(
             symbol=str(payload.get("symbol") or ""),
             quantity=float(payload.get("quantity", 0.0)),
+            avg_price=(
+                float(payload["avg_price"])
+                if payload.get("avg_price") is not None
+                else None
+            ),
         )
 
 
@@ -319,7 +537,12 @@ class TunableDimension:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "TunableDimension":
-        """Parse a provider-neutral search dimension."""
+        """Parse and validate one provider-neutral search dimension.
+
+        Value type, optional bounds, step, and categorical choices are normalized.
+        Constructor rules then enforce JSON-pointer targets and mutually exclusive
+        categorical versus numeric configuration.
+        """
         value_type = _enum_value(
             TunableValueType,
             payload.get("value_type"),
@@ -428,7 +651,12 @@ class OptimizationProtocol:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "OptimizationProtocol":
-        """Parse an optimisation design."""
+        """Parse and validate the provider-neutral optimization design.
+
+        Objective reference, direction, budget, seed, dimensions, and constraints
+        are rebuilt from plain data. The resulting contract requires canonical
+        objective evidence and unique, non-empty decision dimensions.
+        """
         return cls(
             objective_validation_ref=str(
                 payload.get("objective_validation_ref") or ""
@@ -576,7 +804,12 @@ class Approval:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "Approval":
-        """Parse an approval request or decision."""
+        """Parse and validate a material approval request or decision.
+
+        The artifact type and closed status vocabulary are checked before
+        constructor rules enforce subject identity, request provenance, and the
+        presence or absence of decision fields appropriate to the status.
+        """
         _validate_payload_artifact_type(payload, APPROVAL_REQUEST)
         return cls(
             approval_id=str(payload.get("approval_id") or ""),
@@ -601,8 +834,8 @@ class ExperimentProtocol:
 
     protocol_id: str
     objective_id: str
-    strategy_implementation_ref: ArtifactReportRef
-    risk_implementation_refs: tuple[ArtifactReportRef, ...]
+    strategy: ProtocolStrategy
+    risk_managers: tuple[ProtocolRiskManager, ...]
     datasets: tuple[ProtocolDataset, ...]
     costs: tuple[CostAssumption, ...]
     initial_portfolio: InitialPortfolio
@@ -613,6 +846,11 @@ class ExperimentProtocol:
     requested_by: str
     proposed_by: str
     optimization: OptimizationProtocol | None = None
+    deterministic_seed: int = 0
+    max_runs: int | None = None
+    log_cycle_details: bool = False
+    runtime_limits: Mapping[str, Any] = field(default_factory=dict)
+    optimizer_profile: str = "builtin_random"
     approvals: tuple[Approval, ...] = ()
     status: ExperimentProtocolStatus = ExperimentProtocolStatus.PROPOSED
 
@@ -624,17 +862,8 @@ class ExperimentProtocol:
         _required_text(self.objective_id, "protocol objective_id")
         _required_text(self.requested_by, "protocol requested_by")
         _required_text(self.proposed_by, "protocol proposed_by")
-        _validate_ref_type(
-            self.strategy_implementation_ref,
-            IMPLEMENTATION_VERSION,
-            "strategy implementation",
-        )
-        for reference in self.risk_implementation_refs:
-            _validate_ref_type(
-                reference,
-                IMPLEMENTATION_VERSION,
-                "risk implementation",
-            )
+        if not self.risk_managers:
+            raise ValueError("experiment protocol risk managers are required")
         if not self.datasets:
             raise ValueError("experiment protocol datasets are required")
         _unique(
@@ -652,6 +881,15 @@ class ExperimentProtocol:
                     "optimization requires selection and sealed holdout datasets"
                 )
             self._validate_optimization_datasets()
+            self._validate_tunable_dimensions()
+            _required_text(
+                self.optimizer_profile,
+                "protocol optimizer_profile",
+            )
+        if self.deterministic_seed < 0:
+            raise ValueError("protocol deterministic_seed cannot be negative")
+        if self.max_runs is not None and self.max_runs <= 0:
+            raise ValueError("protocol max_runs must be positive")
         _unique((item.name for item in self.costs), "protocol cost names")
         _unique(
             (item.requirement_id for item in self.robustness_requirements),
@@ -706,6 +944,32 @@ class ExperimentProtocol:
                 "optimization holdout must begin after the selection dataset ends"
             )
 
+    def _validate_tunable_dimensions(self) -> None:
+        if self.optimization is None:
+            return
+        declared = set(self.strategy.tunable_fields)
+        for index, manager in enumerate(self.risk_managers):
+            expected_prefix = f"/risk/{index}/parameters/"
+            if any(
+                not path.startswith(expected_prefix)
+                for path in manager.tunable_fields
+            ):
+                raise ValueError(
+                    f"risk manager {index} tunable fields must use "
+                    f"{expected_prefix}"
+                )
+            declared.update(manager.tunable_fields)
+        undeclared = sorted(
+            item.target_path
+            for item in self.optimization.dimensions
+            if item.target_path not in declared
+        )
+        if undeclared:
+            raise ValueError(
+                "optimization dimensions are not declared tunable: "
+                + ", ".join(undeclared)
+            )
+
     def _validate_approvals(self) -> None:
         assumptions = {item.assumption_id for item in self.material_assumptions}
         approvals_by_assumption: dict[str, Approval] = {}
@@ -751,16 +1015,20 @@ class ExperimentProtocol:
             raise ValueError("rejected approvals require a blocked protocol")
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize the complete experiment protocol."""
+        """Serialize the complete immutable experiment protocol.
+
+        Strategy, ordered risk stack, role-labeled Data, costs, initial state,
+        optimization design, runtime controls, robustness and Evaluation intent,
+        assumptions, approvals, provenance, and lifecycle status are emitted as
+        canonical plain data.
+        """
         return {
             "artifact_type": self.artifact_type,
             "protocol_id": self.protocol_id,
             "objective_id": self.objective_id,
-            "strategy_implementation_ref": (
-                self.strategy_implementation_ref.to_dict()
-            ),
-            "risk_implementation_refs": [
-                item.to_dict() for item in self.risk_implementation_refs
+            "strategy": self.strategy.to_dict(),
+            "risk_managers": [
+                item.to_dict() for item in self.risk_managers
             ],
             "datasets": [item.to_dict() for item in self.datasets],
             "costs": [item.to_dict() for item in self.costs],
@@ -768,6 +1036,11 @@ class ExperimentProtocol:
             "optimization": (
                 self.optimization.to_dict() if self.optimization is not None else None
             ),
+            "deterministic_seed": self.deterministic_seed,
+            "max_runs": self.max_runs,
+            "log_cycle_details": self.log_cycle_details,
+            "runtime_limits": jsonable(self.runtime_limits),
+            "optimizer_profile": self.optimizer_profile,
             "robustness_requirements": [
                 item.to_dict() for item in self.robustness_requirements
             ],
@@ -784,20 +1057,25 @@ class ExperimentProtocol:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ExperimentProtocol":
-        """Parse a complete experiment protocol."""
+        """Parse and validate a complete immutable experiment protocol.
+
+        Every nested strategy, risk, Data, cost, portfolio, optimization,
+        robustness, assumption, and approval value is reconstructed through its
+        typed contract. Constructor validation then enforces cross-field identity,
+        unique roles and IDs, holdout rules, runtime bounds, and status-specific
+        approval completeness.
+        """
         _validate_payload_artifact_type(payload, EXPERIMENT_PROTOCOL)
         optimization_payload = payload.get("optimization")
         return cls(
             protocol_id=str(payload.get("protocol_id") or ""),
             objective_id=str(payload.get("objective_id") or ""),
-            strategy_implementation_ref=ArtifactReportRef.from_dict(
-                _mapping(payload.get("strategy_implementation_ref"))
+            strategy=ProtocolStrategy.from_dict(
+                _mapping(payload.get("strategy"))
             ),
-            risk_implementation_refs=tuple(
-                ArtifactReportRef.from_dict(item)
-                for item in _mapping_sequence(
-                    payload.get("risk_implementation_refs")
-                )
+            risk_managers=tuple(
+                ProtocolRiskManager.from_dict(item)
+                for item in _mapping_sequence(payload.get("risk_managers"))
             ),
             datasets=tuple(
                 ProtocolDataset.from_dict(item)
@@ -814,6 +1092,19 @@ class ExperimentProtocol:
                 OptimizationProtocol.from_dict(optimization_payload)
                 if isinstance(optimization_payload, Mapping)
                 else None
+            ),
+            deterministic_seed=int(payload.get("deterministic_seed", 0)),
+            max_runs=(
+                int(payload["max_runs"])
+                if payload.get("max_runs") is not None
+                else None
+            ),
+            log_cycle_details=bool(
+                payload.get("log_cycle_details", False)
+            ),
+            runtime_limits=_mapping(payload.get("runtime_limits")),
+            optimizer_profile=str(
+                payload.get("optimizer_profile") or "builtin_random"
             ),
             robustness_requirements=tuple(
                 RobustnessRequirement.from_dict(item)

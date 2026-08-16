@@ -1,4 +1,9 @@
-"""Supervisor execution of immutable Adversarial optimization variants."""
+"""Execute immutable optimization variants requested by Adversarial review.
+
+Variant services load an approved audit plan, derive only its declared child
+plans, and run them through the normal optimizer. They preserve the baseline
+selection and return canonical variant refs for independent judgment.
+"""
 
 from __future__ import annotations
 
@@ -28,7 +33,15 @@ def required_optimizer_profiles_for_variants(
     audit_plan_ref: str,
     artifact_store: ResearchArtifactStore,
 ) -> tuple[str, ...]:
-    """Return the distinct optimizer profiles an audit plan asks the Supervisor to execute."""
+    """Resolve optimizer profiles required by an Adversarial audit plan.
+
+    Only attacks whose evidence kind is ``optimization_variant`` contribute a
+    profile. Each may override the baseline run's profile; duplicate names are
+    removed and the result is sorted for deterministic provider setup.
+
+    Returns:
+        The exact non-empty or empty profile set requested by executable variants.
+    """
     audit = load_artifact_ref(artifact_store, PARAMETER_OPTIMIZATION_AUDIT_PLAN, audit_plan_ref)
     baseline_run = load_artifact_ref(
         artifact_store,
@@ -52,7 +65,18 @@ def run_parameter_optimization_variants(
     artifact_store: ResearchArtifactStore | None,
     engine_registry: OptimizationEngineRegistry | None = None,
 ) -> ApplicationResult:
-    """Execute only optimization-variant requests declared by an Adversarial audit plan."""
+    """Execute optimization variants declared by an Adversarial audit plan.
+
+    Baseline run and plan evidence are revalidated first. Each executable attack
+    derives a child plan that changes only its declared seed, budget, search
+    space, objective, or provider, then uses the ordinary optimization service.
+    Other evidence kinds are reported as skipped for separate execution.
+
+    Returns:
+        A result containing canonical variant runs and skipped attacks, or a
+        structured failure if the plan, variant configuration, execution, or
+        persistence cannot be validated.
+    """
     command = RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS
     if artifact_store is None:
         return _error("research_artifact_store_required", "A ResearchArtifactStore is required.")

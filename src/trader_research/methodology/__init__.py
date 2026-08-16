@@ -1,4 +1,9 @@
-"""Public facade for computational methodology engineering."""
+"""Expose deterministic computational-methodology engineering services.
+
+The package validates method contracts, generates quarantined implementations,
+runs diagnostics and multiple-testing controls, and packages admitted evidence.
+It does not execute trading experiments or place generated code on the live path.
+"""
 
 from .contracts import MethodContract, MethodRegistryEntry, MethodValidationReport, ParameterSpec
 from .implementation import generation_messages, generation_response_schema

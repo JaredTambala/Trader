@@ -1,4 +1,9 @@
-"""Shared validation rules for optimization observations."""
+"""Validate optimization observations against declared scalar constraints.
+
+The helpers are deterministic and side-effect free. They distinguish missing
+or non-finite metrics from ordinary threshold failures and return stable blocker
+messages for canonical trial records.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +14,16 @@ def constraint_blockers(
     constraints: Sequence[Mapping[str, Any]],
     observation: Mapping[str, Any],
 ) -> list[str]:
-    """Return deterministic blockers for failed or unavailable constraint metrics."""
+    """Evaluate declared scalar constraints against one closed observation.
+
+    Metrics that are absent, boolean, or non-numeric are reported as unavailable.
+    Maintained ``lt``, ``lte``, ``gt``, ``gte``, and ``eq`` operators compare
+    finite values normalized by the plan-validation boundary.
+
+    Returns:
+        Blockers in declared constraint order; an empty list means every
+        constraint passed.
+    """
     metrics = dict(observation.get("metrics") or {})
     blockers: list[str] = []
     operations = {

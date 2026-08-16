@@ -1,4 +1,9 @@
-"""Read-only market-data quality reporting."""
+"""Compute read-only quality evidence for an explicit market-data scope.
+
+Quality reports summarize coverage and integrity for a normalized request and
+identify blockers without repairing, fetching, or otherwise changing stored
+market data.
+"""
 
 from __future__ import annotations
 

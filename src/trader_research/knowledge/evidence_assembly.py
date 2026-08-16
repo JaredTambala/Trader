@@ -1,4 +1,10 @@
-"""Methodology evidence assembly over family-level role profiles."""
+"""Assemble role-labeled evidence packets for methodology candidates.
+
+The service resolves one exact candidate, retrieves bounded neighboring chunks,
+and fills the maintained evidence roles for its methodology family and readiness
+goal. It persists a packet with warnings or blockers when support is incomplete
+instead of manufacturing missing evidence.
+"""
 
 from __future__ import annotations
 
@@ -50,7 +56,19 @@ def assemble_methodology_evidence(
     knowledge_store: KnowledgeStore | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ApplicationResult:
-    """Assemble role-labeled evidence chunks for a methodology candidate."""
+    """Assemble a bounded role-labeled packet for one methodology candidate.
+
+    Exactly one candidate input is resolved, its family profile and readiness
+    goal determine required roles, and candidate plus neighboring chunks are
+    ranked separately for each role. Selected sources and spans remain explicit;
+    missing roles become blockers rather than inferred content. The packet is
+    persisted under Methodology ownership.
+
+    Returns:
+        A result containing the canonical packet, selected evidence, warnings,
+        blockers, and reference, or a structured input, store, or persistence
+        failure.
+    """
     if artifact_store is None:
         return _artifact_store_error("research artifact store is required")
     if knowledge_store is None:

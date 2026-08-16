@@ -1,4 +1,9 @@
-"""Knowledge cards domain models."""
+"""Define canonical method-card and revision-set domain models.
+
+Cards bind normalized methodology fields to exact evidence and lifecycle state.
+Revision sets provide stable method-level identity while preserving immutable
+card versions and current approved or draft pointers.
+"""
 
 from __future__ import annotations
 
@@ -34,7 +39,15 @@ def default_method_card_set_id(
     family: str,
     source_fingerprint: str | None = None,
 ) -> str:
-    """Build a deterministic aggregate ID for new method-card revisions."""
+    """Build the stable aggregate ID shared by method-card revisions.
+
+    Normalized method ID, title, family, and optional source fingerprint are
+    hashed, while a bounded title-derived slug keeps the identifier readable.
+    Equivalent inputs therefore resolve to the same logical revision set.
+
+    Returns:
+        An identifier in ``method_card_set_<slug>_<digest>`` form.
+    """
     slug = _slug_text(title or method_id or family)[:48] or "method"
     payload = "|".join(
         (
@@ -91,7 +104,12 @@ class MethodCardSet:
             raise ValueError("latest_revision_number must be non-negative")
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize stable method-card set lineage and current pointers."""
+        """Serialize stable method-card-set lineage and lifecycle pointers.
+
+        Aggregate identity, source fingerprint, current approved and draft cards,
+        immutable revision IDs, counts, lineage, and timestamps are emitted as a
+        JSON-compatible payload.
+        """
         return {
             "artifact_type": "method_card_set",
             "schema_version": self.schema_version,
@@ -114,7 +132,12 @@ class MethodCardSet:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "MethodCardSet":
-        """Parse a stored stable method-card set summary."""
+        """Parse and validate a stored method-card-set summary.
+
+        IDs, lifecycle pointers, revision counts, status counts, lineage, and
+        timestamps are normalized before constructor checks enforce required
+        identity, supported status, and non-negative revision metadata.
+        """
         return cls(
             method_card_set_id=str(payload.get("method_card_set_id") or ""),
             method_id=str(payload.get("method_id") or ""),
@@ -218,7 +241,12 @@ class MethodCard:
         return self.status == "approved"
 
     def to_summary(self) -> "MethodCardSummary":
-        """Derive the compact read model used by method-card search."""
+        """Derive the compact read model used by method-card search.
+
+        The summary retains identity, lifecycle, family, title, revision-set
+        linkage, assumptions, failure modes, and creation time while omitting
+        complete field-level evidence and implementation detail.
+        """
         return MethodCardSummary(
             method_card_id=self.method_card_id,
             method_id=self.method_id,
@@ -242,7 +270,12 @@ class MethodCard:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize the complete canonical method-card payload."""
+        """Serialize the complete canonical method-card revision.
+
+        Identity, lifecycle, aggregate linkage, source-backed core and extension
+        fields, assumptions, failure modes, evidence references, provenance, and
+        timestamps are emitted without dropping explicit null field values.
+        """
         return {
             "artifact_type": "method_card_draft" if self.status == "draft" else "method_card",
             "schema_version": self.schema_version,
@@ -273,7 +306,13 @@ class MethodCard:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "MethodCard":
-        """Parse a canonical method-card payload with field-level evidence."""
+        """Parse and validate a canonical card with field-level evidence.
+
+        Core and extension field groups, exact evidence refs, lifecycle metadata,
+        assumptions, failure modes, provenance, aggregate linkage, and timestamps
+        are normalized. Constructor validation preserves required identity and
+        supported lifecycle rules.
+        """
         return cls(
             method_card_id=str(payload.get("method_card_id") or ""),
             method_id=str(payload.get("method_id") or ""),
@@ -357,7 +396,12 @@ class MethodCardSummary:
         return self.status == "approved"
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize the compact search/read projection."""
+        """Serialize the compact method-card search projection.
+
+        The payload contains only identity, title, family, version, status,
+        revision-set linkage, assumptions, failure modes, evidence count, and
+        creation time; complete card fields and citation text remain excluded.
+        """
         return {
             "read_model": "method_card_summary",
             "schema_version": self.schema_version,

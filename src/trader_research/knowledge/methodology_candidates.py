@@ -1,4 +1,10 @@
-"""Methodology-candidate discovery services for Quant Methods sources."""
+"""Discover evidence-backed methodology candidates from approved sources.
+
+The service performs bounded retrieval, groups related chunks, identifies local
+method labels, and persists candidate artifacts with exact evidence spans.
+Candidates are discovery outputs only and do not imply card approval or
+implementation readiness.
+"""
 
 from __future__ import annotations
 
@@ -140,7 +146,18 @@ def discover_methodology_candidates(
     knowledge_store: KnowledgeStore | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ApplicationResult:
-    """Discover source-backed methodology candidates without approving methods."""
+    """Discover and persist bounded methodology candidates from source evidence.
+
+    The query, source IDs, and family hints are normalized before hybrid retrieval.
+    Ranked hits are expanded by the bounded neighbor radius, grouped by local
+    method labels and family, reduced to exact claim spans, and limited by
+    ``max_candidates``. Approved-source filtering is enabled by default.
+
+    Returns:
+        A result containing canonical candidate payloads, references, retrieval
+        metadata, and warnings, or a structured request, retrieval, store, or
+        persistence failure. Discovery never approves a method.
+    """
     if artifact_store is None:
         return _artifact_store_unavailable("research artifact store is required")
     normalized_query = (query or "").strip()

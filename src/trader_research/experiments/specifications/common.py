@@ -1,4 +1,9 @@
-"""Shared helpers for immutable research specifications."""
+"""Normalize shared inputs and enforce immutable specification invariants.
+
+These helpers resolve canonical artifact references, validate Data evidence,
+normalize numeric and portfolio values, and create embedded snapshots. They are
+kept transport-neutral so strategy, risk, and backtest services fail consistently.
+"""
 
 from __future__ import annotations
 
@@ -25,7 +30,18 @@ def resolve_exactly_one(
     inline: Mapping[str, Any] | None,
     label: str,
 ) -> Mapping[str, Any]:
-    """Resolve exactly one inline, ID, or URI artifact input."""
+    """Resolve exactly one inline payload, artifact ID, or canonical URI.
+
+    Inline mappings are copied to prevent caller mutation; stored references are
+    loaded through the canonical artifact store using ``artifact_type``.
+
+    Returns:
+        A normalized mapping for the selected input form.
+
+    Raises:
+        ValueError: If zero or multiple input forms are supplied.
+        ResearchArtifactStoreError: If a selected stored artifact cannot be read.
+    """
     selected = [bool(artifact_id), bool(artifact_uri), inline is not None]
     if sum(selected) != 1:
         raise ValueError(f"exactly one {label} input is required")
@@ -35,19 +51,31 @@ def resolve_exactly_one(
 
 
 def specification_error(command: str, code: str, message: str) -> ApplicationResult:
-    """Return a standard local-mutating specification error."""
+    """Build the standard failed result used by specification services.
+
+    Operation, stable code, and actionable message are preserved without raising,
+    logging, or performing any artifact mutation.
+    """
     return error_result(command=command, code=code, message=message)
 
 
 def mapping(value: Any, name: str) -> dict[str, Any]:
-    """Normalize one mapping or raise an actionable error."""
+    """Copy a mapping while normalizing all keys to strings.
+
+    ``name`` is included in the ``ValueError`` raised for non-mapping inputs so
+    callers can identify the malformed request field.
+    """
     if not isinstance(value, MappingABC):
         raise ValueError(f"{name} must be a mapping")
     return {str(key): item for key, item in value.items()}
 
 
 def mappings(value: Any, name: str) -> tuple[Mapping[str, Any], ...]:
-    """Normalize one sequence of mappings."""
+    """Normalize an optional sequence of mappings to an immutable tuple.
+
+    ``None`` becomes empty, strings and bytes are rejected as sequences, and each
+    item is copied through ``mapping`` with indexed field context.
+    """
     if value is None:
         return ()
     if not isinstance(value, SequenceABC) or isinstance(value, (str, bytes)):
@@ -56,7 +84,20 @@ def mappings(value: Any, name: str) -> tuple[Mapping[str, Any], ...]:
 
 
 def normalized_dataset_manifest(payload: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate the Data Agent scope required by canonical backtests."""
+    """Normalize the Data Agent manifest required by canonical backtests.
+
+    The manifest must name a dataset, ordered symbols, asset class, timeframe,
+    timezone-aware window, positive row count, and complete coverage. Source-
+    filtered manifests are rejected because canonical backtests require the full
+    event-store scope described by the snapshot.
+
+    Returns:
+        A normalized manifest suitable for immutable snapshotting.
+
+    Raises:
+        ValueError: If identity, scope, window, row count, or completeness is
+            invalid.
+    """
     manifest = dict(payload)
     dataset_id = str(manifest.get("dataset_id") or "").strip()
     symbols = [str(item).strip().upper() for item in _sequence(manifest.get("symbols")) if str(item).strip()]
@@ -93,7 +134,19 @@ def normalized_dataset_manifest(payload: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def validate_quality_report(report: Mapping[str, Any], manifest: Mapping[str, Any]) -> dict[str, Any]:
-    """Require quality evidence to identify the exact Data Agent scope."""
+    """Validate quality evidence against a normalized dataset manifest.
+
+    The report must be complete. When it carries symbols, they must match the
+    manifest order, and asset class, timeframe, start, and end must always match
+    the manifest scope exactly.
+
+    Returns:
+        A copied quality-report payload after cross-evidence checks pass.
+
+    Raises:
+        ValueError: If the report is incomplete, malformed, or describes a
+            different market-data scope.
+    """
     payload = dict(report)
     if payload.get("complete") is not True:
         raise ValueError("data_quality_report.complete must be true")
@@ -115,7 +168,12 @@ def validate_quality_report(report: Mapping[str, Any], manifest: Mapping[str, An
 
 
 def normalize_assumptions(payload: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Validate deterministic cost and execution assumption values."""
+    """Validate numeric cost and latency values in execution assumptions.
+
+    Maintained fee, slippage, and latency fields must be finite and non-negative.
+    The original copied mapping, including additional assumption sections, is
+    returned after validation.
+    """
     assumptions = dict(payload or {})
     for section_name, fields in {"fees": ("fixed_per_order", "bps", "minimum_fee"), "slippage": ("bps",)}.items():
         section = assumptions.get(section_name)
@@ -131,7 +189,18 @@ def normalize_assumptions(payload: Mapping[str, Any] | None) -> dict[str, Any]:
 
 
 def normalize_positions(values: Sequence[Mapping[str, Any]] | None) -> list[dict[str, Any]]:
-    """Normalize explicit initial portfolio positions."""
+    """Normalize explicit initial positions for a backtest specification.
+
+    Symbols are uppercased, quantities must be finite, and optional average
+    prices must be finite and non-negative. Input order and repeated symbols are
+    preserved for downstream portfolio validation.
+
+    Returns:
+        JSON-compatible position rows with canonical symbols and numeric values.
+
+    Raises:
+        ValueError: If a position lacks a symbol or contains an invalid number.
+    """
     rows: list[dict[str, Any]] = []
     for index, item in enumerate(values or ()):
         row = mapping(item, f"initial_positions[{index}]")
@@ -148,12 +217,20 @@ def normalize_positions(values: Sequence[Mapping[str, Any]] | None) -> list[dict
 
 
 def artifact_snapshot(payload: Mapping[str, Any]) -> dict[str, Any]:
-    """Return an embedded immutable payload and its digest."""
+    """Create an embedded payload snapshot with a canonical SHA-256 digest.
+
+    The mapping is copied before hashing so specifications can later recompute and
+    compare exact upstream evidence without another store lookup.
+    """
     return {"payload": dict(payload), "sha256": json_payload_hash(payload)}
 
 
 def parse_datetime(value: Any, name: str) -> datetime:
-    """Parse an ISO datetime and require timezone information."""
+    """Parse a datetime boundary value and require timezone information.
+
+    Existing datetime objects and ISO-8601 strings, including ``Z`` suffixes, are
+    accepted. Failures include ``name`` for actionable specification errors.
+    """
     try:
         parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except (TypeError, ValueError) as exc:
@@ -164,7 +241,11 @@ def parse_datetime(value: Any, name: str) -> datetime:
 
 
 def number(value: Any, name: str) -> float:
-    """Normalize one finite numeric value."""
+    """Normalize one finite non-boolean numeric value to ``float``.
+
+    Invalid types, infinities, and NaN raise ``ValueError`` containing ``name``;
+    sign and domain-specific bounds remain the caller's responsibility.
+    """
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
         raise ValueError(f"{name} must be finite numeric")
     return float(value)

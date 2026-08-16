@@ -1,4 +1,9 @@
-"""Deterministic target-conditioned claim-span selection."""
+"""Select exact claim spans from retrieved evidence deterministically.
+
+Helpers normalize persisted span mappings, rank local text candidates against a
+target field, and preserve character offsets and method labels. Selection is
+extractive and does not synthesize unsupported methodology detail.
+"""
 
 from __future__ import annotations
 
@@ -89,7 +94,11 @@ def select_role_claim_spans(
 
 
 def claim_span_from_mapping(payload: Mapping[str, object]) -> EvidenceClaimSpan:
-    """Parse a claim span carried inside packet role evidence."""
+    """Parse and validate a claim span embedded in role evidence.
+
+    The mapping is delegated to the exact ``EvidenceClaimSpan`` contract, including
+    offset, text, digest, and target-binding checks.
+    """
     return EvidenceClaimSpan.from_dict(payload)
 
 
@@ -168,7 +177,11 @@ def _label_markers(text: str) -> tuple[tuple[int, str], ...]:
 
 
 def detect_local_method_labels(text: str) -> tuple[str, ...]:
-    """Return generic local labels used for cross-unit context binding."""
+    """Detect ordered unique method labels in one local text unit.
+
+    Maintained strict and loose label patterns are combined and sorted by character
+    position; repeated label text is removed without changing first occurrence.
+    """
     return tuple(dict.fromkeys(label for _, label in _label_markers(text)))
 
 

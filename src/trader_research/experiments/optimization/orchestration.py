@@ -1,4 +1,10 @@
-"""Sequential parameter-optimization execution and resumability orchestration."""
+"""Run or resume sequential single-objective optimization studies.
+
+The orchestrator reconciles an engine session with canonical trial artifacts,
+executes a bounded number of new suggestions, and persists every accepted
+observation before advancing. Existing ledger content is authoritative on
+resume; conflicts, drift, or incomplete trial evidence fail closed.
+"""
 
 from __future__ import annotations
 
@@ -34,7 +40,19 @@ def run_parameter_optimization(
     engine_registry: OptimizationEngineRegistry | None = None,
     max_new_trials: int | None = None,
 ) -> ApplicationResult:
-    """Run or resume one canonical sequential single-objective study."""
+    """Run or resume one canonical sequential single-objective study.
+
+    The plan is revalidated before the selected engine starts. Existing canonical
+    trials are replayed into the ask/tell session in ledger order; only missing
+    suggestions are executed, and each trial is persisted before its outcome is
+    told to the engine. ``max_new_trials`` may bound work for one invocation but
+    never changes the plan's total trial budget.
+
+    Returns:
+        A result containing the reconciled run and trial ledger. Provider,
+        executor, ledger, or persistence conflicts are returned as structured
+        failures without accepting partial in-memory state as evidence.
+    """
     command = RESEARCH_RUN_PARAMETER_OPTIMIZATION
     if artifact_store is None:
         return _error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")

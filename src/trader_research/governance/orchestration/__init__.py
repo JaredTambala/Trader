@@ -1,4 +1,9 @@
-"""Public provider-neutral research orchestration contracts."""
+"""Expose provider-neutral contracts for bounded research orchestration.
+
+The facade includes objectives, approved protocols, capability snapshots,
+workflow DAGs, approvals, results, and terminal outcomes. It deliberately omits
+tool execution, checkpoint storage, agent policy, and specialist implementations.
+"""
 
 from .enums import (
     ApprovalStatus,
@@ -14,6 +19,7 @@ from .enums import (
     RetryDisposition,
     TunableValueType,
     WorkflowPlanStatus,
+    WorkflowOutcomeStatus,
     WorkflowStepStatus,
 )
 from .protocols import (
@@ -27,6 +33,8 @@ from .protocols import (
     OptimizationProtocol,
     ProtocolConstraint,
     ProtocolDataset,
+    ProtocolRiskManager,
+    ProtocolStrategy,
     ResearchObjective,
     RobustnessRequirement,
     TunableDimension,
@@ -36,8 +44,15 @@ from .workflows import (
     CapabilityDefinition,
     Prerequisite,
     WorkflowPlan,
+    WorkflowOutcome,
     WorkflowStep,
     WorkflowStepResult,
+)
+from .services import (
+    RESEARCH_RECORD_WORKFLOW_OUTCOME,
+    RESEARCH_REGISTER_EXPERIMENT_WORKFLOW,
+    record_workflow_outcome,
+    register_experiment_workflow,
 )
 
 __all__ = [
@@ -63,6 +78,8 @@ __all__ = [
     "PrerequisiteStatus",
     "ProtocolConstraint",
     "ProtocolDataset",
+    "ProtocolRiskManager",
+    "ProtocolStrategy",
     "ResearchObjective",
     "ResearchObjectiveStatus",
     "RetryDisposition",
@@ -70,8 +87,14 @@ __all__ = [
     "TunableDimension",
     "TunableValueType",
     "WorkflowPlan",
+    "WorkflowOutcome",
+    "WorkflowOutcomeStatus",
     "WorkflowPlanStatus",
     "WorkflowStep",
     "WorkflowStepResult",
     "WorkflowStepStatus",
+    "RESEARCH_RECORD_WORKFLOW_OUTCOME",
+    "RESEARCH_REGISTER_EXPERIMENT_WORKFLOW",
+    "record_workflow_outcome",
+    "register_experiment_workflow",
 ]

@@ -1,4 +1,9 @@
-"""Public API for citation-backed Python method implementation workflows."""
+"""Expose citation-backed Python method implementation workflows.
+
+The facade generates source into quarantine, validates manifests and provenance,
+runs deterministic fixtures, and registers accepted build artifacts. Generated
+code remains research evidence and must still pass normal strategy admission.
+"""
 
 from __future__ import annotations
 

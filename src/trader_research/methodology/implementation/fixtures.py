@@ -1,4 +1,9 @@
-"""Fixture runners for registered method implementation manifests."""
+"""Run declared fixtures against registered method implementations.
+
+The runner resolves an exact manifest, loads its quarantined module, executes
+bounded deterministic cases, and compares normalized outputs with expectations.
+Failures become validation blockers with fixture-level context.
+"""
 
 from __future__ import annotations
 

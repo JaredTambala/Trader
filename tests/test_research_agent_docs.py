@@ -356,7 +356,7 @@ def test_product_state_separates_implementation_qualification_and_availability()
         "`none`, `focused`, `integration`, `controlled`",
         "`unregistered`, `registered`, `gated`, `operator_only`, `deferred`",
         "`Implemented` does not mean autonomously orchestrated",
-        "The principal product gap is orchestration",
+        "The principal remaining orchestration gap is bounded planning",
         "commit `577c774`",
         "but they are not part of the",
     ):
@@ -372,7 +372,7 @@ def test_docs_define_cross_cutting_target_artifact_orchestration() -> None:
     for phrase in (
         "Higher-Level Orchestration Architecture",
         "Orchestration is a cross-cutting control capability",
-        "does not call the registered implementation",
+        "A separate non-agent ORCH-3 compiler/executor runs",
         "`ResearchObjective`",
         "`CapabilityDefinition`",
         "`WorkflowPlan`",
@@ -427,7 +427,7 @@ def test_docs_define_non_overlapping_experiment_research_decisions() -> None:
     assert "| ORCH-GOV | Decision authority and domain ownership redesign | complete |" in roadmap
     assert "| ORCH-1 | Capability and workflow contracts | complete | ORCH-GOV |" in roadmap
     assert "| ORCH-2 | Operational checkpoint and handoff model | complete | ORCH-1 |" in roadmap
-    assert "| ORCH-3 | Deterministic implementation-to-evidence workflow | ready |" in roadmap
+    assert "| ORCH-3 | Deterministic implementation-to-evidence workflow | complete |" in roadmap
     assert "| AGENT-1 | Specialist graph contract and common policy shell | ready | ORCH-1 |" in roadmap
     assert "The workflow executor owns no research claim and is not an agent" in roadmap
     assert "Owner labels in this catalog describe executable tool allowlists/stewardship only" in catalog
@@ -457,7 +457,6 @@ def test_docs_define_orch_1_contract_scope_without_claiming_execution() -> None:
         "dependency cycles",
         "ORCH-1 adds no MCP tools",
         "contract-only release",
-        "No current MCP command accepts a `WorkflowPlan`",
     ):
         assert phrase in combined
 
@@ -493,6 +492,50 @@ def test_docs_define_orch_2_resume_without_claiming_mcp_execution() -> None:
 
     assert (
         "| ORCH-2 | Operational checkpoint and handoff model | complete |"
+        in roadmap
+    )
+
+
+def test_docs_define_orch_3_deterministic_execution_boundary() -> None:
+    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
+    agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
+    catalog = (DOC_ROOT / "mcp_tools.md").read_text(encoding="utf-8")
+    contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
+    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
+    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
+    roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
+    combined = "\n".join(
+        (
+            product_state,
+            architecture,
+            agents,
+            catalog,
+            contracts,
+            workflows,
+            operations,
+            roadmap,
+        )
+    )
+
+    for phrase in (
+        "`supplied_implementation_to_evidence`",
+        "`data_create_research_snapshot`",
+        "`research_register_experiment_workflow`",
+        "`research_record_workflow_outcome`",
+        "`workflow_executor`",
+        "payload hash",
+        "without replaying accepted steps",
+        "not a generic high-level MCP",
+        "research_workflow_outcomes",
+    ):
+        assert phrase in combined
+    assert (
+        "| ORCH-3 | Deterministic implementation-to-evidence workflow | complete |"
+        in roadmap
+    )
+    assert (
+        "| ORCH-4 | Bounded Research Coordinator planning policy | ready |"
         in roadmap
     )
 

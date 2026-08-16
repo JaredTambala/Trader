@@ -1,4 +1,9 @@
-"""Validation-backed canonical method-card drafting."""
+"""Create draft method cards from passed methodology validation evidence.
+
+Drafting resolves one exact passed validation report and its upstream candidate,
+extraction, and evidence packet, then constructs a new immutable card revision.
+The operation does not approve or publish the card for implementation use.
+"""
 
 from __future__ import annotations
 
@@ -55,7 +60,19 @@ def create_method_card_draft(
     knowledge_store: KnowledgeStore | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ApplicationResult:
-    """Promote a passed methodology-candidate validation report into a draft card."""
+    """Create an immutable draft from passed methodology validation evidence.
+
+    Exactly one validation input is resolved and required to be passed. Candidate,
+    extraction, evidence-packet, source, and claim-span lineage are rechecked
+    before requested identity fields are applied. The research artifact store is
+    used to revalidate upstream methodology evidence; the new revision is saved
+    through the supplied knowledge store and joined to its stable card set. It
+    remains a draft.
+
+    Returns:
+        A result containing the draft and its knowledge-store reference, or a
+        structured validation, lineage, or persistence failure.
+    """
     if artifact_store is None:
         return _method_card_draft_error("research artifact store is required")
     if knowledge_store is None:

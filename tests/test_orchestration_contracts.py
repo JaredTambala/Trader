@@ -31,6 +31,8 @@ from trader_research.governance import (
     PrerequisiteKind,
     PrerequisiteStatus,
     ProtocolDataset,
+    ProtocolRiskManager,
+    ProtocolStrategy,
     ResearchIssue,
     ResearchObjective,
     ResearchObjectiveStatus,
@@ -79,14 +81,22 @@ def _approved_protocol() -> ExperimentProtocol:
     return ExperimentProtocol(
         protocol_id="protocol_demo",
         objective_id="objective_demo",
-        strategy_implementation_ref=artifact_report_ref(
-            "implementation_version",
-            "implementation_strategy",
-        ),
-        risk_implementation_refs=(
-            artifact_report_ref(
+        strategy=ProtocolStrategy(
+            implementation_ref=artifact_report_ref(
                 "implementation_version",
-                "implementation_risk",
+                "implementation_strategy",
+            ),
+            parameters={"fast_window": 10},
+            tunable_fields=("/strategy/parameters/fast_window",),
+        ),
+        risk_managers=(
+            ProtocolRiskManager(
+                implementation_ref=artifact_report_ref(
+                    "implementation_version",
+                    "implementation_risk",
+                ),
+                parameters={"max_orders": 10},
+                tunable_fields=("/risk/0/parameters/max_orders",),
             ),
         ),
         datasets=(
@@ -97,6 +107,14 @@ def _approved_protocol() -> ExperimentProtocol:
                     start="2020-01-01T00:00:00Z",
                     end="2023-12-31T23:00:00Z",
                 ),
+                dataset_manifest_ref=artifact_report_ref(
+                    DATASET_MANIFEST,
+                    "selection_manifest",
+                ),
+                data_quality_report_ref=artifact_report_ref(
+                    DATA_QUALITY_REPORT,
+                    "selection_quality",
+                ),
             ),
             ProtocolDataset(
                 requirement_id="holdout",
@@ -105,10 +123,18 @@ def _approved_protocol() -> ExperimentProtocol:
                     start="2024-01-01T00:00:00Z",
                     end="2024-12-31T23:00:00Z",
                 ),
+                dataset_manifest_ref=artifact_report_ref(
+                    DATASET_MANIFEST,
+                    "holdout_manifest",
+                ),
+                data_quality_report_ref=artifact_report_ref(
+                    DATA_QUALITY_REPORT,
+                    "holdout_quality",
+                ),
                 sealed=True,
             ),
         ),
-        costs=(CostAssumption(name="round_trip", value=5.0, unit="bps"),),
+        costs=(CostAssumption(name="fees.bps", value=5.0, unit="bps"),),
         initial_portfolio=InitialPortfolio(cash=100_000.0, currency="USD"),
         optimization=OptimizationProtocol(
             objective_validation_ref=(
@@ -305,6 +331,29 @@ def test_approved_protocol_rejects_unresolved_assumptions_and_unsealed_holdout()
     payload = protocol.to_dict()
     payload["datasets"][1]["requirement"]["start"] = "2023-12-31T23:00:00Z"
     with pytest.raises(ValueError, match="holdout must begin after"):
+        ExperimentProtocol.from_dict(payload)
+
+
+def test_protocol_rejects_invalid_or_undeclared_tunable_paths() -> None:
+    payload = _approved_protocol().to_dict()
+    payload["risk_managers"][0]["tunable_fields"] = [
+        "/risk/managers/0/parameters/max_orders"
+    ]
+    with pytest.raises(ValueError, match="risk tunable fields must target"):
+        ExperimentProtocol.from_dict(payload)
+
+    payload = _approved_protocol().to_dict()
+    payload["risk_managers"][0]["tunable_fields"] = [
+        "/risk/1/parameters/max_orders"
+    ]
+    with pytest.raises(ValueError, match="risk manager 0 tunable fields"):
+        ExperimentProtocol.from_dict(payload)
+
+    payload = _approved_protocol().to_dict()
+    payload["optimization"]["dimensions"][0]["target_path"] = (
+        "/strategy/parameters/undeclared"
+    )
+    with pytest.raises(ValueError, match="not declared tunable"):
         ExperimentProtocol.from_dict(payload)
 
 

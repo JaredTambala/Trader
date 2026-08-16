@@ -1,4 +1,9 @@
-"""Neutral catalog of maintained strategy and risk-manager implementations."""
+"""Describe maintained strategy and risk-manager implementation templates.
+
+The catalog exposes stable template identifiers, source, parameters, and
+capabilities without registering implementations or touching persistence.
+Callers may use the metadata to create normal implementation-admission inputs.
+"""
 
 from __future__ import annotations
 
@@ -65,7 +70,12 @@ class MaintainedImplementationTemplate:
             raise ValueError(f"duplicate parameter names for {self.template_id}")
 
     def to_dict(self) -> dict[str, Any]:
-        """Return the stable MCP catalog projection."""
+        """Serialize stable template metadata for the public catalog.
+
+        The projection includes source, factory, parameter definitions,
+        capabilities, runtime requirements, and resource bounds needed to submit
+        normal implementation-registration inputs. It performs no registration.
+        """
         payload: dict[str, Any] = {
             "template_id": self.template_id,
             "implementation_kind": self.implementation_kind,
@@ -396,7 +406,11 @@ SUPPORTED_RISK_MANAGER_FAMILIES = tuple(
 
 
 def list_strategy_templates(*, families: Sequence[str] | None = None) -> ApplicationResult:
-    """List maintained strategy implementation metadata."""
+    """List maintained strategy templates in catalog order.
+
+    Optional family IDs are normalized and validated; unsupported requests return
+    a structured failure rather than a partial list. No implementation is registered.
+    """
     return _list_templates(
         command=RESEARCH_LIST_STRATEGY_TEMPLATES,
         requested=families,
@@ -410,7 +424,11 @@ def list_strategy_templates(*, families: Sequence[str] | None = None) -> Applica
 def list_risk_manager_templates(
     *, families: Sequence[str] | None = None
 ) -> ApplicationResult:
-    """List maintained risk-manager implementation metadata."""
+    """List maintained risk-manager templates in catalog order.
+
+    Optional family IDs are normalized and validated; unsupported requests return
+    a structured failure rather than a partial list. No implementation is registered.
+    """
     return _list_templates(
         command=RESEARCH_LIST_RISK_MANAGER_TEMPLATES,
         requested=families,
@@ -422,7 +440,11 @@ def list_risk_manager_templates(
 
 
 def normalize_strategy_family(value: str) -> str:
-    """Normalize one maintained strategy template identifier."""
+    """Normalize and validate one maintained strategy template identifier.
+
+    Case and hyphens are canonicalized; unknown identifiers raise ``ValueError``
+    instead of being treated as dynamic strategy families.
+    """
     return _normalize_template_id(value, SUPPORTED_STRATEGY_FAMILIES)
 
 

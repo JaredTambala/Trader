@@ -1,4 +1,9 @@
-"""Agent and tool ownership metadata for research workflows."""
+"""Declare research decision authority and tool-attribution metadata.
+
+The registry distinguishes exclusive domain decisions from transport allowlists,
+artifact producers, requesting workflows, and runtime actors. Lookup helpers
+fail closed so an unknown role or decision cannot acquire authority by default.
+"""
 
 from __future__ import annotations
 
@@ -53,6 +58,7 @@ DATA_AGENT_TOOLS = (
     "data_get_inventory",
     "data_summarize_quality",
     "data_ensure_loaded",
+    "data_create_research_snapshot",
 )
 
 QUANTITATIVE_METHODS_TOOLS = (
@@ -150,6 +156,8 @@ QUANT_RESEARCH_SUPERVISOR_TOOLS = (
     "research_get_parameter_optimization_results",
     "research_run_parameter_optimization_variants",
     "research_project_experiment_tracking",
+    "research_register_experiment_workflow",
+    "research_record_workflow_outcome",
 )
 
 EVALUATION_AGENT_TOOLS = (
@@ -424,7 +432,11 @@ TOOL_STEWARD_BY_NAME: Mapping[str, str] = {
 
 
 def get_decision_authority(authority_key: str) -> DecisionAuthority:
-    """Return one approved target decision authority by stable key."""
+    """Resolve one approved research decision authority by exact stable key.
+
+    Unknown keys raise ``KeyError`` with research-specific context; no default
+    authority is inferred from an agent name or tool allowlist.
+    """
     try:
         return _DECISION_AUTHORITIES_BY_KEY[authority_key]
     except KeyError as exc:

@@ -1,4 +1,9 @@
-"""Template-restricted C++ kernel artifacts for Quantitative Methods."""
+"""Generate and validate template-restricted C++ methodology kernels.
+
+Kernel manifests pin a validated Python reference, supported operation template,
+compiler inputs, and parity fixtures. Compilation occurs in an isolated artifact
+directory; arbitrary caller-supplied C++ source is not accepted.
+"""
 
 from __future__ import annotations
 
@@ -91,7 +96,12 @@ class CxxKernelManifest:
     schema_version: str = CXX_KERNEL_SCHEMA_VERSION
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize kernel provenance, ABI, safety policy, and build metadata."""
+        """Serialize complete kernel provenance and build metadata.
+
+        Kernel identity, Python reference, restricted template, ABI, source and
+        binary hashes, compiler settings, fixtures, parity evidence, safety policy,
+        lifecycle status, and local paths are emitted as stable plain data.
+        """
         return {
             "artifact_type": "cxx_kernel_manifest",
             "schema_version": self.schema_version,
@@ -116,7 +126,12 @@ class CxxKernelManifest:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "CxxKernelManifest":
-        """Parse a kernel manifest from JSON-compatible artifact payloads."""
+        """Parse and validate a persisted C++ kernel manifest.
+
+        Provenance, ABI, hashes, build settings, fixture and parity evidence,
+        policy, status, and paths are normalized. Constructor rules reject unknown
+        templates, unsafe declarations, and inconsistent build identity.
+        """
         return cls(
             kernel_id=str(payload.get("kernel_id") or ""),
             method_id=str(payload.get("method_id") or ""),

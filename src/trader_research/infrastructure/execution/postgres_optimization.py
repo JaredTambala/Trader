@@ -1,4 +1,10 @@
-"""Postgres backtest trial execution with enforceable process deadlines."""
+"""Run Postgres-backed optimization trials behind process deadlines.
+
+The adapter reconstructs canonical backtest dependencies in a child process,
+returns a bounded observation to the parent, and terminates work that exceeds
+the declared limit. Child failures are translated into actionable trial errors
+without fabricating canonical results.
+"""
 
 from __future__ import annotations
 
@@ -50,7 +56,12 @@ class PostgresBacktestOptimizationTrialExecutor:
         trial_id: str,
         optimization_run_id: str,
     ) -> TrialExecution:
-        """Execute without process isolation when the plan declares no deadline."""
+        """Execute one trial in process when no enforceable deadline is needed.
+
+        The call delegates to the canonical backtest trial executor with the same
+        sealed plan, parameters, and lineage IDs. It adds no timeout, process, or
+        persistence behavior of its own.
+        """
         return self._delegate.execute(
             plan=plan,
             parameters=parameters,
@@ -67,7 +78,17 @@ class PostgresBacktestOptimizationTrialExecutor:
         optimization_run_id: str,
         timeout_seconds: float,
     ) -> TrialExecution:
-        """Run one trial in a fresh process and terminate it at the deadline."""
+        """Run one trial in a spawned process and enforce its wall-clock deadline.
+
+        Enforced deadlines require both Postgres event and artifact stores so the
+        child can reconstruct dependencies after ``spawn``. The parent accepts one
+        bounded ``TrialExecution`` from a pipe, terminates and then kills overdue
+        work if necessary, and closes all process resources.
+
+        Returns:
+            The child result, or a blocked execution for unsupported stores,
+            timeout, missing child output, or an invalid child response.
+        """
         if not isinstance(self._event_store, PostgresEventStore) or not isinstance(
             self._artifact_store, PostgresResearchArtifactStore
         ):

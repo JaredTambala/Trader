@@ -1,4 +1,9 @@
-"""Embedding providers for local knowledge indexing."""
+"""Provide embedding ports and bounded provider adapters for knowledge indexing.
+
+The module supports deterministic local embeddings and an OpenAI-compatible HTTP
+boundary. Inputs are batched and outputs are shape-checked before index storage;
+credentials and raw provider responses are not persisted as knowledge evidence.
+"""
 
 from __future__ import annotations
 
@@ -144,7 +149,16 @@ class OpenAICompatibleEmbeddingProvider:
         return _embedding_from_openai_compatible_response(response)
 
     def embed_many(self, texts: Sequence[str]) -> tuple[tuple[float, ...], ...]:
-        """Embed a bounded batch through one OpenAI-compatible request."""
+        """Embed a text batch through one OpenAI-compatible HTTP request.
+
+        Empty input returns without network access. Otherwise the request applies
+        optional bearer authorization and the configured timeout, and response
+        parsing requires one numeric vector per input in provider index order.
+
+        Raises:
+            EmbeddingRequestError: If transport, JSON, count, index, or vector
+                shape validation fails.
+        """
         if not texts:
             return ()
         payload = {"model": self.config.model, "input": list(texts)}

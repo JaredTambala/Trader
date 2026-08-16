@@ -1,4 +1,10 @@
-"""Document ingestion service for the Quant Methods knowledge base."""
+"""Ingest approved documents into the Quant Methods knowledge base.
+
+The service extracts the complete source, creates locator-preserving chunks,
+computes embeddings, and asks the configured store to publish the resulting
+generation. Embedding work is staged before publication so extraction or provider
+failures do not replace active evidence.
+"""
 
 from __future__ import annotations
 

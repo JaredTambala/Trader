@@ -1,4 +1,9 @@
-"""Registration and validation services for canonical executable implementations."""
+"""Application services for implementation registration and admission.
+
+Registration persists content-addressed source and declared runtime metadata.
+Validation loads an exact version, applies safety and interface checks, runs the
+bounded fixture for its kind, and persists a separate validation report.
+"""
 
 from __future__ import annotations
 
@@ -56,7 +61,17 @@ def register_implementation(
     metadata: Mapping[str, Any] | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ApplicationResult:
-    """Persist one content-addressed implementation version."""
+    """Normalize and persist one content-addressed implementation version.
+
+    Registration records supplied source and declarative metadata under
+    Experiments ownership but does not mark the implementation executable. The
+    caller must run the kind-specific validation service and use its passed
+    report before any specification can reference the implementation.
+
+    Returns:
+        A result containing the canonical implementation and reference, or a
+        structured registration/persistence failure.
+    """
     if artifact_store is None:
         return _error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")
     try:
@@ -105,7 +120,18 @@ def validate_implementation(
     fixture_parameters: Mapping[str, Any] | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ApplicationResult:
-    """Validate source safety, interface conformance, and deterministic fixture behavior."""
+    """Validate source safety, interface conformance, and fixture behavior.
+
+    Exactly one inline, ID, or URI implementation is resolved and checked against
+    ``expected_kind``. Default and supplied fixture parameters are validated,
+    static blockers are collected, and the kind-specific bounded runtime fixture
+    runs only when static checks pass. A canonical validation report is persisted
+    for both passed and blocked outcomes.
+
+    Returns:
+        A result containing the validation report and reference. ``ok`` is false
+        for blocked evidence as well as resolution or persistence failures.
+    """
     if artifact_store is None:
         return _error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")
     try:
@@ -185,7 +211,11 @@ def validate_implementation(
 
 
 def register_strategy_implementation(**kwargs: Any) -> ApplicationResult:
-    """Register a strategy implementation version."""
+    """Register supplied source as a content-addressed strategy implementation.
+
+    Keyword inputs are delegated to the shared registration boundary with stable
+    strategy operation and kind metadata; registration does not validate runtime use.
+    """
     return register_implementation(
         command=RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION,
         implementation_kind="strategy",
@@ -194,7 +224,11 @@ def register_strategy_implementation(**kwargs: Any) -> ApplicationResult:
 
 
 def validate_strategy_implementation(**kwargs: Any) -> ApplicationResult:
-    """Validate a strategy implementation version."""
+    """Run strategy-specific admission over one registered implementation.
+
+    The shared validator requires strategy kind and records static, interface, and
+    deterministic fixture evidence in a canonical validation report.
+    """
     return validate_implementation(
         command=RESEARCH_VALIDATE_STRATEGY_IMPLEMENTATION,
         expected_kind="strategy",
@@ -203,7 +237,11 @@ def validate_strategy_implementation(**kwargs: Any) -> ApplicationResult:
 
 
 def register_risk_manager_implementation(**kwargs: Any) -> ApplicationResult:
-    """Register a risk-manager implementation version."""
+    """Register supplied source as a content-addressed risk-manager implementation.
+
+    Keyword inputs are delegated with stable risk-manager operation and kind
+    metadata; the resulting registered version is not yet executable evidence.
+    """
     return register_implementation(
         command=RESEARCH_REGISTER_RISK_MANAGER_IMPLEMENTATION,
         implementation_kind="risk_manager",
@@ -212,7 +250,11 @@ def register_risk_manager_implementation(**kwargs: Any) -> ApplicationResult:
 
 
 def validate_risk_manager_implementation(**kwargs: Any) -> ApplicationResult:
-    """Validate a risk-manager implementation version."""
+    """Run risk-manager admission over one registered implementation.
+
+    The shared validator requires risk-manager kind and persists source-safety,
+    interface, parameter, and bounded risk-fixture evidence.
+    """
     return validate_implementation(
         command=RESEARCH_VALIDATE_RISK_MANAGER_IMPLEMENTATION,
         expected_kind="risk_manager",
@@ -221,7 +263,11 @@ def validate_risk_manager_implementation(**kwargs: Any) -> ApplicationResult:
 
 
 def register_optimization_objective(**kwargs: Any) -> ApplicationResult:
-    """Register a closed-input optimization objective implementation."""
+    """Register source for a closed-input optimization objective.
+
+    Keyword inputs are delegated with the objective kind and stable operation
+    metadata. Registration stores source but does not prove the closed-input policy.
+    """
     return register_implementation(
         command=RESEARCH_REGISTER_OPTIMIZATION_OBJECTIVE,
         implementation_kind="optimization_objective",
@@ -230,7 +276,11 @@ def register_optimization_objective(**kwargs: Any) -> ApplicationResult:
 
 
 def validate_optimization_objective(**kwargs: Any) -> ApplicationResult:
-    """Validate an optimization objective implementation."""
+    """Run closed-input admission over a registered optimization objective.
+
+    The shared validator applies the narrower objective safety policy and bounded
+    numeric-output fixture before persisting passed or blocked evidence.
+    """
     return validate_implementation(
         command=RESEARCH_VALIDATE_OPTIMIZATION_OBJECTIVE,
         expected_kind="optimization_objective",
@@ -244,7 +294,20 @@ def load_passed_implementation(
     *,
     expected_kind: str,
 ) -> tuple[ImplementationVersion, Mapping[str, Any]]:
-    """Resolve one passed validation and its exact source-hash-matching implementation."""
+    """Load a passed validation and its exact implementation dependency.
+
+    The validation status, kind, content-derived ID, implementation identity, and
+    source hash are recomputed before returning either payload. This function is
+    the fail-closed read boundary used by specification services.
+
+    Returns:
+        The validated implementation value and canonical validation payload.
+
+    Raises:
+        ValueError: If the report is blocked, has drifted, targets another kind,
+            or no longer matches the implementation source.
+        ResearchArtifactStoreError: If a referenced artifact cannot be loaded.
+    """
     report = load_artifact_ref(artifact_store, IMPLEMENTATION_VALIDATION_REPORT, validation_ref)
     if report.get("status") != "passed" or report.get("valid") is not True or report.get("blockers"):
         raise ValueError("implementation validation report must be passed, valid, and blocker-free")

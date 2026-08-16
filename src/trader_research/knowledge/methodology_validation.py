@@ -1,4 +1,9 @@
-"""Methodology candidate validation."""
+"""Validate methodology candidates and extracted fields before card drafting.
+
+The service rechecks candidate, packet, extraction, source, and claim-span
+lineage, applies readiness-specific requirements, and persists a structured
+report. A blocked report is valid output and cannot be promoted to a card draft.
+"""
 
 from __future__ import annotations
 
@@ -64,7 +69,17 @@ def validate_methodology_candidate(
     knowledge_store: KnowledgeStore | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ApplicationResult:
-    """Validate evidence-backed methodology candidates before card creation."""
+    """Validate candidate and extraction evidence before method-card drafting.
+
+    The service resolves an exact candidate or extraction report, reloads its
+    evidence packet and source/chunk dependencies, validates claim spans and
+    family/readiness requirements, and accumulates warnings and blockers. A
+    canonical report is persisted for both passed and blocked conclusions.
+
+    Returns:
+        A result containing the validation report and canonical reference.
+        ``ok`` is false for blocked evidence or resolution and persistence errors.
+    """
     if artifact_store is None:
         return _artifact_store_error(KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE, "research artifact store is required")
     try:

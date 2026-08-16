@@ -1,4 +1,9 @@
-"""Method package manifests for source-backed strategy handoffs."""
+"""Package validated methodology implementations for strategy handoff.
+
+A package manifest binds exact Python validation evidence, optional compiled
+kernel parity, method-card provenance, and deterministic local paths. Packaging
+does not admit or execute a strategy; downstream registration remains explicit.
+"""
 
 from __future__ import annotations
 
@@ -84,7 +89,12 @@ class MethodPackageManifest:
     schema_version: str = METHOD_PACKAGE_SCHEMA_VERSION
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize the method package into its stable artifact payload."""
+        """Serialize the complete method-package handoff manifest.
+
+        Package identity, method and card provenance, validated Python artifacts,
+        optional kernel evidence, exported entrypoints, hashes, local paths,
+        warnings, blockers, and status are retained in stable plain data.
+        """
         return {
             "artifact_type": self.artifact_type,
             "schema_version": self.schema_version,
@@ -112,7 +122,12 @@ class MethodPackageManifest:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "MethodPackageManifest":
-        """Parse a method package manifest from JSON-compatible artifact data."""
+        """Parse and validate a persisted method-package manifest.
+
+        Python and optional kernel lineage, exported entrypoints, hashes, paths,
+        issues, status, and package identity are normalized. Constructor checks
+        reject incomplete or inconsistent handoff evidence.
+        """
         return cls(
             package_id=str(payload.get("package_id") or ""),
             method_id=str(payload.get("method_id") or ""),
@@ -256,7 +271,11 @@ def package_method_artifact(
 
 
 def method_package_path(artifact_root: str | Path, package_id: str) -> Path:
-    """Return the deterministic local path for one method package manifest."""
+    """Build the deterministic local path for a method-package manifest.
+
+    The helper performs no directory creation or existence check; package IDs are
+    expected to have been validated by the manifest boundary.
+    """
     return Path(artifact_root) / "method_packages" / "manifests" / f"{package_id}.json"
 
 

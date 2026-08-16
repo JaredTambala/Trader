@@ -1,4 +1,9 @@
-"""Canonical executable implementation value objects."""
+"""Value objects and boundary validation for executable implementations.
+
+The module normalizes source metadata, parameter schemas, dependencies, and
+resource declarations into content-addressed records. It contains no loading,
+execution, or persistence side effects.
+"""
 
 from __future__ import annotations
 
@@ -52,7 +57,12 @@ class ImplementationVersion:
     status: str = "registered"
 
     def to_dict(self) -> dict[str, Any]:
-        """Return the canonical JSON payload."""
+        """Serialize the complete canonical implementation-version payload.
+
+        Source, digest, entrypoint, schema, dependencies, runtime declarations,
+        provenance, metadata, safety policy, and lifecycle status are emitted as
+        stable plain data for persistence and content revalidation.
+        """
         return {
             "artifact_type": IMPLEMENTATION_VERSION,
             "schema_version": SCHEMA_VERSION,
@@ -82,7 +92,16 @@ class ImplementationVersion:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ImplementationVersion":
-        """Parse and validate a persisted implementation payload."""
+        """Parse and revalidate a persisted implementation-version payload.
+
+        The parser normalizes every declarative field, verifies the source digest,
+        rebuilds canonical identity, and requires its content-derived ID to match.
+        It performs no source execution or persistence.
+
+        Raises:
+            ValueError: If required fields, kind, source hash, schema, runtime
+                requirements, or content-derived identity are invalid.
+        """
         if str(payload.get("artifact_type") or "") != IMPLEMENTATION_VERSION:
             raise ValueError(f"artifact_type must be {IMPLEMENTATION_VERSION}")
         kind = str(payload.get("implementation_kind") or "").strip()
@@ -159,7 +178,20 @@ def build_implementation_version(
     provenance_refs: Sequence[Mapping[str, Any]] | None,
     metadata: Mapping[str, Any] | None,
 ) -> ImplementationVersion:
-    """Normalize registration inputs and derive a content-addressed version ID."""
+    """Normalize registration inputs into a content-addressed implementation.
+
+    Source, entrypoint, schema, dependencies, capabilities, runtime requirements,
+    bounds, provenance, and metadata all contribute to the stable version ID.
+    The function validates only the declarative registration boundary; source
+    safety and runtime conformance are handled by the admission service.
+
+    Returns:
+        An immutable registered-state implementation value.
+
+    Raises:
+        ValueError: If the kind is unsupported, required values are absent,
+            source exceeds the size limit, or a declared schema is malformed.
+    """
     kind = str(implementation_kind or "").strip()
     if kind not in IMPLEMENTATION_KINDS:
         raise ValueError(f"unsupported implementation_kind: {kind}")
@@ -245,7 +277,11 @@ def _implementation_identity(
 
 
 def parameter_defaults(schema: Mapping[str, Any]) -> dict[str, Any]:
-    """Return explicit parameter defaults from a JSON-schema-like mapping."""
+    """Extract explicit defaults from the maintained parameter-schema shape.
+
+    Only property mappings that contain a ``default`` key are returned; required
+    fields without defaults and unsupported property values are omitted.
+    """
     properties = _mapping(schema.get("properties") or {}, "parameter_schema.properties")
     return {
         str(name): dict(spec).get("default")
@@ -255,7 +291,16 @@ def parameter_defaults(schema: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def validate_parameters(schema: Mapping[str, Any], parameters: Mapping[str, Any]) -> tuple[str, ...]:
-    """Validate scalar parameters against the maintained bounded schema subset."""
+    """Validate scalar parameters against the maintained schema subset.
+
+    The supported subset covers required and unknown fields, primitive scalar
+    types, enums, and inclusive numeric bounds. Validation accumulates all
+    deterministic problems rather than raising on the first bad parameter.
+
+    Returns:
+        Stable blocker messages in parameter-name order; an empty tuple means
+        the supplied parameters satisfy the supported schema rules.
+    """
     properties = _mapping(schema.get("properties") or {}, "parameter_schema.properties")
     required = set(_strings(schema.get("required")))
     blockers: list[str] = []

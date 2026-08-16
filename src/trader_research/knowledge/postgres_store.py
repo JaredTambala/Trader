@@ -1,4 +1,9 @@
-"""Research-layer adapter for the core Postgres knowledge record store."""
+"""Adapt the core Postgres record store to research knowledge ports.
+
+The adapter publishes complete ingestion generations atomically and exposes
+canonical source, chunk, index, report, and method-card reads. It normalizes core
+rows at the boundary so application services receive stable domain values.
+"""
 
 from __future__ import annotations
 
@@ -95,7 +100,12 @@ class PostgresKnowledgeStore:
         status: str | None = None,
         limit: int | None = None,
     ) -> tuple[KnowledgeSourceManifest, ...]:
-        """List Postgres-backed source manifests after applying metadata filters and parsing payloads."""
+        """List Postgres source manifests through normalized metadata filters.
+
+        Topic, family, status, and limit are delegated to the core record store;
+        every returned payload is parsed into a typed source manifest. Core store
+        failures are translated to ``KnowledgeStoreError``.
+        """
         payloads = _translate_errors(
             lambda: self._records.list_sources(
                 topic=topic,
@@ -162,7 +172,12 @@ class PostgresKnowledgeStore:
         embeddings: Sequence[StoredEmbedding],
         report: KnowledgeIngestionReport,
     ) -> None:
-        """Atomically publish a complete Postgres evidence generation."""
+        """Atomically publish chunks, embeddings, and an ingestion report.
+
+        Replacement chunks and typed vector values are converted to core JSON and
+        SQL-binding shapes, then committed by the record store as one generation.
+        ``indexed_chunks`` is redundant because each embedding carries its chunk ID.
+        """
         del indexed_chunks
         _translate_errors(
             lambda: self._records.publish_ingestion(
@@ -195,7 +210,12 @@ class PostgresKnowledgeStore:
         approved_only: bool = True,
         limit: int = 50,
     ) -> tuple[Mapping[str, Any], ...]:
-        """Run lexical retrieval in Postgres and return normalized result mappings for fusion."""
+        """Run bounded Postgres lexical retrieval for hybrid-result fusion.
+
+        Query text, source, topic, family, approval, and limit filters are delegated
+        to the core record store. Ranked plain-data rows are returned unchanged in
+        store order, with core failures translated to ``KnowledgeStoreError``.
+        """
         return _translate_errors(
             lambda: self._records.search_lexical(
                 query,
@@ -220,7 +240,13 @@ class PostgresKnowledgeStore:
         approved_only: bool = True,
         limit: int = 50,
     ) -> tuple[Mapping[str, Any], ...]:
-        """Run pgvector retrieval in Postgres and return normalized result mappings for fusion."""
+        """Run bounded pgvector retrieval against one exact embedding identity.
+
+        The query vector is matched only with the declared provider, model, and
+        version and optional source metadata filters. Ranked plain-data rows remain
+        in core store order; dimension and storage failures are translated through
+        the knowledge-store exception boundary.
+        """
         return _translate_errors(
             lambda: self._records.search_vector(
                 query_embedding,

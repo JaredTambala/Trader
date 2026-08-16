@@ -3,9 +3,10 @@
 Research workflows are built as deterministic MCP tool chains first, then composed by LangGraph agents once the tool
 surface is useful. All workflows stay outside live trading.
 
-The procedures in this document describe callable tool graphs, not current autonomous behavior. The Data Agent is the
-only specialist with an operational tool-calling graph. The Quant Research Supervisor currently validates bounded
-requests and supplied handoffs but does not execute the implementation-to-evidence workflow. See
+The procedures in this document describe callable tool graphs, not autonomous behavior. The Data Agent is the only
+specialist with an operational tool-calling graph. Separately, ORCH-3 mechanically executes one already approved
+implementation-to-evidence protocol through MCP; the Quant Research Supervisor does not yet formulate that protocol or
+select the workflow. See
 [product_state.md](product_state.md#agent-state) and the
 [orchestration roadmap](../../plans/research_capability_roadmap.md#orchestration).
 
@@ -38,7 +39,8 @@ optimisation audit are implemented. ML versioning and broader cost/data perturba
 
 ## Target Orchestrated Supplied-Strategy Workflow
 
-This is the planned higher-level orchestration path, not a currently executable agent graph:
+This is the target higher-level agent path. The middle deterministic execution segment is implemented by ORCH-3, but
+the specialist planning and routing around it is not yet an executable coordinator graph:
 
 ```text
 operator brief with supplied strategy and risk-manager refs
@@ -64,10 +66,9 @@ an agent and makes no design, selection or quality judgment.
 Quantitative Methods and ML are optional producers. Neither is required when the operator supplies validated
 strategy/risk implementations and no model lifecycle work is requested.
 
-### ORCH-1 Declaration And ORCH-2 Resume Procedure
+### ORCH-1 Declaration, ORCH-2 Resume, And ORCH-3 Execution
 
-The target flow has a concrete declaration vocabulary and an operational resume shell, but it is not executable end
-to end:
+The target flow has a concrete declaration vocabulary, an operational resume shell and one executable fixed template:
 
 1. A `ResearchObjective` fixes operator intent, success criteria, supplied refs and constraints.
 2. An `ExperimentProtocol` fixes implementation refs, role-labelled Data requirements, costs, initial state,
@@ -76,17 +77,42 @@ to end:
    `ArtifactSlot` values, and names all `Prerequisite` and approval gates.
 4. Plan construction validates the dependency graph and readiness. It rejects invented capabilities or arguments,
    artifact authority mismatches and dependency cycles before an executor can run.
-5. ORCH-2 compiles the ready plan into a deterministic LangGraph shell. The next step emits a bounded interrupt naming
+5. ORCH-3 deterministically compiles the approved supplied-implementation protocol into the fixed registered
+   capability DAG and persists the objective, protocol and plan.
+6. ORCH-2 compiles the ready plan into a deterministic LangGraph shell. The next step emits a bounded interrupt naming
    the plan, capability, producer tool, side effect, attempt and configuration digest.
-6. An external caller resumes the same `thread_id` with a `WorkflowStepResult`. The shell validates identity, attempt,
-   command, side effect and output cardinality, then checkpoints only a bounded summary and canonical refs.
-7. Retryable blockers repeat the same step with an incremented attempt. Exact duplicate result keys are ignored;
+7. The ORCH-3 executor builds arguments only from pinned artifact slots and closed invocation recipes, calls the
+   registered MCP tool, validates its command/owner/side-effect envelope and resolves every returned canonical ref.
+8. ORCH-3 adapts the response to a `WorkflowStepResult`. The shell validates identity, attempt, command, side effect and
+   output cardinality, then checkpoints only a bounded summary and canonical refs.
+9. Retryable blockers repeat the same step with an incremented attempt. Exact duplicate result keys are ignored;
    conflicting content, changed plan digests and invalid refs fail closed.
+10. At terminal state, ORCH-3 persists a `WorkflowOutcome` containing produced refs, Review refs, blockers and next
+    permitted actions.
 
 The Postgres checkpoint can survive a connection restart, but it is operational state rather than research evidence.
-No current MCP command accepts a `WorkflowPlan`, and neither the shell nor a current agent executes its tools. ORCH-3
-must resolve the capability from a registry, invoke MCP, adapt the envelope into `WorkflowStepResult`, revalidate
-canonical artifacts and write a bounded terminal outcome.
+`research_register_experiment_workflow` accepts the approved objective, protocol and compiled `WorkflowPlan`;
+`research_record_workflow_outcome` accepts only a terminal outcome. The executor itself is a Python library over
+`McpToolClient`, not a generic high-level MCP command.
+
+The implemented template is `supplied_implementation_to_evidence` version 1:
+
+```text
+validate strategy and ordered risk implementations
+  -> create and validate strategy/risk specifications
+  -> create, validate and run baseline backtest
+  -> optional provider-neutral optimisation
+  -> selected specification on sealed holdout
+  -> Evaluation report
+  -> optional Adversarial plan, immutable variants and robustness report
+  -> canonical workflow outcome
+```
+
+Use `data_create_research_snapshot` to persist each exact Data manifest/quality pair before protocol approval.
+Compilation pins payload hashes; any input drift before use blocks the workflow. Backtest and optimisation gates remain
+authoritative, and a blocked tool prevents later nodes from running. A controlled interruption retains the ORCH-2
+checkpoint and resumes without replaying accepted steps. ORCH-4 will add bounded template selection rather than
+unrestricted planning.
 
 ## Worked Implementation-To-Evidence Walkthrough
 
@@ -94,9 +120,9 @@ This is the shortest current journey from supplied strategy and risk-manager cod
 A method card is not required. Handwritten, maintained, and externally generated source all enter through the same
 content-addressed implementation boundary.
 
-1. **Fix the data scope.** Call `data_discover_symbols` when discovery is needed, then `data_get_inventory` to create an
-   exact Data Agent dataset manifest and `data_summarize_quality` to create its quality report. The manifest, rather
-   than loose symbol or date arguments, defines the rows available to the experiment.
+1. **Fix the data scope.** Call `data_discover_symbols` when discovery is needed, then
+   `data_create_research_snapshot` to create and persist an exact Data Agent dataset manifest and matching quality
+   report. The manifest ref, rather than loose symbol or date arguments, defines the rows available to the experiment.
 2. **Admit executable behavior.** Call `research_register_strategy_implementation` and
    `research_validate_strategy_implementation`, then the corresponding
    `research_register_risk_manager_implementation` and `research_validate_risk_manager_implementation` tools. Each

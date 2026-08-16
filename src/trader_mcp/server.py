@@ -19,6 +19,7 @@ from trader_mcp.constants import (
     ADVERSARIAL_TOOL_NAMES,
     CAPABILITY_REGISTRATION_FLAGS,
     DATA_DISCOVER_SYMBOLS_TOOL,
+    DATA_CREATE_RESEARCH_SNAPSHOT_TOOL,
     DATA_ENSURE_LOADED_TOOL,
     DATA_GET_INVENTORY_TOOL,
     DATA_SUMMARIZE_QUALITY_TOOL,
@@ -70,9 +71,14 @@ from trader_mcp.environment import McpEnvironment, load_local_environment
 from trader_mcp.evaluation_tools import register_evaluation_tools
 from trader_mcp.knowledge_tools import register_quant_methods_tools
 from trader_mcp.ml_tools import register_ml_tools
+from trader_mcp.orchestration_tools import register_orchestration_tools
 from trader_mcp.research_tools import register_research_tools
 from trader_research.governance import agent_owner_for_tool
-from trader_research.foundation import ResearchArtifactStore, UnavailableResearchArtifactStore
+from trader_research.foundation import (
+    ContextualResearchArtifactStore,
+    ResearchArtifactStore,
+    UnavailableResearchArtifactStore,
+)
 from trader_mcp.contracts import (
     SCHEMA_VERSION,
     SideEffect,
@@ -88,6 +94,7 @@ from trader_research.data import (
     DataQualityRequest,
     DataSymbolDiscoveryPolicy,
     DataSymbolDiscoveryRequest,
+    create_data_research_snapshot,
     data_ensure_loaded as ensure_loaded_service,
     data_discover_symbols as discover_symbols_service,
     data_summarize_quality as summarize_quality_service,
@@ -381,6 +388,72 @@ def create_server(
         return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(
+        name=DATA_CREATE_RESEARCH_SNAPSHOT_TOOL,
+        description=DATA_TOOL_DESCRIPTIONS[DATA_CREATE_RESEARCH_SNAPSHOT_TOOL],
+    )
+    def data_create_research_snapshot(
+        symbols: list[str],
+        asset_class: str,
+        timeframe: str,
+        start: str,
+        end: str,
+        requested_by: str,
+        actor: str,
+        source: str | None = None,
+        provider: str | None = None,
+        instrument_type: str | None = None,
+        bar_type: str | None = None,
+    ) -> CallToolResult:
+        """Persist one exact Data-domain inventory and quality snapshot."""
+        try:
+            inventory_request = _data_inventory_request_from_inputs(
+                symbols=symbols,
+                asset_class=asset_class,
+                timeframe=timeframe,
+                start=start,
+                end=end,
+                source=source,
+                provider=provider,
+                instrument_type=instrument_type,
+                bar_type=bar_type,
+                environment=local_env,
+            )
+            quality_request = _data_quality_request_from_inputs(
+                symbols=symbols,
+                asset_class=asset_class,
+                timeframe=timeframe,
+                start=start,
+                end=end,
+                source=source,
+                provider=provider,
+                instrument_type=instrument_type,
+                bar_type=bar_type,
+                environment=local_env,
+            )
+            store = ContextualResearchArtifactStore(
+                resolved_research_artifact_store_provider(),
+                requested_by=requested_by,
+                actor=actor,
+            )
+            result = create_data_research_snapshot(
+                event_store=data_event_store_provider(),
+                inventory_request=inventory_request,
+                quality_request=quality_request,
+                requested_by=requested_by,
+                actor=actor,
+                artifact_store=store,
+            )
+            envelope = result_to_envelope(result)
+        except Exception as exc:
+            envelope = error_envelope(
+                command=DATA_CREATE_RESEARCH_SNAPSHOT_TOOL,
+                side_effect=SideEffect.LOCAL_MUTATING,
+                code="data_research_snapshot_failed",
+                message=str(exc),
+            )
+        return CallToolResult(**result_to_mcp_result(envelope))
+
+    @server.tool(
         name=DATA_ENSURE_LOADED_TOOL,
         description=DATA_TOOL_DESCRIPTIONS[DATA_ENSURE_LOADED_TOOL],
     )
@@ -455,6 +528,10 @@ def create_server(
         prediction_deployment_reader_provider=_prediction_deployment_reader,
         prediction_mapper_catalog=resolved_prediction_mapper_catalog,
         prediction_runtime_resolver_provider=_prediction_runtime_resolver,
+    )
+    register_orchestration_tools(
+        server,
+        artifact_store_provider=resolved_research_artifact_store_provider,
     )
     register_evaluation_tools(server, local_env, artifact_store_provider=resolved_research_artifact_store_provider)
     register_adversarial_tools(server, artifact_store_provider=resolved_research_artifact_store_provider)
@@ -663,6 +740,16 @@ def build_config_envelope(
             "agent_owner": agent_owner_for_tool(DATA_ENSURE_LOADED_TOOL),
             "side_effect": SideEffect.LOCAL_MUTATING.value,
             "description": DATA_TOOL_DESCRIPTIONS[DATA_ENSURE_LOADED_TOOL],
+        },
+        {
+            "name": DATA_CREATE_RESEARCH_SNAPSHOT_TOOL,
+            "agent_owner": agent_owner_for_tool(
+                DATA_CREATE_RESEARCH_SNAPSHOT_TOOL
+            ),
+            "side_effect": SideEffect.LOCAL_MUTATING.value,
+            "description": DATA_TOOL_DESCRIPTIONS[
+                DATA_CREATE_RESEARCH_SNAPSHOT_TOOL
+            ],
         },
     ]
     tool_metadata.extend(

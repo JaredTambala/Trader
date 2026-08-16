@@ -1,4 +1,11 @@
-"""Postgres-backed research artifact store."""
+"""Persist canonical research artifacts and typed projections in Postgres.
+
+The store validates artifact identity and governance metadata and writes the base
+record and context-owned projection atomically. Saving the same type and ID
+updates that record; content-addressed services are responsible for deriving IDs
+that make such writes idempotent. Incompatible legacy schemas fail closed rather
+than being read through a compatibility layer.
+"""
 
 from __future__ import annotations
 
@@ -55,6 +62,50 @@ RESEARCH_ARTIFACT_SCHEMA_STATEMENTS: tuple[str, ...] = (
         metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
         payload JSONB NOT NULL,
         PRIMARY KEY (artifact_type, artifact_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS research_objectives (
+        objective_id TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        requested_by TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        payload JSONB NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS research_experiment_protocols (
+        protocol_id TEXT PRIMARY KEY,
+        objective_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        requested_by TEXT NOT NULL,
+        proposed_by TEXT NOT NULL,
+        payload JSONB NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS research_workflow_plans (
+        plan_id TEXT PRIMARY KEY,
+        objective_id TEXT NOT NULL,
+        protocol_id TEXT NOT NULL,
+        template_id TEXT NOT NULL,
+        template_version TEXT NOT NULL,
+        status TEXT NOT NULL,
+        requested_by TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        payload JSONB NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS research_workflow_outcomes (
+        outcome_id TEXT PRIMARY KEY,
+        workflow_id TEXT NOT NULL,
+        plan_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        review_ref_count INTEGER NOT NULL DEFAULT 0,
+        requested_by TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        payload JSONB NOT NULL
     )
     """,
     """
@@ -302,6 +353,10 @@ RESEARCH_ARTIFACT_SCHEMA_STATEMENTS: tuple[str, ...] = (
     """,
     "CREATE INDEX IF NOT EXISTS research_artifacts_type_status_idx ON research_artifacts(artifact_type, status)",
     (
+        "CREATE INDEX IF NOT EXISTS research_workflow_outcomes_plan_status_idx "
+        "ON research_workflow_outcomes(plan_id, status)"
+    ),
+    (
         "CREATE INDEX IF NOT EXISTS research_methodology_candidates_status_idx "
         "ON research_methodology_candidates(status)"
     ),
@@ -387,7 +442,16 @@ class PostgresResearchArtifactStore:
         metadata: Mapping[str, Any] | None = None,
         source_hash: str | None = None,
     ) -> ResearchArtifactRecord:
-        """Persist one artifact payload and typed projection rows."""
+        """Persist a canonical artifact and its typed projection atomically.
+
+        The record is normalized and governance-validated before an upsert of the
+        base ``research_artifacts`` row. The registered context writer then updates
+        its query projection inside the same Postgres transaction; either both
+        writes commit or both roll back.
+
+        Returns:
+            The normalized record submitted to Postgres.
+        """
         record = build_artifact_record(
             artifact_type=artifact_type,
             artifact_id=artifact_id,
@@ -449,7 +513,15 @@ class PostgresResearchArtifactStore:
     def load_artifact_record(
         self, artifact_type: str, artifact_id: str
     ) -> ResearchArtifactRecord:
-        """Load one full artifact record by type and ID."""
+        """Load and normalize one complete canonical artifact record.
+
+        Ownership, producer, workflow attribution, status, hashes, timestamps,
+        metadata, and payload are reconstructed from the base table rather than a
+        typed projection.
+
+        Raises:
+            ResearchArtifactNotFound: If the exact type and ID do not exist.
+        """
         row = self._connection.execute(
             """
             SELECT artifact_type, artifact_id, domain_owner, producer_tool,
@@ -486,7 +558,12 @@ class PostgresResearchArtifactStore:
         artifact_type: str | None = None,
         artifact_ids: Sequence[str] | None = None,
     ) -> tuple[ResearchArtifactRecord, ...]:
-        """List artifact records for diagnostics and tests."""
+        """List complete canonical records with optional type and ID filters.
+
+        Filters are translated to parameterized SQL and results are ordered by
+        artifact type and ID. Each row is normalized to the same record shape as
+        ``load_artifact_record``; projection tables are not consulted.
+        """
         where: list[str] = []
         params: list[Any] = []
         if artifact_type:

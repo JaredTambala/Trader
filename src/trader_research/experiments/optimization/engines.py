@@ -1,4 +1,9 @@
-"""Maintained deterministic optimization engines and profile registry."""
+"""Provide deterministic optimization engines and their profile registry.
+
+Grid and seeded-random engines implement the common sequential ask/tell
+contract over validated finite dimensions. Registry lookups expose only
+configured immutable profiles and fail clearly for unavailable engines.
+"""
 
 from __future__ import annotations
 
@@ -60,7 +65,12 @@ class GridOptimizationEngine:
         prior_trials: Sequence[Mapping[str, Any]],
         direction: str,
     ) -> OptimizationEngineSession:
-        """Create a finite canonical cartesian session."""
+        """Create a finite Cartesian ask/tell session for a canonical plan.
+
+        Every declared dimension is validated and enumerated, and already
+        completed parameter sets are reconciled. The full grid must fit within
+        ``max_trials`` or the engine rejects the plan.
+        """
         del seed, direction
         values = [_dimension_values(dimension) for dimension in search_space]
         cardinality = 1
@@ -92,7 +102,12 @@ class RandomOptimizationEngine:
         prior_trials: Sequence[Mapping[str, Any]],
         direction: str,
     ) -> OptimizationEngineSession:
-        """Create a stable random permutation over the finite declared space."""
+        """Create a seeded permutation over the plan's finite parameter space.
+
+        The complete canonical grid is enumerated, then shuffled with ``seed`` so
+        separate processes produce the same suggestion order. The session is
+        truncated to the trial budget and reconciled with prior trials.
+        """
         del direction
         values = [_dimension_values(dimension) for dimension in search_space]
         paths = [str(dimension["path"]) for dimension in search_space]
@@ -153,7 +168,11 @@ def _profile(name: str, algorithm: str) -> OptimizationEngineProfile:
 
 
 def dimension_values(dimension: Mapping[str, Any]) -> tuple[Any, ...]:
-    """Publicly validate and enumerate one bounded finite search dimension."""
+    """Validate and enumerate one finite optimization dimension.
+
+    The public wrapper applies the same categorical, integer, and numeric rules as
+    maintained engines and returns the canonical ordered candidate tuple.
+    """
     return _dimension_values(dimension)
 
 

@@ -1,4 +1,9 @@
-"""Immutable ordered risk-stack specification services."""
+"""Create, validate, and load ordered risk-stack specifications.
+
+Each stack pins passed risk-manager implementations, parameters, ordering, and
+execution assumptions. Validation reloads every dependency and source hash so a
+changed implementation cannot be executed under previously accepted evidence.
+"""
 
 from __future__ import annotations
 
@@ -30,7 +35,17 @@ def create_risk_stack_specification(
     provenance_refs: Sequence[Mapping[str, Any]] | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ApplicationResult:
-    """Create an ordered risk-stack over passed implementation validations."""
+    """Create an ordered stack over passed risk-manager implementations.
+
+    Every item resolves a passed risk-manager validation, applies schema defaults,
+    validates parameters and tunable paths, and retains declared order. Execution
+    assumptions and provenance contribute to the immutable stack identity; no
+    manager is instantiated by this service.
+
+    Returns:
+        A result containing the persisted stack and canonical reference, or a
+        structured validation, lineage, or persistence failure.
+    """
     command = RESEARCH_CREATE_RISK_STACK_SPECIFICATION
     if artifact_store is None:
         return specification_error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")
@@ -100,7 +115,17 @@ def validate_risk_stack_specification(
     risk_stack_specification: Mapping[str, Any] | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ApplicationResult:
-    """Revalidate every ordered risk implementation and source hash."""
+    """Revalidate an ordered risk stack against current canonical evidence.
+
+    Exactly one stack input is resolved. Item order, passed validation IDs,
+    implementation IDs and source hashes, parameter schemas, tunable paths,
+    assumptions, and content-derived stack identity are checked. The resulting
+    passed or blocked report is persisted separately.
+
+    Returns:
+        A result containing the validation report; ``ok`` is false for blockers,
+        resolution failures, and persistence failures.
+    """
     command = RESEARCH_VALIDATE_RISK_STACK_SPECIFICATION
     if artifact_store is None:
         return specification_error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")
@@ -178,7 +203,20 @@ def load_passed_risk_stack_specification(
     store: ResearchArtifactStore,
     validation_ref: str,
 ) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
-    """Load one passed risk-stack specification validation and its specification."""
+    """Load a passed risk-stack validation and revalidate its specification.
+
+    The validation report must be blocker-free and match the exact stack ID and
+    content. Current implementation versions and source hashes are checked again
+    before returning the pair.
+
+    Returns:
+        The canonical risk-stack specification and validation payload.
+
+    Raises:
+        ValueError: If status, identity, ordering, or implementation lineage
+            fails revalidation.
+        ResearchArtifactStoreError: If a required artifact cannot be loaded.
+    """
     validation_id = str(validation_ref).rstrip("/").rsplit("/", 1)[-1]
     report = store.load_artifact(RISK_STACK_SPECIFICATION_VALIDATION_REPORT, validation_id)
     if report.get("status") != "passed" or report.get("valid") is not True or report.get("blockers"):

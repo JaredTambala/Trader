@@ -1,4 +1,9 @@
-"""Canonical artifact reference values shared across research contexts."""
+"""Canonical artifact-reference values shared across research contexts.
+
+References expose only stable type, identifier, URI, and bounded metadata needed
+for handoffs. They deliberately exclude complete artifact payloads and
+transport-specific response envelopes.
+"""
 
 from __future__ import annotations
 

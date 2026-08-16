@@ -1,4 +1,9 @@
-"""Knowledge reports domain models."""
+"""Define ingestion and validation report values for knowledge operations.
+
+Reports carry bounded counts, warnings, blockers, and canonical references needed
+for operators to understand partial or failed work. They are evidence summaries,
+not substitutes for stored sources, chunks, or method cards.
+"""
 
 from __future__ import annotations
 

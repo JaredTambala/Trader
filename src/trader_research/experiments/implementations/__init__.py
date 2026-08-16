@@ -1,4 +1,9 @@
-"""Canonical implementation registration and validation capability."""
+"""Register and validate executable research implementations.
+
+This facade exposes content-addressed strategy, risk-manager, and optimization
+objective admission. Registration records supplied source; validation performs
+the safety, interface, and bounded fixture checks required before execution.
+"""
 
 from .domain import (
     ImplementationVersion,

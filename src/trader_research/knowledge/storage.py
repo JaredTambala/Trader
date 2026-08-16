@@ -1,4 +1,10 @@
-"""JSON-backed storage for local Quant Methods knowledge artifacts."""
+"""Store non-canonical local knowledge artifacts as stable JSON files.
+
+The adapter supports deterministic development and test workflows under an
+explicit artifact root, using stable sorted JSON and predictable paths. Writes
+replace their target files directly and are not transactional across artifacts.
+It is not the production authority when Postgres persistence is configured.
+"""
 
 from __future__ import annotations
 
@@ -244,7 +250,12 @@ def _read_json(path: Path) -> Mapping[str, Any]:
 
 
 def write_json_artifact(payload: Mapping[str, Any], path: str | Path) -> Path:
-    """Write a JSON artifact for the non-canonical local knowledge test adapter."""
+    """Write one non-canonical local knowledge artifact as stable JSON.
+
+    Parent directories are created, keys are sorted, and existing files are
+    overwritten with indented UTF-8 JSON. The returned path is not canonical
+    research evidence when Postgres storage is configured.
+    """
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(

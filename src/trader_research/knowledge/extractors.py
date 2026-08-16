@@ -1,4 +1,9 @@
-"""Deterministic text extraction for local knowledge sources."""
+"""Extract text and locators from supported local knowledge-source formats.
+
+Adapters normalize PDFs and plain-text documents into a common page-aware shape
+for chunking. Extraction is deterministic and read-only; unsupported formats or
+unreadable content produce actionable failures before ingestion publication.
+"""
 
 from __future__ import annotations
 

@@ -44,6 +44,7 @@ MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded 
 | `data_discover_symbols` | `read_only` | Symbol discovery report payload. | Provider-catalog discovery requires explicit policy. |
 | `data_get_inventory` | `read_only` | `dataset_manifest` payload. | Reads bounded local/event-store inventory only. |
 | `data_summarize_quality` | `read_only` | `data_quality_report` payload. | Reports gaps, coverage, and completeness. |
+| `data_create_research_snapshot` | `local_mutating` | Canonical `dataset_manifest` and `data_quality_report` refs. | Runs the same exact inventory/quality scope and persists both Data-domain records for resumable workflows. |
 | `data_ensure_loaded` | `local_mutating` | Load/backfill evidence plus dataset/quality payloads. | Actual sample/backfill mutation requires `TRADER_MCP_ALLOW_DATA_LOADING=true`. |
 
 ## Quantitative Methods Tools
@@ -147,6 +148,8 @@ Neither tool writes to MLflow, changes an alias, starts a service, grants live e
 | `research_get_parameter_optimization_results` | `read_only` | Canonical run and trials. | Works when optional provider is absent. |
 | `research_run_parameter_optimization_variants` | `local_mutating` | Immutable child optimisation runs. | Executes only Adversarial-requested optimisation variants. |
 | `research_project_experiment_tracking` | `external_research_mutating` | Non-authoritative projection report. | Derived, idempotent, and separately gated. |
+| `research_register_experiment_workflow` | `local_mutating` | Canonical `research_objective`, `experiment_protocol` and `workflow_plan` refs. | Requires an approved objective/protocol, a ready matching plan and explicit workflow requester/actor. |
+| `research_record_workflow_outcome` | `local_mutating` | Canonical terminal `workflow_outcome` ref. | Requires a resolvable registered plan, matching objective/protocol lineage, resolving pinned evidence refs and explicit workflow requester/actor. |
 
 The catalog tools expose neutral metadata through `trader_research.experiments`; they do not expose method-card gates,
 candidate validators, source generators, or filesystem identities. Candidate/stack creation and loose
@@ -171,8 +174,8 @@ Maintained or externally produced source enters the same implementation registry
 The config envelope reports static registration flags plus runtime policy:
 
 - Broker-mutating and raw SQL tools are not registered.
-- Data, knowledge, math, implementation, specification, canonical backtest, optimisation, Evaluation, and Adversarial
-  tool families are registered.
+- Data, knowledge, math, implementation, specification, canonical backtest, optimisation, Evaluation, Adversarial and
+  orchestration-record tool families are registered.
 - Backtest execution is separately gated by `TRADER_MCP_ALLOW_BACKTESTS`.
 - Optimisation execution additionally requires `TRADER_MCP_ALLOW_OPTIMIZATION`.
 - Optuna writes require `TRADER_MCP_ALLOW_EXTERNAL_RESEARCH_WRITES` and `TRADER_MCP_ALLOW_OPTUNA_WRITES`.
@@ -199,8 +202,9 @@ The next planned tool work is not additional knowledge extraction. It is:
 - broader robustness variants linked to immutable baseline backtests, including cost, perturbation, split, and
   concentration attacks
 
-Higher-level orchestration initially composes the registered tools in this catalog; it is not a new generic MCP tool
-that bypasses their contracts. Current orchestration state and remaining dependencies are recorded in
+Higher-level orchestration composes the registered tools in this catalog through a fixed compiler/executor; it is not a
+new generic MCP tool that bypasses their contracts. The two workflow MCP tools persist governance records and do not
+execute the graph. Current orchestration state and remaining dependencies are recorded in
 [product_state.md](product_state.md#target-orchestration-position) and the
 [capability roadmap](../../plans/research_capability_roadmap.md#orchestration).
 

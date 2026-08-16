@@ -1,4 +1,9 @@
-"""Session-start resolution from ML evidence to provider-neutral runtime bindings."""
+"""Resolve passed ML evidence into provider-neutral session runtime bindings.
+
+At session start, the resolver revalidates a deployment, selects the exact
+adapter and mapper configuration, loads the predictor once, and returns bounded
+bindings for strategy injection. Resolution performs no training or promotion.
+"""
 
 from __future__ import annotations
 
@@ -29,7 +34,17 @@ class ArtifactPredictionRuntimeResolver(PredictionRuntimeResolver):
         asset_class: str,
         timeframe: str,
     ) -> RuntimePredictionBinding:
-        """Revalidate lineage, load the pinned model, and construct runtime dependencies."""
+        """Resolve canonical prediction evidence into one session runtime binding.
+
+        Persisted deployment, manifest hash, model, feature, adapter, decision and
+        inference scope, and mapper evidence are revalidated. The exact adapter
+        then loads one predictor and the resolver constructs feature, mapping, and
+        failure-policy dependencies for injection into the strategy session.
+
+        Raises:
+            ValueError: If canonical lineage or adapter configuration has drifted,
+                a required adapter is unavailable, or fallback policy is unsupported.
+        """
         validation_id = str(binding.get("deployment_validation_id") or "").strip()
         manifest, report = load_passed_deployment(self.artifact_store, validation_id)
         if str(report.get("validation_id") or "") != validation_id:

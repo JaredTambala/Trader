@@ -24,12 +24,14 @@ from .domain import (
     SymbolCatalogProvider,
     SymbolCatalogResult,
 )
+from .evidence import DATA_CREATE_RESEARCH_SNAPSHOT, create_data_research_snapshot
 from .inventory import get_data_inventory
 from .loading import data_ensure_loaded
 from .quality import data_summarize_quality
 
 __all__ = [
     "DATA_DISCOVER_SYMBOLS",
+    "DATA_CREATE_RESEARCH_SNAPSHOT",
     "DATA_ENSURE_LOADED",
     "DATA_GET_INVENTORY",
     "DATA_SUMMARIZE_QUALITY",
@@ -46,6 +48,7 @@ __all__ = [
     "SymbolCatalogProvider",
     "SymbolCatalogResult",
     "data_discover_symbols",
+    "create_data_research_snapshot",
     "data_ensure_loaded",
     "data_summarize_quality",
     "get_data_inventory",

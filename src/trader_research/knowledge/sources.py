@@ -1,4 +1,9 @@
-"""Source registration service for the Quant Methods knowledge base."""
+"""Register and manage approved Quant Methods knowledge sources.
+
+Registration records source identity, location, content metadata, and approval
+state before ingestion. The service validates local access and lifecycle changes
+but does not extract, chunk, or index document contents itself.
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,9 @@
-"""Shared JSON-boundary validators for orchestration contracts."""
+"""Normalize JSON-boundary values used by orchestration contracts.
+
+Private helpers enforce closed vocabularies, non-empty identifiers, finite
+numbers, timestamps, mappings, and sequences before immutable domain objects are
+created. They have no persistence or workflow-execution side effects.
+"""
 
 from __future__ import annotations
 

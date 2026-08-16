@@ -1,4 +1,9 @@
-"""Method-card aggregate and revision-set maintenance."""
+"""Maintain stable method-card aggregates across immutable revisions.
+
+Services reconcile card versions into one deterministic set, enforce unique
+version and lifecycle pointers, and persist the updated aggregate. They preserve
+historical revisions rather than overwriting previously canonical cards.
+"""
 
 from __future__ import annotations
 

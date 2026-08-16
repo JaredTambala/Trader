@@ -1,4 +1,9 @@
-"""Canonical research artifact records and persistence ports."""
+"""Define canonical research artifact values and persistence boundaries.
+
+Artifacts carry immutable identity, bounded-context ownership, producer
+provenance, normalized payloads, and optional workflow attribution. Concrete
+storage adapters implement the ports without changing those domain contracts.
+"""
 
 from .domain import (
     DATA_DOMAIN_OWNER,
@@ -12,6 +17,7 @@ from .domain import (
     SCHEMA_VERSION,
 )
 from .store import (
+    ContextualResearchArtifactStore,
     InMemoryResearchArtifactStore,
     ResearchArtifactNotFound,
     ResearchArtifactRecord,
@@ -25,10 +31,11 @@ from .store import (
 )
 
 __all__ = [
-    "InMemoryResearchArtifactStore",
     "ArtifactReference",
+    "ContextualResearchArtifactStore",
     "DATA_DOMAIN_OWNER",
     "EXPERIMENTS_DOMAIN_OWNER",
+    "InMemoryResearchArtifactStore",
     "KNOWLEDGE_METHODOLOGY_DOMAIN_OWNER",
     "ML_DOMAIN_OWNER",
     "ORCHESTRATION_DOMAIN_OWNER",

@@ -13,7 +13,10 @@ from trader_mcp.constants import (
     EVALUATION_TOOL_DESCRIPTIONS,
 )
 from trader_mcp.environment import McpEnvironment
-from trader_research.foundation import ResearchArtifactStore
+from trader_research.foundation import (
+    ContextualResearchArtifactStore,
+    ResearchArtifactStore,
+)
 from trader_research.review import generate_parameter_optimization_report
 
 
@@ -36,10 +39,27 @@ def register_evaluation_tools(
     def evaluation_generate_parameter_optimization_report(
         optimization_run_ref: str,
         holdout_backtest_run_ref: str,
+        requested_by: str | None = None,
+        actor: str | None = None,
     ) -> CallToolResult:
+        store = (
+            artifact_store_provider()
+            if artifact_store_provider is not None
+            else None
+        )
+        if (requested_by is None) != (actor is None):
+            raise ValueError(
+                "requested_by and actor must be supplied together"
+            )
+        if store is not None and requested_by is not None and actor is not None:
+            store = ContextualResearchArtifactStore(
+                store,
+                requested_by=requested_by,
+                actor=actor,
+            )
         envelope = generate_parameter_optimization_report(
             optimization_run_ref=optimization_run_ref,
             holdout_backtest_run_ref=holdout_backtest_run_ref,
-            artifact_store=artifact_store_provider() if artifact_store_provider is not None else None,
+            artifact_store=store,
         )
         return CallToolResult(**result_to_mcp_result(envelope))

@@ -1,4 +1,9 @@
-"""Family-level evidence role profiles for open-world methodology extraction."""
+"""Declare family-specific evidence roles for methodology extraction.
+
+Profiles map normalized methodology families and readiness goals to descriptive
+and implementation evidence requirements. Unknown family labels normalize to a
+maintained fallback rather than expanding the role vocabulary at runtime.
+"""
 
 from __future__ import annotations
 
@@ -48,7 +53,11 @@ class MethodologyFamilyEvidenceProfile:
 
 
 def profile_for_family(family: str) -> MethodologyFamilyEvidenceProfile | None:
-    """Return the maintained family profile for a normalized methodology family."""
+    """Resolve the maintained evidence profile for a family label.
+
+    The label passes through ``normalize_family`` first. Unsupported open-world
+    families return ``None`` rather than silently using another profile.
+    """
     return FAMILY_EVIDENCE_PROFILES.get(normalize_family(family))
 
 
@@ -56,7 +65,11 @@ def required_roles_for_readiness(
     profile: MethodologyFamilyEvidenceProfile,
     readiness_goal: str,
 ) -> tuple[str, ...]:
-    """Return required role IDs for a readiness goal, including descriptive base roles."""
+    """Accumulate evidence roles required through a readiness level.
+
+    Roles are gathered in maintained level order from descriptive through the
+    normalized goal, with duplicates removed while preserving first occurrence.
+    """
     normalized_goal = normalize_readiness(readiness_goal)
     required: list[str] = []
     for level in READINESS_LEVELS:
@@ -69,13 +82,26 @@ def required_roles_for_readiness(
 
 
 def normalize_readiness(readiness_goal: str | None) -> str:
-    """Normalize readiness labels while defaulting unknown values to descriptive."""
+    """Normalize a readiness label to the maintained closed vocabulary.
+
+    Case, hyphens, and spaces are canonicalized; absent or unknown values fall back
+    to ``descriptive`` so evidence assembly begins from the minimum contract.
+    """
     normalized = str(readiness_goal or "descriptive").strip().lower().replace("-", "_").replace(" ", "_")
     return normalized if normalized in READINESS_LEVELS else "descriptive"
 
 
 def normalize_family(family: str) -> str:
-    """Normalize human-entered family labels into maintained family IDs."""
+    """Normalize a human-entered label to a maintained methodology family.
+
+    Exact aliases are resolved first, followed by deterministic keyword rules for
+    technical, statistical-arbitrage, derivatives, sentiment, portfolio, risk,
+    fundamental, and execution families. Unrecognized normalized labels pass
+    through so callers can report unsupported open-world families explicitly.
+
+    Returns:
+        A lowercase underscore-separated family identifier.
+    """
     text = str(family or "").strip().lower().replace("-", "_").replace(" ", "_")
     if text in FAMILY_ALIASES:
         return FAMILY_ALIASES[text]

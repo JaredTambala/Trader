@@ -1,4 +1,10 @@
-"""Specification-only DB-backed backtest execution and result services."""
+"""Execute canonical backtest specifications and expose persisted results.
+
+Execution revalidates passed strategy, risk, Data, and optional prediction
+evidence before constructing runtime objects. Successful runs and comparisons
+are stored as Experiments-owned artifacts; invalid lineage or unavailable
+runtime dependencies fail before producing accepted evidence.
+"""
 
 from __future__ import annotations
 
@@ -74,7 +80,15 @@ class RecordingRiskPipeline(RiskManager):
         orders: Iterable[Mapping[str, object]],
         context: RiskContext,
     ) -> tuple[Sequence[Mapping[str, object]], Sequence[Mapping[str, object]]]:
-        """Evaluate managers in order and retain rejection telemetry."""
+        """Evaluate ordered managers and retain bounded rejection telemetry.
+
+        Each manager receives only orders approved by its predecessors. Decisions
+        record implementation identity, counts, run/cycle context, and normalized
+        rejected orders; evaluation stops once no orders remain.
+
+        Returns:
+            Final approved orders and all rejections in manager execution order.
+        """
         approved: Sequence[Mapping[str, object]] = tuple(orders)
         rejected_all: list[Mapping[str, object]] = []
         for index, (implementation_id, manager) in enumerate(self._managers):
@@ -112,7 +126,19 @@ def run_backtest_specification(
     prediction_mapper_catalog: PredictionMapperCatalog | None = None,
     prediction_runtime_resolver: PredictionRuntimeResolver | None = None,
 ) -> ApplicationResult:
-    """Execute one passed canonical backtest specification and persist the complete result."""
+    """Execute a passed backtest specification and persist its complete result.
+
+    The service reloads and revalidates all strategy, risk, Data, and prediction
+    lineage before constructing runtime objects. Run identity is deterministic;
+    an existing complete run with matching provenance is returned idempotently,
+    while drifted persisted evidence fails closed. New executions store summary,
+    trades, equity, positions, risk decisions, and provenance in one canonical
+    backtest artifact.
+
+    Returns:
+        A result containing the canonical run and summary. ``ok`` is false when
+        validation, runtime construction, replay, or persistence is blocked.
+    """
     command = RESEARCH_RUN_BACKTEST_SPECIFICATION
     if artifact_store is None:
         return _error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")
@@ -442,7 +468,16 @@ def get_backtest_results(
     backtest_run_uri: str | None = None,
     artifact_store: ResearchArtifactStore | None,
 ) -> ApplicationResult:
-    """Read one canonical Postgres backtest run."""
+    """Read one canonical backtest run by ID or canonical URI.
+
+    Exactly one reference form is required. The read returns the stored summary
+    and complete result bundle without re-executing the backtest or consulting a
+    provider.
+
+    Returns:
+        A successful result with the run payload, summary, bundle, and canonical
+        reference, or a structured lookup/reference failure.
+    """
     command = RESEARCH_GET_BACKTEST_RESULTS
     if artifact_store is None:
         return _error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")
@@ -473,7 +508,18 @@ def compare_backtest_results(
     sort_order: str = "descending",
     artifact_store: ResearchArtifactStore | None,
 ) -> ApplicationResult:
-    """Compare canonical backtest runs and persist the ranking report."""
+    """Rank canonical backtest runs by one numeric summary metric.
+
+    Between two and fifty runs are loaded from the artifact store, checked for
+    the requested metric, and ordered deterministically with run ID as the tie
+    breaker. The comparison is content-addressed and persisted as an
+    Experiments-owned report; it does not rerun or alter any backtest.
+
+    Returns:
+        A result containing the persisted ranking report, or a structured
+        failure for invalid bounds, missing metrics, bad references, or storage
+        errors.
+    """
     command = RESEARCH_COMPARE_BACKTEST_RESULTS
     if artifact_store is None:
         return _error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")

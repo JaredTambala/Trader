@@ -1,4 +1,9 @@
-"""Provider-independent reads of canonical optimization ledgers."""
+"""Read canonical optimization results without initializing a provider.
+
+Queries return the persisted run together with its independently validated
+trial ledger and selection. Missing trials, inconsistent digests, or upstream
+lineage drift are surfaced instead of hidden by provider state.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +20,16 @@ def get_parameter_optimization_results(
     optimization_run_ref: str,
     artifact_store: ResearchArtifactStore | None,
 ) -> ApplicationResult:
-    """Read canonical run and complete trial ledger independently of provider availability."""
+    """Read and revalidate an optimization run without loading its provider.
+
+    The query reconstructs the complete canonical trial ledger and deterministic
+    selection before returning results. A provider snapshot alone cannot satisfy
+    the read contract or conceal missing and drifted trial evidence.
+
+    Returns:
+        A successful result with the run, ordered trials, and canonical reference,
+        or a structured lookup/integrity failure.
+    """
     command = RESEARCH_GET_PARAMETER_OPTIMIZATION_RESULTS
     if artifact_store is None:
         return _error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")

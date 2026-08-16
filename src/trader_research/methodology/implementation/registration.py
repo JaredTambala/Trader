@@ -1,4 +1,9 @@
-"""Registration, provenance, and safety checks for method implementations."""
+"""Validate and register citation-backed method implementation artifacts.
+
+Registration rechecks approved card provenance, source and manifest digests,
+static safety rules, and deterministic fixture evidence before persisting a
+passed record. It does not create a strategy implementation version automatically.
+"""
 
 from __future__ import annotations
 

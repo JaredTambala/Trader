@@ -1,4 +1,9 @@
-"""Low-level indicator and signal fixture helpers."""
+"""Implement deterministic indicator and signal operations used by fixtures.
+
+Private numerical helpers normalize finite inputs and preserve stable output
+shapes for implementation parity checks. They are test support for admitted
+methods, not a second public indicator library.
+"""
 
 from __future__ import annotations
 

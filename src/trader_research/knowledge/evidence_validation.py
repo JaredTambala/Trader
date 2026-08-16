@@ -1,4 +1,9 @@
-"""Source and chunk evidence validation independent of method-card lifecycle."""
+"""Validate source and chunk references independently of card lifecycle.
+
+The helpers resolve every declared reference, verify source/chunk ownership and
+content identity, and return checked rows with stable warnings and blockers.
+They do not require or confer method-card approval.
+"""
 
 from __future__ import annotations
 
@@ -16,7 +21,20 @@ def inspect_source_evidence_refs(
     *,
     knowledge_store: KnowledgeStore,
 ) -> tuple[tuple[Mapping[str, Any], ...], tuple[str, ...], tuple[str, ...]]:
-    """Resolve source/chunk references and return checked rows, warnings, and blockers."""
+    """Inspect source and chunk references against the active knowledge store.
+
+    Each reference is retained in the checked output and enriched with source or
+    chunk existence, lifecycle, and lineage facts. Missing evidence, unknown IDs,
+    unapproved sources, and source/chunk mismatches become de-duplicated issues;
+    the function does not mutate evidence or lifecycle state.
+
+    Returns:
+        Checked reference mappings, warnings, and blockers in deterministic input
+        order.
+
+    Raises:
+        KnowledgeStoreError: If the underlying source or chunk read fails.
+    """
     checked: list[Mapping[str, Any]] = []
     warnings: list[str] = []
     blockers: list[str] = []
@@ -57,7 +75,16 @@ def validate_source_evidence_refs(
     refs: Sequence[EvidenceReference],
     knowledge_store: KnowledgeStore,
 ) -> ApplicationResult:
-    """Return a transport-neutral validation result for source/chunk evidence."""
+    """Wrap source and chunk inspection in a transport-neutral result.
+
+    The supplied ``command`` is preserved as operation identity. A completed
+    inspection returns checked references and issues even when evidence is
+    blocked; only knowledge-store failures prevent a validation payload.
+
+    Returns:
+        A successful result when no blockers exist, a blocked result carrying the
+        inspection evidence, or a structured knowledge-store failure.
+    """
     try:
         checked, warnings, blockers = inspect_source_evidence_refs(
             refs,

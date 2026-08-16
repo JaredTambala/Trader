@@ -288,11 +288,13 @@ Orchestration is a cross-cutting control capability over deterministic tools, no
 plan. It can coordinate capabilities that are already implemented while additional ML, robustness, review and
 methodology tools develop independently.
 
-The current operational baseline is deliberately limited:
+The current operational baseline is deliberately bounded:
 
 - The Data Agent has bounded deterministic and LLM-policy tool-calling graphs.
-- The Quant Research Supervisor graph validates a bounded request and supplied Data Agent handoffs, but does not call
-  the registered implementation, specification, backtest, optimisation or review MCP tools.
+- A separate non-agent ORCH-3 compiler/executor runs one already approved supplied-implementation protocol through the
+  registered implementation, specification, backtest, optimisation and review MCP tools.
+- The Quant Research Supervisor graph still validates only a bounded request and supplied Data Agent handoffs; it does
+  not yet formulate the protocol, choose the ORCH-3 template or resolve prerequisites.
 - Quantitative Methods, ML, Evaluation, Adversarial and Hypothesis identity/allowlist definitions exist without
   complete specialist execution graphs.
 
@@ -355,6 +357,7 @@ construction is deliberately fail closed:
 
 - approved protocols require an approved decision for every material assumption;
 - optimisation requires role-labelled selection data and a sealed holdout;
+- optimisation dimensions must identify exact strategy or ordered-risk values declared tunable in the same protocol;
 - capability snapshots declare domain, producer tool, side effect, artifact inputs/outputs, policy gates and accepted
   configuration keys, with no callable or provider object;
 - artifact slots validate canonical artifact type, bounded-context owner and cardinality;
@@ -364,15 +367,52 @@ construction is deliberately fail closed:
   than raw execution state.
 
 `ResearchObjective`, `ExperimentProtocol`, `WorkflowPlan` and approval records have canonical artifact-type
-declarations in the authority registry. ORCH-1 deliberately provides no persistence operation or MCP tool for them.
-It also provides no capability registry, protocol compiler, executor or checkpointer. `WorkflowOutcome` remains a
-target execution summary for ORCH-3; the ORCH-1 acceptance boundary ends at typed step results.
+declarations in the authority registry. ORCH-1 itself provides no persistence operation, MCP tool, compiler, executor
+or checkpointer; its acceptance boundary ends at typed step results. ORCH-3 now persists the objective, protocol, plan
+and terminal `WorkflowOutcome` through explicit MCP service boundaries.
 
 ORCH-2 implements the checkpointer without expanding that declaration layer into an executor. The
 `trader_agents.checkpointing` package compiles one ready plan into a deterministic shell, interrupts at each ordered
 step and accepts a validated external `WorkflowStepResult` on resume. It imports governance contracts but no MCP,
-Data, Experiment, ML or Review implementation. ORCH-3 will supply the registry and executor that actually turn an
-interrupt request into an MCP call.
+Data, Experiment, ML or Review implementation. ORCH-3 supplies the closed template compiler and mechanical MCP
+executor that turn each interrupt request into a validated tool call.
+
+### Deterministic Execution Template
+
+`trader_agents.orchestration` implements the versioned `supplied_implementation_to_evidence` template. Compilation is
+allowed only for an approved objective and approved protocol. It resolves and hashes the exact strategy and ordered
+risk implementation records, canonical Data manifest/quality records and, when optimisation is requested, the passed
+objective validation. The protocol pins runtime parameters, costs, initial portfolio, seed, limits, search dimensions,
+trial budget, sealed holdout and robustness requirements. Symbols, timeframe and windows remain Data-owned inputs.
+
+The generated plan contains only registered producer-tool names and closed argument recipes. Its deterministic branches
+are:
+
+```text
+validate supplied implementation set
+  -> create and validate strategy/risk specifications
+  -> create, validate and run baseline backtest
+  -> optional optimisation plan and run
+  -> selected specification on sealed holdout
+  -> Evaluation report
+  -> optional Adversarial attack plan
+  -> Experiment-executed immutable variants
+  -> Adversarial robustness report
+```
+
+The executor implements `McpToolClient`; it imports no Data, Experiment, Review or infrastructure service. Before
+accepting a result it verifies the MCP command, allowlist owner and side-effect class, resolves every returned canonical
+ref and pins its payload hash. It passes only a bounded `WorkflowStepResult` into ORCH-2. Input payload drift, a disabled
+gate, invalid artifact cardinality or a terminal tool blocker stops later nodes. Transient transport failures are
+bounded to three attempts. A caller-requested interruption leaves the checkpoint intact and a later invocation resumes
+at the next unaccepted step.
+
+`data_create_research_snapshot` is the Data-owned bridge from read-only inventory/quality inspection to canonical
+resumable evidence. `research_register_experiment_workflow` writes the objective, protocol and plan before execution;
+`research_record_workflow_outcome` writes the terminal summary afterward. A contextual store view stamps every nested
+workflow write with `requested_by={workflow_id}` and `actor=workflow_executor` without changing artifact domain
+authority. The compiler/executor is a library execution surface, not a high-level MCP runner and not an autonomous
+Research Coordinator.
 
 The experiment protocol is a proposal until material assumptions are explicitly approved. The Experiment Design Agent
 must not silently invent transaction costs, risk limits, optimisation dimensions, search budgets, data boundaries or
@@ -413,10 +453,9 @@ An agent may request or route an artifact without becoming its owner. The approv
 | Orchestration | Research objectives, workflow plans, approval requests, bounded handoff summaries and workflow outcomes only. |
 
 `domain_owner` and `producer_tool` are required on every canonical `ResearchArtifactRecord`. `requested_by` and `actor`
-are nullable for current direct service calls because MCP does not yet authenticate a workflow/caller. Typed
-cross-agent handoffs require all four fields. ORCH-1 requires requester and actor in its orchestration values; ORCH-2
-retains them in operational state, and ORCH-3 must carry them into orchestrated writes rather than infer either value
-from MCP tool stewardship.
+remain nullable for direct service calls. Typed cross-agent handoffs require all four fields. ORCH-1 requires requester
+and actor in its orchestration values; ORCH-2 retains them in operational state; ORCH-3 carries the workflow ID and
+executor actor into orchestrated writes rather than inferring either value from MCP tool stewardship.
 
 ### Checkpoints And Evidence
 

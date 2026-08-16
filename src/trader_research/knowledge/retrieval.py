@@ -1,4 +1,9 @@
-"""Knowledge retrieval services for Quantitative Methods tools."""
+"""Serve bounded lexical and semantic retrieval for Quantitative Methods tools.
+
+Queries normalize filters, search the active published evidence generation, and
+return ranked chunks with exact source locators and scores. Retrieval never
+changes source approval or asserts that a result supports a methodology claim.
+"""
 
 from __future__ import annotations
 

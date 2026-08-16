@@ -1,4 +1,9 @@
-"""Quarantined Python generation workflow for method implementations."""
+"""Generate Python method implementations inside a quarantined workflow.
+
+The service accepts structured LLM output, validates its manifest and cited
+method contracts, writes only beneath the declared artifact root, and runs safety
+and fixture checks. Generation alone never registers executable trading behavior.
+"""
 
 from __future__ import annotations
 

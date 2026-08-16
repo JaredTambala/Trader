@@ -1,4 +1,9 @@
-"""Locator-preserving chunking for knowledge sources."""
+"""Split extracted knowledge text while preserving source locators.
+
+Chunking is deterministic for the same document and configuration, retains page
+or section provenance needed for citations, and emits bounded text units for
+indexing. It performs no embedding, retrieval, or persistence.
+"""
 
 from __future__ import annotations
 

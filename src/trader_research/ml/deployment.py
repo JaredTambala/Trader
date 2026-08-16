@@ -1,4 +1,9 @@
-"""DB-first raw-inference deployment manifests and validation."""
+"""Create and validate canonical raw-inference deployment manifests.
+
+Deployment records bind exact model and feature evidence to an adapter profile,
+output contract, inference policy, environment, parity fixture, and eligibility.
+Validation reloads lineage and executes adapter parity before runtime use.
+"""
 
 from __future__ import annotations
 
@@ -44,7 +49,13 @@ class ArtifactPredictionDeploymentReader:
     artifact_store: ResearchArtifactStore
 
     def resolve_passed(self, validation_ref: str) -> Mapping[str, Any]:
-        """Return a revalidated manifest plus its validation identity."""
+        """Resolve passed deployment evidence for prediction consumers.
+
+        The manifest and validation report are loaded through the fail-closed
+        deployment reader. The returned mapping exposes pinned model, feature,
+        adapter, output, scope, policy, and eligibility identity plus the complete
+        manifest, but no loaded predictor.
+        """
         manifest, report = load_passed_deployment(self.artifact_store, validation_ref)
         return {
             "deployment_id": manifest["deployment_id"],
@@ -75,7 +86,17 @@ def create_deployment_manifest(
     artifact_store: ResearchArtifactStore | None = None,
     adapter_registry: InferenceAdapterRegistry | None = None,
 ) -> ApplicationResult:
-    """Create one immutable ML-owned raw-inference deployment manifest."""
+    """Create an immutable ML deployment over exact model and feature evidence.
+
+    The model-version and passed feature-set validation are loaded and snapshotted,
+    the adapter profile is resolved without loading a model, and output, scope,
+    policy, environment, parity, and eligibility inputs are normalized into the
+    content-derived deployment ID. Creation does not confer runtime eligibility.
+
+    Returns:
+        A result containing the persisted manifest and canonical reference, or a
+        structured lineage, contract, adapter-profile, or storage failure.
+    """
     command = ML_CREATE_DEPLOYMENT_MANIFEST
     if artifact_store is None:
         return _error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")
@@ -162,7 +183,17 @@ def validate_deployment(
     artifact_store: ResearchArtifactStore | None = None,
     adapter_registry: InferenceAdapterRegistry | None = None,
 ) -> ApplicationResult:
-    """Revalidate lineage and execute the adapter parity fixture."""
+    """Revalidate deployment lineage and execute its adapter parity fixture.
+
+    Exactly one inline, ID, or URI manifest is resolved. Model and feature
+    snapshots, deployment identity, adapter profile, output contract, and policy
+    are rechecked before a pinned predictor runs the bounded fixture. A separate
+    validation report is persisted for passed and blocked outcomes.
+
+    Returns:
+        A result containing validation and adapter evidence; ``ok`` is false for
+        blockers, unavailable adapters, runtime failures, or storage errors.
+    """
     command = ML_VALIDATE_DEPLOYMENT
     if artifact_store is None:
         return _error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")
@@ -242,7 +273,20 @@ def load_passed_deployment(
     store: ResearchArtifactStore,
     validation_ref: str,
 ) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
-    """Load and revalidate one passed deployment and validation report."""
+    """Load a passed deployment and revalidate its complete dependency chain.
+
+    The report must be passed, valid, blocker-free, and content-addressed to the
+    manifest. Current model, feature-set, adapter, output, policy, and fixture
+    evidence must still match before the pair is returned.
+
+    Returns:
+        The canonical deployment manifest and passed validation payload.
+
+    Raises:
+        ValueError: If status, identity, eligibility, or dependency evidence has
+            drifted.
+        ResearchArtifactStoreError: If a required artifact cannot be loaded.
+    """
     report = load_artifact_ref(store, ML_DEPLOYMENT_VALIDATION_REPORT, validation_ref)
     if report.get("artifact_type") != ML_DEPLOYMENT_VALIDATION_REPORT:
         raise ValueError(f"artifact_type must be {ML_DEPLOYMENT_VALIDATION_REPORT}")

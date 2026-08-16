@@ -1,4 +1,9 @@
-"""Postgres projection writers for methodology artifacts."""
+"""Write typed Postgres projections for Methodology-owned artifacts.
+
+Writers flatten candidate, evidence-packet, extraction, and validation fields
+from canonical records for bounded queries. They run inside the artifact-store
+transaction and do not create or revise methodology evidence themselves.
+"""
 
 from __future__ import annotations
 
@@ -16,7 +21,12 @@ from trader_research.governance.artifacts import (
 def write_methodology_candidate(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one methodology_candidate artifact."""
+    """Upsert query fields for one methodology candidate.
+
+    Candidate status, normalized families, source and chunk lineage, and the
+    complete payload are written through the caller's active artifact transaction.
+    The writer performs no discovery or candidate validation.
+    """
     payload = dict(record.payload)
     connection.execute(
         """
@@ -43,7 +53,12 @@ def write_methodology_candidate(
 def write_methodology_field_extraction_report(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one methodology_field_extraction_report artifact."""
+    """Upsert one methodology field-extraction projection.
+
+    Extraction and candidate identity, status, populated-field count, and the
+    complete canonical report are projected. Database errors propagate so the
+    base artifact and query row roll back together.
+    """
     payload = dict(record.payload)
     connection.execute(
         """
@@ -70,7 +85,12 @@ def write_methodology_field_extraction_report(
 def write_methodology_evidence_packet(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one methodology_evidence_packet artifact."""
+    """Upsert query fields for one methodology evidence packet.
+
+    Candidate lineage, family, readiness goal, status, sources, chunks, missing
+    roles, and the complete payload are stored for bounded queries. The caller
+    retains transaction ownership.
+    """
     payload = dict(record.payload)
     connection.execute(
         """
@@ -106,7 +126,12 @@ def write_methodology_evidence_packet(
 def write_methodology_candidate_validation_report(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one methodology_candidate_validation_report artifact."""
+    """Upsert one methodology-candidate validation projection.
+
+    Validation and candidate identity, status, and the complete report payload
+    are derived from the canonical record. The writer neither revises the
+    candidate nor determines validation status.
+    """
     payload = dict(record.payload)
     connection.execute(
         """

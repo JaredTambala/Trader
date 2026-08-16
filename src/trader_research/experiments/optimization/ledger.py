@@ -1,4 +1,9 @@
-"""Canonical optimization plan/run/trial loading and integrity validation."""
+"""Load optimization ledgers and independently verify their integrity.
+
+Plan reads revalidate sealed upstream specifications and objective identity.
+Run reads reconstruct the complete trial sequence and selected result from
+canonical artifacts so provider snapshots cannot become authoritative evidence.
+"""
 
 from __future__ import annotations
 
@@ -42,7 +47,21 @@ def load_validated_parameter_optimization_plan(
     store: ResearchArtifactStore,
     plan_ref: str,
 ) -> tuple[Mapping[str, Any], Any, Mapping[str, Any]]:
-    """Load a canonical plan and revalidate all sealed upstream evidence."""
+    """Load a plan and revalidate its complete sealed decision surface.
+
+    The content-derived plan ID, base specification, selection and holdout Data
+    snapshots, objective source, tunable paths, constraints, and resource limits
+    are recomputed from canonical dependencies. Provider availability is not
+    required for this read.
+
+    Returns:
+        The canonical plan, validated objective implementation, and its passed
+        validation report.
+
+    Raises:
+        ValueError: If plan content or any sealed dependency has drifted.
+        ResearchArtifactStoreError: If a required artifact cannot be loaded.
+    """
     plan = load_artifact_ref(store, PARAMETER_OPTIMIZATION_PLAN, plan_ref)
     if plan.get("status") != "created" or plan.get("artifact_type") != PARAMETER_OPTIMIZATION_PLAN:
         raise ValueError("optimization plan must be a created parameter_optimization_plan")
@@ -105,7 +124,21 @@ def load_validated_parameter_optimization_run(
     store: ResearchArtifactStore,
     run_ref: str,
 ) -> tuple[Mapping[str, Any], list[Mapping[str, Any]]]:
-    """Load one run and independently recompute its complete trial ledger and selection."""
+    """Load a run and independently reconstruct its ledger and selection.
+
+    The service revalidates the plan, each ordered trial, objective evaluation,
+    child backtest lineage, counts, tie-breaking selection, terminal status, and
+    bounded provider snapshot. Persisted run summaries are accepted only when
+    they match this deterministic reconstruction.
+
+    Returns:
+        The canonical run and its complete ordered trial payloads.
+
+    Raises:
+        ValueError: If identity, lineage, observations, counts, selection, or
+            status are inconsistent.
+        ResearchArtifactStoreError: If a required artifact cannot be loaded.
+    """
     run = load_artifact_ref(store, PARAMETER_OPTIMIZATION_RUN, run_ref)
     if run.get("artifact_type") != PARAMETER_OPTIMIZATION_RUN:
         raise ValueError("artifact_type must be parameter_optimization_run")

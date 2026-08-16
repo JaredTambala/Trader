@@ -1,4 +1,9 @@
-"""Knowledge evidence domain models."""
+"""Define exact evidence references and evidence-backed field values.
+
+Models preserve source, chunk, locator, and character-span provenance needed to
+recheck a claim. They distinguish absent support from populated values and fail
+validation when persisted evidence shapes are incomplete or inconsistent.
+"""
 
 from __future__ import annotations
 
@@ -49,7 +54,12 @@ class EvidenceClaimSpan:
             raise ValueError("claim span evidence_role and target_method are required")
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize exact span provenance for artifact persistence."""
+        """Serialize exact claim-span provenance for artifact persistence.
+
+        Source, chunk, locator, character offsets, quoted text, digest, and optional
+        target-field and role context are emitted so downstream validation can
+        recheck the precise evidence region.
+        """
         return {
             "span_id": self.span_id,
             "start_char": self.start_char,
@@ -67,7 +77,12 @@ class EvidenceClaimSpan:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "EvidenceClaimSpan":
-        """Parse a persisted exact claim span."""
+        """Parse and validate an exact persisted claim span.
+
+        Identifiers, locator, offsets, text, digest, and optional target context
+        are normalized before constructor checks enforce non-empty provenance,
+        valid bounds, and digest agreement.
+        """
         return cls(
             span_id=str(payload.get("span_id") or ""),
             start_char=int(payload.get("start_char") or 0),

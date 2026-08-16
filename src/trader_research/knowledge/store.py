@@ -1,4 +1,11 @@
-"""Knowledge-store abstraction for Quant Methods evidence retrieval."""
+"""Define knowledge persistence ports and local JSON implementations.
+
+The abstraction covers source lifecycle, ingestion publication, retrieval inputs,
+and method-card aggregates. Concrete stores define their transaction guarantees:
+Postgres publishes a generation atomically, while the local JSON adapter is a
+deterministic development implementation. Application services do not assume a
+particular backend or embedding provider.
+"""
 
 from __future__ import annotations
 
@@ -196,7 +203,12 @@ class JsonKnowledgeStore:
         }
 
     def artifact_reference(self, artifact_type: str, artifact_id: str) -> ArtifactReference:
-        """Build a local path and `knowledge://json` URI for a persisted artifact."""
+        """Build the stable local reference for a JSON knowledge artifact.
+
+        Known artifact types receive their deterministic repository path; all
+        types receive a ``knowledge://json`` URI and bounded backend metadata.
+        The helper does not check that the target file currently exists.
+        """
         path_by_type = {
             "knowledge_source_manifest": self.repository.source_path,
             "knowledge_ingestion_report": self.repository.ingestion_path,
@@ -229,7 +241,12 @@ class JsonKnowledgeStore:
         status: str | None = None,
         limit: int | None = None,
     ) -> tuple[KnowledgeSourceManifest, ...]:
-        """List local sources after applying topic, family, status, and limit filters."""
+        """List local sources after applying exact metadata filters.
+
+        Repository filename order is preserved while topic membership, method-
+        family membership, and lifecycle status filters are applied. ``limit``
+        slices the final deterministic sequence when supplied.
+        """
         sources = []
         for source in self.repository.list_sources():
             if topic and topic not in source.topics:
@@ -343,7 +360,12 @@ class JsonKnowledgeStore:
         source_ids: Sequence[str] | None = None,
         run_id: str | None = None,
     ) -> tuple[KnowledgeIngestionReport, ...]:
-        """List local ingestion reports filtered by source overlap or run identifier."""
+        """List local ingestion reports by run identity and source overlap.
+
+        Reports retain deterministic repository order. A run filter compares the
+        ingestion ID, while a source filter includes reports sharing at least one
+        requested source; neither filter mutates stored status evidence.
+        """
         source_filter = {str(source_id) for source_id in source_ids or ()}
         reports = []
         for report in self.repository.list_ingestion_reports():
@@ -364,7 +386,12 @@ class JsonKnowledgeStore:
         approved_only: bool = True,
         limit: int = 50,
     ) -> tuple[Mapping[str, Any], ...]:
-        """Search JSON index text with deterministic token-count lexical scoring for retrieval."""
+        """Search the JSON index with deterministic token-frequency scoring.
+
+        Lowercased query tokens are counted in each metadata-filtered chunk. Zero-
+        score rows are discarded, then results are ordered by descending score and
+        chunk ID and bounded by ``limit``. Empty-token queries return immediately.
+        """
         query_tokens = tuple(TOKEN_PATTERN.findall(query.lower()))
         if not query_tokens:
             return tuple()
@@ -397,7 +424,16 @@ class JsonKnowledgeStore:
         approved_only: bool = True,
         limit: int = 50,
     ) -> tuple[Mapping[str, Any], ...]:
-        """Search JSON index embeddings with cosine similarity and metadata filters for retrieval."""
+        """Search JSON embeddings by exact model identity and cosine similarity.
+
+        Only entries matching provider, model, version, source metadata, and
+        approval filters are compared. Stored and query dimensions must agree;
+        results are ordered by descending score and chunk ID and bounded by limit.
+
+        Raises:
+            KnowledgeEmbeddingDimensionError: If a candidate vector dimension
+                differs from the query dimension.
+        """
         query_vector = tuple(float(value) for value in query_embedding)
         results = []
         for entry in self._filtered_index_entries(

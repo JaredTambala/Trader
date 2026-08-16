@@ -1,4 +1,9 @@
-"""Shared methodology candidate resolution and evidence context."""
+"""Resolve exact methodology artifacts and their shared evidence context.
+
+Helpers enforce mutually exclusive inline, identifier, and URI inputs, load
+canonical upstream records, and verify candidate, packet, and extraction lineage.
+They centralize these checks for drafting, extraction, and validation services.
+"""
 
 from __future__ import annotations
 

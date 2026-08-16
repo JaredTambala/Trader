@@ -1,4 +1,9 @@
-"""Narrow read port for approved, evidence-backed method cards."""
+"""Provide a narrow read boundary for evidence-backed method cards.
+
+Callers may resolve canonical cards and, when required, enforce approved lifecycle
+status and method ownership. The port intentionally exposes no drafting,
+publication, retirement, or underlying-store mutation operations.
+"""
 
 from __future__ import annotations
 
@@ -64,7 +69,11 @@ class StoreBackedApprovedMethodCardReader:
 
 
 def get_stored_method_card(knowledge_store: KnowledgeStore, method_card_id: str) -> MethodCard | None:
-    """Resolve one canonical card without applying lifecycle visibility rules."""
+    """Resolve one stored method card regardless of lifecycle visibility.
+
+    Blank IDs return ``None``. Otherwise the first exact immutable card ID is
+    selected from persisted cards, including draft, rejected, or superseded entries.
+    """
     normalized_id = method_card_id.strip()
     if not normalized_id:
         return None

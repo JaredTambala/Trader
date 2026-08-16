@@ -1,4 +1,9 @@
-"""Provider-neutral parameter optimization capability."""
+"""Plan, execute, resume, and review provider-neutral parameter optimization.
+
+The package keeps canonical plans, trial ledgers, and selection evidence
+independent of suggestion providers. Optimizers may propose bounded parameter
+values but cannot change sealed data, costs, objectives, or holdout scope.
+"""
 
 from .contracts import (
     DeadlineOptimizationTrialExecutor,

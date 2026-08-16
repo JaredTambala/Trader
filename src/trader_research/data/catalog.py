@@ -1,4 +1,9 @@
-"""Provider-context resolution and symbol-catalog discovery."""
+"""Resolve market-data provider context and discover available symbols.
+
+The helpers normalize Data Agent discovery requests, select the configured
+read-only catalog, and return bounded provider metadata. They do not load bars
+or mutate the market-data store.
+"""
 
 from __future__ import annotations
 

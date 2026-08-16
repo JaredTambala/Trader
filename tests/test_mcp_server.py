@@ -14,6 +14,7 @@ from mcp.types import CallToolResult
 
 from trader_mcp.constants import (
     CAPABILITY_REGISTRATION_FLAGS,
+    DATA_CREATE_RESEARCH_SNAPSHOT_TOOL,
     DATA_ENSURE_LOADED_TOOL,
     DATA_GET_INVENTORY_TOOL,
     DATA_SUMMARIZE_QUALITY_TOOL,
@@ -228,6 +229,11 @@ def test_config_tool_excludes_broker_raw_sql_and_gates_backtest_execution() -> N
         inventory_tool = next(tool for tool in data["tools"] if tool["name"] == DATA_GET_INVENTORY_TOOL)
         quality_tool = next(tool for tool in data["tools"] if tool["name"] == DATA_SUMMARIZE_QUALITY_TOOL)
         ensure_tool = next(tool for tool in data["tools"] if tool["name"] == DATA_ENSURE_LOADED_TOOL)
+        snapshot_tool = next(
+            tool
+            for tool in data["tools"]
+            if tool["name"] == DATA_CREATE_RESEARCH_SNAPSHOT_TOOL
+        )
         template_tool = next(tool for tool in data["tools"] if tool["name"] == RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL)
         implementation_tool = next(
             tool for tool in data["tools"] if tool["name"] == RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL
@@ -252,6 +258,8 @@ def test_config_tool_excludes_broker_raw_sql_and_gates_backtest_execution() -> N
         assert inventory_tool["side_effect"] == "read_only"
         assert quality_tool["side_effect"] == "read_only"
         assert ensure_tool["side_effect"] == "local_mutating"
+        assert snapshot_tool["agent_owner"] == "Data Agent"
+        assert snapshot_tool["side_effect"] == "local_mutating"
         assert template_tool["agent_owner"] == "Quant Research Supervisor Agent"
         assert template_tool["side_effect"] == "read_only"
         assert implementation_tool["side_effect"] == "local_mutating"

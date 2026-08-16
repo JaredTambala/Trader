@@ -1,4 +1,9 @@
-"""Multiple-testing controls for declared signal candidate families."""
+"""Apply multiple-testing controls to declared signal candidate families.
+
+The service validates the complete candidate family and metric matrix, computes
+stable adjusted significance results, and records blockers for missing or invalid
+evidence. It does not select candidates outside the declared family.
+"""
 
 from __future__ import annotations
 

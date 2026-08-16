@@ -1,4 +1,9 @@
-"""Alpaca read-only symbol catalog adapter."""
+"""Adapt Alpaca asset metadata to the read-only symbol-catalog port.
+
+The adapter normalizes provider responses into Data-domain symbol records and
+supports bounded discovery filters. It never submits orders, changes broker
+state, or loads market bars into Trader storage.
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,10 @@
-"""Knowledge-base services for Quantitative Methods evidence."""
+"""Expose the Quantitative Methods knowledge and evidence workflow.
+
+The package registers approved sources, preserves locator-level chunks, retrieves
+and validates evidence, and produces draft methodology artifacts. Knowledge
+evidence may support implementation work but never bypasses normal implementation
+admission or experiment validation.
+"""
 
 from .approved_cards import (
     ApprovedMethodCardReadError,

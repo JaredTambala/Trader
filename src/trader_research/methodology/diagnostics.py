@@ -1,4 +1,9 @@
-"""Signal-composition diagnostics for Quantitative Methods workflows."""
+"""Measure signal composition and forward-return behavior for declared candidates.
+
+Diagnostics align bounded observations with labels, aggregate results by
+candidate and quantile, and record Data and method-contract blockers. Reports are
+descriptive evidence and do not select a production strategy or place orders.
+"""
 
 from __future__ import annotations
 

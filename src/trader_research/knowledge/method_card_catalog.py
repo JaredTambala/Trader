@@ -1,4 +1,9 @@
-"""Canonical method-card catalog queries."""
+"""Query canonical method cards and stable revision sets.
+
+Catalog functions apply lifecycle, family, and method filters over the configured
+knowledge store and return deterministic bounded results. Reads do not publish,
+approve, retire, or rewrite card content.
+"""
 
 from __future__ import annotations
 
@@ -35,7 +40,12 @@ def list_method_cards(
     include_drafts: bool = False,
     knowledge_store: KnowledgeStore | None = None,
 ) -> tuple[MethodCard, ...]:
-    """Return canonical method cards in deterministic ID order."""
+    """List visible canonical method cards in deterministic ID order.
+
+    Rejected and superseded revisions are always hidden. Approved cards are shown
+    by default, while ``include_drafts`` additionally admits draft revisions;
+    duplicate card IDs collapse to one value.
+    """
     cards = list(_list_persisted_method_cards(artifact_root, knowledge_store=knowledge_store))
     cards = [card for card in cards if _method_card_visible(card, include_drafts=include_drafts)]
     by_id = {card.method_card_id: card for card in cards}
@@ -49,7 +59,11 @@ def get_method_card(
     include_drafts: bool = False,
     knowledge_store: KnowledgeStore | None = None,
 ) -> MethodCard | None:
-    """Look up one canonical method card by ID."""
+    """Look up one visible canonical method card by exact immutable ID.
+
+    The same lifecycle visibility rules and deterministic storage reads as
+    ``list_method_cards`` apply. Missing or hidden cards return ``None``.
+    """
     for card in list_method_cards(artifact_root, include_drafts=include_drafts, knowledge_store=knowledge_store):
         if card.method_card_id == method_card_id:
             return card
@@ -66,7 +80,16 @@ def list_method_card_sets(
     limit: int = 50,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ApplicationResult:
-    """Return stable method-card set summaries for operator inspection."""
+    """List stable method-card sets with bounded operator-facing filters.
+
+    Sets are sorted by aggregate ID, optionally filtered by method, family,
+    lifecycle status, and retirement visibility, then bounded to one through one
+    hundred rows. The result distinguishes returned count from total matches.
+
+    Returns:
+        A result containing serialized set summaries and counts, or a structured
+        knowledge-store read failure.
+    """
     store = knowledge_store or JsonKnowledgeStore(artifact_root)
     try:
         sets = tuple(sorted(store.list_method_card_sets(), key=lambda item: item.method_card_set_id))
@@ -104,7 +127,16 @@ def get_method_card_set(
     include_cards: bool = True,
     knowledge_store: KnowledgeStore | None = None,
 ) -> ApplicationResult:
-    """Return one stable method-card set with optional revision history."""
+    """Read one stable method-card set and optionally its revision history.
+
+    Revision cards are ordered by revision number, creation time, and immutable
+    card ID. Setting ``include_cards`` false returns only the aggregate and avoids
+    exposing the revision collection in the result.
+
+    Returns:
+        A result containing the set and optional ordered revisions, or a
+        structured missing-ID, unknown-set, or store failure.
+    """
     store = knowledge_store or JsonKnowledgeStore(artifact_root)
     set_id = method_card_set_id.strip()
     if not set_id:
@@ -139,7 +171,15 @@ def method_cards_for_method(
     include_drafts: bool = False,
     knowledge_store: KnowledgeStore | None = None,
 ) -> tuple[MethodCard, ...]:
-    """Return all canonical cards for one method ID."""
+    """Return visible canonical cards belonging to one method ID.
+
+    The function reuses the deterministic catalog ordering and lifecycle rules:
+    approved cards are visible by default, drafts may be requested, and rejected
+    or superseded cards remain hidden.
+
+    Returns:
+        Matching immutable cards in method-card ID order.
+    """
     return tuple(
         card
         for card in list_method_cards(

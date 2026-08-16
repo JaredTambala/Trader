@@ -1,4 +1,9 @@
-"""Immutable maintained method-contract catalog."""
+"""Query the immutable catalog of maintained quantitative-method contracts.
+
+Registry reads apply stable family and lifecycle filters and return copies of
+normalized contract payloads. The module has no dynamic plugin discovery or
+mutation path, keeping method identity deterministic across processes.
+"""
 
 from __future__ import annotations
 
@@ -33,7 +38,15 @@ def list_methods(
     status: str | None = None,
     include_planned: bool = True,
 ) -> tuple[MethodRegistryEntry, ...]:
-    """List maintained method contracts after deterministic filtering."""
+    """List maintained method contracts after deterministic filtering.
+
+    Optional family and status comparisons use exact normalized registry values;
+    planned entries are excluded when ``include_planned`` is false. Results are
+    sorted by stable method ID and no registry state is mutated.
+
+    Returns:
+        Immutable registry entries matching all requested filters.
+    """
     methods = []
     for entry in maintained_method_contracts():
         if family and entry.family != family:
@@ -47,6 +60,10 @@ def list_methods(
 
 
 def get_method(method_id: str) -> MethodRegistryEntry | None:
-    """Return one maintained method contract by stable ID."""
+    """Look up one maintained method contract by exact stable ID.
+
+    The immutable seeded catalog is rebuilt without mutation; unknown or
+    non-canonicalized IDs return ``None``.
+    """
     by_id = {method.method_id: method for method in maintained_method_contracts()}
     return by_id.get(method_id)

@@ -35,6 +35,9 @@ DATA_SUMMARIZE_QUALITY_TOOL: Final = "data_summarize_quality"
 DATA_ENSURE_LOADED_TOOL: Final = "data_ensure_loaded"
 """Tool name for explicit Data Agent data inspection/loading."""
 
+DATA_CREATE_RESEARCH_SNAPSHOT_TOOL: Final = "data_create_research_snapshot"
+"""Tool name for persisting one exact Data-domain research snapshot."""
+
 KNOWLEDGE_REGISTER_SOURCE_TOOL: Final = "knowledge_register_source"
 """Tool name for registering Quant Methods knowledge sources."""
 
@@ -192,6 +195,12 @@ RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS_TOOL: Final = (
 RESEARCH_PROJECT_EXPERIMENT_TRACKING_TOOL: Final = (
     "research_project_experiment_tracking"
 )
+RESEARCH_REGISTER_EXPERIMENT_WORKFLOW_TOOL: Final = (
+    "research_register_experiment_workflow"
+)
+RESEARCH_RECORD_WORKFLOW_OUTCOME_TOOL: Final = (
+    "research_record_workflow_outcome"
+)
 EVALUATION_GENERATE_PARAMETER_OPTIMIZATION_REPORT_TOOL: Final = (
     "evaluation_generate_parameter_optimization_report"
 )
@@ -210,6 +219,7 @@ DATA_TOOL_NAMES: Final = (
     DATA_GET_INVENTORY_TOOL,
     DATA_SUMMARIZE_QUALITY_TOOL,
     DATA_ENSURE_LOADED_TOOL,
+    DATA_CREATE_RESEARCH_SNAPSHOT_TOOL,
 )
 """Data Agent tool names exposed by the MCP server."""
 
@@ -279,6 +289,8 @@ RESEARCH_TOOL_NAMES: Final = (
     RESEARCH_GET_PARAMETER_OPTIMIZATION_RESULTS_TOOL,
     RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS_TOOL,
     RESEARCH_PROJECT_EXPERIMENT_TRACKING_TOOL,
+    RESEARCH_REGISTER_EXPERIMENT_WORKFLOW_TOOL,
+    RESEARCH_RECORD_WORKFLOW_OUTCOME_TOOL,
 )
 """Quant Research Supervisor tool names exposed by the MCP server."""
 
@@ -314,6 +326,9 @@ DATA_TOOL_DESCRIPTIONS: Final = {
     DATA_GET_INVENTORY_TOOL: "Return bounded market-data inventory and dataset manifest.",
     DATA_SUMMARIZE_QUALITY_TOOL: "Return bounded market-data quality gaps and completeness.",
     DATA_ENSURE_LOADED_TOOL: "Inspect, sample-load, or plan bounded market-data loading.",
+    DATA_CREATE_RESEARCH_SNAPSHOT_TOOL: (
+        "Persist one exact inventory and quality pair as canonical Data-domain evidence."
+    ),
 }
 """Descriptions for Data Agent tools exposed by the MCP server."""
 
@@ -407,6 +422,12 @@ RESEARCH_TOOL_DESCRIPTIONS: Final = {
     RESEARCH_GET_PARAMETER_OPTIMIZATION_RESULTS_TOOL: "Read canonical optimization results without provider access.",
     RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS_TOOL: "Execute immutable Adversarial-requested optimization variants.",
     RESEARCH_PROJECT_EXPERIMENT_TRACKING_TOOL: "Project canonical run evidence to a configured analytical sink.",
+    RESEARCH_REGISTER_EXPERIMENT_WORKFLOW_TOOL: (
+        "Persist one approved objective, experiment protocol, and ready workflow plan."
+    ),
+    RESEARCH_RECORD_WORKFLOW_OUTCOME_TOOL: (
+        "Persist one bounded terminal workflow outcome over canonical evidence refs."
+    ),
 }
 """Descriptions for Quant Research Supervisor tools exposed by the MCP server."""
 
@@ -442,5 +463,6 @@ CAPABILITY_REGISTRATION_FLAGS: Final = {
     "experiment_tracking_projection_tools_registered": True,
     "evaluation_tools_registered": True,
     "adversarial_tools_registered": True,
+    "orchestration_tools_registered": True,
 }
 """Safety flags for registered and intentionally unregistered tool families."""

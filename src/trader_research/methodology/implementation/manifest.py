@@ -1,4 +1,9 @@
-"""Schemas and constants for citation-backed method implementations."""
+"""Define manifests and closed vocabularies for generated method code.
+
+Manifests pin method-card provenance, source identity, entrypoints, dependencies,
+fixtures, and validation status. Parsing fails on unknown or incomplete shapes so
+generated code cannot expand its declared execution surface implicitly.
+"""
 
 from __future__ import annotations
 

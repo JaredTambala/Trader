@@ -1,4 +1,10 @@
-"""Bounded runtime helpers for validated DB-backed implementations."""
+"""Construct and exercise validated implementations within bounded fixtures.
+
+Runtime helpers recheck source identity and declared parameters before creating
+strategies, risk managers, or closed-input objectives. Static safety inspection
+and smoke fixtures return explicit blockers rather than granting arbitrary
+filesystem, network, broker, or process access.
+"""
 
 from __future__ import annotations
 
@@ -113,7 +119,16 @@ _OBJECTIVE_BUILTINS = {
 
 
 def source_safety_blockers(implementation: ImplementationVersion) -> tuple[str, ...]:
-    """Return static blockers for imports and direct unsafe operations."""
+    """Inspect implementation source for statically detectable unsafe behavior.
+
+    The scan parses source without executing it and checks imports, calls, names,
+    dunder access, and the narrower closed-input objective rules. It is an
+    admission control, not a general Python sandbox or proof of runtime safety.
+
+    Returns:
+        Sorted unique blocker messages, including syntax errors. An empty tuple
+        means no maintained static rule was violated.
+    """
     blockers: list[str] = []
     try:
         tree = ast.parse(implementation.source_code)
@@ -171,7 +186,12 @@ def _import_blockers(module_name: str, allowed_roots: frozenset[str]) -> list[st
 
 
 def load_implementation(implementation: ImplementationVersion) -> object:
-    """Load one already source-hash-validated implementation in memory."""
+    """Load an admitted implementation into a version-specific namespace.
+
+    Objective code uses the narrower objective loader; other kinds use the
+    transient module loader. This function assumes source identity and safety were
+    already validated and does not repeat persistence or admission checks.
+    """
     suffix = "".join(character for character in implementation.implementation_version_id if character.isalnum())[-20:]
     if implementation.implementation_kind == "optimization_objective":
         return _load_objective_module(
@@ -196,7 +216,20 @@ def instantiate_strategy(
     sizing: Mapping[str, Any] | None = None,
     prediction_bindings: Sequence[object] | None = None,
 ) -> Strategy:
-    """Instantiate a strategy factory using only declared context and parameters."""
+    """Instantiate a validated strategy from declared runtime inputs.
+
+    The implementation is loaded in memory, its factory receives only supported
+    symbol, asset, timeframe, parameter, sizing, and optional prediction values,
+    and the result must implement Trader's ``Strategy`` contract. Prediction
+    bindings are required exactly when the implementation declares them.
+
+    Returns:
+        The constructed Trader strategy instance.
+
+    Raises:
+        ValueError: If the factory is missing, prediction bindings conflict with
+            declared requirements, or the factory returns the wrong type.
+    """
     module = load_implementation(implementation)
     factory = _factory(module, implementation)
     prediction_requirements = implementation.runtime_requirements.get("prediction_requirements") or []
@@ -224,7 +257,18 @@ def instantiate_risk_manager(
     *,
     parameters: Mapping[str, Any],
 ) -> RiskManager:
-    """Instantiate a risk-manager factory using declared parameters."""
+    """Instantiate a validated risk manager from declared parameters.
+
+    Factories that accept a single ``parameters`` mapping receive a copy of the
+    mapping; other factories receive only keyword arguments present in their
+    signature. The returned object must implement Trader's ``RiskManager`` port.
+
+    Returns:
+        The constructed risk-manager instance.
+
+    Raises:
+        ValueError: If the entrypoint is missing or returns the wrong type.
+    """
     module = load_implementation(implementation)
     factory = _factory(module, implementation)
     signature = inspect.signature(factory)
@@ -241,7 +285,20 @@ def evaluate_objective(
     implementation: ImplementationVersion,
     observation: Mapping[str, Any],
 ) -> tuple[float, Mapping[str, Any]]:
-    """Evaluate a validated optimization objective over the closed observation."""
+    """Evaluate a validated objective over one closed optimization observation.
+
+    The observation is normalized to the provider-neutral public schema before
+    execution. Objectives may return a scalar or ``{value, diagnostics}``; the
+    value must be finite and diagnostics must be JSON-compatible and no larger
+    than 100,000 encoded bytes.
+
+    Returns:
+        The finite scalar objective value and bounded diagnostic metadata.
+
+    Raises:
+        ValueError: If the entrypoint is invalid or its output violates the
+            objective return contract.
+    """
     from trader_research.experiments.optimization.contracts import OptimizationObservation
 
     closed_observation = OptimizationObservation.from_mapping(observation).to_dict()
@@ -270,7 +327,15 @@ def evaluate_objective(
 
 
 def smoke_risk_manager(manager: RiskManager) -> tuple[Mapping[str, object], ...]:
-    """Run a deterministic bounded risk-manager fixture."""
+    """Exercise a risk manager with one deterministic synthetic order.
+
+    The fixed context contains no positions or open orders and prices ``SYNTH``
+    at 100. The fixture performs no broker, database, clock, or network access.
+
+    Returns:
+        Normalized approved and rejected orders in that order for inclusion in
+        implementation-validation evidence.
+    """
     order = {
         "client_order_id": "fixture-order",
         "symbol": "SYNTH",

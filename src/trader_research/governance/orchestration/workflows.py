@@ -1,4 +1,9 @@
-"""Capability, prerequisite, artifact-slot, plan, and step-result contracts."""
+"""Define capabilities, prerequisites, workflow DAGs, and bounded step results.
+
+Construction validates artifact-slot authority, cardinality, configuration,
+approvals, dependency ordering, and acyclicity. Public step state contains only
+canonical refs and bounded issues, never raw tool payloads or hidden reasoning.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +18,7 @@ from trader_research.foundation import (
 from ..artifacts import (
     EXPERIMENT_PROTOCOL,
     RESEARCH_OBJECTIVE,
+    WORKFLOW_OUTCOME,
     WORKFLOW_PLAN,
     DOMAIN_OWNER_BY_ARTIFACT_TYPE,
     SUPPORTED_ARTIFACT_TYPES,
@@ -41,6 +47,7 @@ from .enums import (
     PrerequisiteStatus,
     RetryDisposition,
     WorkflowPlanStatus,
+    WorkflowOutcomeStatus,
     WorkflowStepStatus,
 )
 from .protocols import Approval
@@ -104,7 +111,12 @@ class ArtifactSlot:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ArtifactSlot":
-        """Parse an artifact slot."""
+        """Parse and validate one typed workflow artifact slot.
+
+        Artifact type, domain authority, cardinality, and optional binding are
+        normalized through closed vocabularies. Constructor rules reject ownership
+        mismatches and incomplete slot identity.
+        """
         return cls(
             slot_id=str(payload.get("slot_id") or ""),
             artifact_type=str(payload.get("artifact_type") or ""),
@@ -191,7 +203,12 @@ class CapabilityDefinition:
         _unique(self.configuration_keys, "capability configuration keys")
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize this capability snapshot."""
+        """Serialize an immutable workflow capability snapshot.
+
+        Operation, owner, side-effect class, policy gates, input and output slots,
+        retry behavior, availability, and configuration contract are emitted as
+        stable plain data for plan pinning.
+        """
         return {
             "capability_id": self.capability_id,
             "version": self.version,
@@ -208,7 +225,12 @@ class CapabilityDefinition:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "CapabilityDefinition":
-        """Parse a capability definition."""
+        """Parse and validate an immutable capability definition.
+
+        Nested slots and closed vocabularies are reconstructed before constructor
+        checks enforce command identity, owner, side effects, unique slots,
+        authority, retry policy, and availability semantics.
+        """
         return cls(
             capability_id=str(payload.get("capability_id") or ""),
             version=str(payload.get("version") or ""),
@@ -286,7 +308,12 @@ class Prerequisite:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "Prerequisite":
-        """Parse a workflow prerequisite."""
+        """Parse and validate a workflow prerequisite declaration.
+
+        Kind, target, satisfaction state, optional resolver operation, and bounded
+        details are normalized. Constructor rules ensure unresolved prerequisites
+        name an allowed resolver and satisfied prerequisites do not claim one.
+        """
         return cls(
             prerequisite_id=str(payload.get("prerequisite_id") or ""),
             kind=_enum_value(
@@ -593,7 +620,12 @@ class WorkflowPlan:
                 )
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize the complete workflow plan graph."""
+        """Serialize the complete immutable workflow plan graph.
+
+        Objective and protocol refs, template identity, capability snapshots,
+        prerequisites, ordered steps, approvals, requester, actor, configuration,
+        and status are emitted without execution or checkpoint state.
+        """
         return {
             "artifact_type": self.artifact_type,
             "plan_id": self.plan_id,
@@ -615,7 +647,14 @@ class WorkflowPlan:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "WorkflowPlan":
-        """Parse and revalidate a complete workflow plan graph."""
+        """Parse and revalidate a complete immutable workflow plan graph.
+
+        Nested refs, capabilities, prerequisites, steps, and approvals are rebuilt
+        through typed contracts. Plan construction then checks identity, pinned
+        capability agreement, artifact-slot bindings and cardinality, prerequisites,
+        policy gates, configuration keys, step dependencies, acyclicity, and
+        readiness claims.
+        """
         _validate_payload_artifact_type(payload, WORKFLOW_PLAN)
         protocol_payload = payload.get("protocol_ref")
         return cls(
@@ -713,7 +752,12 @@ class WorkflowStepResult:
             )
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize this public workflow-step result."""
+        """Serialize one bounded public workflow-step result.
+
+        Attempt identity, status, accepted artifact refs, issues, retry class,
+        timestamps, and result digest are emitted. Raw MCP payloads, prompts,
+        credentials, and full artifacts are deliberately absent.
+        """
         return {
             "result_id": self.result_id,
             "plan_id": self.plan_id,
@@ -736,7 +780,13 @@ class WorkflowStepResult:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "WorkflowStepResult":
-        """Parse and revalidate a workflow-step result."""
+        """Parse and revalidate one bounded workflow-step result.
+
+        Artifact refs, issues, status, retry class, timestamps, and supplied digest
+        are normalized. Constructor validation enforces output cardinality,
+        terminal-state issue rules, canonical ref uniqueness, and agreement with
+        the recomputed public result digest.
+        """
         return cls(
             result_id=str(payload.get("result_id") or ""),
             plan_id=str(payload.get("plan_id") or ""),
@@ -775,6 +825,159 @@ class WorkflowStepResult:
                 RetryDisposition,
                 payload.get("retry"),
                 "workflow retry disposition",
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class WorkflowOutcome:
+    """Canonical terminal summary over domain-owned workflow evidence."""
+
+    outcome_id: str
+    workflow_id: str
+    plan_id: str
+    objective_ref: ArtifactReportRef
+    protocol_ref: ArtifactReportRef
+    status: WorkflowOutcomeStatus
+    produced_artifact_refs: tuple[ArtifactReportRef, ...]
+    review_verdict_refs: tuple[ArtifactReportRef, ...]
+    requested_by: str
+    actor: str
+    next_permitted_actions: tuple[str, ...] = ()
+    warnings: tuple[ResearchIssue, ...] = ()
+    blockers: tuple[ResearchIssue, ...] = ()
+    errors: tuple[ResearchIssue, ...] = ()
+
+    artifact_type = WORKFLOW_OUTCOME
+    domain_owner = ORCHESTRATION_DOMAIN_OWNER
+
+    def __post_init__(self) -> None:
+        """Validate terminal identity, refs, issues, and permitted actions."""
+        _required_text(self.outcome_id, "workflow outcome_id")
+        _required_text(self.workflow_id, "workflow outcome workflow_id")
+        _required_text(self.plan_id, "workflow outcome plan_id")
+        _validate_ref_type(
+            self.objective_ref,
+            RESEARCH_OBJECTIVE,
+            "workflow outcome objective",
+        )
+        _validate_ref_type(
+            self.protocol_ref,
+            EXPERIMENT_PROTOCOL,
+            "workflow outcome protocol",
+        )
+        _required_text(self.requested_by, "workflow outcome requested_by")
+        _required_text(self.actor, "workflow outcome actor")
+        _unique(
+            (item.uri for item in self.produced_artifact_refs),
+            "workflow outcome artifact refs",
+        )
+        _unique(
+            (item.uri for item in self.review_verdict_refs),
+            "workflow outcome review refs",
+        )
+        _required_text_sequence(
+            self.next_permitted_actions,
+            "workflow outcome next actions",
+            allow_empty=True,
+        )
+        _unique(
+            self.next_permitted_actions,
+            "workflow outcome next actions",
+        )
+        if self.status is WorkflowOutcomeStatus.COMPLETED and (
+            self.blockers or self.errors
+        ):
+            raise ValueError(
+                "completed workflow outcomes cannot contain blockers or errors"
+            )
+        if self.status is WorkflowOutcomeStatus.BLOCKED and not self.blockers:
+            raise ValueError("blocked workflow outcomes require blockers")
+        if self.status is WorkflowOutcomeStatus.FAILED and not self.errors:
+            raise ValueError("failed workflow outcomes require errors")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize one terminal workflow outcome summary.
+
+        Workflow and plan identity, terminal status, canonical artifact and review
+        refs, bounded issues, accepted step IDs, requester, actor, and completion
+        time are emitted without checkpoint internals or full evidence payloads.
+        """
+        return {
+            "artifact_type": self.artifact_type,
+            "outcome_id": self.outcome_id,
+            "workflow_id": self.workflow_id,
+            "plan_id": self.plan_id,
+            "objective_ref": self.objective_ref.to_dict(),
+            "protocol_ref": self.protocol_ref.to_dict(),
+            "status": self.status.value,
+            "produced_artifact_refs": [
+                item.to_dict() for item in self.produced_artifact_refs
+            ],
+            "review_verdict_refs": [
+                item.to_dict() for item in self.review_verdict_refs
+            ],
+            "next_permitted_actions": list(self.next_permitted_actions),
+            "requested_by": self.requested_by,
+            "actor": self.actor,
+            "warnings": [item.to_dict() for item in self.warnings],
+            "blockers": [item.to_dict() for item in self.blockers],
+            "errors": [item.to_dict() for item in self.errors],
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "WorkflowOutcome":
+        """Parse and validate a terminal workflow outcome summary.
+
+        Canonical refs, issues, accepted steps, identities, attribution, status,
+        and timestamp are normalized. Constructor rules reject non-terminal status,
+        duplicate refs or steps, missing required identity, and issue/status
+        combinations that misrepresent the workflow conclusion.
+        """
+        _validate_payload_artifact_type(payload, WORKFLOW_OUTCOME)
+        return cls(
+            outcome_id=str(payload.get("outcome_id") or ""),
+            workflow_id=str(payload.get("workflow_id") or ""),
+            plan_id=str(payload.get("plan_id") or ""),
+            objective_ref=ArtifactReportRef.from_dict(
+                _mapping(payload.get("objective_ref"))
+            ),
+            protocol_ref=ArtifactReportRef.from_dict(
+                _mapping(payload.get("protocol_ref"))
+            ),
+            status=_enum_value(
+                WorkflowOutcomeStatus,
+                payload.get("status"),
+                "workflow outcome status",
+            ),
+            produced_artifact_refs=tuple(
+                ArtifactReportRef.from_dict(item)
+                for item in _mapping_sequence(
+                    payload.get("produced_artifact_refs")
+                )
+            ),
+            review_verdict_refs=tuple(
+                ArtifactReportRef.from_dict(item)
+                for item in _mapping_sequence(
+                    payload.get("review_verdict_refs")
+                )
+            ),
+            next_permitted_actions=_text_tuple(
+                payload.get("next_permitted_actions")
+            ),
+            requested_by=str(payload.get("requested_by") or ""),
+            actor=str(payload.get("actor") or ""),
+            warnings=tuple(
+                ResearchIssue.from_dict(item)
+                for item in _mapping_sequence(payload.get("warnings"))
+            ),
+            blockers=tuple(
+                ResearchIssue.from_dict(item)
+                for item in _mapping_sequence(payload.get("blockers"))
+            ),
+            errors=tuple(
+                ResearchIssue.from_dict(item)
+                for item in _mapping_sequence(payload.get("errors"))
             ),
         )
 

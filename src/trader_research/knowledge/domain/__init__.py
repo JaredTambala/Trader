@@ -1,4 +1,9 @@
-"""Public knowledge domain model facade."""
+"""Expose stable domain values for knowledge and methodology evidence.
+
+The facade re-exports source, chunk, citation, card, methodology, field, and
+report contracts used across knowledge services. Models are JSON-safe and
+dependency-light; storage and retrieval implementations live outside this package.
+"""
 
 from .cards import (
     MethodCard,

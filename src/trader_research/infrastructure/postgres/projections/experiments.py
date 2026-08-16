@@ -1,4 +1,9 @@
-"""Postgres projection writers for experiments artifacts."""
+"""Write typed Postgres projections for Experiments-owned artifacts.
+
+Each writer extracts normalized fields from an already validated canonical
+record and upserts the corresponding query table within the caller's transaction.
+Projection rows remain derived indexes and never replace the base artifact.
+"""
 
 from __future__ import annotations
 
@@ -26,7 +31,12 @@ from trader_research.governance.artifacts import (
 def write_implementation_version(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one implementation_version artifact."""
+    """Upsert query fields for one implementation-version record.
+
+    The writer stores implementation identity, kind, lifecycle status, source
+    hash, authoring origin, and the complete JSON payload. It uses the caller's
+    active transaction and does not commit independently.
+    """
     payload = dict(record.payload)
     connection.execute(
         """
@@ -54,7 +64,12 @@ def write_implementation_version(
 def write_implementation_validation_report(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one implementation_validation_report artifact."""
+    """Upsert query fields for an implementation-validation record.
+
+    Validation identity, implementation lineage, kind, status, validity, source
+    hash, and the complete payload are derived from ``record``. The caller owns
+    transaction commit and rollback.
+    """
     payload = dict(record.payload)
     connection.execute(
         """
@@ -82,7 +97,12 @@ def write_implementation_validation_report(
 def write_strategy_specification(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one strategy_specification artifact."""
+    """Upsert query fields for one strategy-specification record.
+
+    The projection exposes implementation lineage, source hash, tunable fields,
+    prediction decision scope and binding count, status, and the complete payload.
+    It writes through the caller's transaction without committing.
+    """
     payload = dict(record.payload)
     connection.execute(
         """
@@ -113,7 +133,12 @@ def write_strategy_specification(
 def write_strategy_specification_validation_report(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one strategy_specification_validation_report artifact."""
+    """Upsert one strategy-specification validation projection.
+
+    The row contains validation and specification identity, status, validity, and
+    the canonical payload encoded by ``json_value``. Transaction lifecycle remains
+    with the artifact store.
+    """
     payload = dict(record.payload)
     connection.execute(
         """
@@ -138,7 +163,12 @@ def write_strategy_specification_validation_report(
 def write_risk_stack_specification(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one risk_stack_specification artifact."""
+    """Upsert query fields for one ordered risk-stack specification.
+
+    Ordered manager implementation IDs, stack status, and the complete canonical
+    payload are extracted from ``record``. The writer participates in the
+    artifact store's existing transaction and does not commit.
+    """
     payload = dict(record.payload)
     manager_ids = [
         str(item.get("implementation_version_id"))
@@ -167,7 +197,12 @@ def write_risk_stack_specification(
 def write_risk_stack_specification_validation_report(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one risk_stack_specification_validation_report artifact."""
+    """Upsert one risk-stack validation projection.
+
+    Validation and stack identity, status, validity, and the complete payload are
+    written for bounded queries. Any database error propagates to the artifact
+    store so the base record and projection can roll back together.
+    """
     payload = dict(record.payload)
     connection.execute(
         """
@@ -192,7 +227,12 @@ def write_risk_stack_specification_validation_report(
 def write_backtest_specification(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one backtest_specification artifact."""
+    """Upsert query fields for one canonical backtest specification.
+
+    Strategy, risk, dataset, parent, selection, and variant lineage are flattened
+    alongside status and the complete payload. The caller owns the surrounding
+    artifact transaction.
+    """
     payload = dict(record.payload)
     dataset = payload.get("dataset") or {}
     dataset_payload = dataset.get("payload") if isinstance(dataset, MappingABC) else {}
@@ -229,7 +269,12 @@ def write_backtest_specification(
 def write_backtest_specification_validation_report(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one backtest_specification_validation_report artifact."""
+    """Upsert one backtest-specification validation projection.
+
+    The row exposes validation and specification identity, status, validity,
+    dataset hash, and the complete payload. Database failures propagate so the
+    canonical artifact write remains atomic with this projection.
+    """
     payload = dict(record.payload)
     connection.execute(
         """
@@ -255,7 +300,12 @@ def write_backtest_specification_validation_report(
 def write_parameter_optimization_plan(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one parameter_optimization_plan artifact."""
+    """Upsert query fields for one parameter-optimization plan.
+
+    Base specification, objective, direction, seed, budget, parent, variant, and
+    status fields are stored with the complete canonical payload. The operation
+    uses but does not commit the caller's transaction.
+    """
     payload = dict(record.payload)
     connection.execute(
         """
@@ -286,7 +336,12 @@ def write_parameter_optimization_plan(
 def write_parameter_optimization_run(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one parameter_optimization_run artifact."""
+    """Upsert query fields for one parameter-optimization run.
+
+    Plan and engine identity, seed, status, deterministic selection, selected
+    backtest lineage, and the full payload are projected. Provider state remains
+    bounded within the payload and is not made authoritative by this row.
+    """
     payload = dict(record.payload)
     profile = payload.get("engine_profile") or {}
     selected_refs = payload.get("selected_child_refs") or {}
@@ -321,7 +376,12 @@ def write_parameter_optimization_run(
 def write_parameter_optimization_trial(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one parameter_optimization_trial artifact."""
+    """Upsert query fields for one canonical optimization trial.
+
+    Trial sequence, run and plan lineage, parameters, status, objective value,
+    child backtest references, and the complete payload are written through the
+    caller's active transaction.
+    """
     payload = dict(record.payload)
     child_refs = payload.get("child_refs") or {}
     connection.execute(
@@ -354,7 +414,12 @@ def write_parameter_optimization_trial(
 def write_experiment_tracking_projection_report(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one experiment_tracking_projection_report artifact."""
+    """Upsert one non-authoritative tracking-projection report.
+
+    The row exposes canonical run identity, selected tracking profile, status,
+    the explicit authority flag, and complete projection evidence. It cannot
+    promote provider state over the canonical Trader run.
+    """
     payload = dict(record.payload)
     profile = payload.get("tracking_profile") or {}
     connection.execute(
@@ -380,7 +445,12 @@ def write_experiment_tracking_projection_report(
 def write_backtest_run(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one backtest_run artifact."""
+    """Upsert query fields and summary for one canonical backtest run.
+
+    Run kind, status, dataset and specification lineage, selection and variant
+    ancestry, summary metrics, and the complete result payload are stored. The
+    artifact store owns transaction commit and conflict handling.
+    """
     payload = dict(record.payload)
     connection.execute(
         """

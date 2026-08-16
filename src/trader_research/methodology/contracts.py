@@ -1,4 +1,9 @@
-"""Quantitative Methods domain schemas for method contracts."""
+"""Define immutable contracts for maintained quantitative methods.
+
+Contracts declare mathematical intent, required inputs, parameters, outputs,
+fixtures, and evidence expectations independently of any implementation language.
+Validation rejects incomplete or internally inconsistent method definitions.
+"""
 
 from __future__ import annotations
 
@@ -78,7 +83,12 @@ class MethodRegistryEntry:
     runtime_contract: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize the maintained method registry entry into artifact form for persistence."""
+        """Serialize a maintained registry entry for tools and persistence.
+
+        Method identity, family, status, description, source references, parameters,
+        input/output contracts, assumptions, and evidence requirements are emitted
+        in stable plain-data form.
+        """
         return {
             "artifact_type": "method_contract",
             "method_id": self.method_id,
@@ -100,7 +110,12 @@ class MethodRegistryEntry:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "MethodRegistryEntry":
-        """Parse a registry entry from seeded or persisted method-contract data payloads."""
+        """Parse and validate a seeded or persisted method registry entry.
+
+        Nested parameter specs and contract collections are normalized before
+        constructor rules enforce stable identity, supported lifecycle, required
+        description, and coherent method inputs and outputs.
+        """
         return cls(
             method_id=str(payload.get("method_id") or ""),
             family=str(payload.get("family") or ""),
@@ -197,7 +212,12 @@ class MethodValidationReport:
     blockers: tuple[str, ...] = tuple()
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize validation outcome, checked parameters, warnings, and blockers for tool results."""
+        """Serialize a bounded method-contract validation conclusion.
+
+        Method identity, validity, normalized parameters, checked evidence,
+        warnings, blockers, and lifecycle status are emitted for tool results and
+        deterministic artifact persistence.
+        """
         return {
             "artifact_type": "method_validation_report",
             "method_id": self.method_id,

@@ -1,4 +1,9 @@
-"""Data Agent request, provider, and policy value objects."""
+"""Typed request, provider, and policy contracts for Data Agent services.
+
+These immutable values normalize external inputs before catalog, inventory,
+quality, or loading work begins. Their validation rules define the shared Data
+application boundary and raise ``ValueError`` for malformed requests.
+"""
 
 from __future__ import annotations
 

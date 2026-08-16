@@ -1,4 +1,9 @@
-"""Provider-neutral ports for qualified runtime inference adapters."""
+"""Define provider-neutral ports for qualified inference adapters.
+
+Profiles expose stable non-secret provider identity and configuration. Registries
+resolve exact profiles and build pinned predictors only when a caller explicitly
+starts a runtime session; importing this module never loads a model.
+"""
 
 from __future__ import annotations
 

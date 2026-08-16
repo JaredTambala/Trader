@@ -1,4 +1,9 @@
-"""Quantitative Methods service functions exposed through MCP."""
+"""Coordinate deterministic Quantitative Methods application services.
+
+Functions resolve approved evidence, invoke generation, validation, diagnostics,
+multiple-testing, kernel, and packaging components, and return transport-neutral
+results. MCP adapters wrap this module; the services do not depend on transport.
+"""
 
 from __future__ import annotations
 
@@ -264,7 +269,17 @@ def math_generate_python_method(
     fixtures: list[dict[str, Any]] | None = None,
     approved_card_reader: ApprovedMethodCardReader | None = None,
 ) -> ApplicationResult:
-    """Persist and validate a quarantined Python method from an LLM JSON payload."""
+    """Generate and validate quarantined Python from a structured LLM payload.
+
+    Approved card access, method identity, contract, citations, optional fixtures,
+    and output root are passed to the deterministic generation workflow. The
+    generated files remain research build artifacts and are not admitted as a
+    strategy by this service.
+
+    Returns:
+        The generation workflow's transport-neutral result, including manifest,
+        validation evidence, warnings, blockers, and local artifact references.
+    """
     return generate_python_method_from_payload(
         artifact_root=artifact_root,
         method_id=method_id,
@@ -287,7 +302,17 @@ def math_run_signal_diagnostics(
     data_quality_report: Mapping[str, Any] | None = None,
     approved_card_reader: ApprovedMethodCardReader | None = None,
 ) -> ApplicationResult:
-    """Run signal-composition diagnostics over declared trade-intent candidates."""
+    """Run signal diagnostics for an explicitly declared candidate family.
+
+    Observations, forward-return labels, family manifest, method contracts, Data
+    quality evidence, and quantile count are passed to the deterministic
+    diagnostics service after approved-card access is resolved. The operation
+    describes composition and returns; it does not select or trade a candidate.
+
+    Returns:
+        A transport-neutral result containing the persisted diagnostic report,
+        warnings, blockers, and artifact references.
+    """
     return run_signal_diagnostics(
         artifact_root=artifact_root,
         signal_observations=signal_observations,
@@ -309,7 +334,16 @@ def math_run_multiple_testing_report(
     alpha: float | None = None,
     approved_card_reader: ApprovedMethodCardReader | None = None,
 ) -> ApplicationResult:
-    """Run multiple-testing controls across a declared signal candidate family."""
+    """Apply multiple-testing controls to a declared candidate metric matrix.
+
+    The complete family manifest, metrics, method contract, optional significance
+    level, and approved-card boundary are forwarded to the deterministic report
+    service. Candidates outside the declaration cannot enter the adjustment set.
+
+    Returns:
+        A transport-neutral result containing adjusted test evidence, issues, and
+        the persisted report reference.
+    """
     return run_multiple_testing_report(
         artifact_root=artifact_root,
         candidate_family_manifest=candidate_family_manifest,
@@ -327,7 +361,12 @@ def math_generate_cpp_kernel(
     implementation_manifest: Mapping[str, Any] | None = None,
     template_id: str | None = None,
 ) -> ApplicationResult:
-    """Generate a template-restricted C++ kernel from a validated Python reference."""
+    """Generate a restricted C++ kernel from validated Python evidence.
+
+    The delegated generator resolves exactly one implementation manifest, verifies
+    its passed validation, and instantiates only a maintained kernel template.
+    Arbitrary caller C++ source is never accepted.
+    """
     return generate_cpp_kernel(
         artifact_root=artifact_root,
         implementation_id=implementation_id,
@@ -344,7 +383,16 @@ def math_compile_kernel(
     compiler: str | None = None,
     timeout_seconds: float = 30.0,
 ) -> ApplicationResult:
-    """Compile a generated C++ kernel in an isolated artifact build directory."""
+    """Compile one generated C++ kernel inside its isolated build directory.
+
+    Exactly one kernel identifier or inline manifest is selected by the delegated
+    compiler service. The optional compiler and bounded timeout affect only the
+    build process; source remains restricted to the previously generated template.
+
+    Returns:
+        A result containing build and validation evidence, or structured
+        selection, compiler, timeout, or parity blockers.
+    """
     return compile_cpp_kernel(
         artifact_root=artifact_root,
         kernel_id=kernel_id,
@@ -365,7 +413,16 @@ def math_package_method_artifact(
     cxx_kernel_manifest: Mapping[str, Any] | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ApplicationResult:
-    """Package a validated Python method implementation for strategy handoff."""
+    """Package validated method evidence for an explicit strategy handoff.
+
+    The delegated packager resolves exact Python manifest and validation inputs
+    plus optional C++ kernel parity, rechecks their lineage, and creates a stable
+    local package manifest. Packaging does not register a strategy implementation.
+
+    Returns:
+        A result containing the package manifest, warnings or blockers, and its
+        deterministic artifact location.
+    """
     return package_method_artifact(
         artifact_root=artifact_root,
         implementation_id=implementation_id,

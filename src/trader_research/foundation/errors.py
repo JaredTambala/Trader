@@ -1,4 +1,9 @@
-"""Typed application failures shared by research contexts."""
+"""Typed failures raised at research application boundaries.
+
+The exceptions preserve stable error codes and actionable context for transport
+adapters while allowing deterministic services to fail without constructing MCP
+responses or swallowing validation detail.
+"""
 
 from __future__ import annotations
 

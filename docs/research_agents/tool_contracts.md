@@ -149,8 +149,8 @@ Canonical MCP research artifact refs use `research://postgres/{artifact_type}/{a
 specification, backtest, optimisation, Evaluation, and Adversarial services require the structured store and have no
 filesystem authority or fallback. Canonical `research_artifacts` rows use required `domain_owner` and `producer_tool`
 columns plus nullable `requested_by` and `actor`. Direct calls leave unavailable requester/actor provenance null;
-ORCH-1 values require it explicitly, ORCH-2 retains it in checkpoint state, and ORCH-3 must propagate it into
-orchestrated calls.
+ORCH-1 values require it explicitly, ORCH-2 retains it in checkpoint state, and ORCH-3 propagates the workflow ID and
+`workflow_executor` actor into orchestrated calls.
 
 `SpecialistHandoff` is a separate governance contract. It requires non-empty `domain_owner`, `producer_tool`,
 `requested_by` and `actor`, validates domain authority against the artifact type, and carries either a canonical
@@ -169,12 +169,12 @@ ORCH-1 adds no MCP tools. It defines immutable JSON-safe contracts used before a
 | `Prerequisite` | Required artifact, capability, policy or approval condition. | Resolution evidence and blockers must agree with status. |
 | `ArtifactSlot` | Typed input/output requirement or bounded resolved ref set. | Artifact type, domain owner, cardinality, refs and status must agree. |
 | `WorkflowPlan` | Capability DAG selected from a bounded template. | Rejects unknown steps, bindings, configuration, prerequisites, approvals, cycles and false readiness. |
-| `WorkflowStepResult` | Public result from one future executor attempt. | Carries only canonical refs, bounded public data, issues, identity, idempotency and retry classification. |
+| `WorkflowStepResult` | Public result from one executor attempt. | Carries only canonical refs, bounded public data, issues, identity, idempotency and retry classification. |
 | `Approval` | Operator decision over one material assumption. | Requested records cannot contain decisions; approved/rejected records require decision actor and rationale. |
 
 These contracts do not load artifacts, call services, write Postgres, invoke MCP or hold LangGraph checkpoint state.
-Existing MCP `ToolEnvelope` remains the transport result. ORCH-3 will adapt a validated envelope into a
-`WorkflowStepResult`; it must not persist arbitrary raw payloads or hidden model reasoning.
+Existing MCP `ToolEnvelope` remains the transport result. ORCH-3 adapts a validated envelope into a
+`WorkflowStepResult`; it does not persist arbitrary raw payloads or hidden model reasoning.
 
 ### Operational Resume Contract
 
@@ -189,8 +189,32 @@ idempotency key is retained with a content digest: replaying identical content i
 different content terminates the workflow. The operator-visible state excludes plan and result digests.
 
 Postgres checkpoint rows are not `ToolEnvelope` artifacts, canonical `ResearchArtifactRecord` values or evidence that
-a tool ran successfully. ORCH-3 must create `WorkflowStepResult` only after validating the actual MCP envelope and its
+a tool ran successfully. ORCH-3 creates `WorkflowStepResult` only after validating the actual MCP envelope and its
 canonical refs.
+
+### Deterministic Execution Contract
+
+The ORCH-3 compiler accepts an approved `ResearchObjective`, an approved `ExperimentProtocol` and a configured
+`ResearchArtifactStore`. It supports only the versioned `supplied_implementation_to_evidence` template. Every supplied
+implementation, Data manifest/quality report and optimisation objective validation is resolved by canonical URI and
+pinned with a payload SHA-256 digest before the plan is created.
+
+Each `WorkflowStep.configuration` contains one closed `ToolInvocation`: registered tool name, invocation mode, literal
+arguments and artifact-slot bindings. It cannot contain a callable, arbitrary MCP payload, filesystem path, database
+handle or provider instance. The executor resolves only those bindings, appends `requested_by={workflow_id}` and
+`actor=workflow_executor`, and calls `McpToolClient`.
+
+The executor accepts a result only when `command`, `agent_owner` and `side_effect` match the compiled capability and
+every returned ref resolves with the declared artifact authority. It hashes produced payloads before checkpointing
+their refs. Pinned input drift, unavailable refs, policy blockers and invalid cardinality fail closed. Transport retries
+are capped at three attempts. `WorkflowExecutionInterrupted` is a deliberate operator/test pause that preserves the
+checkpoint; it is not a terminal outcome.
+
+| MCP tool | Required input | Canonical output |
+| --- | --- | --- |
+| `data_create_research_snapshot` | One exact Data scope plus `requested_by` and `actor`. | Matching Data-owned `dataset_manifest` and `data_quality_report` records. |
+| `research_register_experiment_workflow` | Approved objective, approved matching protocol, ready matching plan, requester and actor. | Orchestration objective/plan refs plus Experiments-owned protocol ref. |
+| `research_record_workflow_outcome` | Terminal `WorkflowOutcome`, requester and actor; its ready plan and matching objective/protocol must resolve, every produced/review ref must resolve under its declared authority and pinned hash, and review refs must be a subset of produced refs. | Orchestration-owned `workflow_outcome` ref. |
 
 ## Side Effects
 
@@ -214,6 +238,7 @@ or bypass core platform validation.
 | --- | --- | --- |
 | `data_get_inventory` | `read_only` | `dataset_manifest.json` payload or reference |
 | `data_summarize_quality` | `read_only` | `data_quality_report.json` |
+| `data_create_research_snapshot` | `local_mutating` | canonical matching dataset-manifest and quality-report refs |
 | `data_ensure_loaded` | `local_mutating` | load/backfill evidence plus dataset manifest update |
 
 These tools are implemented first because the Data Agent owns the ingredients that later research agents consume.
@@ -274,6 +299,8 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | `research_get_optimizer_runtime`, `research_create_parameter_optimization_plan`, `research_run_parameter_optimization`, `research_get_parameter_optimization_results` | Quant Research Supervisor Agent | engine health and canonical plan/run/trial ledger |
 | `research_run_parameter_optimization_variants` | Quant Research Supervisor Agent | Adversarial-requested immutable child runs |
 | `research_project_experiment_tracking` | Quant Research Supervisor Agent | non-authoritative tracking projection report |
+| `research_register_experiment_workflow` | Quant Research Supervisor Agent | approved objective/protocol and ready plan refs |
+| `research_record_workflow_outcome` | Quant Research Supervisor Agent | terminal workflow outcome ref |
 | `research_create_walk_forward_plan`, `research_run_walk_forward_optimization`, `research_get_walk_forward_results` | Quant Research Supervisor Agent | deferred walk-forward plan/run/result artifacts |
 | `evaluation_generate_parameter_optimization_report` | Evaluation Agent | sealed untouched-holdout Evaluation report |
 | `evaluation_generate_walk_forward_report` | Evaluation Agent | deferred stitched out-of-sample walk-forward Evaluation report |
@@ -306,7 +333,10 @@ parameters, sizing, portfolio mode, runtime context, assumptions, tunable-field 
 optional typed prediction bindings required by that implementation.
 Symbols, dates, timeframe, source, and live/broker/raw-SQL permissions are forbidden. The validation tool resolves the
 exact source hash again. Risk-stack creation similarly consumes an ordered non-empty array of passed risk implementation
-validations with explicit parameters and tunable fields, then revalidates order and every source hash.
+validations with explicit parameters and tunable fields, then revalidates order and every source hash. Strategy tunable
+paths use `/strategy/parameters/{name}` or `/strategy/sizing/{name}`; ordered risk paths use
+`/risk/{index}/parameters/{name}`. Protocol construction rejects paths that do not identify an explicitly configured
+value, use the wrong manager index, or are selected by an optimisation dimension without first being declared tunable.
 
 `research_create_backtest_specification` consumes a passed strategy-spec validation, optional passed risk-stack
 validation, exactly one complete Data Agent manifest, matching complete quality report, costs/assumptions, initial
@@ -778,7 +808,7 @@ Minimal allowlists:
 
 | Agent | Allowed initial tools |
 | --- | --- |
-| Data Agent | `data_get_inventory`, `data_summarize_quality`, `data_ensure_loaded`, read-only health/config |
+| Data Agent | `data_get_inventory`, `data_summarize_quality`, `data_create_research_snapshot`, `data_ensure_loaded`, read-only health/config |
 | Quant Research Supervisor Agent | Specialist artifact reads, supervisor handoff tools, `research_*` tools |
 | Quantitative Methods Agent | `knowledge_*` retrieval/ingestion/citation tools, `math_list_method_contracts`, `math_validate_method_contract`, fixture, diagnostic, multiple-testing, method-packaging, and optional kernel tools |
 | ML Agent | Registered `ml_create_deployment_manifest` and `ml_validate_deployment`; remaining 39A-G/J lifecycle tools are planned. |

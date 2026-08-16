@@ -1,4 +1,9 @@
-"""Evaluation-owned untouched-holdout reports for parameter optimization."""
+"""Evaluate optimization selections against untouched holdout evidence.
+
+The report service verifies that the holdout run derives from the selected
+parameters and sealed Data scope, then assesses only that out-of-sample evidence.
+Selection-region metrics cannot substitute for a missing or inconsistent holdout.
+"""
 
 from __future__ import annotations
 
@@ -25,7 +30,19 @@ def generate_parameter_optimization_report(
     holdout_backtest_run_ref: str,
     artifact_store: ResearchArtifactStore | None,
 ) -> ApplicationResult:
-    """Evaluate only the sealed holdout run for an optimization-derived selection."""
+    """Evaluate an optimization selection using only its sealed holdout run.
+
+    The optimization ledger, selected parameters, holdout Data snapshot, and
+    supplied backtest lineage are independently revalidated. Selection-region
+    metrics are recorded as provenance but cannot substitute for holdout evidence
+    or repair a mismatched child specification. The conclusion is persisted under
+    Review ownership.
+
+    Returns:
+        A result containing the Evaluation report and canonical reference.
+        ``ok`` is false for blocked, inconsistent, missing, or unpersistable
+        holdout evidence.
+    """
     command = EVALUATION_GENERATE_PARAMETER_OPTIMIZATION_REPORT
     if artifact_store is None:
         return _error("research_artifact_store_required", "A ResearchArtifactStore is required.")

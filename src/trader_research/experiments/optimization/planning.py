@@ -1,4 +1,9 @@
-"""Provider-neutral parameter-optimization plan construction and validation."""
+"""Construct immutable, provider-neutral parameter optimization plans.
+
+Planning seals the base specification, holdout Data evidence, objective,
+search dimensions, constraints, seed, and resource limits. It validates this
+closed decision surface before persisting an Experiments-owned plan artifact.
+"""
 
 from __future__ import annotations
 
@@ -28,7 +33,11 @@ from .engines import OptimizationEngineRegistry, dimension_values
 
 
 def get_optimizer_runtime(*, engine_registry: OptimizationEngineRegistry | None = None) -> ApplicationResult:
-    """Return configured optimizer profiles without initializing provider state."""
+    """Return deterministic non-secret profiles for configured optimizers.
+
+    The registry is inspected without starting an engine session or creating
+    provider storage. Unavailable profiles remain visible with their reason.
+    """
     registry = engine_registry or OptimizationEngineRegistry()
     return success_result(
         command=RESEARCH_GET_OPTIMIZER_RUNTIME,
@@ -52,7 +61,18 @@ def create_parameter_optimization_plan(
     variant_reason: str | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ApplicationResult:
-    """Create a provider-neutral study plan over explicitly tunable decision parameters."""
+    """Create a provider-neutral plan over explicitly tunable parameters.
+
+    The function requires passed base and objective validations, verifies that
+    holdout Data is distinct and fit, restricts search dimensions to declared
+    tunable paths, and normalizes direction, constraints, seed, budget, and
+    resource limits. Every selection and holdout input is snapshotted into the
+    content-derived plan identity.
+
+    Returns:
+        A result containing the persisted immutable plan and canonical reference,
+        or a structured validation or persistence failure.
+    """
     command = RESEARCH_CREATE_PARAMETER_OPTIMIZATION_PLAN
     if artifact_store is None:
         return _error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")

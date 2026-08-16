@@ -1,4 +1,9 @@
-"""Canonical backtest trial executor for provider-neutral optimization."""
+"""Execute one optimization suggestion through the canonical backtest path.
+
+The executor derives an immutable child specification from the sealed plan,
+runs it through the supplied backtest service, and reduces the result to the
+closed scalar observation accepted by optimization engines.
+"""
 
 from __future__ import annotations
 
@@ -42,7 +47,18 @@ class BacktestOptimizationTrialExecutor:
         trial_id: str,
         optimization_run_id: str,
     ) -> TrialExecution:
-        """Execute a child selection-region backtest for one suggestion."""
+        """Execute one suggestion as an immutable selection-region backtest.
+
+        Tunable parameter paths are applied to copies of the sealed strategy and
+        risk specifications. The executor creates and validates child strategy,
+        risk, and backtest artifacts through their normal services, then runs the
+        child backtest and reduces it to a closed optimization observation.
+
+        Returns:
+            A passed execution with observation and complete child lineage, or a
+            blocked execution whose blockers describe any creation, validation,
+            runtime, or persistence failure.
+        """
         try:
             base, _ = load_passed_backtest_specification(
                 self._store, str(plan["base_backtest_specification_validation_id"])
@@ -190,7 +206,16 @@ def _apply_path(
 def backtest_optimization_observation(
     run: Mapping[str, Any], trial_id: str
 ) -> dict[str, Any]:
-    """Derive the closed optimization observation from one canonical backtest run."""
+    """Reduce a canonical backtest run to the closed objective input schema.
+
+    Only numeric summary metrics, bounded counts, costs, exposure, risk evidence,
+    quality blockers, and trial/run lineage are copied. Trades, positions, raw
+    events, provider state, and arbitrary caller fields are excluded.
+
+    Returns:
+        A JSON-compatible observation labeled as selection-fold evidence for the
+        supplied ``trial_id``.
+    """
     bundle = dict(run.get("bundle") or {})
     summary = dict(run.get("summary") or {})
     metrics = {

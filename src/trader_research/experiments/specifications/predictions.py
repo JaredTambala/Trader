@@ -1,4 +1,9 @@
-"""Typed prediction-binding normalization for canonical strategy specifications."""
+"""Resolve typed prediction requirements into canonical strategy bindings.
+
+Bindings pin passed deployment evidence and an exact mapper configuration for
+each implementation requirement. Revalidation reconstructs those bindings from
+canonical dependencies and rejects missing providers, mismatches, or drift.
+"""
 
 from __future__ import annotations
 
@@ -20,7 +25,20 @@ def build_prediction_bindings(
     deployment_reader: PredictionDeploymentReader | None,
     mapper_catalog: PredictionMapperCatalog | None,
 ) -> tuple[list[dict[str, Any]], str]:
-    """Resolve caller bindings against implementation, deployment, and mapper contracts."""
+    """Resolve requested prediction bindings against declared requirements.
+
+    Each named requirement must have exactly one compatible passed deployment and
+    mapper configuration. Output semantics, horizon, asset scope, timeframe, and
+    decision scope are normalized and pinned; all bindings must agree on the
+    strategy decision scope.
+
+    Returns:
+        Bindings sorted by requirement name and their shared decision scope.
+
+    Raises:
+        ValueError: If providers are unavailable or a binding is missing,
+            duplicated, incompatible, or mixes decision scopes.
+    """
     normalized_requirements = {str(item["name"]): dict(item) for item in requirements}
     raw_bindings = _mappings(requested_bindings or (), "prediction_bindings")
     if not normalized_requirements:
@@ -66,7 +84,19 @@ def revalidate_prediction_bindings(
     deployment_reader: PredictionDeploymentReader | None,
     mapper_catalog: PredictionMapperCatalog | None,
 ) -> tuple[list[dict[str, Any]], str]:
-    """Rebuild persisted bindings from canonical dependencies and reject drift."""
+    """Rebuild persisted prediction bindings and reject dependency drift.
+
+    Persisted bindings are converted back to the minimal request form and passed
+    through the normal resolver. The rebuilt canonical payload must match exactly,
+    including deployment, validation, mapper, semantics, and scope identity.
+
+    Returns:
+        The revalidated canonical bindings and shared decision scope.
+
+    Raises:
+        ValueError: If persisted evidence is malformed or no longer matches its
+            canonical deployment and mapper dependencies.
+    """
     requested = [
         {
             "name": item.get("name"),

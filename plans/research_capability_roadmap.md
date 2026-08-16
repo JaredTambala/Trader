@@ -71,8 +71,8 @@ Orchestration is a cross-cutting capability and may advance in parallel with ML,
 | ORCH-GOV | Decision authority and domain ownership redesign | complete | ORCH-0, BASE-ARCH | Current agent/artifact ownership map | ORCH-1 | Canonical records and handoffs separate domain authority, producer tool, requesting workflow and actor; approved decision boundaries are executable governance metadata; old Postgres schema fails closed with no compatibility reader. |
 | ORCH-1 | Capability and workflow contracts | complete | ORCH-GOV | ML and robustness target contracts | ORCH-2, ORCH-3, AGENT-1 | Immutable JSON-safe contracts now cover research objectives, experiment protocols, material approvals, capability snapshots, prerequisites, artifact slots, workflow-plan DAGs and bounded step results. Construction rejects unresolved approved protocols, unsafe side-effect classes, invalid authority/cardinality, unknown bindings/configuration, cycles and falsely ready plans without importing service implementations. |
 | ORCH-2 | Operational checkpoint and handoff model | complete | ORCH-1 | Postgres LangGraph checkpointer | ORCH-3, recovery | A provider-maintained Postgres LangGraph saver now resumes a bounded coordinator shell across connection lifetimes. Checkpoints retain plan identity/digest, cursor, attempt summaries, canonical artifact refs and issues only; duplicate results are idempotent, conflicts and plan drift fail closed, and public state is explicitly projected. |
-| ORCH-3 | Deterministic implementation-to-evidence workflow | ready | ORCH-1, ORCH-2, BASE-DATA, BASE-EXP, BASE-OPT | Knowledge provenance, model deployment refs | ORCH-4 | Compile an approved experiment protocol into existing specifications, then mechanically execute baseline, optimisation, sealed holdout, robustness variants and review handoffs through MCP with typed stops. |
-| ORCH-4 | Bounded Research Coordinator planning policy | blocked | ORCH-3 | LLM provider | ORCH-5, ORCH-6 | Select only registered workflow templates and prerequisite-resolution actions; reject invented tools, hidden scope, experiment-design overrides and ownership violations. |
+| ORCH-3 | Deterministic implementation-to-evidence workflow | complete | ORCH-1, ORCH-2, BASE-DATA, BASE-EXP, BASE-OPT | Knowledge provenance, model deployment refs | ORCH-4 | A fixed supplied-implementation template compiles approved protocols into typed MCP capability DAGs and mechanically executes validation, specifications, baseline, optional optimisation, sealed holdout, Evaluation and Adversarial handoffs. Canonical Data snapshots, objective/protocol/plan/outcome records, payload-hash revalidation, bounded retries, typed stops and resume without accepted-step replay are implemented. |
+| ORCH-4 | Bounded Research Coordinator planning policy | ready | ORCH-3 | LLM provider | ORCH-5, ORCH-6 | Select only registered workflow templates and prerequisite-resolution actions; reject invented tools, hidden scope, experiment-design overrides and ownership violations. |
 | ORCH-5 | Multi-specialist composition | blocked | ORCH-4, AGENT-1 | ML-7, ROB-2, REV-3 | Full research coordination | Route Experiment Design, Data, optional producer, Robustness and Evaluation requests while preserving domain authority and specialist decision ownership. |
 | ORCH-6 | Controlled orchestration qualification | blocked | ORCH-3, ORCH-4 | ORCH-5 | Release-ready orchestration | Fresh-process MCP graph, interruption/resume, approval, policy, failure, bounded-scale and operator-isolation evidence. |
 
@@ -104,7 +104,7 @@ assumption-specific approvals. `WorkflowPlan` pins capability metadata and valid
 prerequisites, policy gates, approvals and configuration keys before execution. `WorkflowStepResult` exposes only
 bounded public data, canonical artifact refs, issues and retry classification. The module imports no Data, Experiment,
 ML, Review, MCP, agent or service implementation. ORCH-1 adds no executor, checkpointer, persistence service or MCP
-tool. ORCH-2 now supplies only the operational checkpointer; execution remains ORCH-3.
+tool. ORCH-2 supplies only the operational checkpointer; ORCH-3 supplies deterministic execution.
 
 ORCH-2 implementation evidence: `trader_agents.checkpointing` compiles a ready `WorkflowPlan` into a deterministic
 LangGraph coordinator shell. Each step interrupts with bounded capability metadata and accepts an externally produced
@@ -114,8 +114,19 @@ Operational state is stored through the maintained `langgraph-checkpoint-postgre
 refs, issue summaries and result digests, never raw MCP payloads, complete artifacts, prompts, credentials or feature
 matrices. Reopening the saver can resume the same thread; exact duplicate result keys are ignored, conflicting content,
 plan drift and invalid output cardinality fail closed. Checkpoint tables are replaceable operational state, not
-`research_artifacts` or research evidence. ORCH-3 remains responsible for capability registration, MCP execution,
-envelope adaptation and canonical workflow outcomes.
+`research_artifacts` or research evidence.
+
+ORCH-3 implementation evidence: `trader_agents.orchestration` provides one closed
+`supplied_implementation_to_evidence` compiler and a non-agent executor over the `McpToolClient` protocol. The compiler
+pins exact strategy/risk implementation records, canonical Data manifest/quality refs, optional objective validation,
+execution settings, search space and review requirements into the ORCH-1 DAG. The executor calls only registered tools,
+validates command/owner/side-effect envelopes, hashes every input/output payload, adapts results into bounded
+`WorkflowStepResult` values and drives the ORCH-2 checkpoint shell. The new `data_create_research_snapshot` tool makes
+inventory/quality evidence resumable; `research_register_experiment_workflow` and
+`research_record_workflow_outcome` persist the governance records. Workflow writes are stamped with the workflow ID and
+`workflow_executor` actor. Disabled policy, payload drift and terminal tool blockers stop the graph without executing
+later nodes; interruption resumes from the next unaccepted step. This is deterministic execution, not an autonomous
+planner or a high-level MCP experiment runner.
 
 ### ML Lifecycle
 
@@ -184,7 +195,7 @@ review authority.
 
 These work items have no unmet hard product dependency:
 
-1. ORCH-3: execute approved implementation-to-evidence workflows through registered MCP capabilities.
+1. ORCH-4: add bounded template selection and prerequisite-resolution policy over the ORCH-3 executor.
 2. AGENT-1: define the specialist graph contract and common policy shell over ORCH-1.
 3. ML-1: establish the MLflow runtime and mutation policy.
 4. ML-2: implement point-in-time feature-set specifications.

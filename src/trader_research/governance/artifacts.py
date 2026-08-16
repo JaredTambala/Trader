@@ -1,4 +1,9 @@
-"""Research artifact types and bounded-context authority declarations."""
+"""Declare research artifact types and their bounded-context owners.
+
+The mappings are the authoritative vocabulary used by persistence, handoffs,
+and orchestration validation. Adding or reassigning a type changes governance
+and must stay synchronized with canonical writers and active documentation.
+"""
 
 from __future__ import annotations
 

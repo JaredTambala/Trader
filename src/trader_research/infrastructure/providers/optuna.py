@@ -1,4 +1,9 @@
-"""Optional Optuna ask/tell adapter isolated from canonical optimization code."""
+"""Adapt optional Optuna studies to the provider-neutral ask/tell contract.
+
+Optuna is imported lazily after profile selection. The adapter suggests values
+only within the canonical plan, receives closed scalar outcomes, and exposes a
+bounded snapshot; canonical trial identity and resumability stay in Trader.
+"""
 
 from __future__ import annotations
 
@@ -34,7 +39,12 @@ class OptunaOptimizationEngine:
         self._role_name = str(role_name)
 
     def profile(self) -> OptimizationEngineProfile:
-        """Return availability without importing Optuna at server startup."""
+        """Describe Optuna availability without importing its runtime package.
+
+        Installed version and configuration policy are inspected lazily. The
+        digest uses a credential-free storage identity plus dedicated schema and
+        role names, allowing canonical plans to detect provider drift safely.
+        """
         try:
             version = metadata.version("optuna")
             reason = self._configuration_blocker()
@@ -72,7 +82,16 @@ class OptunaOptimizationEngine:
         prior_trials: Sequence[Mapping[str, Any]],
         direction: str,
     ) -> "_OptunaSession":
-        """Create or reconcile the adapter-owned study with canonical trials."""
+        """Create or reopen an adapter-owned study and reconcile canonical trials.
+
+        Configuration must use PostgreSQL with the declared dedicated writer role
+        and non-public schema. A seeded sequential TPE sampler and deterministic
+        study name are used, after which the session imports prior canonical trials
+        and enforces the plan's search space, direction, and budget.
+
+        Raises:
+            ValueError: If provider storage violates the isolation policy.
+        """
         import optuna  # type: ignore[import-not-found]
 
         blocker = self._configuration_blocker()

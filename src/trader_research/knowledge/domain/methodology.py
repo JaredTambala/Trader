@@ -1,4 +1,9 @@
-"""Knowledge methodology domain models."""
+"""Define candidates, evidence packets, extraction reports, and validation reports.
+
+These immutable artifacts represent the methodology workflow before publication
+as a method card. Each stage carries exact upstream identity so field extraction
+and validation cannot silently switch sources or evidence packets.
+"""
 
 from __future__ import annotations
 
@@ -79,7 +84,12 @@ class MethodologyCandidate:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize the methodology candidate with candidate spans and methodology fields."""
+        """Serialize a methodology candidate with exact discovery evidence.
+
+        Candidate identity, query, families, source and chunk lineage, selected
+        claim spans, provisional methodology fields, issues, status, and creation
+        time are emitted as canonical plain data.
+        """
         return {
             "artifact_type": "methodology_candidate",
             "schema_version": self.schema_version,
@@ -101,7 +111,12 @@ class MethodologyCandidate:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "MethodologyCandidate":
-        """Parse a persisted methodology-candidate payload."""
+        """Parse and validate a persisted methodology candidate.
+
+        Discovery scope, evidence IDs and spans, optional methodology fields,
+        warnings, blockers, lifecycle status, and timestamp are normalized through
+        typed values before candidate invariants are applied.
+        """
         return cls(
             methodology_candidate_id=str(payload.get("methodology_candidate_id") or ""),
             title=str(payload.get("title") or ""),
@@ -160,7 +175,12 @@ class MethodologyEvidencePacket:
             raise ValueError(f"unsupported evidence packet status: {self.status}; allowed values: {allowed}")
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize the role-labeled evidence packet for DB-backed persistence."""
+        """Serialize a role-labeled methodology evidence packet.
+
+        Candidate lineage, family profile and version, readiness goal, role
+        evidence, sources, chunks, missing roles, issues, status, and creation time
+        are emitted for canonical persistence.
+        """
         return {
             "artifact_type": "methodology_evidence_packet",
             "schema_version": self.schema_version,
@@ -183,7 +203,12 @@ class MethodologyEvidencePacket:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "MethodologyEvidencePacket":
-        """Parse a persisted methodology evidence packet payload."""
+        """Parse and validate a persisted methodology evidence packet.
+
+        Role-labeled evidence, family profile identity, readiness, candidate and
+        source lineage, missing roles, issues, status, and timestamp are normalized
+        before packet consistency rules run.
+        """
         return cls(
             evidence_packet_id=str(payload.get("evidence_packet_id") or ""),
             methodology_candidate_id=str(payload.get("methodology_candidate_id") or ""),
@@ -232,7 +257,12 @@ class MethodologyFieldExtractionReport:
             raise ValueError(f"unsupported methodology extraction status: {self.status}")
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize extraction status and populated-field evidence summary."""
+        """Serialize methodology extraction output and field evidence.
+
+        Candidate and packet lineage, populated nullable fields, per-field exact
+        evidence, populated count, issues, status, and creation time are retained
+        in the canonical report payload.
+        """
         return {
             "artifact_type": "methodology_field_extraction_report",
             "schema_version": self.schema_version,
@@ -253,7 +283,12 @@ class MethodologyFieldExtractionReport:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "MethodologyFieldExtractionReport":
-        """Parse a stored methodology field-extraction report."""
+        """Parse and validate a stored field-extraction report.
+
+        Extracted field groups, exact field evidence, upstream IDs, populated count,
+        issues, status, and timestamp are normalized. Constructor validation checks
+        that summary counts and lifecycle claims match the parsed evidence.
+        """
         return cls(
             extraction_id=str(payload.get("extraction_id") or ""),
             methodology_candidate_id=str(payload.get("methodology_candidate_id") or ""),
@@ -303,7 +338,12 @@ class MethodologyCandidateValidationReport:
             raise ValueError("methodology validation valid flag must match status")
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize validation status, checked refs, warnings, and blockers."""
+        """Serialize a methodology-candidate validation conclusion.
+
+        Candidate, extraction, and evidence-packet lineage, checked references,
+        readiness, warnings, blockers, validity, status, and timestamp are emitted
+        as a bounded canonical report.
+        """
         return {
             "artifact_type": "methodology_candidate_validation_report",
             "schema_version": self.schema_version,
@@ -323,7 +363,12 @@ class MethodologyCandidateValidationReport:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "MethodologyCandidateValidationReport":
-        """Parse a stored methodology-candidate validation report."""
+        """Parse and validate a stored candidate-validation report.
+
+        Upstream identity, checked refs, readiness, warnings, blockers, validity,
+        status, and timestamp are normalized. Constructor rules ensure the claimed
+        conclusion agrees with its blocker evidence.
+        """
         return cls(
             validation_id=str(payload.get("validation_id") or ""),
             methodology_candidate_id=str(payload.get("methodology_candidate_id") or ""),

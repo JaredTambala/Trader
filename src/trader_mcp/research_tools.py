@@ -72,6 +72,7 @@ from trader_research.experiments import (
 )
 from trader_research.foundation import (
     ApplicationResult,
+    ContextualResearchArtifactStore,
     PredictionDeploymentReader,
     PredictionMapperCatalog,
     ResearchArtifactStore,
@@ -106,9 +107,24 @@ def register_research_tools(
     engines = optimizer_registry or OptimizationEngineRegistry()
     sinks = tracking_sink_registry or ExperimentTrackingSinkRegistry()
 
-    def _store() -> ResearchArtifactStore | None:
-        return (
-            artifact_store_provider() if artifact_store_provider is not None else None
+    def _store(
+        requested_by: str | None = None,
+        actor: str | None = None,
+    ) -> ResearchArtifactStore | None:
+        if (requested_by is None) != (actor is None):
+            raise ValueError(
+                "requested_by and actor must be supplied together"
+            )
+        if artifact_store_provider is None:
+            return None
+        store = artifact_store_provider()
+        if requested_by is None and actor is None:
+            return store
+        assert requested_by is not None and actor is not None
+        return ContextualResearchArtifactStore(
+            store,
+            requested_by=requested_by,
+            actor=actor,
         )
 
     def _result(result: ServiceResult) -> CallToolResult:
@@ -336,6 +352,8 @@ def register_research_tools(
         implementation_version_uri: str | None,
         implementation_version: dict[str, Any] | None,
         fixture_parameters: dict[str, Any] | None,
+        requested_by: str | None,
+        actor: str | None,
     ) -> CallToolResult:
         return _result(
             service(
@@ -343,7 +361,7 @@ def register_research_tools(
                 implementation_version_uri=implementation_version_uri,
                 implementation_version=implementation_version,
                 fixture_parameters=fixture_parameters,
-                artifact_store=_store(),
+                artifact_store=_store(requested_by, actor),
             )
         )
 
@@ -358,6 +376,8 @@ def register_research_tools(
         implementation_version_uri: str | None = None,
         implementation_version: dict[str, Any] | None = None,
         fixture_parameters: dict[str, Any] | None = None,
+        requested_by: str | None = None,
+        actor: str | None = None,
     ) -> CallToolResult:
         return _validate(
             validate_strategy_implementation,
@@ -365,6 +385,8 @@ def register_research_tools(
             implementation_version_uri=implementation_version_uri,
             implementation_version=implementation_version,
             fixture_parameters=fixture_parameters,
+            requested_by=requested_by,
+            actor=actor,
         )
 
     @server.tool(
@@ -378,6 +400,8 @@ def register_research_tools(
         implementation_version_uri: str | None = None,
         implementation_version: dict[str, Any] | None = None,
         fixture_parameters: dict[str, Any] | None = None,
+        requested_by: str | None = None,
+        actor: str | None = None,
     ) -> CallToolResult:
         return _validate(
             validate_risk_manager_implementation,
@@ -385,6 +409,8 @@ def register_research_tools(
             implementation_version_uri=implementation_version_uri,
             implementation_version=implementation_version,
             fixture_parameters=fixture_parameters,
+            requested_by=requested_by,
+            actor=actor,
         )
 
     @server.tool(
@@ -398,6 +424,8 @@ def register_research_tools(
         implementation_version_uri: str | None = None,
         implementation_version: dict[str, Any] | None = None,
         fixture_parameters: dict[str, Any] | None = None,
+        requested_by: str | None = None,
+        actor: str | None = None,
     ) -> CallToolResult:
         return _validate(
             validate_optimization_objective,
@@ -405,6 +433,8 @@ def register_research_tools(
             implementation_version_uri=implementation_version_uri,
             implementation_version=implementation_version,
             fixture_parameters=fixture_parameters,
+            requested_by=requested_by,
+            actor=actor,
         )
 
     @server.tool(
@@ -423,6 +453,8 @@ def register_research_tools(
         tunable_fields: list[str] | None = None,
         provenance_refs: list[dict[str, Any]] | None = None,
         prediction_bindings: list[dict[str, Any]] | None = None,
+        requested_by: str | None = None,
+        actor: str | None = None,
     ) -> CallToolResult:
         return _result(
             create_strategy_specification(
@@ -437,7 +469,7 @@ def register_research_tools(
                 prediction_bindings=prediction_bindings,
                 prediction_deployment_reader=_prediction_reader(),
                 prediction_mapper_catalog=prediction_mapper_catalog,
-                artifact_store=_store(),
+                artifact_store=_store(requested_by, actor),
             )
         )
 
@@ -451,6 +483,8 @@ def register_research_tools(
         strategy_specification_id: str | None = None,
         strategy_specification_uri: str | None = None,
         strategy_specification: dict[str, Any] | None = None,
+        requested_by: str | None = None,
+        actor: str | None = None,
     ) -> CallToolResult:
         return _result(
             validate_strategy_specification(
@@ -459,7 +493,7 @@ def register_research_tools(
                 strategy_specification=strategy_specification,
                 prediction_deployment_reader=_prediction_reader(),
                 prediction_mapper_catalog=prediction_mapper_catalog,
-                artifact_store=_store(),
+                artifact_store=_store(requested_by, actor),
             )
         )
 
@@ -473,13 +507,15 @@ def register_research_tools(
         risk_managers: list[dict[str, Any]],
         execution_assumptions: dict[str, Any] | None = None,
         provenance_refs: list[dict[str, Any]] | None = None,
+        requested_by: str | None = None,
+        actor: str | None = None,
     ) -> CallToolResult:
         return _result(
             create_risk_stack_specification(
                 risk_managers=risk_managers,
                 execution_assumptions=execution_assumptions,
                 provenance_refs=provenance_refs,
-                artifact_store=_store(),
+                artifact_store=_store(requested_by, actor),
             )
         )
 
@@ -493,13 +529,15 @@ def register_research_tools(
         risk_stack_specification_id: str | None = None,
         risk_stack_specification_uri: str | None = None,
         risk_stack_specification: dict[str, Any] | None = None,
+        requested_by: str | None = None,
+        actor: str | None = None,
     ) -> CallToolResult:
         return _result(
             validate_risk_stack_specification(
                 risk_stack_specification_id=risk_stack_specification_id,
                 risk_stack_specification_uri=risk_stack_specification_uri,
                 risk_stack_specification=risk_stack_specification,
-                artifact_store=_store(),
+                artifact_store=_store(requested_by, actor),
             )
         )
 
@@ -525,6 +563,8 @@ def register_research_tools(
         parent_specification_ref: str | None = None,
         selection_origin_ref: str | None = None,
         variant_reason: str | None = None,
+        requested_by: str | None = None,
+        actor: str | None = None,
     ) -> CallToolResult:
         return _result(
             create_backtest_specification(
@@ -545,7 +585,7 @@ def register_research_tools(
                 variant_reason=variant_reason,
                 prediction_deployment_reader=_prediction_reader(),
                 prediction_mapper_catalog=prediction_mapper_catalog,
-                artifact_store=_store(),
+                artifact_store=_store(requested_by, actor),
             )
         )
 
@@ -559,6 +599,8 @@ def register_research_tools(
         backtest_specification_id: str | None = None,
         backtest_specification_uri: str | None = None,
         backtest_specification: dict[str, Any] | None = None,
+        requested_by: str | None = None,
+        actor: str | None = None,
     ) -> CallToolResult:
         return _result(
             validate_backtest_specification(
@@ -567,7 +609,7 @@ def register_research_tools(
                 backtest_specification=backtest_specification,
                 prediction_deployment_reader=_prediction_reader(),
                 prediction_mapper_catalog=prediction_mapper_catalog,
-                artifact_store=_store(),
+                artifact_store=_store(requested_by, actor),
             )
         )
 
@@ -579,6 +621,8 @@ def register_research_tools(
     )
     async def research_run_backtest_specification(
         backtest_specification_validation_ref: str,
+        requested_by: str | None = None,
+        actor: str | None = None,
     ) -> CallToolResult:
         blocked = _runtime_error(RESEARCH_RUN_BACKTEST_SPECIFICATION_TOOL)
         if blocked is not None:
@@ -601,7 +645,7 @@ def register_research_tools(
                     and prediction_runtime_resolver_provider is not None
                     else None
                 ),
-                artifact_store=_store(),
+                artifact_store=_store(requested_by, actor),
             )
 
         return _result(await anyio.to_thread.run_sync(_run))
@@ -666,6 +710,8 @@ def register_research_tools(
         resource_limits: dict[str, Any] | None = None,
         parent_plan_ref: str | None = None,
         variant_reason: str | None = None,
+        requested_by: str | None = None,
+        actor: str | None = None,
     ) -> CallToolResult:
         return _result(
             create_parameter_optimization_plan(
@@ -681,7 +727,7 @@ def register_research_tools(
                 resource_limits=resource_limits,
                 parent_plan_ref=parent_plan_ref,
                 variant_reason=variant_reason,
-                artifact_store=_store(),
+                artifact_store=_store(requested_by, actor),
             )
         )
 
@@ -695,6 +741,8 @@ def register_research_tools(
         optimization_plan_ref: str,
         optimizer_profile: str = "builtin_random",
         max_new_trials: int | None = None,
+        requested_by: str | None = None,
+        actor: str | None = None,
     ) -> CallToolResult:
         blocked = _runtime_error(
             RESEARCH_RUN_PARAMETER_OPTIMIZATION_TOOL, optimization=True
@@ -720,7 +768,7 @@ def register_research_tools(
                 event_store_provider is not None
                 and backtest_config_provider is not None
             )
-            store = _store()
+            store = _store(requested_by, actor)
             if store is None:
                 return _blocked_envelope(
                     RESEARCH_RUN_PARAMETER_OPTIMIZATION_TOOL,
@@ -767,6 +815,8 @@ def register_research_tools(
     )
     async def research_run_parameter_optimization_variants(
         audit_plan_ref: str,
+        requested_by: str | None = None,
+        actor: str | None = None,
     ) -> CallToolResult:
         blocked = _runtime_error(
             RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS_TOOL, optimization=True
@@ -779,7 +829,7 @@ def register_research_tools(
                 event_store_provider is not None
                 and backtest_config_provider is not None
             )
-            store = _store()
+            store = _store(requested_by, actor)
             if store is None:
                 return _blocked_envelope(
                     RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS_TOOL,

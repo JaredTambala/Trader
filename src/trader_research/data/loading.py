@@ -1,4 +1,9 @@
-"""Policy-gated market-data inspection and loading orchestration."""
+"""Coordinate policy-gated inspection and loading of market data.
+
+The service distinguishes read-only evidence gathering from provider-backed
+loading, enforces the configured mutation policy before writes, and returns
+structured blockers when the requested operation is unavailable or forbidden.
+"""
 
 from __future__ import annotations
 

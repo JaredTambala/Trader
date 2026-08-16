@@ -1,4 +1,9 @@
-"""Postgres projection writers for review artifacts."""
+"""Write typed Postgres projections for Review-owned artifacts.
+
+Evaluation reports, audit plans, and robustness reports are reduced to stable
+query fields while their complete evidence remains in canonical records. Writers
+perform no experiment execution or independent review judgment.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +20,12 @@ from trader_research.governance.artifacts import (
 def write_parameter_optimization_evaluation_report(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one parameter_optimization_evaluation_report artifact."""
+    """Upsert one optimization Evaluation-report projection.
+
+    Report, optimization-run, holdout-run, and status fields are stored with the
+    complete canonical payload. The writer performs no holdout assessment and
+    uses the caller's active transaction.
+    """
     payload = dict(record.payload)
     connection.execute(
         """
@@ -37,7 +47,12 @@ def write_parameter_optimization_evaluation_report(
 def write_parameter_optimization_audit_plan(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one parameter_optimization_audit_plan artifact."""
+    """Upsert one parameter-optimization audit-plan projection.
+
+    Audit-plan identity, baseline-run lineage, status, and the complete canonical
+    payload are written for bounded queries. The writer neither declares new
+    attacks nor executes existing ones.
+    """
     payload = dict(record.payload)
     connection.execute(
         """
@@ -58,7 +73,12 @@ def write_parameter_optimization_audit_plan(
 def write_parameter_optimization_robustness_report(
     connection: Any, record: ResearchArtifactRecord, json_value: Any
 ) -> None:
-    """Project one parameter_optimization_robustness_report artifact."""
+    """Upsert one optimization robustness-report projection.
+
+    Report, audit-plan, and baseline-run identity, status, and the complete
+    payload are written in the caller's transaction. No robustness judgment is
+    recomputed or altered by this projection writer.
+    """
     payload = dict(record.payload)
     connection.execute(
         """

@@ -1,4 +1,9 @@
-"""Read-only market-data inventory and dataset-manifest construction."""
+"""Inspect stored market data and build deterministic dataset manifests.
+
+Inventory reads are bounded by a normalized Data Agent request and preserve the
+requested symbol order. The module reports available coverage without fetching
+new data or mutating the event store.
+"""
 
 from __future__ import annotations
 

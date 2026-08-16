@@ -1,4 +1,9 @@
-"""Evidence-backed methodology field extraction."""
+"""Extract nullable methodology fields from a canonical evidence packet.
+
+Extraction is limited to cited packet chunks and records exact span support for
+every populated value. Unsupported fields remain null with blockers or warnings;
+the service never invents details merely to produce a complete method card.
+"""
 
 from __future__ import annotations
 
@@ -55,7 +60,18 @@ def extract_methodology_fields(
     knowledge_store: KnowledgeStore | None = None,
     artifact_store: ResearchArtifactStore | None = None,
 ) -> ApplicationResult:
-    """Populate nullable methodology fields from cited candidate chunks."""
+    """Extract nullable methodology fields from one exact evidence packet.
+
+    Candidate and packet inputs are resolved and their lineage is checked before
+    role evidence is mapped to the maintained field schema. Only bounded cited
+    text up to ``max_chars_per_chunk`` may populate a value, and each populated
+    field retains exact evidence support. Missing support remains null.
+
+    Returns:
+        A result containing the persisted extraction report, field evidence,
+        warnings, blockers, and canonical reference, or a structured validation,
+        store, or persistence failure.
+    """
     if artifact_store is None:
         return _artifact_store_error(KNOWLEDGE_EXTRACT_METHODOLOGY_FIELDS, "research artifact store is required")
     if max_chars_per_chunk < 1 or max_chars_per_chunk > 20_000:

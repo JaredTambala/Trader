@@ -1,4 +1,9 @@
-"""Public facade for independent Evaluation and Adversarial review."""
+"""Expose independent Evaluation and Adversarial review capabilities.
+
+Review services consume canonical experiment evidence, declare immutable attacks,
+and persist skeptical findings under Review ownership. They do not execute
+variants, mutate baselines, select optimizer parameters, or route workflows.
+"""
 
 from .adversarial import (
     create_parameter_optimization_audit_plan,

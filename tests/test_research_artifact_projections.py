@@ -4,7 +4,12 @@ from typing import Any
 
 import pytest
 
-from trader_research.foundation.artifacts import ResearchArtifactStoreError, build_artifact_record
+from trader_research.foundation.artifacts import (
+    ContextualResearchArtifactStore,
+    InMemoryResearchArtifactStore,
+    ResearchArtifactStoreError,
+    build_artifact_record,
+)
 from trader_research.governance.artifacts import EXPERIMENTS_DOMAIN_OWNER
 from trader_research.infrastructure.postgres.projections import (
     combine_projection_writers,
@@ -54,6 +59,38 @@ def test_artifact_record_rejects_unknown_domain_authority() -> None:
         )
 
 
+def test_contextual_artifact_store_applies_and_enforces_workflow_provenance() -> None:
+    underlying = InMemoryResearchArtifactStore()
+    store = ContextualResearchArtifactStore(
+        underlying,
+        requested_by="workflow_1",
+        actor="workflow_executor",
+    )
+
+    record = store.save_artifact(
+        artifact_type="demo_artifact",
+        artifact_id="demo_1",
+        domain_owner=EXPERIMENTS_DOMAIN_OWNER,
+        producer_tool="research_demo",
+        payload={"status": "passed"},
+    )
+
+    assert record.requested_by == "workflow_1"
+    assert record.actor == "workflow_executor"
+    with pytest.raises(
+        ResearchArtifactStoreError,
+        match="conflicts with the active workflow context",
+    ):
+        store.save_artifact(
+            artifact_type="demo_artifact",
+            artifact_id="demo_2",
+            domain_owner=EXPERIMENTS_DOMAIN_OWNER,
+            producer_tool="research_demo",
+            requested_by="another_workflow",
+            payload={"status": "passed"},
+        )
+
+
 def test_projection_registry_dispatches_only_registered_artifact_type() -> None:
     calls: list[tuple[Any, str, Any]] = []
 
@@ -95,3 +132,7 @@ def test_default_projection_registry_is_partitioned_by_context() -> None:
     assert "backtest_run" in projected
     assert "parameter_optimization_evaluation_report" in projected
     assert "parameter_optimization_robustness_report" in projected
+    assert "research_objective" in projected
+    assert "experiment_protocol" in projected
+    assert "workflow_plan" in projected
+    assert "workflow_outcome" in projected
