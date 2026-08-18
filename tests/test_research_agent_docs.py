@@ -356,7 +356,7 @@ def test_product_state_separates_implementation_qualification_and_availability()
         "`none`, `focused`, `integration`, `controlled`",
         "`unregistered`, `registered`, `gated`, `operator_only`, `deferred`",
         "`Implemented` does not mean autonomously orchestrated",
-        "The principal remaining orchestration gap is bounded planning",
+        "The principal remaining orchestration gap is automatic specialist composition",
         "commit `577c774`",
         "but they are not part of the",
     ):
@@ -372,7 +372,7 @@ def test_docs_define_cross_cutting_target_artifact_orchestration() -> None:
     for phrase in (
         "Higher-Level Orchestration Architecture",
         "Orchestration is a cross-cutting control capability",
-        "A separate non-agent ORCH-3 compiler/executor runs",
+        "A separate non-agent compiler/executor runs",
         "`ResearchObjective`",
         "`CapabilityDefinition`",
         "`WorkflowPlan`",
@@ -434,7 +434,7 @@ def test_docs_define_non_overlapping_experiment_research_decisions() -> None:
     assert "## Target Orchestrated Supplied-Strategy Workflow" in workflows
 
 
-def test_docs_define_orch_1_contract_scope_without_claiming_execution() -> None:
+def test_docs_define_declaration_contract_scope_without_claiming_execution() -> None:
     product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
     architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
     contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
@@ -455,15 +455,16 @@ def test_docs_define_orch_1_contract_scope_without_claiming_execution() -> None:
         "`Approval`",
         "sealed holdout",
         "dependency cycles",
-        "ORCH-1 adds no MCP tools",
-        "contract-only release",
+        "The declaration contracts add no MCP tools",
+        "declaration-contract delivery was contract-only",
     ):
         assert phrase in combined
 
 
-def test_docs_define_orch_2_resume_without_claiming_mcp_execution() -> None:
+def test_docs_define_resume_shell_without_claiming_mcp_execution() -> None:
     product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
     architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
+    agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
     contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
     workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
     operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
@@ -472,10 +473,10 @@ def test_docs_define_orch_2_resume_without_claiming_mcp_execution() -> None:
         (
             product_state,
             architecture,
+            agents,
             contracts,
             workflows,
             operations,
-            roadmap,
         )
     )
 
@@ -486,7 +487,6 @@ def test_docs_define_orch_2_resume_without_claiming_mcp_execution() -> None:
         "Exact duplicate",
         "plan drift",
         "does not call MCP",
-        "ORCH-3",
     ):
         assert phrase in combined
 
@@ -496,7 +496,7 @@ def test_docs_define_orch_2_resume_without_claiming_mcp_execution() -> None:
     )
 
 
-def test_docs_define_orch_3_deterministic_execution_boundary() -> None:
+def test_docs_define_deterministic_execution_boundary() -> None:
     product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
     architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
     agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
@@ -535,9 +535,86 @@ def test_docs_define_orch_3_deterministic_execution_boundary() -> None:
         in roadmap
     )
     assert (
-        "| ORCH-4 | Bounded Research Coordinator planning policy | ready |"
+        "| ORCH-4 | Bounded Research Coordinator planning policy | complete |"
         in roadmap
     )
+
+
+def test_docs_explain_current_orchestration_call_and_storage_boundaries() -> None:
+    readme = (DOC_ROOT / "README.md").read_text(encoding="utf-8")
+    normalized_readme = " ".join(readme.split())
+    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
+    catalog = (DOC_ROOT / "mcp_tools.md").read_text(encoding="utf-8")
+    contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
+    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
+    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
+    roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
+
+    for phrase in (
+        "The coordinator policy, declaration contracts, non-executing resume shell",
+        "closed compiler/executor are separate architectural responsibilities",
+    ):
+        assert phrase in normalized_readme
+
+    for phrase in (
+        "## Implemented Orchestration At A Glance",
+        "returns a ready WorkflowPlan; writes nothing",
+        "The artifact store holds research evidence",
+        "A deliberate pause creates no outcome",
+    ):
+        assert phrase in product_state
+
+    for phrase in (
+        "There is no `research_execute_workflow` MCP tool",
+        "The executor consumes the `McpToolClient` protocol",
+        "There are two related identity layers",
+    ):
+        assert phrase in architecture
+
+    assert "There is no registered high-level workflow-execution tool" in catalog
+    assert "`ToolEnvelope` | MCP adapter" in contracts
+    assert "Compilation itself writes nothing" in workflows
+    assert "`max_tool_calls` counts compiled plan-step calls" in operations
+    for revision in ("`e3f7d85`", "`6cbc886`", "`28c1d33`"):
+        assert revision in roadmap
+
+
+def test_docs_define_bounded_research_coordinator_policy() -> None:
+    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
+    agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
+    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
+    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
+    roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
+    combined = "\n".join(
+        (product_state, architecture, agents, workflows, operations, roadmap)
+    )
+
+    for phrase in (
+        "`CoordinationDecision`",
+        "`WorkflowTemplateCatalog`",
+        "`compile_coordination_decision`",
+        "request a prerequisite",
+        "unknown templates",
+        "specialist invocation remains separate composition work",
+    ):
+        assert phrase in combined
+
+    assert "trader_agents.research_coordinator" in architecture
+    assert "calls no MCP tool" in agents
+
+
+def test_active_product_docs_do_not_name_architecture_with_roadmap_ids() -> None:
+    roadmap_id = re.compile(r"\bORCH-(?:GOV|\d+)\b")
+    roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
+
+    assert "identifiers are roadmap work-item labels only" in roadmap
+    assert "never names components after delivery checkpoints" in roadmap
+
+    for path in _current_markdown_docs():
+        content = path.read_text(encoding="utf-8")
+        assert roadmap_id.search(content) is None, path.relative_to(REPO_ROOT)
 
 
 def test_active_roadmap_is_dependency_driven_and_legacy_tracker_is_deprecated() -> None:

@@ -14,8 +14,10 @@ from trader.config import Config
 from trader.market_data.sample import load_sample_market_data_csv
 from trader_agents import (
     WORKFLOW_EXECUTOR_ACTOR,
+    CoordinatorAction,
     WorkflowExecutionInterrupted,
     compile_supplied_implementation_workflow,
+    coordinate_research,
     execute_compiled_research_workflow,
 )
 from trader_mcp.constants import (
@@ -216,11 +218,17 @@ def test_compiled_workflow_executes_full_mcp_evidence_graph(
             optimization=True,
             allow_backtests=True,
         )
-        compiled = compile_supplied_implementation_workflow(
+        coordination = coordinate_research(
             objective=prepared.objective,
             protocol=prepared.protocol,
             artifact_store=prepared.store,
         )
+        assert (
+            coordination.decision.action
+            is CoordinatorAction.EXECUTE_REGISTERED_WORKFLOW
+        )
+        assert coordination.compiled_workflow is not None
+        compiled = coordination.compiled_workflow
         repeated = compile_supplied_implementation_workflow(
             objective=prepared.objective,
             protocol=prepared.protocol,

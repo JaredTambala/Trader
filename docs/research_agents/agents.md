@@ -28,7 +28,7 @@ identity.
 
 ## Approved Decision Boundaries
 
-ORCH-GOV approves the smallest set of target roles with distinct research decisions. The executable registry is
+The governance registry approves the smallest set of target roles with distinct research decisions. The executable registry is
 `DECISION_AUTHORITIES`; registration there does not imply that a role already has an operational graph.
 
 | Target role | Owns this decision | Produces | Must not own or decide |
@@ -62,10 +62,11 @@ Agent identity and domain ownership are separate:
 | Orchestration | Research objective, workflow plan, approval and outcome records only. |
 
 Every canonical artifact record stores `domain_owner`, `producer_tool`, `requested_by` and `actor`. Domain and producer
-are required. Direct pre-orchestration service calls may leave `requested_by` and `actor` null. ORCH-1 requires both on
-typed objective, workflow, approval and step-result values. ORCH-2 retains them in bounded operational state; ORCH-3
-propagates the workflow ID and `workflow_executor` actor into canonical writes. Missing identity is represented as null,
-never inferred from the MCP allowlist label. Requesting a tool does not transfer artifact authority.
+are required. Direct pre-orchestration service calls may leave `requested_by` and `actor` null. Orchestration contracts
+require both on typed objective, workflow, approval and step-result values. The resume shell retains them in bounded
+operational state; the workflow executor propagates the workflow ID and `workflow_executor` actor into canonical writes.
+Missing identity is represented as null, never inferred from the MCP allowlist label. Requesting a tool does not transfer
+artifact authority.
 
 ## Handoff Rules
 
@@ -83,24 +84,32 @@ never inferred from the MCP allowlist label. Requesting a tool does not transfer
 
 ## Orchestration Contract Boundary
 
-The implemented ORCH-1 types are declarative governance values, not new agents:
+The implemented orchestration contracts are declarative governance values, not new agents:
 
 - the operator supplies a `ResearchObjective`;
 - the Experiment Design Agent may propose an `ExperimentProtocol`, but it cannot mark material assumptions approved
   without explicit `Approval` decisions;
 - the Research Coordinator may select registered `CapabilityDefinition` values and compose a `WorkflowPlan` from typed
   `Prerequisite` and `ArtifactSlot` values;
-- the ORCH-2 non-agent coordinator shell accepts external `WorkflowStepResult` values and cannot make experiment or
+- the non-agent resume shell accepts external `WorkflowStepResult` values and cannot make experiment or
   review decisions;
-- the ORCH-3 non-agent executor compiles one approved supplied-implementation template and mechanically obtains those
-  step results through registered MCP tools.
+- the non-agent compiler instantiates the one approved supplied-implementation template as a plan, and its executor
+  mechanically obtains the step results through registered MCP tools.
 
 Capabilities contain producer-tool names and schema metadata only. They do not contain callables, service instances,
 MCP clients or provider objects. Workflow plans reject undeclared capabilities and configuration, so an agent cannot
-turn prose into an invented action. ORCH-2 checkpoints plan identity, cursor, retries, bounded attempt/handoff
+turn prose into an invented action. The resume shell checkpoints plan identity, cursor, retries, bounded attempt/handoff
 summaries and canonical refs through the maintained Postgres LangGraph saver. It does not call MCP or own canonical
-evidence. ORCH-3 connects that shell to registered tool execution through a closed compiler and `McpToolClient`, while
-the current Supervisor graph still uses its earlier bounded request and handoff state.
+evidence. The workflow executor connects that shell to registered tool execution through a closed compiler and
+`McpToolClient`.
+
+The Research Coordinator graph normalizes objective, optional protocol and optional outcome payloads, then emits one
+typed `CoordinationDecision`. Draft objectives and proposed protocols request approval; absent protocols or canonical
+inputs request typed prerequisites; complete approved inputs select the sole registered template and return its
+compiler-produced plan; terminal outcomes are reported without reinterpretation. The decision contract contains no
+tool-name, argument or experiment-configuration fields, rejects unknown fields, and is revalidated against the
+code-owned template catalog before a transported decision can be compiled again. The graph itself calls no MCP tool and
+does not invoke specialist graphs.
 
 ## Methodology Decision Boundary
 

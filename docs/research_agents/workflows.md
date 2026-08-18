@@ -3,10 +3,10 @@
 Research workflows are built as deterministic MCP tool chains first, then composed by LangGraph agents once the tool
 surface is useful. All workflows stay outside live trading.
 
-The procedures in this document describe callable tool graphs, not autonomous behavior. The Data Agent is the only
-specialist with an operational tool-calling graph. Separately, ORCH-3 mechanically executes one already approved
-implementation-to-evidence protocol through MCP; the Quant Research Supervisor does not yet formulate that protocol or
-select the workflow. See
+The procedures in this document describe callable tool graphs, not unrestricted autonomous behavior. The Data Agent is
+the only specialist with an operational tool-calling graph. Separately, the Research Coordinator selects a bounded
+next action and compiles the one registered implementation-to-evidence workflow when its approved inputs are ready.
+The fixed workflow executor then runs that plan mechanically through MCP. See
 [product_state.md](product_state.md#agent-state) and the
 [orchestration roadmap](../../plans/research_capability_roadmap.md#orchestration).
 
@@ -39,8 +39,8 @@ optimisation audit are implemented. ML versioning and broader cost/data perturba
 
 ## Target Orchestrated Supplied-Strategy Workflow
 
-This is the target higher-level agent path. The middle deterministic execution segment is implemented by ORCH-3, but
-the specialist planning and routing around it is not yet an executable coordinator graph:
+This is the target higher-level agent path. Bounded next-action selection and the middle deterministic execution
+segment are implemented; automatic invocation and composition of specialist graphs are not:
 
 ```text
 operator brief with supplied strategy and risk-manager refs
@@ -66,28 +66,36 @@ an agent and makes no design, selection or quality judgment.
 Quantitative Methods and ML are optional producers. Neither is required when the operator supplies validated
 strategy/risk implementations and no model lifecycle work is requested.
 
-### ORCH-1 Declaration, ORCH-2 Resume, And ORCH-3 Execution
+### Declaration, Resume, And Deterministic Execution
 
-The target flow has a concrete declaration vocabulary, an operational resume shell and one executable fixed template:
+The target flow has a bounded coordinator policy, a concrete declaration vocabulary, an operational resume shell and
+one executable fixed template:
 
 1. A `ResearchObjective` fixes operator intent, success criteria, supplied refs and constraints.
 2. An `ExperimentProtocol` fixes implementation refs, role-labelled Data requirements, costs, initial state,
    optimisation design, robustness requirements, falsification criteria and material approval decisions.
-3. A `WorkflowPlan` selects only versioned `CapabilityDefinition` entries, binds their inputs and outputs to typed
+3. The Research Coordinator emits one closed `CoordinationDecision`: request a prerequisite, request approval, execute
+   a registered workflow, report terminal state or block. It contains no tool arguments or experiment overrides.
+4. A code-owned `WorkflowTemplateCatalog` accepts only registered template IDs and versions. Exactly one eligible
+   template must match an approved protocol before compilation.
+5. A `WorkflowPlan` selects only versioned `CapabilityDefinition` entries, binds their inputs and outputs to typed
    `ArtifactSlot` values, and names all `Prerequisite` and approval gates.
-4. Plan construction validates the dependency graph and readiness. It rejects invented capabilities or arguments,
+6. Plan construction validates the dependency graph and readiness. It rejects invented capabilities or arguments,
    artifact authority mismatches and dependency cycles before an executor can run.
-5. ORCH-3 deterministically compiles the approved supplied-implementation protocol into the fixed registered
-   capability DAG and persists the objective, protocol and plan.
-6. ORCH-2 compiles the ready plan into a deterministic LangGraph shell. The next step emits a bounded interrupt naming
+7. The fixed-template compiler reads and hashes the supplied canonical refs and deterministically creates the fixed capability
+   DAG. Compilation itself writes nothing.
+8. The workflow executor calls `research_register_experiment_workflow` to persist the approved objective, protocol and
+   ready plan before any plan step runs.
+9. The resume layer compiles the ready plan into a deterministic LangGraph shell. The next step emits a bounded interrupt naming
    the plan, capability, producer tool, side effect, attempt and configuration digest.
-7. The ORCH-3 executor builds arguments only from pinned artifact slots and closed invocation recipes, calls the
+10. The workflow executor builds arguments only from pinned artifact slots and closed invocation recipes, calls the
    registered MCP tool, validates its command/owner/side-effect envelope and resolves every returned canonical ref.
-8. ORCH-3 adapts the response to a `WorkflowStepResult`. The shell validates identity, attempt, command, side effect and
+11. The executor adapts the response to a `WorkflowStepResult`. The shell validates identity, attempt, command, side effect and
    output cardinality, then checkpoints only a bounded summary and canonical refs.
-9. Retryable blockers repeat the same step with an incremented attempt. Exact duplicate result keys are ignored;
+12. Retryable blockers repeat the same step with an incremented attempt. Exact duplicate result keys are ignored;
    conflicting content, changed plan digests and invalid refs fail closed.
-10. At terminal state, ORCH-3 persists a `WorkflowOutcome` containing produced refs, Review refs, blockers and next
+13. At terminal state, the executor calls `research_record_workflow_outcome` to persist a `WorkflowOutcome` containing
+    produced refs, Review refs, blockers and next
     permitted actions.
 
 The Postgres checkpoint can survive a connection restart, but it is operational state rather than research evidence.
@@ -101,58 +109,77 @@ The implemented template is `supplied_implementation_to_evidence` version 1:
 validate strategy and ordered risk implementations
   -> create and validate strategy/risk specifications
   -> create, validate and run baseline backtest
-  -> optional provider-neutral optimisation
-  -> selected specification on sealed holdout
-  -> Evaluation report
-  -> optional Adversarial plan, immutable variants and robustness report
+  -> [when optimisation is declared]
+       provider-neutral optimisation
+       -> selected specification on sealed holdout
+       -> Evaluation report
+       -> [when robustness requirements are non-empty]
+            Adversarial plan, immutable variants and robustness report
   -> canonical workflow outcome
 ```
 
 Use `data_create_research_snapshot` to persist each exact Data manifest/quality pair before protocol approval.
 Compilation pins payload hashes; any input drift before use blocks the workflow. Backtest and optimisation gates remain
-authoritative, and a blocked tool prevents later nodes from running. A controlled interruption retains the ORCH-2
-checkpoint and resumes without replaying accepted steps. ORCH-4 will add bounded template selection rather than
-unrestricted planning.
+authoritative, and a blocked tool prevents later nodes from running. A controlled interruption retains the operational
+checkpoint and resumes without replaying accepted steps. The coordinator can select only catalogued templates and
+typed prerequisite-resolution actions; unrestricted planning is not an intended capability.
+
+The library entry point makes the remaining caller responsibilities explicit:
+
+| Caller supplies | Orchestration supplies |
+| --- | --- |
+| Approved `ResearchObjective` and matching approved `ExperimentProtocol` | A deterministic, content-addressed `WorkflowPlan` |
+| Canonical strategy/risk implementation refs and matching Data snapshot refs | Revalidation, specification construction and registered MCP execution |
+| Passed optimisation-objective validation when optimisation is declared | Selection, sealed holdout, Evaluation and declared robustness branches |
+| Stable workflow ID, `McpToolClient`, artifact store and checkpointer | Bounded retries, resumable progress and one terminal `WorkflowOutcome` |
+
+The artifact store visible to the compiler/executor must resolve the same canonical records returned by the MCP server.
+The workflow ID selects checkpoint state and execution provenance; it is not a substitute for the immutable plan ID.
 
 ## Worked Implementation-To-Evidence Walkthrough
 
 This is the shortest current journey from supplied strategy and risk-manager code to durable trading evidence.
 A method card is not required. Handwritten, maintained, and externally generated source all enter through the same
-content-addressed implementation boundary.
+content-addressed implementation boundary. Steps 1-3 prepare approved inputs; steps 4-8 describe what the current
+compiler/executor automates. The same MCP tools remain callable individually for explicit operator-driven procedures.
 
-1. **Fix the data scope.** Call `data_discover_symbols` when discovery is needed, then
-   `data_create_research_snapshot` to create and persist an exact Data Agent dataset manifest and matching quality
-   report. The manifest ref, rather than loose symbol or date arguments, defines the rows available to the experiment.
-2. **Admit executable behavior.** Call `research_register_strategy_implementation` and
-   `research_validate_strategy_implementation`, then the corresponding
-   `research_register_risk_manager_implementation` and `research_validate_risk_manager_implementation` tools. Each
-   validation pins source identity and checks its interface, declared parameters, static safety rules, and deterministic
-   fixture behavior.
-3. **Configure strategy and risk behavior.** Create and validate a `strategy_specification` with
-   `research_create_strategy_specification` and `research_validate_strategy_specification`. Create and validate an
-   ordered `risk_stack_specification` with `research_create_risk_stack_specification` and
-   `research_validate_risk_stack_specification`. These specifications bind validated implementation versions and
-   parameters; they do not own symbols, timeframes, or date windows.
-4. **Bind one reproducible experiment.** Call `research_create_backtest_specification` with the strategy and risk-stack
-   specifications, exact dataset manifest and quality evidence, cost assumptions, initial state, and seed. Then call
-   `research_validate_backtest_specification` to recheck source hashes, upstream validation, data snapshots, and scope.
-5. **Execute and inspect.** With `TRADER_MCP_ALLOW_BACKTESTS=true`, call
-   `research_run_backtest_specification`. The result is a canonical Postgres artifact such as
-   `research://postgres/backtest_run/{run_id}`. Call `research_get_backtest_results` to read the run and its bundle,
-   including trades, performance, final positions, per-symbol measures, exposures, risk decisions, and breach evidence.
-6. **Optimise only when the question requires it.** Register and validate a closed-input objective with
-   `research_register_optimization_objective` and `research_validate_optimization_objective`. Create a provider-neutral
-   plan with `research_create_parameter_optimization_plan`, pinning the passed selection-region backtest specification
-   and a sealed later holdout. With the backtest and optimisation gates enabled,
-   `research_run_parameter_optimization` executes built-in grid, seeded-random, or configured optional Optuna
-   suggestions as immutable child specifications and runs. The selected specification remains exploratory.
-7. **Test the untouched holdout.** Create, validate, and run a separate backtest specification over the sealed holdout
-   using the selected strategy specification. Generate
-   `evaluation_generate_parameter_optimization_report` from the complete optimisation ledger and matching holdout run.
-8. **Challenge the procedure independently.** Call `adversarial_create_parameter_optimization_audit_plan`; the
-   Supervisor executes the requested immutable variants through `research_run_parameter_optimization_variants`; then
-   `adversarial_generate_parameter_optimization_audit` judges the supplied evidence. Robustness owns attack selection
-   and sensitivity judgment, while deterministic Experiment services execute variants.
+1. **Fix the data scope outside the executor.** Call `data_discover_symbols` when discovery is needed, then
+   `data_create_research_snapshot` to persist an exact Data Agent dataset manifest and matching quality report for each
+   baseline/selection/holdout role. The canonical refs, rather than loose symbol or date arguments, define the rows
+   available to the experiment.
+2. **Register supplied behavior outside the executor.** Call `research_register_strategy_implementation` and
+   `research_register_risk_manager_implementation` for the supplied source. Direct callers may preflight with
+   `research_validate_strategy_implementation` and `research_validate_risk_manager_implementation`; the compiled plan
+   runs those validations again from the pinned implementation refs before creating specifications.
+3. **Approve the design outside the executor.** Construct an approved objective and matching protocol that names exact
+   implementation and Data refs, costs, initial state, runtime limits and all material decisions. When optimisation is
+   declared, first use `research_register_optimization_objective` and
+   `research_validate_optimization_objective`; the protocol must pin the passed validation plus separate selection and
+   sealed-holdout Data snapshots.
+4. **Compile without side effects.** `compile_supplied_implementation_workflow` resolves and hashes every supplied ref,
+   builds the fixed capability/artifact DAG, and returns a ready plan. Missing approvals, mismatched identities,
+   unsupported robustness without optimisation, unresolved artifacts or failed objective validation stop here.
+5. **Run the mandatory baseline.** `execute_compiled_research_workflow` registers the objective/protocol/plan, then the
+   plan validates implementations, calls `research_create_strategy_specification` and
+   `research_validate_strategy_specification`, calls `research_create_risk_stack_specification` and
+   `research_validate_risk_stack_specification`, and creates/validates/runs the backtest through
+   `research_create_backtest_specification`, `research_validate_backtest_specification` and
+   `research_run_backtest_specification`.
+6. **Inspect canonical evidence.** The baseline produces a Postgres ref such as
+   `research://postgres/backtest_run/{run_id}`. `research_get_backtest_results` reads its bounded bundle, including
+   trades, performance, final positions, per-symbol measures, exposures, risk decisions and breach evidence. The
+   executor checkpoints the ref and hash, not that full payload.
+7. **Optimise and evaluate only when declared.** The compiled optional branch calls
+   `research_create_parameter_optimization_plan` and `research_run_parameter_optimization`, then creates, validates and
+   runs the selected specification against the sealed holdout. It calls
+   `evaluation_generate_parameter_optimization_report` over the complete optimisation ledger and matching holdout run.
+   The selected specification remains exploratory.
+8. **Challenge the procedure when robustness requirements are declared.** The compiled branch calls
+   `adversarial_create_parameter_optimization_audit_plan`, executes the requested immutable variants through
+   `research_run_parameter_optimization_variants`, and calls
+   `adversarial_generate_parameter_optimization_audit`. Review owns attack selection and sensitivity judgment while
+   deterministic Experiment services execute variants. The terminal workflow outcome collects both Review refs and
+   permits human review; it does not grant deployment.
 
 | Evidence stage | What it proves | What it does not prove |
 | --- | --- | --- |

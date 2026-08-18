@@ -6,6 +6,7 @@ from .compiler import (
     CompiledResearchWorkflow,
     InvocationMode,
     ToolInvocation,
+    WorkflowInputUnavailableError,
     compile_supplied_implementation_workflow,
 )
 from .executor import (
@@ -22,6 +23,7 @@ __all__ = [
     "CompiledResearchWorkflow",
     "InvocationMode",
     "ToolInvocation",
+    "WorkflowInputUnavailableError",
     "WORKFLOW_EXECUTOR_ACTOR",
     "WorkflowExecution",
     "WorkflowExecutionError",

@@ -7,7 +7,7 @@ and capability flags are defined in `src/trader_mcp/constants.py`; owner lookup 
 Every tool returns a shared `ToolEnvelope` through MCP `structuredContent` and text content. See
 [tool_contracts.md](tool_contracts.md) for detailed request and artifact schemas.
 
-Owner labels in this catalog describe executable tool allowlists/stewardship only. ORCH-GOV has separated canonical
+Owner labels in this catalog describe executable tool allowlists/stewardship only. The governance model separates canonical
 artifact authority into `domain_owner`, `producer_tool`, `requested_by` and `actor`; these catalog labels do not replace
 that provenance and do not authenticate the caller. Approved target decisions are defined in
 [agents.md](agents.md#approved-decision-boundaries).
@@ -36,6 +36,17 @@ MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded 
 | --- | --- | --- | --- |
 | `mcp_health` | MCP Server | `read_only` | Return MCP server health and registered tool names. |
 | `mcp_get_config` | MCP Server | `read_only` | Return server policy, capability flags, artifact root, research artifact store runtime, and tool metadata. |
+
+## Orchestration Surface
+
+There is no registered high-level workflow-execution tool. The fixed compiler/executor is a Python library in
+`trader_agents.orchestration` and uses the ordinary registered tools listed below through `McpToolClient`. This keeps
+each Data, Experiment and Review contract, side-effect declaration, policy gate and artifact authority visible.
+
+The catalog contains only the bridges needed by that library: the Data table includes the operation that materializes
+an exact inventory/quality pair, and the Supervisor table includes two operations that persist the initial governance
+records and terminal outcome. Those operations do not compile a plan, advance a checkpoint or execute a plan step.
+Resume state belongs to the separately configured LangGraph checkpointer, not to MCP.
 
 ## Data Agent Tools
 
@@ -205,7 +216,7 @@ The next planned tool work is not additional knowledge extraction. It is:
 Higher-level orchestration composes the registered tools in this catalog through a fixed compiler/executor; it is not a
 new generic MCP tool that bypasses their contracts. The two workflow MCP tools persist governance records and do not
 execute the graph. Current orchestration state and remaining dependencies are recorded in
-[product_state.md](product_state.md#target-orchestration-position) and the
+[product_state.md](product_state.md#implemented-orchestration-at-a-glance) and the
 [capability roadmap](../../plans/research_capability_roadmap.md#orchestration).
 
 None of those future surfaces should execute prompt text directly. AI-produced code is supplied as an explicit source

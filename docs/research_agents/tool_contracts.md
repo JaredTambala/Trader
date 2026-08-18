@@ -149,8 +149,8 @@ Canonical MCP research artifact refs use `research://postgres/{artifact_type}/{a
 specification, backtest, optimisation, Evaluation, and Adversarial services require the structured store and have no
 filesystem authority or fallback. Canonical `research_artifacts` rows use required `domain_owner` and `producer_tool`
 columns plus nullable `requested_by` and `actor`. Direct calls leave unavailable requester/actor provenance null;
-ORCH-1 values require it explicitly, ORCH-2 retains it in checkpoint state, and ORCH-3 propagates the workflow ID and
-`workflow_executor` actor into orchestrated calls.
+orchestration values require both fields, the resume shell retains them in checkpoint state, and the workflow executor
+propagates the workflow ID and `workflow_executor` actor into orchestrated calls.
 
 `SpecialistHandoff` is a separate governance contract. It requires non-empty `domain_owner`, `producer_tool`,
 `requested_by` and `actor`, validates domain authority against the artifact type, and carries either a canonical
@@ -159,7 +159,8 @@ artifact reference/payload together with source request, warnings, blockers and 
 
 ## Orchestration Contracts
 
-ORCH-1 adds no MCP tools. It defines immutable JSON-safe contracts used before and after future tool calls:
+The declaration contracts add no MCP tools. They define immutable JSON-safe values used before and after deterministic
+tool calls:
 
 | Contract | Purpose | Fail-closed checks |
 | --- | --- | --- |
@@ -173,12 +174,25 @@ ORCH-1 adds no MCP tools. It defines immutable JSON-safe contracts used before a
 | `Approval` | Operator decision over one material assumption. | Requested records cannot contain decisions; approved/rejected records require decision actor and rationale. |
 
 These contracts do not load artifacts, call services, write Postgres, invoke MCP or hold LangGraph checkpoint state.
-Existing MCP `ToolEnvelope` remains the transport result. ORCH-3 adapts a validated envelope into a
+Existing MCP `ToolEnvelope` remains the transport result. The workflow executor adapts a validated envelope into a
 `WorkflowStepResult`; it does not persist arbitrary raw payloads or hidden model reasoning.
+
+### Research Coordination Decision Contract
+
+`CoordinationDecision` is the complete public output of one Research Coordinator policy pass. Its action is one of
+`execute_registered_workflow`, `request_prerequisite`, `request_approval`, `report_terminal_state` or `block`.
+Executable decisions pin objective ID, protocol ID, registered template ID/version and deterministic plan ID. Other
+actions carry only typed `Prerequisite` values, canonical outcome identity or bounded `ResearchIssue` blockers.
+
+The decision schema deliberately has no tool name, tool arguments, symbols, windows, costs, search dimensions or
+protocol payload. Unknown fields are rejected during parsing. Template identity is resolved only through the code-owned
+`WorkflowTemplateCatalog`; an execution decision transported across a boundary must recompile from the exact objective,
+protocol and canonical inputs to the same plan ID before the executor may consume it. Coordination decisions and graph
+state are operational values, not new canonical artifacts or hidden planner transcripts.
 
 ### Operational Resume Contract
 
-ORCH-2 uses `WorkflowStepResult` as the only resume input to a checkpointed step. The checkpoint shell validates the
+The resume shell uses `WorkflowStepResult` as the only resume input to a checkpointed step. It validates the
 plan ID, pending step, attempt, producer command, side-effect class and required output artifact cardinality. It stores
 only result identity/status/retry, canonical artifact refs and bounded issues. Arbitrary `public_data` remains an
 ephemeral transport projection and is not checkpointed.
@@ -189,12 +203,12 @@ idempotency key is retained with a content digest: replaying identical content i
 different content terminates the workflow. The operator-visible state excludes plan and result digests.
 
 Postgres checkpoint rows are not `ToolEnvelope` artifacts, canonical `ResearchArtifactRecord` values or evidence that
-a tool ran successfully. ORCH-3 creates `WorkflowStepResult` only after validating the actual MCP envelope and its
-canonical refs.
+a tool ran successfully. The workflow executor creates `WorkflowStepResult` only after validating the actual MCP
+envelope and its canonical refs.
 
 ### Deterministic Execution Contract
 
-The ORCH-3 compiler accepts an approved `ResearchObjective`, an approved `ExperimentProtocol` and a configured
+The fixed-template compiler accepts an approved `ResearchObjective`, an approved `ExperimentProtocol` and a configured
 `ResearchArtifactStore`. It supports only the versioned `supplied_implementation_to_evidence` template. Every supplied
 implementation, Data manifest/quality report and optimisation objective validation is resolved by canonical URI and
 pinned with a payload SHA-256 digest before the plan is created.
@@ -209,6 +223,21 @@ every returned ref resolves with the declared artifact authority. It hashes prod
 their refs. Pinned input drift, unavailable refs, policy blockers and invalid cardinality fail closed. Transport retries
 are capped at three attempts. `WorkflowExecutionInterrupted` is a deliberate operator/test pause that preserves the
 checkpoint; it is not a terminal outcome.
+
+The execution boundary deliberately transforms and stores different representations at different stages:
+
+| Value | Produced by | Contents | Persistence authority |
+| --- | --- | --- | --- |
+| `ToolInvocation` | Fixed-template compiler | Closed tool name, invocation mode, literal arguments and artifact-slot bindings. | Embedded in the canonical `WorkflowPlan`; never an arbitrary callable or request body. |
+| `ToolEnvelope` | MCP adapter | Transport success/error state, command, allowlist owner, side effect, bounded data, issues and artifact refs. | Ephemeral transport value; not checkpointed as-is. |
+| `WorkflowStepResult` | Workflow executor after envelope/ref validation | Attempt identity, status, retry class, canonical refs and bounded issues. | Bounded summary in the workflow checkpointer; not a canonical research claim. |
+| `WorkflowOutcome` | Workflow executor after terminal checkpoint state | Terminal status, produced/review refs, blockers, errors and permitted next actions. | Canonical Orchestration-domain artifact written through MCP. |
+
+The immutable governance payload identity and the write provenance are related but distinct. Objective/protocol payloads
+preserve the declared requester and actor; compiled plan/outcome payloads use the protocol requester and
+`research_coordinator`. Executor MCP calls, step results and the resulting `ResearchArtifactRecord` provenance use
+`requested_by={workflow_id}` and `actor=workflow_executor`. This records mechanical execution without claiming that the
+executor made the research-design decision.
 
 | MCP tool | Required input | Canonical output |
 | --- | --- | --- |

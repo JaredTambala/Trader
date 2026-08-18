@@ -33,6 +33,29 @@ A method card is provenance, not an execution identity. Handwritten, AI-produced
 code receives the same implementation validation. Data Agent artifacts remain the only source of symbols, timeframe,
 date bounds, provider scope, and market-data quality.
 
+One part of that path is now coordinated. The Research Coordinator accepts a typed objective, optional protocol and
+optional terminal outcome, then emits exactly one bounded action: request a prerequisite, request approval, select a
+registered workflow, report terminal state or stop with a blocker. When the approved inputs are complete, it selects
+and compiles the fixed `supplied_implementation_to_evidence` template for execution through MCP with resumable
+checkpoints:
+
+```text
+objective + optional protocol/outcome
+  -> Research Coordinator selects one bounded next action
+  -> [when ready] approved objective + protocol + pinned implementation/Data refs
+  -> deterministic compiler creates one ready, immutable workflow plan
+  -> workflow executor registers the plan and asks the resume shell for the next step
+  -> executor calls the registered MCP tool and validates its ToolEnvelope
+  -> resume shell accepts a bounded WorkflowStepResult and checkpoints progress
+  -> repeat until the executor records a canonical terminal WorkflowOutcome
+```
+
+The coordinator policy, declaration contracts, non-executing resume shell, and closed compiler/executor are separate
+architectural responsibilities. The coordinator does not author protocols, call specialist agents, change approved
+scope, or invent tools; missing state becomes a typed request for its owning domain. The checkpoint database is
+replaceable operational state; canonical data, experiment, review, and workflow artifacts remain in the research
+artifact store.
+
 Trader Postgres is canonical for implementations, specifications, runs, trial ledgers, Evaluation, and Adversarial
 evidence. MCP is the control-plane API over deterministic services. LangGraph agents constrain tool access and preserve
 artifact authority. Research tools cannot place live orders, mutate broker state, clear halts, or expose raw SQL.
@@ -93,11 +116,13 @@ training, model evaluation/registration, and drift remain the 39A-G/J roadmap.
 
 ### Higher-Level Orchestration
 
-1. [product_state.md: Target Decision Architecture](product_state.md#target-decision-architecture)
+1. [product_state.md: Implemented Orchestration At A Glance](product_state.md#implemented-orchestration-at-a-glance)
 2. [architecture.md: Higher-Level Orchestration Architecture](architecture.md#higher-level-orchestration-architecture)
-3. [agents.md: Approved Decision Boundaries](agents.md#approved-decision-boundaries)
-4. [workflows.md: Target Orchestrated Supplied-Strategy Workflow](workflows.md#target-orchestrated-supplied-strategy-workflow)
-5. [Active capability roadmap: Orchestration](../../plans/research_capability_roadmap.md#orchestration)
+3. [workflows.md: Target Orchestrated Supplied-Strategy Workflow](workflows.md#target-orchestrated-supplied-strategy-workflow)
+4. [operations.md: Deterministic Workflow Execution](operations.md#deterministic-workflow-execution)
+5. [tool_contracts.md: Orchestration Contracts](tool_contracts.md#orchestration-contracts)
+6. [agents.md: Approved Decision Boundaries](agents.md#approved-decision-boundaries)
+7. [Active capability roadmap: Orchestration](../../plans/research_capability_roadmap.md#orchestration)
 
 ## Document Roles
 
@@ -128,5 +153,8 @@ When documentation and implementation disagree, inspect these current sources an
 - Artifact types and ownership: `src/trader_research/governance/artifacts.py`.
 - Public research application surfaces: the `__init__.py` facade in each `trader_research` bounded context.
 - Canonical Postgres persistence and projection registration: `src/trader_research/infrastructure/postgres/`.
+- Orchestration declarations and persistence services: `src/trader_research/governance/orchestration/`.
+- Resumable workflow state: `src/trader_agents/checkpointing/`.
+- Fixed workflow compilation and MCP execution: `src/trader_agents/orchestration/`.
 - Current capability and qualification baseline: `docs/research_agents/product_state.md`.
 - Remaining work and dependencies: `plans/research_capability_roadmap.md`.

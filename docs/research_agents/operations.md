@@ -294,8 +294,9 @@ artifacts in `trader_verification_test` after pytest exits so they can be inspec
 part of the credential-free runtime manifest and must match both `begin` and `end`. A later destructive phase may
 explicitly replace these disposable verification rows; they are never copied to the operator database.
 
-ORCH-GOV is a hard schema cutover. Startup fails with `legacy research_artifacts schema detected` when the canonical
-table still has `agent_owner`; there is no compatibility reader or data migration. For a disposable development or
+The governance authority redesign is a hard schema cutover. Startup fails with
+`legacy research_artifacts schema detected` when the canonical table still has `agent_owner`; there is no compatibility
+reader or data migration. For a disposable development or
 verification database, explicitly clear all research projections and drop only the legacy canonical table before
 starting the new code:
 
@@ -322,23 +323,24 @@ $$;
 DROP TABLE IF EXISTS public.research_artifacts;
 ```
 
-The next `PostgresResearchArtifactStore` startup recreates `research_artifacts` with the ORCH-GOV columns. Do not run
-this destructive reset against a database whose research evidence must be retained.
+The next `PostgresResearchArtifactStore` startup recreates `research_artifacts` with the current authority columns. Do
+not run this destructive reset against a database whose research evidence must be retained.
 
-### ORCH-1 Operational Impact
+### Declaration Contract Operational Impact
 
-ORCH-1 was a contract-only release. At that delivery boundary it added canonical authority declarations for
+The declaration-contract delivery was contract-only. It added canonical authority declarations for
 `research_objective`, `experiment_protocol`, `workflow_plan`, `approval_request` and `workflow_outcome`, but no
-persistence or execution. ORCH-3 now supplies the explicit persistence and execution boundaries described below.
+persistence or execution. The workflow persistence services and executor now supply the explicit boundaries described
+below.
 
 The contracts can be imported and round-tripped as JSON for design and test work. Existing direct MCP procedures may
 still persist null `requested_by`/`actor` values. A workflow plan or step result supplied as arbitrary JSON is not
 evidence merely because it satisfies the dataclass schema.
 
-### ORCH-2 Checkpoint Operations
+### Workflow Checkpoint Operations
 
-ORCH-2 adds replaceable Postgres-backed LangGraph operational state, not a canonical research artifact writer. Set a
-dedicated connection string explicitly:
+The checkpoint layer adds replaceable Postgres-backed LangGraph operational state, not a canonical research artifact
+writer. Set a dedicated connection string explicitly:
 
 ```bash
 export TRADER_AGENTS_CHECKPOINT_DSN='postgresql://checkpoint_role:...@localhost:5432/trader'
@@ -355,32 +357,56 @@ connection interruption. They are not included in Trader research projections, d
 may be expired or deleted according to an operational retention policy after terminal workflow evidence is confirmed.
 Do not grant the checkpoint role broker/runtime mutation privileges.
 
-ORCH-2 does not register MCP tools, execute capabilities or create `workflow_outcome` artifacts. A successful resume
-test proves checkpoint continuity and idempotency only.
+The resume shell does not register MCP tools, execute capabilities or create `workflow_outcome` artifacts. A successful
+resume test proves checkpoint continuity and idempotency only.
 
-### ORCH-3 Deterministic Workflow Operations
+### Deterministic Workflow Execution
 
 Before compiling a protocol, create canonical Data records for every baseline/selection/holdout region with
 `data_create_research_snapshot`. The tool requires one exact scope plus `requested_by` and `actor`; it fails closed when
 the research artifact store is unavailable. Use the returned `research://postgres/dataset_manifest/...` and
 `research://postgres/data_quality_report/...` refs in `ProtocolDataset`.
 
-ORCH-3 is invoked through the Python library, not a generic MCP workflow command:
+The operator must assemble five explicit dependencies before execution:
+
+1. an approved `ResearchObjective` and matching approved `ExperimentProtocol`;
+2. a `ResearchArtifactStore` that can resolve every supplied and produced canonical ref;
+3. an MCP server/client using that same canonical artifact-store authority;
+4. a LangGraph checkpointer, normally opened through the separately configured
+   `TRADER_AGENTS_CHECKPOINT_DSN`; and
+5. a stable workflow ID used for checkpoint thread identity and executor provenance.
+
+`TRADER_RESEARCH_ARTIFACT_STORE_DSN` and `TRADER_AGENTS_CHECKPOINT_DSN` may identify different schemas, databases or
+roles. They serve different contracts: the former is canonical product evidence, while the latter is replaceable
+operational state. The executor's artifact-store instance must nevertheless see the same canonical records as the MCP
+tools; a private in-memory store on one side and Postgres on the other is not a valid composition.
+
+The coordinator, fixed compiler and executor are invoked through the Python library, not a generic MCP workflow
+command. The coordinator reads canonical inputs and returns either a typed prerequisite/approval/blocker or a compiled
+workflow selected from the code-owned catalog:
 
 ```python
-compiled = compile_supplied_implementation_workflow(
+coordination = coordinate_research(
     objective=approved_objective,
     protocol=approved_protocol,
     artifact_store=artifact_store,
 )
-execution = await execute_compiled_research_workflow(
-    compiled=compiled,
-    workflow_id=workflow_id,
-    tool_client=mcp_client,
-    checkpointer=checkpointer,
-    artifact_store=artifact_store,
-)
+if coordination.compiled_workflow is not None:
+    execution = await execute_compiled_research_workflow(
+        compiled=coordination.compiled_workflow,
+        workflow_id=workflow_id,
+        tool_client=mcp_client,
+        checkpointer=checkpointer,
+        artifact_store=artifact_store,
+    )
+else:
+    handle_coordination_decision(coordination.decision)
 ```
+
+`coordinate_research` performs no writes or MCP calls. Its executable decision pins objective ID, protocol ID,
+registered template ID/version and deterministic plan ID. If a decision crosses a process boundary, call
+`compile_coordination_decision` with the same canonical inputs before execution; it rejects unknown templates, changed
+objective/protocol identity and plan drift. Do not deserialize model output directly into executor arguments.
 
 The executor first calls `research_register_experiment_workflow`, then drives the compiled steps through MCP and finally
 calls `research_record_workflow_outcome`. Enable `TRADER_MCP_ALLOW_BACKTESTS=true` for any executable template and
@@ -392,6 +418,26 @@ Every compiled input and produced artifact is reloaded and payload-hashed. Chang
 blocks before the dependent tool executes. Transport retries stop after three attempts. To pause deliberately, pass
 `max_tool_calls`; `WorkflowExecutionInterrupted.public_state` reports the bounded state and the same workflow ID,
 compiled plan and checkpointer resume at the next unaccepted step.
+
+`max_tool_calls` counts compiled plan-step calls during that invocation; the initial idempotent workflow-registration
+call and terminal outcome-recording call are outside that limit. Each invocation registers the same immutable
+objective/protocol/plan before reading or resuming checkpoint progress. A resumed invocation may therefore repeat
+`research_register_experiment_workflow`, but it does not replay accepted plan steps. A deliberate pause raises
+`WorkflowExecutionInterrupted` and writes no terminal outcome. Once the checkpoint is terminal, the executor constructs
+and records the outcome and returns `WorkflowExecution`.
+
+| Condition | Observable behavior |
+| --- | --- |
+| Objective or protocol is absent or awaits approval | The coordinator returns a typed prerequisite or approval request and no compiled workflow. |
+| Objective/protocol identities differ, no unique registered template matches, or approved scope is unsupported | The coordinator returns a structured blocker and nothing is persisted. |
+| A canonical implementation/Data ref does not resolve | The coordinator requests that exact domain-owned artifact and returns no compiled workflow. |
+| A pinned prerequisite has invalid authority or content | The coordinator blocks the selection; direct compiler use raises before a plan is returned. |
+| Workflow registration is rejected | Execution raises `WorkflowExecutionError` before the plan-step loop. |
+| A pinned input drifts before its dependent call | The step becomes terminally blocked; later steps do not run and a blocked outcome is recorded. |
+| A tool returns a policy blocker such as `backtests_not_allowed` | The tool is not bypassed; later optimisation/review steps do not run and a blocked outcome is recorded. |
+| A transient transport call fails | The same step is attempted at most three times, then the workflow blocks. |
+| `max_tool_calls` is reached | Execution raises `WorkflowExecutionInterrupted`; the checkpoint is preserved and no outcome is recorded. |
+| Outcome persistence fails after terminal checkpoint state | Execution raises `WorkflowExecutionError`; rerunning with the same identity retries terminal outcome recording without replaying accepted steps. |
 
 The generic `research_artifacts` table remains canonical. The following typed projections are for inspection:
 
@@ -409,9 +455,9 @@ ORDER BY created_at, artifact_type, artifact_id;
 ```
 
 The typed rows expose workflow navigation; their JSONB payloads and the matching `research_artifacts` records remain the
-canonical values. Checkpoint tables remain replaceable operational state. Current ORCH-3 qualification is in-process MCP
-integration plus lower-level Postgres projection checks; fresh-process Postgres execution and operator isolation remain
-ORCH-6 work.
+canonical values. Checkpoint tables remain replaceable operational state. Current deterministic workflow qualification
+is in-process MCP integration plus lower-level Postgres projection checks; fresh-process Postgres execution and operator
+isolation remain part of the controlled orchestration qualification work in the active roadmap.
 
 Run the controlled graph with the complete explicit verification environment:
 

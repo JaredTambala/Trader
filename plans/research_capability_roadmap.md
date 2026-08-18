@@ -6,7 +6,7 @@ graph rather than a presumed linear sequence.
 Read [Research Product State](../docs/research_agents/product_state.md) first for the current operational baseline.
 Architecture, agent ownership, MCP registration and tool contracts remain canonical in their respective documents.
 
-Last reviewed: 2026-07-26.
+Last reviewed: 2026-08-18.
 
 ## Roadmap Rules
 
@@ -15,6 +15,8 @@ Last reviewed: 2026-07-26.
 - Workstreams may proceed concurrently when their hard dependencies are satisfied.
 - Implementation, qualification and availability are reported independently.
 - Completed legacy task IDs remain immutable lineage labels; they are not reused or renumbered.
+- `ORCH-*` identifiers are roadmap work-item labels only. Product architecture names stable responsibilities such as
+  declaration contracts, resume state, compilation and execution; it never names components after delivery checkpoints.
 - A capability is not complete until implementation, active documentation and its declared acceptance evidence agree.
 - Git commits/tags and canonical Postgres acceptance records retain detailed execution history. This roadmap does not
   duplicate command transcripts or failed-attempt journals.
@@ -72,11 +74,11 @@ Orchestration is a cross-cutting capability and may advance in parallel with ML,
 | ORCH-1 | Capability and workflow contracts | complete | ORCH-GOV | ML and robustness target contracts | ORCH-2, ORCH-3, AGENT-1 | Immutable JSON-safe contracts now cover research objectives, experiment protocols, material approvals, capability snapshots, prerequisites, artifact slots, workflow-plan DAGs and bounded step results. Construction rejects unresolved approved protocols, unsafe side-effect classes, invalid authority/cardinality, unknown bindings/configuration, cycles and falsely ready plans without importing service implementations. |
 | ORCH-2 | Operational checkpoint and handoff model | complete | ORCH-1 | Postgres LangGraph checkpointer | ORCH-3, recovery | A provider-maintained Postgres LangGraph saver now resumes a bounded coordinator shell across connection lifetimes. Checkpoints retain plan identity/digest, cursor, attempt summaries, canonical artifact refs and issues only; duplicate results are idempotent, conflicts and plan drift fail closed, and public state is explicitly projected. |
 | ORCH-3 | Deterministic implementation-to-evidence workflow | complete | ORCH-1, ORCH-2, BASE-DATA, BASE-EXP, BASE-OPT | Knowledge provenance, model deployment refs | ORCH-4 | A fixed supplied-implementation template compiles approved protocols into typed MCP capability DAGs and mechanically executes validation, specifications, baseline, optional optimisation, sealed holdout, Evaluation and Adversarial handoffs. Canonical Data snapshots, objective/protocol/plan/outcome records, payload-hash revalidation, bounded retries, typed stops and resume without accepted-step replay are implemented. |
-| ORCH-4 | Bounded Research Coordinator planning policy | ready | ORCH-3 | LLM provider | ORCH-5, ORCH-6 | Select only registered workflow templates and prerequisite-resolution actions; reject invented tools, hidden scope, experiment-design overrides and ownership violations. |
+| ORCH-4 | Bounded Research Coordinator planning policy | complete | ORCH-3 | LLM provider | ORCH-5, ORCH-6 | A deterministic policy and one-node graph select exactly one code-registered workflow or emit typed prerequisite, approval, terminal-report or blocker actions. Strict decisions cannot express tool calls or experiment overrides; missing canonical inputs, unknown/ambiguous templates, identity drift and ownership/content violations fail closed. |
 | ORCH-5 | Multi-specialist composition | blocked | ORCH-4, AGENT-1 | ML-7, ROB-2, REV-3 | Full research coordination | Route Experiment Design, Data, optional producer, Robustness and Evaluation requests while preserving domain authority and specialist decision ownership. |
 | ORCH-6 | Controlled orchestration qualification | blocked | ORCH-3, ORCH-4 | ORCH-5 | Release-ready orchestration | Fresh-process MCP graph, interruption/resume, approval, policy, failure, bounded-scale and operator-isolation evidence. |
 
-ORCH-GOV was an architecture and governance gate, not an agent rename exercise. It removed the assumption that an
+The `ORCH-GOV` work item was an architecture and governance gate, not an agent rename exercise. It removed the assumption that an
 agent identity owns every artifact produced by tools on its allowlist. Canonical metadata now distinguishes:
 
 ```text
@@ -97,16 +99,16 @@ Implementation evidence: `ResearchArtifactRecord` and Postgres use required `dom
 and exclusions. MCP `agent_owner` remains transport allowlist metadata. Legacy `research_artifacts(agent_owner)` tables
 fail fast and require an explicit destructive reset; there is no migration or compatibility reader.
 
-ORCH-1 implementation evidence: `trader_research.governance.orchestration` is a dependency-light declarative contract
+Implementation evidence for `ORCH-1`: `trader_research.governance.orchestration` is a dependency-light declarative contract
 module. `ExperimentProtocol` carries supplied implementation refs, role-labelled Data requirements, costs, initial
 state, provider-neutral optimisation intent, robustness requirements, evaluation/falsification questions and
 assumption-specific approvals. `WorkflowPlan` pins capability metadata and validates a typed artifact-slot DAG,
 prerequisites, policy gates, approvals and configuration keys before execution. `WorkflowStepResult` exposes only
 bounded public data, canonical artifact refs, issues and retry classification. The module imports no Data, Experiment,
-ML, Review, MCP, agent or service implementation. ORCH-1 adds no executor, checkpointer, persistence service or MCP
-tool. ORCH-2 supplies only the operational checkpointer; ORCH-3 supplies deterministic execution.
+ML, Review, MCP, agent or service implementation. The declaration-contract work added no executor, checkpointer,
+persistence service or MCP tool. Checkpointing and deterministic execution remain separate responsibilities.
 
-ORCH-2 implementation evidence: `trader_agents.checkpointing` compiles a ready `WorkflowPlan` into a deterministic
+Implementation evidence for `ORCH-2`: `trader_agents.checkpointing` compiles a ready `WorkflowPlan` into a deterministic
 LangGraph coordinator shell. Each step interrupts with bounded capability metadata and accepts an externally produced
 `WorkflowStepResult`; it does not import MCP, Data, Experiment, ML or Review services and does not execute a tool.
 Operational state is stored through the maintained `langgraph-checkpoint-postgres` saver configured only by
@@ -116,17 +118,32 @@ matrices. Reopening the saver can resume the same thread; exact duplicate result
 plan drift and invalid output cardinality fail closed. Checkpoint tables are replaceable operational state, not
 `research_artifacts` or research evidence.
 
-ORCH-3 implementation evidence: `trader_agents.orchestration` provides one closed
+Implementation evidence for `ORCH-3`: `trader_agents.orchestration` provides one closed
 `supplied_implementation_to_evidence` compiler and a non-agent executor over the `McpToolClient` protocol. The compiler
 pins exact strategy/risk implementation records, canonical Data manifest/quality refs, optional objective validation,
-execution settings, search space and review requirements into the ORCH-1 DAG. The executor calls only registered tools,
+execution settings, search space and review requirements into a typed capability DAG. The executor calls only registered tools,
 validates command/owner/side-effect envelopes, hashes every input/output payload, adapts results into bounded
-`WorkflowStepResult` values and drives the ORCH-2 checkpoint shell. The new `data_create_research_snapshot` tool makes
+`WorkflowStepResult` values and drives the resume shell. The new `data_create_research_snapshot` tool makes
 inventory/quality evidence resumable; `research_register_experiment_workflow` and
 `research_record_workflow_outcome` persist the governance records. Workflow writes are stamped with the workflow ID and
 `workflow_executor` actor. Disabled policy, payload drift and terminal tool blockers stop the graph without executing
 later nodes; interruption resumes from the next unaccepted step. This is deterministic execution, not an autonomous
 planner or a high-level MCP experiment runner.
+
+The Git lineage preserves the same separation: `e3f7d85` completed roadmap item `ORCH-1` with declaration and authority
+contracts, `6cbc886` completed `ORCH-2` with the non-executing resume shell, and `28c1d33` completed `ORCH-3` with the
+fixed compiler, mechanical MCP executor and canonical workflow persistence. The current product requires the
+declaration, checkpoint and execution responsibilities together; none of those commits independently represents an
+autonomous Research Coordinator.
+
+Implementation evidence for `ORCH-4`: `trader_agents.research_coordinator` separates strict decision contracts,
+code-owned template registration, deterministic lifecycle/readiness policy and JSON-boundary graph wiring. The policy
+accepts a typed objective, optional protocol/outcome and injected artifact store; it requests objective/protocol
+approval, requests an absent protocol or unresolved canonical artifact, uniquely selects the registered
+`supplied_implementation_to_evidence` template, reports a matching terminal outcome or emits a bounded blocker. An
+executable decision pins objective, protocol, template version and compiler-produced plan identity but contains no tool
+name, arguments or experiment configuration. Recompilation rejects unregistered templates, changed identities and plan
+drift. The graph makes no MCP call or canonical write, and specialist invocation remains separate composition work.
 
 ### ML Lifecycle
 
@@ -195,15 +212,14 @@ review authority.
 
 These work items have no unmet hard product dependency:
 
-1. ORCH-4: add bounded template selection and prerequisite-resolution policy over the ORCH-3 executor.
-2. AGENT-1: define the specialist graph contract and common policy shell over ORCH-1.
-3. ML-1: establish the MLflow runtime and mutation policy.
-4. ML-2: implement point-in-time feature-set specifications.
-5. ML-7: summarize existing prediction evidence and establish the drift contract.
-6. QUAL-ML-RUNTIME: place 39H-I under a new controlled qualification baseline.
-7. ROB-1: define general robustness attacks and immutable variants.
-8. REV-1: add general return attribution.
-9. DATA-1: make quality reports calendar aware.
+1. AGENT-1: define the specialist graph contract and common policy shell over the orchestration contracts.
+2. ML-1: establish the MLflow runtime and mutation policy.
+3. ML-2: implement point-in-time feature-set specifications.
+4. ML-7: summarize existing prediction evidence and establish the drift contract.
+5. QUAL-ML-RUNTIME: place 39H-I under a new controlled qualification baseline.
+6. ROB-1: define general robustness attacks and immutable variants.
+7. REV-1: add general return attribution.
+8. DATA-1: make quality reports calendar aware.
 
 This is a choice of parallel frontiers, not an instruction to execute the list in order.
 

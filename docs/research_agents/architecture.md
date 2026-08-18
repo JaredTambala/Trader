@@ -291,16 +291,55 @@ methodology tools develop independently.
 The current operational baseline is deliberately bounded:
 
 - The Data Agent has bounded deterministic and LLM-policy tool-calling graphs.
-- A separate non-agent ORCH-3 compiler/executor runs one already approved supplied-implementation protocol through the
+- The Research Coordinator has a deterministic next-action policy and one-node graph over a closed workflow-template
+  catalog. It requests prerequisites or approvals, selects one uniquely eligible registered template, or reports
+  terminal state without calling MCP or specialist graphs.
+- A separate non-agent compiler/executor runs one already approved supplied-implementation protocol through the
   registered implementation, specification, backtest, optimisation and review MCP tools.
-- The Quant Research Supervisor graph still validates only a bounded request and supplied Data Agent handoffs; it does
-  not yet formulate the protocol, choose the ORCH-3 template or resolve prerequisites.
+- The earlier Quant Research Supervisor request/handoff graph remains a non-authoritative legacy surface; it is not the
+  Research Coordinator policy.
 - Quantitative Methods, ML, Evaluation, Adversarial and Hypothesis identity/allowlist definitions exist without
   complete specialist execution graphs.
 
-ORCH-GOV removed the old artifact `agent_owner` map. Canonical records now carry bounded-context authority separately
-from producer operation, requesting workflow and actor. MCP still exposes `agent_owner` as the intended tool allowlist
+The implementation is split by responsibility and call direction rather than collected into one universal graph:
+
+| Component | Reads or receives | Produces | Explicitly does not do |
+| --- | --- | --- | --- |
+| Declaration contracts (`trader_research.governance.orchestration.protocols` and `.workflows`) | JSON-safe governance values | Validated immutable objective, protocol, capability, plan, result and outcome values | I/O, MCP dispatch or checkpointing |
+| Research Coordinator (`trader_agents.research_coordinator`) | Typed objective, optional protocol/outcome, registered template catalog and canonical artifact reads | One strict coordination decision and, when ready, a compiler-produced plan | Tool invention, experiment design, MCP calls, specialist invocation or canonical writes |
+| Resume shell (`trader_agents.checkpointing`) | One ready `WorkflowPlan` and resumed `WorkflowStepResult` values | Pending-step interrupts and bounded operational state | Tool execution or canonical evidence writes |
+| Fixed-template compiler (`trader_agents.orchestration.compiler`) | Approved objective/protocol plus canonical artifact reads | One content-addressed plan for template version 1 | Persistence, template selection or experiment design |
+| Workflow executor (`trader_agents.orchestration.executor`) | Compiled plan, workflow ID, `McpToolClient`, artifact store and checkpointer | Validated step results and a terminal `WorkflowExecution` | Direct Data, Experiment or Review service calls |
+| MCP adapters (`trader_mcp`) | Bounded tool arguments | `ToolEnvelope` values and canonical artifact refs | Workflow selection or checkpoint ownership |
+| Research artifact store | Domain artifacts and orchestration records | Canonical evidence with typed projections | Operational cursor/retry state |
+| LangGraph checkpointer | Bounded workflow progress | Replaceable resume state keyed by workflow ID | Research evidence or claim authority |
+
+```text
+library caller
+  -> Research Coordinator --read/validate--> research artifact store
+  -> selected registered template
+  -> compiler --read/hash--> research artifact store
+  -> ready WorkflowPlan
+  -> executor --register objective/protocol/plan--> MCP --write--> artifact store
+       <-> resume-shell pending-step/result loop --checkpoint--> LangGraph saver
+       -> MCP domain tool --write--> artifact store
+       -> MCP record terminal outcome --write--> artifact store
+```
+
+The executor therefore coordinates contracts and adapters; it does not bypass MCP to call a bounded context directly.
+The two workflow-specific MCP tools only persist the initial governance records and terminal outcome.
+There is no `research_execute_workflow` MCP tool in the current product.
+
+The governance redesign removed the old artifact `agent_owner` map. Canonical records now carry bounded-context
+authority separately from producer operation, requesting workflow and actor. MCP still exposes `agent_owner` as the intended tool allowlist
 label; it is not canonical artifact provenance and is never used to infer caller identity.
+
+The coordinator's public `CoordinationDecision` is intentionally smaller than a workflow plan. Its closed action
+vocabulary permits only registered-workflow execution, prerequisite requests, approval requests, terminal reporting or
+a structured block. An execution decision pins objective, protocol, template version and deterministic plan identity;
+it contains no symbols, windows, costs, search dimensions, tool names or arguments. Those values remain exclusively in
+the approved protocol and code-owned compiler. Unknown decision fields and unregistered template identities fail
+closed. A transported execution decision must deterministically recompile to the same plan ID before use.
 
 ### Decision Authority Model
 
@@ -338,7 +377,7 @@ operator research brief with supplied strategy/risk refs
   -> Research Coordinator reports refs, blockers and permitted next actions
 ```
 
-ORCH-1 implements the provider-neutral orchestration contracts:
+The provider-neutral declaration layer defines these orchestration contracts:
 
 - `ResearchObjective`: the operator's bounded desired outcome and declared constraints.
 - `ExperimentProtocol`: the proposed strategy/risk refs, Data requirements, baseline assumptions, costs, initial state,
@@ -352,7 +391,7 @@ ORCH-1 implements the provider-neutral orchestration contracts:
 - `WorkflowOutcome`: a public summary of satisfied goals, unresolved blockers, review verdict refs and next permitted
   actions.
 
-The implementation lives in `trader_research.governance.orchestration` and imports no service contexts. Contract
+The contract modules live in `trader_research.governance.orchestration` and import no service contexts. Contract
 construction is deliberately fail closed:
 
 - approved protocols require an approved decision for every material assumption;
@@ -367,15 +406,22 @@ construction is deliberately fail closed:
   than raw execution state.
 
 `ResearchObjective`, `ExperimentProtocol`, `WorkflowPlan` and approval records have canonical artifact-type
-declarations in the authority registry. ORCH-1 itself provides no persistence operation, MCP tool, compiler, executor
-or checkpointer; its acceptance boundary ends at typed step results. ORCH-3 now persists the objective, protocol, plan
-and terminal `WorkflowOutcome` through explicit MCP service boundaries.
+declarations in the authority registry. The declaration layer itself provides no persistence operation, MCP tool,
+compiler, executor or checkpointer; its boundary ends at typed step results. The persistence services used by the
+workflow executor write the objective, protocol, plan and terminal `WorkflowOutcome` through explicit MCP boundaries.
 
-ORCH-2 implements the checkpointer without expanding that declaration layer into an executor. The
-`trader_agents.checkpointing` package compiles one ready plan into a deterministic shell, interrupts at each ordered
-step and accepts a validated external `WorkflowStepResult` on resume. It imports governance contracts but no MCP,
-Data, Experiment, ML or Review implementation. ORCH-3 supplies the closed template compiler and mechanical MCP
-executor that turn each interrupt request into a validated tool call.
+The `trader_agents.checkpointing` package implements checkpointing without expanding the declaration layer into an
+executor. It compiles one ready plan into a deterministic shell, interrupts at each ordered step and accepts a validated
+external `WorkflowStepResult` on resume. It imports governance contracts but no MCP, Data, Experiment, ML or Review
+implementation. The closed template compiler and mechanical MCP executor turn each interrupt request into a validated
+tool call.
+
+The `trader_agents.research_coordinator` package keeps boundary normalization, template registration, policy and graph
+wiring separate. `domain.py` defines strict decisions and public template metadata; `catalog.py` binds code-owned
+eligibility and compiler functions; `policy.py` performs lifecycle and readiness selection; `graph.py` parses JSON-safe
+state and projects the public result. Missing objectives, protocols, approvals or canonical artifacts become typed
+prerequisites. Invalid ownership, unsupported protocol shape, ambiguous templates and compiler validation failures
+become bounded blockers. The graph performs no writes and retains no model prompt or reasoning trace.
 
 ### Deterministic Execution Template
 
@@ -392,17 +438,19 @@ are:
 validate supplied implementation set
   -> create and validate strategy/risk specifications
   -> create, validate and run baseline backtest
-  -> optional optimisation plan and run
-  -> selected specification on sealed holdout
-  -> Evaluation report
-  -> optional Adversarial attack plan
-  -> Experiment-executed immutable variants
-  -> Adversarial robustness report
+  -> [when optimisation is declared]
+       optimisation plan and run
+       -> selected specification on sealed holdout
+       -> Evaluation report
+       -> [when robustness requirements are non-empty]
+            Adversarial attack plan
+            -> Experiment-executed immutable variants
+            -> Adversarial robustness report
 ```
 
-The executor implements `McpToolClient`; it imports no Data, Experiment, Review or infrastructure service. Before
-accepting a result it verifies the MCP command, allowlist owner and side-effect class, resolves every returned canonical
-ref and pins its payload hash. It passes only a bounded `WorkflowStepResult` into ORCH-2. Input payload drift, a disabled
+The executor consumes the `McpToolClient` protocol; it imports no Data, Experiment, Review or infrastructure service.
+Before accepting a result it verifies the MCP command, allowlist owner and side-effect class, resolves every returned
+canonical ref and pins its payload hash. It passes only a bounded `WorkflowStepResult` into the resume shell. Input payload drift, a disabled
 gate, invalid artifact cardinality or a terminal tool blocker stops later nodes. Transient transport failures are
 bounded to three attempts. A caller-requested interruption leaves the checkpoint intact and a later invocation resumes
 at the next unaccepted step.
@@ -414,6 +462,12 @@ workflow write with `requested_by={workflow_id}` and `actor=workflow_executor` w
 authority. The compiler/executor is a library execution surface, not a high-level MCP runner and not an autonomous
 Research Coordinator.
 
+There are two related identity layers. The objective, protocol, plan and outcome payloads retain the declared operator
+or coordinator identity; the compiled plan and outcome use `actor=research_coordinator`. Each executor-created
+`WorkflowStepResult`, MCP request and surrounding `ResearchArtifactRecord` instead carries the concrete execution
+provenance `requested_by={workflow_id}` and `actor=workflow_executor`. Record provenance says who performed the write;
+it does not rewrite the decision identity inside the immutable governance payload or transfer domain authority.
+
 The experiment protocol is a proposal until material assumptions are explicitly approved. The Experiment Design Agent
 must not silently invent transaction costs, risk limits, optimisation dimensions, search budgets, data boundaries or
 holdout policy. Missing choices become approval requirements or blockers. A deterministic compiler, not the agent,
@@ -424,11 +478,11 @@ selects only registered capabilities that can produce them. It does not plan fro
 names, move Data Agent scope into another domain, override the approved experiment protocol or use prose to repair
 failed evidence.
 
-Reusable workflow templates provide the safe initial execution boundary. Examples include supplied implementation to
-backtest evidence, parameter selection to sealed-holdout review, and immutable model deployment to model-backed
-backtest. A bounded policy planner may later choose a template, resolve optional branches and request missing
-specialist evidence. It cannot construct an unrestricted arbitrary graph or bypass a template's mandatory validation,
-approval, Evaluation or Adversarial nodes.
+The single implemented workflow template provides the current safe execution boundary: supplied implementation to
+baseline evidence, with optional parameter selection, sealed-holdout review and optimisation-specific robustness.
+Future templates may cover model-backed or broader research procedures. A bounded policy planner may later choose
+among those templates, resolve optional branches and request missing specialist evidence. It cannot construct an
+unrestricted arbitrary graph or bypass a template's mandatory validation, approval, Evaluation or Adversarial nodes.
 
 ### Domain Authority And Actor Identity
 
@@ -453,9 +507,10 @@ An agent may request or route an artifact without becoming its owner. The approv
 | Orchestration | Research objectives, workflow plans, approval requests, bounded handoff summaries and workflow outcomes only. |
 
 `domain_owner` and `producer_tool` are required on every canonical `ResearchArtifactRecord`. `requested_by` and `actor`
-remain nullable for direct service calls. Typed cross-agent handoffs require all four fields. ORCH-1 requires requester
-and actor in its orchestration values; ORCH-2 retains them in operational state; ORCH-3 carries the workflow ID and
-executor actor into orchestrated writes rather than inferring either value from MCP tool stewardship.
+remain nullable for direct service calls. Typed cross-agent handoffs require all four fields. Orchestration contracts
+require requester and actor in typed orchestration values; the resume shell retains them in operational state; the
+workflow executor carries the workflow ID and executor actor into orchestrated writes rather than inferring either value
+from MCP tool stewardship.
 
 ### Checkpoints And Evidence
 
@@ -472,7 +527,7 @@ Checkpoints must not contain hidden reasoning, unrestricted prompts, credentials
 artifact payloads. Resumption revalidates referenced product artifacts and capability configuration before continuing.
 An idempotent tool result may be reused only when its canonical request identity and upstream hashes still match.
 
-The implemented ORCH-2 checkpoint state is a strict whitelist: workflow/plan identity, plan digest, cursor, next
+The implemented checkpoint state is a strict whitelist: workflow/plan identity, plan digest, cursor, next
 attempt, pending step, bounded attempt summaries, canonical handoff/artifact refs, bounded issues and result-content
 digests. `WorkflowStepResult.public_data` is deliberately discarded before persistence. Public state is a second,
 smaller projection that omits plan and idempotency digests. Plan digest is rechecked on every node; exact duplicate

@@ -25,7 +25,7 @@ from trader_mcp.constants import (
 )
 from trader_research.foundation import (
     ResearchArtifactStore,
-    ResearchArtifactStoreError,
+    ResearchArtifactNotFound,
     json_payload_hash,
     stable_research_id,
 )
@@ -68,6 +68,21 @@ from trader_research.governance import (
 WORKFLOW_TEMPLATE_ID = "supplied_implementation_to_evidence"
 WORKFLOW_TEMPLATE_VERSION = "1"
 _INVOCATION_CONFIGURATION_KEY = "invocation"
+
+
+class WorkflowInputUnavailableError(ValueError):
+    """Raised when a declared canonical workflow input cannot be resolved.
+
+    Attributes:
+        reference: Canonical artifact reference that could not be loaded.
+    """
+
+    def __init__(self, reference: ArtifactReportRef) -> None:
+        """Capture the missing reference without discarding typed context."""
+        super().__init__(
+            f"workflow input artifact does not resolve: {reference.uri}"
+        )
+        self.reference = reference
 
 
 class InvocationMode(str, Enum):
@@ -149,7 +164,29 @@ def compile_supplied_implementation_workflow(
     protocol: ExperimentProtocol,
     artifact_store: ResearchArtifactStore,
 ) -> CompiledResearchWorkflow:
-    """Compile one approved protocol into a fixed MCP capability DAG."""
+    """Compile an approved supplied-implementation protocol into a fixed DAG.
+
+    The compiler reads every canonical implementation and Data reference from
+    ``artifact_store`` and pins its current payload hash into the resulting
+    ready plan. It performs no writes and invokes no MCP tools. Template shape,
+    tool selection, bindings, and arguments are derived exclusively from the
+    approved protocol and code-registered template.
+
+    Args:
+        objective: Approved operator research objective.
+        protocol: Approved experiment protocol bound to ``objective``.
+        artifact_store: Canonical artifact reader used to resolve and pin inputs.
+
+    Returns:
+        Deterministic compiled workflow containing the objective, protocol, and
+        ready workflow plan.
+
+    Raises:
+        WorkflowInputUnavailableError: If a declared canonical input is absent.
+        ResearchArtifactStoreError: If the canonical store cannot perform reads.
+        ValueError: If approvals, identity, workflow shape, ownership, or input
+            contents do not satisfy the registered template.
+    """
     _validate_protocol_readiness(objective, protocol)
     pinned_strategy = _pin_ref(
         protocol.strategy.implementation_ref,
@@ -990,10 +1027,8 @@ def _pin_ref(
             reference.artifact_type,
             reference.artifact_id,
         )
-    except ResearchArtifactStoreError as exc:
-        raise ValueError(
-            f"workflow input artifact does not resolve: {reference.uri}"
-        ) from exc
+    except ResearchArtifactNotFound as exc:
+        raise WorkflowInputUnavailableError(reference) from exc
     if record.domain_owner != reference.domain_owner:
         raise ValueError(
             f"workflow input domain drift for {reference.uri}"
