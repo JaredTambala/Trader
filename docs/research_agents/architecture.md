@@ -114,6 +114,22 @@ src/trader_research/
 This tree is directional architecture, not a requirement to create one file for every label. Module creation is justified
 by a cohesive responsibility and an enforceable import rule, not by line-count targets alone.
 
+The reusable specialist boundary is grouped by responsibility under the agent package:
+
+```text
+src/trader_agents/specialists/
+  domain.py                     # Strict task, decision, action-outcome and result values
+  policy.py                     # Provider-neutral policy and registered-handler protocols
+  catalog.py                    # Authority-scoped, code-owned action registration
+  graph.py                      # Bounded resumable policy/action loop and public projection
+src/trader_agents/data_agent/
+  domain.py                     # Normalized Data request and stable task construction
+  policy.py                     # Deterministic Data action sequencing and prerequisites
+  actions.py                    # MCP handlers and canonical evidence verification
+  catalog.py                    # Production Data action registrations
+  graph.py                      # Data specialist graph assembly
+```
+
 | Context | Owns | May depend on | Must not depend on |
 | --- | --- | --- | --- |
 | Foundation | Stable identity, typed failures, artifact refs/records, store ports. | Python standard library. | Data, knowledge, methodology, experiments, review, MCP, agents, optional providers. |
@@ -290,10 +306,14 @@ methodology tools develop independently.
 
 The current operational baseline is deliberately bounded:
 
-- The Data Agent has bounded deterministic and LLM-policy tool-calling graphs.
+- The Data Agent has one deterministic resumable specialist graph over three registered MCP-backed actions. The legacy
+  raw-payload graphs and model-selected tool-argument policy have been removed.
 - The Research Coordinator has a deterministic next-action policy and one-node graph over a closed workflow-template
   catalog. It requests prerequisites or approvals, selects one uniquely eligible registered template, or reports
   terminal state without calling MCP or specialist graphs.
+- A reusable specialist policy shell accepts typed tasks, executes only authority-scoped registered handlers and
+  returns canonical handoffs, prerequisites or blockers. The Data Agent is the first production registration; the
+  Research Coordinator does not yet invoke it.
 - A separate non-agent compiler/executor runs one already approved supplied-implementation protocol through the
   registered implementation, specification, backtest, optimisation and review MCP tools.
 - The earlier Quant Research Supervisor request/handoff graph remains a non-authoritative legacy surface; it is not the
@@ -307,12 +327,14 @@ The implementation is split by responsibility and call direction rather than col
 | --- | --- | --- | --- |
 | Declaration contracts (`trader_research.governance.orchestration.protocols` and `.workflows`) | JSON-safe governance values | Validated immutable objective, protocol, capability, plan, result and outcome values | I/O, MCP dispatch or checkpointing |
 | Research Coordinator (`trader_agents.research_coordinator`) | Typed objective, optional protocol/outcome, registered template catalog and canonical artifact reads | One strict coordination decision and, when ready, a compiler-produced plan | Tool invention, experiment design, MCP calls, specialist invocation or canonical writes |
+| Specialist policy shell (`trader_agents.specialists`) | One typed specialist task, authority-scoped action catalog, injected policy, handlers and optional checkpointer | Validated decisions, canonical handoffs, slot bindings, prerequisites, blockers and resumable terminal result | Choosing specialist policy, accepting arbitrary tool names/arguments, owning saver lifecycle or invoking itself from coordination |
+| Data specialist (`trader_agents.data_agent`) | Approved objective, normalized bounded Data request, MCP client, canonical store and optional checkpointer | Verified manifest/quality handoffs, typed permission prerequisites or Data-fitness blockers | Model-selected tools/arguments, direct Data service calls, provider backfill, strategy design or quality conclusions outside the requested scope |
 | Resume shell (`trader_agents.checkpointing`) | One ready `WorkflowPlan` and resumed `WorkflowStepResult` values | Pending-step interrupts and bounded operational state | Tool execution or canonical evidence writes |
 | Fixed-template compiler (`trader_agents.orchestration.compiler`) | Approved objective/protocol plus canonical artifact reads | One content-addressed plan for template version 1 | Persistence, template selection or experiment design |
 | Workflow executor (`trader_agents.orchestration.executor`) | Compiled plan, workflow ID, `McpToolClient`, artifact store and checkpointer | Validated step results and a terminal `WorkflowExecution` | Direct Data, Experiment or Review service calls |
 | MCP adapters (`trader_mcp`) | Bounded tool arguments | `ToolEnvelope` values and canonical artifact refs | Workflow selection or checkpoint ownership |
 | Research artifact store | Domain artifacts and orchestration records | Canonical evidence with typed projections | Operational cursor/retry state |
-| LangGraph checkpointer | Bounded workflow progress | Replaceable resume state keyed by workflow ID | Research evidence or claim authority |
+| LangGraph checkpointer | Bounded workflow or specialist progress | Replaceable resume state keyed by workflow or specialist-task ID | Research evidence or claim authority |
 
 ```text
 library caller
@@ -340,6 +362,16 @@ a structured block. An execution decision pins objective, protocol, template ver
 it contains no symbols, windows, costs, search dimensions, tool names or arguments. Those values remain exclusively in
 the approved protocol and code-owned compiler. Unknown decision fields and unregistered template identities fail
 closed. A transported execution decision must deterministically recompile to the same plan ID before use.
+
+The specialist task/result contract is the common connection point for Data and future Experiment Design, Quantitative
+Methods, ML, Robustness and Evaluation graphs. A task fixes the target `DecisionAuthority`, objective, canonical input
+refs, requested artifact slots, permitted side effects and satisfied policy gates. A policy can select a registered
+action, request a prerequisite, complete, or block. Execution decisions carry only registered action identity plus
+canonical input and declared output bindings; the selected handler alone parses bounded specialist input into a typed
+domain request and may call MCP. Successful handoffs require canonical URIs and exact owner, producer, requester,
+actor, type and cardinality agreement. The shell retains no raw MCP response, action arguments, prompts, credentials
+or hidden reasoning. The Data integration additionally verifies returned snapshot URIs through the same canonical
+store used by MCP and retains only their refs and payload digests in specialist state.
 
 ### Decision Authority Model
 
@@ -554,8 +586,9 @@ optional Quant Methods/ML ──────┘                           │
                                              Robustness findings ──> Evaluation
 ```
 
-Adding a specialist capability extends the capability registry and one or more workflow templates. It does not require
-rewriting a universal state machine. The active dependency graph and delivery status live in the
+Adding a specialist capability registers authority-scoped actions and extends one or more workflow templates. It does
+not require rewriting a universal state machine. The Research Coordinator still needs an explicit composition layer
+before it can invoke any specialist task automatically. The active dependency graph and delivery status live in the
 [capability roadmap](../../plans/research_capability_roadmap.md); current agent maturity lives in
 [product_state.md](product_state.md).
 

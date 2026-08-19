@@ -111,6 +111,32 @@ tool-name, argument or experiment-configuration fields, rejects unknown fields, 
 code-owned template catalog before a transported decision can be compiled again. The graph itself calls no MCP tool and
 does not invoke specialist graphs.
 
+## Specialist Graph Boundary
+
+`trader_agents.specialists` defines the shared contract for operational specialist graphs:
+
+- `SpecialistTask` fixes one registered `DecisionAuthority`, objective, canonical input refs, requested output slots,
+  permitted side effects, satisfied policy gates, requester and routing actor.
+- `SpecialistDecision` can run one registered action, request a typed prerequisite, complete or block. It cannot carry
+  a tool name or arguments; action input binds only canonical artifact URIs and output binds only declared task slots.
+- `SpecialistActionCatalog` is code owned and scoped to one authority. A registered handler parses the task's bounded
+  specialist input into a role-specific typed request before it may call MCP. Registrations must be idempotent and
+  declare only configuration dependencies already injected at catalog construction.
+- `SpecialistResult` returns canonical `SpecialistHandoff` values, exact task-slot bindings, prerequisites, warnings,
+  blockers or errors. Successful handoffs must match authority, producer, requester, actor, artifact type and
+  cardinality.
+- The shared shell enforces decision/action budgets and retains no raw MCP result, action arguments, prompt,
+  scratchpad, credentials or hidden reasoning. An injected checkpointer retains the first task digest and accepted
+  action-result digests so exact resume does not repeat accepted work and changed task content fails closed.
+
+This is a reusable invocation boundary, not a new universal agent. `trader_agents.data_agent` is the first production
+registration. Its deterministic policy selects `validate_market_data_scope`, optional
+`ensure_market_data_available`, and `capture_market_data_evidence`; handlers alone construct MCP arguments. The final
+handler resolves both snapshot refs from the canonical store and validates scope, ownership, producer, requester,
+actor, status, payload digest and matching dataset identity before returning handoffs. The Research Coordinator does
+not yet invoke the graph. Approval requests remain Coordinator-owned: a specialist reports an approval prerequisite
+or a proposed artifact but cannot approve its own assumptions.
+
 ## Methodology Decision Boundary
 
 - The Quantitative Methods Agent decides source registration, retrieval and methodology-evidence actions through its

@@ -59,7 +59,9 @@ def test_current_research_agent_docs_do_not_carry_stale_tool_claims() -> None:
     for path in _current_markdown_docs():
         content = path.read_text(encoding="utf-8")
         for stale_claim in STALE_CURRENT_CLAIMS:
-            assert stale_claim not in content, f"{stale_claim!r} found in {path.relative_to(REPO_ROOT)}"
+            assert stale_claim not in content, (
+                f"{stale_claim!r} found in {path.relative_to(REPO_ROOT)}"
+            )
 
 
 def test_rich_methodology_operator_guide_covers_required_workflows() -> None:
@@ -122,7 +124,12 @@ def test_semantic_extraction_doc_is_canonical_and_preserves_overlap_invariant() 
     for phrase in required_phrases:
         assert phrase in semantic_doc
 
-    for filename in ("README.md", "architecture.md", "workflows.md", "tool_contracts.md"):
+    for filename in (
+        "README.md",
+        "architecture.md",
+        "workflows.md",
+        "tool_contracts.md",
+    ):
         content = (DOC_ROOT / filename).read_text(encoding="utf-8")
         assert "(semantic_extraction.md)" in content
 
@@ -134,14 +141,31 @@ def test_docs_pin_knowledge_baseline_and_identify_next_delivery_focus() -> None:
     workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
     roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
 
-    assert "| Methodology extraction and method cards | implemented | integration |" in product_state
+    assert (
+        "| Methodology extraction and method cards | implemented | integration |"
+        in product_state
+    )
     assert "The implemented subsystem is pinned at the 33AB baseline" in semantic_doc
-    assert "execution begins with content-addressed implementation versions" in contracts
+    assert (
+        "execution begins with content-addressed implementation versions" in contracts
+    )
     assert "Handwritten code and AI-produced code" in workflows
-    assert "| KNOW-1 | Composite methodology representation | deferred | BASE-KNOW |" in roadmap
-    assert "| BASE-IMPL | Knowledge-independent implementation admission through 56A-D |" in roadmap
-    assert "| BASE-EXP | Strategy, risk-stack and backtest specifications through 57A-C |" in roadmap
-    assert "| BASE-OPT | Provider-neutral optimisation and independent review through 57D-H |" in roadmap
+    assert (
+        "| KNOW-1 | Composite methodology representation | deferred | BASE-KNOW |"
+        in roadmap
+    )
+    assert (
+        "| BASE-IMPL | Knowledge-independent implementation admission through 56A-D |"
+        in roadmap
+    )
+    assert (
+        "| BASE-EXP | Strategy, risk-stack and backtest specifications through 57A-C |"
+        in roadmap
+    )
+    assert (
+        "| BASE-OPT | Provider-neutral optimisation and independent review through 57D-H |"
+        in roadmap
+    )
     assert "Knowledge provenance is optional" not in roadmap
     assert "KNOWLEDGE ── optional provenance" in roadmap
 
@@ -197,7 +221,10 @@ def test_docs_define_current_research_architecture_and_refactor_lineage() -> Non
     for phrase in historical_architecture_phrases:
         assert phrase not in architecture
 
-    assert "| BASE-ARCH | `trader_research` bounded-context cutover through TRR-12 |" in roadmap
+    assert (
+        "| BASE-ARCH | `trader_research` bounded-context cutover through TRR-12 |"
+        in roadmap
+    )
     assert "| 53-54 and TRR-1 through TRR-12 |" in roadmap
     assert "`verification-57i-freeze-v6`" in product_state
     assert "Current operational state" in product_state
@@ -246,7 +273,10 @@ def test_docs_walk_supplied_implementations_to_bounded_evidence() -> None:
 
 
 def test_active_operator_docs_do_not_advertise_retired_research_clis() -> None:
-    active_paths = (REPO_ROOT / "README.md", *(REPO_ROOT / "docs" / "core").rglob("*.md"))
+    active_paths = (
+        REPO_ROOT / "README.md",
+        *(REPO_ROOT / "docs" / "core").rglob("*.md"),
+    )
     retired_commands = (
         "run_compare_results.py",
         "run_prepare_paper_promotion.py",
@@ -258,7 +288,9 @@ def test_active_operator_docs_do_not_advertise_retired_research_clis() -> None:
     for path in active_paths:
         content = path.read_text(encoding="utf-8")
         for command in retired_commands:
-            assert command not in content, f"{command} found in {path.relative_to(REPO_ROOT)}"
+            assert command not in content, (
+                f"{command} found in {path.relative_to(REPO_ROOT)}"
+            )
 
 
 def test_docs_define_provider_neutral_optimization_and_independent_review() -> None:
@@ -268,7 +300,9 @@ def test_docs_define_provider_neutral_optimization_and_independent_review() -> N
     contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
     operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
     workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
-    combined = "\n".join((architecture, agents, catalog, contracts, operations, workflows))
+    combined = "\n".join(
+        (architecture, agents, catalog, contracts, operations, workflows)
+    )
 
     required_phrases = (
         "OptimizationEngine",
@@ -337,7 +371,9 @@ def test_docs_define_controlled_verification_profiles_and_stop_conditions() -> N
         assert phrase in contracts
 
 
-def test_product_state_separates_implementation_qualification_and_availability() -> None:
+def test_product_state_separates_implementation_qualification_and_availability() -> (
+    None
+):
     product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
 
     for heading in (
@@ -356,7 +392,7 @@ def test_product_state_separates_implementation_qualification_and_availability()
         "`none`, `focused`, `integration`, `controlled`",
         "`unregistered`, `registered`, `gated`, `operator_only`, `deferred`",
         "`Implemented` does not mean autonomously orchestrated",
-        "The principal remaining orchestration gap is automatic specialist composition",
+        "Coordinator-to-specialist composition",
         "commit `577c774`",
         "but they are not part of the",
     ):
@@ -385,9 +421,15 @@ def test_docs_define_cross_cutting_target_artifact_orchestration() -> None:
     ):
         assert phrase in architecture
 
-    assert "Ownership definitions do not imply that every named agent has an operational graph" in agents
+    assert (
+        "Ownership definitions do not imply that every named agent has an operational graph"
+        in agents
+    )
     assert "(product_state.md#agent-state)" in agents
-    assert "(../../plans/research_capability_roadmap.md#target-agent-capability-map)" in agents
+    assert (
+        "(../../plans/research_capability_roadmap.md#target-agent-capability-map)"
+        in agents
+    )
 
 
 def test_docs_define_non_overlapping_experiment_research_decisions() -> None:
@@ -424,14 +466,80 @@ def test_docs_define_non_overlapping_experiment_research_decisions() -> None:
     ):
         assert phrase in combined
 
-    assert "| ORCH-GOV | Decision authority and domain ownership redesign | complete |" in roadmap
-    assert "| ORCH-1 | Capability and workflow contracts | complete | ORCH-GOV |" in roadmap
-    assert "| ORCH-2 | Operational checkpoint and handoff model | complete | ORCH-1 |" in roadmap
-    assert "| ORCH-3 | Deterministic implementation-to-evidence workflow | complete |" in roadmap
-    assert "| AGENT-1 | Specialist graph contract and common policy shell | ready | ORCH-1 |" in roadmap
+    assert (
+        "| ORCH-GOV | Decision authority and domain ownership redesign | complete |"
+        in roadmap
+    )
+    assert (
+        "| ORCH-1 | Capability and workflow contracts | complete | ORCH-GOV |"
+        in roadmap
+    )
+    assert (
+        "| ORCH-2 | Operational checkpoint and handoff model | complete | ORCH-1 |"
+        in roadmap
+    )
+    assert (
+        "| ORCH-3 | Deterministic implementation-to-evidence workflow | complete |"
+        in roadmap
+    )
+    assert (
+        "| AGENT-1 | Specialist graph contract and common policy shell | complete | ORCH-1 |"
+        in roadmap
+    )
     assert "The workflow executor owns no research claim and is not an agent" in roadmap
-    assert "Owner labels in this catalog describe executable tool allowlists/stewardship only" in catalog
+    assert (
+        "Owner labels in this catalog describe executable tool allowlists/stewardship only"
+        in catalog
+    )
     assert "## Target Orchestrated Supplied-Strategy Workflow" in workflows
+
+
+def test_docs_define_shared_specialist_boundary_without_claiming_composition() -> None:
+    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
+    agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
+    contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
+    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
+    roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
+    combined = "\n".join(
+        (product_state, architecture, agents, contracts, workflows, roadmap)
+    )
+
+    for phrase in (
+        "`SpecialistTask`",
+        "`SpecialistDecision`",
+        "`SpecialistActionCatalog`",
+        "`SpecialistActionOutcome`",
+        "`SpecialistResult`",
+        "canonical input URIs",
+        "registered action",
+        "permitted side effects",
+        "`DataSpecialistRequest`",
+        "fresh-saver resumption without repeating accepted actions",
+    ):
+        assert phrase in combined
+
+    assert (
+        "| AGENT-1 | Specialist graph contract and common policy shell | complete |"
+        in roadmap
+    )
+    assert (
+        "| AGENT-DATA | Integrate Data Agent as a resumable specialist | complete |"
+        in roadmap
+    )
+    assert "| ORCH-5 | Multi-specialist composition | ready |" in roadmap
+    assert (
+        "| AGENT-DESIGN | Experiment protocol proposal and specialist graph | ready |"
+        in roadmap
+    )
+    for phrase in (
+        "#### Implemented Data Specialist Cutover",
+        "`validate_market_data_scope`",
+        "`ensure_market_data_available`",
+        "`capture_market_data_evidence`",
+        "without compatibility aliases",
+    ):
+        assert phrase in roadmap
 
 
 def test_docs_define_declaration_contract_scope_without_claiming_execution() -> None:
@@ -490,10 +598,7 @@ def test_docs_define_resume_shell_without_claiming_mcp_execution() -> None:
     ):
         assert phrase in combined
 
-    assert (
-        "| ORCH-2 | Operational checkpoint and handoff model | complete |"
-        in roadmap
-    )
+    assert "| ORCH-2 | Operational checkpoint and handoff model | complete |" in roadmap
 
 
 def test_docs_define_deterministic_execution_boundary() -> None:
@@ -809,7 +914,10 @@ def test_docs_define_mlflow_lifecycle_and_implemented_runtime_boundary() -> None
     assert "## ML Lifecycle Architecture" in architecture
     assert "MLflow is authoritative for" in architecture
     assert "Random train/test splitting must not be the default" in architecture
-    assert "must never change model behavior merely because an MLflow alias was reassigned" in architecture
+    assert (
+        "must never change model behavior merely because an MLflow alias was reassigned"
+        in architecture
+    )
     assert "The trading hot path must not call MCP" in architecture
     assert "### Implemented Runtime Slice" in architecture
     assert "## ML Lifecycle Decision Boundary" in agents
@@ -821,11 +929,19 @@ def test_docs_define_mlflow_lifecycle_and_implemented_runtime_boundary() -> None
     assert "### Runtime Prediction And Deployment Contracts" in contracts
     assert "## MLflow Model Lifecycle And Runtime Integration" in workflows
     assert "| ML-1 | MLflow runtime and mutation policy | ready | BASE-OPT |" in roadmap
-    assert "| ML-7 | Prediction monitoring and drift | ready | BASE-ML-RUNTIME |" in roadmap
-    assert "| ML Agent | Ownership and deployment MCP tools exist; no ML Agent graph exists." in product_state
+    assert (
+        "| ML-7 | Prediction monitoring and drift | ready | BASE-ML-RUNTIME |"
+        in roadmap
+    )
+    assert (
+        "| ML Agent | Ownership and deployment MCP tools exist; no ML Agent graph exists."
+        in product_state
+    )
 
 
-def test_docs_defer_walk_forward_optimization_but_keep_validation_foundational() -> None:
+def test_docs_defer_walk_forward_optimization_but_keep_validation_foundational() -> (
+    None
+):
     product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
     architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
     agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
@@ -836,13 +952,21 @@ def test_docs_defer_walk_forward_optimization_but_keep_validation_foundational()
 
     assert "| Walk-forward optimisation | absent | none | deferred |" in product_state
     assert "## Walk-Forward Validation And Optimisation" in architecture
-    assert "Chronological walk-forward validation is foundational model-fitting correctness" in architecture
+    assert (
+        "Chronological walk-forward validation is foundational model-fitting correctness"
+        in architecture
+    )
     assert "## Optimisation And Walk-Forward Decisions" in agents
     assert "## Deferred Walk-Forward Tool Universe" in catalog
     assert "### Deferred Walk-Forward Contract Invariants" in contracts
     assert "## Deferred Walk-Forward Optimisation Workflow" in workflows
-    assert "| WFO-1 | Strategy walk-forward core | blocked | BASE-OPT, ROB-1 |" in roadmap
-    assert "| WFO-2 | Stitched OOS Evaluation and independent audit | blocked | WFO-1, ROB-2 |" in roadmap
+    assert (
+        "| WFO-1 | Strategy walk-forward core | blocked | BASE-OPT, ROB-1 |" in roadmap
+    )
+    assert (
+        "| WFO-2 | Stitched OOS Evaluation and independent audit | blocked | WFO-1, ROB-2 |"
+        in roadmap
+    )
 
 
 def _current_markdown_docs() -> tuple[Path, ...]:

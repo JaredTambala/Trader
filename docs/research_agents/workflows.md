@@ -4,7 +4,7 @@ Research workflows are built as deterministic MCP tool chains first, then compos
 surface is useful. All workflows stay outside live trading.
 
 The procedures in this document describe callable tool graphs, not unrestricted autonomous behavior. The Data Agent is
-the only specialist with an operational tool-calling graph. Separately, the Research Coordinator selects a bounded
+the first specialist on the common resumable task/result boundary. Separately, the Research Coordinator selects a bounded
 next action and compiles the one registered implementation-to-evidence workflow when its approved inputs are ready.
 The fixed workflow executor then runs that plan mechanically through MCP. See
 [product_state.md](product_state.md#agent-state) and the
@@ -39,8 +39,9 @@ optimisation audit are implemented. ML versioning and broader cost/data perturba
 
 ## Target Orchestrated Supplied-Strategy Workflow
 
-This is the target higher-level agent path. Bounded next-action selection and the middle deterministic execution
-segment are implemented; automatic invocation and composition of specialist graphs are not:
+This is the target higher-level agent path. Bounded next-action selection, the reusable specialist task/result shell,
+the production Data specialist, and the middle deterministic execution segment are implemented; automatic
+invocation/composition and the remaining specialist graphs are not:
 
 ```text
 operator brief with supplied strategy and risk-manager refs
@@ -65,6 +66,25 @@ an agent and makes no design, selection or quality judgment.
 
 Quantitative Methods and ML are optional producers. Neither is required when the operator supplies validated
 strategy/risk implementations and no model lifecycle work is requested.
+
+### Specialist Task And Result Flow
+
+Every specialist integration uses the same bounded connection:
+
+```text
+SpecialistTask
+  -> specialist policy selects a registered action, prerequisite, completion or blocker
+  -> registered handler parses role-specific input and may call MCP
+  -> shell validates canonical handoffs and requested output-slot bindings
+  -> SpecialistResult returns handoffs, prerequisites, blockers or errors
+```
+
+The task permits side-effect classes and policy gates explicitly. Policy decisions bind only registered action IDs,
+canonical input URIs and declared output slots; they cannot inject MCP tool names or arguments. The handler owns the
+role-specific typed request and strips raw transport data before returning. The shell requires canonical artifact URIs
+for accepted handoffs and can use an injected checkpointer. A stable task digest and accepted-action digests prevent
+task drift or accepted-action replay. The Data action catalog is operational; there is currently no Coordinator edge
+into it.
 
 ### Declaration, Resume, And Deterministic Execution
 
@@ -195,18 +215,23 @@ a connected graph of immutable Postgres artifacts whose identities and lineage c
 ## Data Agent Workflow
 
 ```text
-mcp_health
-  -> mcp_get_config
-  -> data_discover_symbols
-  -> data_get_inventory
-  -> data_summarize_quality
-  -> data_ensure_loaded, only when policy permits
-  -> data_summarize_quality
+approved objective + normalized bounded Data request
+  -> validate_market_data_scope -> data_discover_symbols
+  -> [optional, separately approved] ensure_market_data_available -> data_ensure_loaded(sample)
+  -> capture_market_data_evidence -> data_create_research_snapshot
+  -> resolve both refs through the canonical store
+  -> completed manifest/quality handoffs, typed prerequisite, or Data-fitness blocker
 ```
 
-The Data domain is authoritative for symbol discovery, dataset manifests, data-quality reports, and explicit load evidence. Downstream
-strategy, backtest, and evaluation tools should consume Data Agent dataset/quality artifacts rather than loose symbols,
-timeframes, or date windows.
+The deterministic policy names registered responsibilities, never MCP commands or argument bodies. Only checked-in
+sample loading is registered because its writes are replay safe; arbitrary backfill is not a specialist action. The
+snapshot handler validates artifact type, Data ownership, producer, requester, actor, captured status, exact scope,
+payload digest and matching dataset identity. Incomplete evidence blocks the task but retains both canonical refs for
+inspection. Direct Data MCP tools remain available to explicit operator callers.
+
+The Data domain is authoritative for symbol discovery, dataset manifests, data-quality reports, and explicit load
+evidence. Downstream strategy, backtest, and evaluation tools should consume Data Agent dataset/quality artifacts
+rather than loose symbols, timeframes, or date windows.
 
 ## MLflow Model Lifecycle And Runtime Integration
 

@@ -210,7 +210,7 @@ def build_workflow_checkpoint_state(
 
     Args:
         workflow_id: Unique operational run identity and LangGraph thread ID.
-        plan: Ready ORCH-1 workflow plan used to compile the graph.
+        plan: Ready workflow plan used to compile the graph.
         handoffs: Canonical-ref specialist handoffs available at start.
 
     Returns:

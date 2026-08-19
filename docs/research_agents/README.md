@@ -56,6 +56,13 @@ scope, or invent tools; missing state becomes a typed request for its owning dom
 replaceable operational state; canonical data, experiment, review, and workflow artifacts remain in the research
 artifact store.
 
+A shared specialist policy shell defines how owning-domain graphs are called. It accepts a typed task, validates one
+authority-scoped registered action at a time, and returns canonical handoffs, prerequisites or blockers without
+retaining raw tool responses or hidden reasoning. The Data Agent is the first production specialist on this boundary:
+it validates explicit symbol scope, optionally performs separately approved replay-safe sample loading, and returns a
+verified canonical manifest/quality pair through a resumable checkpoint thread. The Research Coordinator does not yet
+invoke that specialist automatically.
+
 Trader Postgres is canonical for implementations, specifications, runs, trial ledgers, Evaluation, and Adversarial
 evidence. MCP is the control-plane API over deterministic services. LangGraph agents constrain tool access and preserve
 artifact authority. Research tools cannot place live orders, mutate broker state, clear halts, or expose raw SQL.
@@ -154,6 +161,8 @@ When documentation and implementation disagree, inspect these current sources an
 - Public research application surfaces: the `__init__.py` facade in each `trader_research` bounded context.
 - Canonical Postgres persistence and projection registration: `src/trader_research/infrastructure/postgres/`.
 - Orchestration declarations and persistence services: `src/trader_research/governance/orchestration/`.
+- Shared specialist contracts, catalogs, policy loop and resume helpers: `src/trader_agents/specialists/`.
+- Production Data specialist request, policy and MCP handlers: `src/trader_agents/data_agent/`.
 - Resumable workflow state: `src/trader_agents/checkpointing/`.
 - Fixed workflow compilation and MCP execution: `src/trader_agents/orchestration/`.
 - Current capability and qualification baseline: `docs/research_agents/product_state.md`.

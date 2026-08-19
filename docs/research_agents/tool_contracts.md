@@ -155,7 +155,9 @@ propagates the workflow ID and `workflow_executor` actor into orchestrated calls
 `SpecialistHandoff` is a separate governance contract. It requires non-empty `domain_owner`, `producer_tool`,
 `requested_by` and `actor`, validates domain authority against the artifact type, and carries either a canonical
 artifact reference/payload together with source request, warnings, blockers and provenance refs. It has no
-`agent_owner` field and cannot transfer authority to the coordinator.
+`agent_owner` field and cannot transfer authority to the coordinator. The reusable specialist graph accepts only the
+canonical-URI form as an output because payload-only handoffs cannot safely satisfy or resume a requested artifact
+slot.
 
 ## Orchestration Contracts
 
@@ -189,6 +191,35 @@ protocol payload. Unknown fields are rejected during parsing. Template identity 
 `WorkflowTemplateCatalog`; an execution decision transported across a boundary must recompile from the exact objective,
 protocol and canonical inputs to the same plan ID before the executor may consume it. Coordination decisions and graph
 state are operational values, not new canonical artifacts or hidden planner transcripts.
+
+### Specialist Task And Result Contracts
+
+The shared specialist graph boundary adds no MCP tool and does not change `ToolEnvelope`. Its public values are:
+
+| Contract | Purpose | Fail-closed checks |
+| --- | --- | --- |
+| `SpecialistTask` | Address one objective and bounded specialist input to a registered decision authority. | Requires requested output slots within that authority, canonical input refs, explicit requester/actor, permitted side effects, satisfied policy gates, bounded JSON input and no pre-resolved output. |
+| `SpecialistDecision` | Select one registered action, request a prerequisite, complete or block. | Rejects unknown fields, tool names/arguments, mismatched task/authority, undeclared canonical input bindings and undeclared output-slot bindings. |
+| `SpecialistActionOutcome` | Return declared canonical handoffs and bounded issues from a registered handler. | Exact action identity, output declarations, status/issues, producer, owner, requester, actor, URI and cardinality must agree. |
+| `SpecialistResult` | Return terminal handoffs, task-slot bindings, prerequisites, blockers or errors. | Every handoff binds exactly once to a requested compatible slot; terminal status and issues cannot contradict each other. |
+
+`SpecialistActionCatalog` contains code-owned `CapabilityDefinition` and handler pairs for exactly one
+`DecisionAuthority`. A handler is the only component allowed to interpret `specialist_input`; it must normalize that
+boundary into a role-specific typed request before calling MCP or another injected adapter. Policy output cannot add a
+handler, tool name, argument body, side-effect class or authority through graph state. The shell persists no raw
+handler response. Callers may inject a LangGraph checkpointer; the shell retains the first task digest, accepted action
+summaries and their digests, canonical handoffs, slot bindings, counters and structured issues. Exact terminal resume
+does not repeat accepted work, while task drift and conflicting replay fail closed. Catalog construction rejects
+non-idempotent actions and missing declared configuration dependencies; configuration values and secrets remain
+injected into handlers, never graph state.
+
+The production Data specialist adds `DataSpecialistRequest`, which strictly normalizes one `DataRequirement`, provider
+and instrument/bar context, discovery source, and optional `sample` loading intent. Its task factory creates exact
+manifest and quality slots and separates local-persistence permission from sample-loading approval. The action catalog
+registers `validate_market_data_scope`, `ensure_market_data_available`, and `capture_market_data_evidence`; the policy
+cannot provide tool names or argument bodies. Snapshot handoffs are accepted only after both returned URIs resolve in
+the injected canonical store with matching Data ownership, producer, requester, actor, captured status, request scope
+and dataset identity. Checkpoints contain the refs and payload hashes, not the resolved payloads or MCP envelope.
 
 ### Operational Resume Contract
 

@@ -6,10 +6,8 @@ from typing import Any, Mapping
 
 from langgraph.graph import END, START, StateGraph
 
-from trader_research.foundation import stable_research_id
 from trader_research.governance import (
     BoundedResearchRequest,
-    DATA_AGENT_OWNER,
     DATA_QUALITY_REPORT,
     DATASET_MANIFEST,
     DOMAIN_OWNER_BY_ARTIFACT_TYPE,
@@ -18,7 +16,12 @@ from trader_research.governance import (
     SpecialistHandoff,
 )
 
-from .state import AgentStatus, QuantResearchSupervisorState, graph_error, mapping_or_empty
+from .state import (
+    AgentStatus,
+    QuantResearchSupervisorState,
+    graph_error,
+    mapping_or_empty,
+)
 
 
 SUPERVISOR_OWNER = "Quant Research Supervisor Agent"
@@ -34,7 +37,9 @@ def build_quant_research_supervisor_graph() -> Any:
         MCP tools or specialist graphs.
     """
 
-    async def supervise(state: QuantResearchSupervisorState) -> QuantResearchSupervisorState:
+    async def supervise(
+        state: QuantResearchSupervisorState,
+    ) -> QuantResearchSupervisorState:
         """Run one deterministic supervisor state update.
 
         Args:
@@ -53,77 +58,6 @@ def build_quant_research_supervisor_graph() -> Any:
     return graph.compile()
 
 
-def data_agent_handoffs_from_state(data_state: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """Build Data Agent handoff records from completed Data Agent graph state.
-
-    Args:
-        data_state: JSON-native state returned by a Data Agent graph.
-
-    Returns:
-        Two specialist handoffs, when available: dataset manifest and quality
-        report. Missing payloads are skipped so the supervisor can create
-        missing-artifact blockers.
-    """
-    request = mapping_or_empty(
-        data_state.get("quality_request")
-        or data_state.get("inventory_request")
-        or _request_from_payload(mapping_or_empty(data_state.get("dataset_manifest")))
-    )
-    provenance_refs = {
-        "source_graph": "data_agent",
-        "called_tools": list(data_state.get("called_tools", [])),
-    }
-    warnings = tuple(
-        ResearchIssue(code="data_agent_warning", message=str(warning))
-        for warning in data_state.get("warnings", [])
-    )
-    requested_by = stable_research_id("data_request", request)
-    handoffs: list[dict[str, Any]] = []
-    manifest = mapping_or_empty(data_state.get("dataset_manifest"))
-    if manifest:
-        handoffs.append(
-            SpecialistHandoff(
-                handoff_id=stable_research_id(
-                    "handoff",
-                    {"artifact_type": DATASET_MANIFEST, "payload": manifest, "source_request": request},
-                ),
-                domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[DATASET_MANIFEST],
-                producer_tool="data_get_inventory",
-                requested_by=requested_by,
-                actor=DATA_AGENT_OWNER,
-                artifact_type=DATASET_MANIFEST,
-                payload=manifest,
-                source_request=request,
-                provenance_refs=provenance_refs,
-                warnings=warnings,
-            ).to_dict()
-        )
-    quality_report = mapping_or_empty(
-        data_state.get("final_quality_report")
-        or data_state.get("quality_report")
-        or data_state.get("initial_quality_report")
-    )
-    if quality_report:
-        handoffs.append(
-            SpecialistHandoff(
-                handoff_id=stable_research_id(
-                    "handoff",
-                    {"artifact_type": DATA_QUALITY_REPORT, "payload": quality_report, "source_request": request},
-                ),
-                domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[DATA_QUALITY_REPORT],
-                producer_tool="data_summarize_quality",
-                requested_by=requested_by,
-                actor=DATA_AGENT_OWNER,
-                artifact_type=DATA_QUALITY_REPORT,
-                payload=quality_report,
-                source_request=request,
-                provenance_refs=provenance_refs,
-                warnings=warnings,
-            ).to_dict()
-        )
-    return handoffs
-
-
 def _supervise(state: QuantResearchSupervisorState) -> QuantResearchSupervisorState:
     """Record request and consume supplied handoffs."""
     identity = mapping_or_empty(state.get("identity"))
@@ -131,10 +65,17 @@ def _supervise(state: QuantResearchSupervisorState) -> QuantResearchSupervisorSt
     warnings: list[dict[str, Any]] = list(state.get("warnings", []))
     blockers: list[dict[str, Any]] = list(state.get("blockers", []))
     if identity.get("display_name") != SUPERVISOR_OWNER:
-        errors.append(graph_error("unexpected_agent_identity", "State identity is not Quant Research Supervisor Agent."))
+        errors.append(
+            graph_error(
+                "unexpected_agent_identity",
+                "State identity is not Quant Research Supervisor Agent.",
+            )
+        )
 
     try:
-        request = BoundedResearchRequest.from_dict(mapping_or_empty(state.get("research_request")))
+        request = BoundedResearchRequest.from_dict(
+            mapping_or_empty(state.get("research_request"))
+        )
     except ValueError as exc:
         return {
             "status": "failed",
@@ -158,7 +99,12 @@ def _supervise(state: QuantResearchSupervisorState) -> QuantResearchSupervisorSt
             errors.append(graph_error("invalid_handoff", str(exc)))
             continue
         if handoff.artifact_type not in slots:
-            errors.append(graph_error("unsupported_handoff_artifact", f"Unsupported handoff artifact: {handoff.artifact_type}"))
+            errors.append(
+                graph_error(
+                    "unsupported_handoff_artifact",
+                    f"Unsupported handoff artifact: {handoff.artifact_type}",
+                )
+            )
             continue
         slot = slots[handoff.artifact_type]
         slots[handoff.artifact_type] = SpecialistArtifactSlot(
@@ -205,11 +151,19 @@ def _supervise(state: QuantResearchSupervisorState) -> QuantResearchSupervisorSt
             )
 
     status: AgentStatus = "failed" if errors else "blocked" if blockers else "completed"
-    public_status = "failed_validation" if errors else "blocked_missing_evidence" if blockers else "ready_for_next_stage"
+    public_status = (
+        "failed_validation"
+        if errors
+        else "blocked_missing_evidence"
+        if blockers
+        else "ready_for_next_stage"
+    )
     return {
         "research_request": request.to_dict(),
         "handoff_ledger": handoff_ledger,
-        "artifact_slots": {artifact_type: slot.to_dict() for artifact_type, slot in slots.items()},
+        "artifact_slots": {
+            artifact_type: slot.to_dict() for artifact_type, slot in slots.items()
+        },
         "data_manifest": accepted_manifest,
         "data_quality_report": accepted_quality,
         "status": status,
@@ -221,7 +175,9 @@ def _supervise(state: QuantResearchSupervisorState) -> QuantResearchSupervisorSt
     }
 
 
-def _initial_slots(request: BoundedResearchRequest) -> dict[str, SpecialistArtifactSlot]:
+def _initial_slots(
+    request: BoundedResearchRequest,
+) -> dict[str, SpecialistArtifactSlot]:
     """Create required and optional artifact slots for a request."""
     slots: dict[str, SpecialistArtifactSlot] = {}
     for artifact_type in request.required_artifacts:
@@ -244,7 +200,9 @@ def _initial_slots(request: BoundedResearchRequest) -> dict[str, SpecialistArtif
     return slots
 
 
-def _validate_data_handoff_window(handoff: SpecialistHandoff, request: BoundedResearchRequest) -> None:
+def _validate_data_handoff_window(
+    handoff: SpecialistHandoff, request: BoundedResearchRequest
+) -> None:
     """Validate that Data Agent handoffs match the bounded request."""
     if handoff.artifact_type not in {DATASET_MANIFEST, DATA_QUALITY_REPORT}:
         return
@@ -257,11 +215,18 @@ def _validate_data_handoff_window(handoff: SpecialistHandoff, request: BoundedRe
         expected = data_requirement.get(key)
         observed = source_request.get(key) or payload_request.get(key)
         if observed is not None and str(observed) != str(expected):
-            raise ValueError(f"{handoff.artifact_type} {key} does not match research request")
+            raise ValueError(
+                f"{handoff.artifact_type} {key} does not match research request"
+            )
     expected_symbols = [str(symbol) for symbol in data_requirement.get("symbols", [])]
     observed_symbols = source_request.get("symbols") or payload_request.get("symbols")
-    if observed_symbols is not None and [str(symbol) for symbol in observed_symbols] != expected_symbols:
-        raise ValueError(f"{handoff.artifact_type} symbols do not match research request")
+    if (
+        observed_symbols is not None
+        and [str(symbol) for symbol in observed_symbols] != expected_symbols
+    ):
+        raise ValueError(
+            f"{handoff.artifact_type} symbols do not match research request"
+        )
 
 
 def _request_from_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -280,7 +245,9 @@ def _request_from_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     return request
 
 
-def _payload_blockers(manifest: Mapping[str, Any], quality: Mapping[str, Any]) -> list[dict[str, Any]]:
+def _payload_blockers(
+    manifest: Mapping[str, Any], quality: Mapping[str, Any]
+) -> list[dict[str, Any]]:
     """Create blockers for incomplete Data Agent payloads."""
     blockers: list[dict[str, Any]] = []
     if manifest and manifest.get("complete") is not True:

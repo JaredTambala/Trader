@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 
@@ -169,6 +170,20 @@ RETIRED_REVIEW_IMPORTS = {
     "trader_research.adversarial",
 }
 
+IMPLEMENTATION_CHECKPOINT_PATTERN = re.compile(
+    r"\b(?:ORCH-\d+|AGENT-(?:\d+|[A-Z][A-Z0-9-]*))\b"
+)
+
+
+def test_runtime_architecture_does_not_use_implementation_checkpoint_names() -> None:
+    """Keep roadmap checkpoint codes out of runtime architectural names."""
+    offenders: list[str] = []
+    for path in Path("src").rglob("*.py"):
+        for line_number, line in enumerate(path.read_text().splitlines(), start=1):
+            if IMPLEMENTATION_CHECKPOINT_PATTERN.search(line):
+                offenders.append(f"{path}:{line_number}: {line.strip()}")
+    assert offenders == []
+
 
 def test_removed_trader_compatibility_surfaces_do_not_exist() -> None:
     offenders = [str(path) for path in sorted(REMOVED_COMPAT_SURFACES) if path.exists()]
@@ -195,7 +210,9 @@ def test_retired_research_dependency_hubs_do_not_exist() -> None:
 
 
 def test_retired_methodology_surfaces_do_not_exist() -> None:
-    offenders = [str(path) for path in sorted(RETIRED_METHODOLOGY_SURFACES) if path.exists()]
+    offenders = [
+        str(path) for path in sorted(RETIRED_METHODOLOGY_SURFACES) if path.exists()
+    ]
     assert offenders == []
 
 
@@ -360,7 +377,10 @@ def test_review_imports_only_the_immutable_experiment_read_port() -> None:
     offenders: list[str] = []
     for path in Path("src/trader_research/review").rglob("*.py"):
         for imported in _imported_modules(path):
-            if imported.startswith("trader_research.experiments") and imported != allowed:
+            if (
+                imported.startswith("trader_research.experiments")
+                and imported != allowed
+            ):
                 offenders.append(f"{path}: imports {imported}")
     assert offenders == []
 
@@ -385,7 +405,9 @@ def test_review_never_persists_experiment_owned_artifact_types() -> None:
     for path in Path("src/trader_research/review").rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
-            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            if not isinstance(node, ast.Call) or not isinstance(
+                node.func, ast.Attribute
+            ):
                 continue
             if node.func.attr != "save_artifact":
                 continue
@@ -397,9 +419,7 @@ def test_review_never_persists_experiment_owned_artifact_types() -> None:
                 and isinstance(artifact_keyword.value, ast.Name)
                 and artifact_keyword.value.id in forbidden_artifact_names
             ):
-                offenders.append(
-                    f"{path}: persists {artifact_keyword.value.id}"
-                )
+                offenders.append(f"{path}: persists {artifact_keyword.value.id}")
     assert offenders == []
 
 
@@ -411,7 +431,8 @@ def test_repo_code_does_not_import_retired_methodology_packages() -> None:
                 continue
             for imported in _imported_modules(path):
                 if imported in RETIRED_METHODOLOGY_IMPORTS or any(
-                    imported.startswith(f"{module}.") for module in RETIRED_METHODOLOGY_IMPORTS
+                    imported.startswith(f"{module}.")
+                    for module in RETIRED_METHODOLOGY_IMPORTS
                 ):
                     offenders.append(f"{path}: imports {imported}")
     assert offenders == []
@@ -498,6 +519,69 @@ def test_orchestration_contracts_do_not_import_service_implementations() -> None
                 offenders.append(f"{path}: imports {imported}")
 
     assert offenders == []
+
+
+def test_specialist_shell_does_not_import_transport_or_domain_services() -> None:
+    forbidden = (
+        "trader",
+        "trader_mcp",
+        "trader_research.data",
+        "trader_research.experiments",
+        "trader_research.infrastructure",
+        "trader_research.knowledge",
+        "trader_research.methodology",
+        "trader_research.ml",
+        "trader_research.review",
+    )
+    offenders: list[str] = []
+    for path in Path("src/trader_agents/specialists").glob("*.py"):
+        for imported in sorted(_imported_modules(path)):
+            if imported in forbidden or imported.startswith(
+                tuple(f"{prefix}." for prefix in forbidden)
+            ):
+                offenders.append(f"{path}: imports {imported}")
+
+    assert offenders == []
+
+
+def test_data_specialist_uses_public_governance_store_and_mcp_boundaries() -> None:
+    forbidden = (
+        "trader",
+        "trader_mcp.contracts",
+        "trader_mcp.server",
+        "trader_research.data",
+        "trader_research.infrastructure",
+    )
+    offenders: list[str] = []
+    for path in Path("src/trader_agents/data_agent").glob("*.py"):
+        for imported in sorted(_imported_modules(path)):
+            if imported in forbidden or imported.startswith(
+                tuple(f"{prefix}." for prefix in forbidden)
+            ):
+                offenders.append(f"{path}: imports {imported}")
+            if imported.startswith("trader_mcp.") and imported != (
+                "trader_mcp.constants"
+            ):
+                offenders.append(f"{path}: imports {imported}")
+
+    assert offenders == []
+
+
+def test_legacy_data_agent_graph_surfaces_are_removed() -> None:
+    assert not Path("src/trader_agents/data_agent_policy.py").exists()
+    state = Path("src/trader_agents/state.py").read_text(encoding="utf-8")
+    package = Path("src/trader_agents/__init__.py").read_text(encoding="utf-8")
+    for name in (
+        "DataAgentState",
+        "build_data_agent_initial_state",
+        "build_data_agent_inventory_graph",
+        "build_data_agent_llm_policy_graph",
+        "build_data_agent_quality_graph",
+        "build_data_agent_workflow_graph",
+        "data_agent_handoffs_from_state",
+    ):
+        assert name not in state
+        assert name not in package
 
 
 def test_repo_code_does_not_import_retired_legacy_research_surfaces() -> None:
@@ -602,9 +686,11 @@ def test_mlflow_runtime_dependencies_stay_in_optional_adapter_package() -> None:
     for root in (Path("src/trader"), Path("src/trader_standard")):
         for path in root.rglob("*.py"):
             for imported in _imported_modules(path):
-                if imported in {"mlflow", "pandas", "trader_mlflow"} or imported.startswith(
-                    ("mlflow.", "pandas.", "trader_mlflow.")
-                ):
+                if imported in {
+                    "mlflow",
+                    "pandas",
+                    "trader_mlflow",
+                } or imported.startswith(("mlflow.", "pandas.", "trader_mlflow.")):
                     offenders.append(f"{path}: imports {imported}")
     allowed_research_adapter = Path(
         "src/trader_research/infrastructure/providers/mlflow.py"

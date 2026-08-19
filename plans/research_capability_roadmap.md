@@ -75,7 +75,7 @@ Orchestration is a cross-cutting capability and may advance in parallel with ML,
 | ORCH-2 | Operational checkpoint and handoff model | complete | ORCH-1 | Postgres LangGraph checkpointer | ORCH-3, recovery | A provider-maintained Postgres LangGraph saver now resumes a bounded coordinator shell across connection lifetimes. Checkpoints retain plan identity/digest, cursor, attempt summaries, canonical artifact refs and issues only; duplicate results are idempotent, conflicts and plan drift fail closed, and public state is explicitly projected. |
 | ORCH-3 | Deterministic implementation-to-evidence workflow | complete | ORCH-1, ORCH-2, BASE-DATA, BASE-EXP, BASE-OPT | Knowledge provenance, model deployment refs | ORCH-4 | A fixed supplied-implementation template compiles approved protocols into typed MCP capability DAGs and mechanically executes validation, specifications, baseline, optional optimisation, sealed holdout, Evaluation and Adversarial handoffs. Canonical Data snapshots, objective/protocol/plan/outcome records, payload-hash revalidation, bounded retries, typed stops and resume without accepted-step replay are implemented. |
 | ORCH-4 | Bounded Research Coordinator planning policy | complete | ORCH-3 | LLM provider | ORCH-5, ORCH-6 | A deterministic policy and one-node graph select exactly one code-registered workflow or emit typed prerequisite, approval, terminal-report or blocker actions. Strict decisions cannot express tool calls or experiment overrides; missing canonical inputs, unknown/ambiguous templates, identity drift and ownership/content violations fail closed. |
-| ORCH-5 | Multi-specialist composition | blocked | ORCH-4, AGENT-1 | ML-7, ROB-2, REV-3 | Full research coordination | Route Experiment Design, Data, optional producer, Robustness and Evaluation requests while preserving domain authority and specialist decision ownership. |
+| ORCH-5 | Multi-specialist composition | ready | ORCH-4, AGENT-1, AGENT-DATA | AGENT-DESIGN, AGENT-QUANT, AGENT-ML, REV-3 | Incremental specialist coordination, ORCH-6 | A resumable composition runner accepts explicit bounded specialist tasks, selects only code-registered authority routes, validates results against the original task and canonical store, and continues into registered workflow execution without replay. Acceptance includes a real Data specialist to operator-approved protocol to terminal fixed-workflow path; unavailable specialists remain typed prerequisites. |
 | ORCH-6 | Controlled orchestration qualification | blocked | ORCH-3, ORCH-4 | ORCH-5 | Release-ready orchestration | Fresh-process MCP graph, interruption/resume, approval, policy, failure, bounded-scale and operator-isolation evidence. |
 
 The `ORCH-GOV` work item was an architecture and governance gate, not an agent rename exercise. It removed the assumption that an
@@ -145,6 +145,39 @@ executable decision pins objective, protocol, template version and compiler-prod
 name, arguments or experiment configuration. Recompilation rejects unregistered templates, changed identities and plan
 drift. The graph makes no MCP call or canonical write, and specialist invocation remains separate composition work.
 
+#### Planned Research Coordinator-Specialist Composition
+
+The composition layer will connect the existing Coordinator, specialist shell and fixed workflow executor without
+turning any of them into a second authority. Its execution plan is:
+
+1. **Land one production specialist first.** Adapt the Data Agent to the shared specialist task/result contract, use
+   registered MCP-backed handlers, return canonical snapshot and quality refs, and resume through the operational
+   checkpointer. The composition work cannot be accepted using only fake handlers.
+2. **Add a code-owned specialist route catalog.** Registrations expose stable authority, supported output types and
+   runner version while retaining task builders, graph callables, clients and configuration in code. Unknown,
+   unavailable or ambiguous routes fail closed before specialist execution.
+3. **Extend the Coordinator with one bounded specialist action.** The decision pins the original task ID, authority and
+   task digest. The caller or a role-owned task builder supplies the complete `SpecialistTask`; the Coordinator does
+   not infer symbols, windows, costs, experiment parameters or tool arguments from objective prose.
+4. **Run and resume the composition loop.** A thin runner invokes the registered specialist, validates the terminal
+   `SpecialistResult` against the original task, resolves every handoff from the canonical artifact store, records only
+   bounded task/result summaries and canonical refs, and asks the Coordinator for the next action. Completed task and
+   workflow digests make exact replay idempotent and conflicting replay terminal.
+5. **Reuse the fixed workflow boundary.** When the Coordinator selects the registered workflow, the runner calls the
+   existing compiler/executor and feeds the canonical outcome back for terminal reporting. It does not create MCP
+   arguments, execute research services directly, rewrite the approved protocol or synthesize specialist verdicts.
+6. **Register later specialists independently.** Experiment Design, Quantitative Methods, ML, Robustness and Evaluation
+   routes become available only when their own specialist capabilities are complete. Missing registrations remain
+   explicit prerequisites; optional producers cannot block a supplied-implementation workflow unless the approved
+   objective or protocol requires their artifact type.
+
+Acceptance requires deterministic contract tests for route selection and result validation; failure tests for forged,
+missing, conflicting and over-budget results; interruption/resume evidence with no repeated accepted specialist or MCP
+mutation; and one integration path that runs the real Data specialist through MCP, pauses for an operator-supplied
+approved protocol, executes the existing fixed workflow and records one matching terminal outcome. Graph/checkpoint
+state must exclude raw MCP responses, complete artifact payloads, prompts, credentials, model reasoning and tool
+arguments. Fresh-process, bounded-scale and release evidence remain controlled qualification work.
+
 ### ML Lifecycle
 
 | ID | Capability | Status | Hard dependencies | Optional inputs | Enables | Legacy lineage |
@@ -190,13 +223,74 @@ optimisation protocols rather than creating a provider-specific WFO optimiser.
 
 | ID | Capability | Status | Hard dependencies | Optional inputs | Enables | Legacy lineage |
 | --- | --- | --- | --- | --- | --- | --- |
-| AGENT-1 | Specialist graph contract and common policy shell | ready | ORCH-1 | Existing Data Agent graph | REV-3, ML Agent, Quant Methods graph | 35, 40, 43, 45 |
-| AGENT-DATA | Integrate Data Agent as a resumable specialist | blocked | ORCH-2, AGENT-1 | DATA-1 | ORCH-3 | Existing Data Agent tasks |
+| AGENT-1 | Specialist graph contract and common policy shell | complete | ORCH-1 | Existing Data Agent graph | AGENT-DATA, AGENT-DESIGN, REV-3, ML Agent, Quant Methods graph | 35, 40, 43, 45 |
+| AGENT-DATA | Integrate Data Agent as a resumable specialist | complete | ORCH-2, AGENT-1 | DATA-1 | ORCH-5 | Existing Data Agent tasks |
+| AGENT-DESIGN | Experiment protocol proposal and specialist graph | ready | AGENT-1, BASE-IMPL, BASE-DATA, BASE-EXP | AGENT-DATA, BASE-OPT | ORCH-5 | New |
 | AGENT-QUANT | Quant Methods specialist graph | deferred | AGENT-1 | KNOW-1 | ORCH-5 | 35 |
 | AGENT-ML | ML specialist graph | blocked | AGENT-1, ML-6, ML-7 | ORCH-4 | ORCH-5 | 40 |
 | AGENT-HYP | Hypothesis artifact and graph | deferred | ORCH-1 | Knowledge, ML and experiment evidence | ORCH-5 | 37-38 |
 | DATA-1 | Calendar-aware market-data quality | ready | BASE-DATA | Exchange calendars | Better equity data evidence | 60 |
 | KNOW-1 | Composite methodology representation | deferred | BASE-KNOW | Claim-relationship graph design | Better book-scale methodology extraction | 33AC |
+
+Implementation evidence for the specialist graph contract: `trader_agents.specialists` provides strict task,
+decision, action-outcome and terminal-result values; a code-owned action catalog scoped to one registered
+`DecisionAuthority`; provider-neutral policy and action-handler protocols; and a bounded LangGraph shell. Policies can
+select only registered action IDs and bind canonical input refs to declared capability slots. The shell validates
+authority, artifact domains, side-effect permission, policy gates, cardinality, canonical handoff provenance and loop
+budgets before accepting a result. Catalog construction also rejects non-idempotent actions and unavailable declared
+configuration dependencies. Public and graph state exclude tool arguments, raw MCP responses, prompts,
+credentials and hidden reasoning. Data-shaped conformance tests prove completion, prerequisite, blocker, forged-state,
+invented-action, policy-gate, input-binding, handoff-authority and loop-limit paths without migrating the existing Data
+Agent graph or invoking specialists from the Research Coordinator.
+
+#### Implemented Data Specialist Cutover
+
+The production Data specialist answers one bounded question: whether an explicit market-data scope is available
+and fit, with canonical evidence that a later protocol can pin. It returns exactly one `dataset_manifest` and one
+matching `data_quality_report` handoff when evidence can be captured, or typed prerequisites, blockers or errors when
+it cannot. Symbol discovery, inventory, quality and loading remain deterministic MCP responsibilities.
+
+The implemented responsibility sequence is:
+
+1. **Normalize one Data-specific request.** Add a strict immutable request over the existing `DataRequirement` with
+   provider, instrument/bar context, discovery source and optional loading intent. A task factory accepts only an
+   approved objective, creates the two required Data output slots, derives a stable task ID and rejects unknown fields,
+   unbounded windows, unsupported loading modes and contradictory policy input before any MCP call.
+2. **Register three responsibility-named actions.** `validate_market_data_scope` calls symbol discovery and produces no
+   artifact; optional `ensure_market_data_available` calls the existing gated loading tool and produces no handoff;
+   `capture_market_data_evidence` calls `data_create_research_snapshot` and produces the manifest/quality handoffs.
+   The loading action is registered only for modes whose replay idempotency is proven; an unavailable non-idempotent
+   loader becomes a capability prerequisite rather than a falsely safe action.
+3. **Keep policy separate from transport.** A deterministic Data policy selects only the registered action IDs and
+   declared output bindings. Missing local-mutation permission or loading approval produces a typed prerequisite. MCP
+   handlers alone build tool arguments, validate command/owner/side-effect envelopes and translate failures. No model
+   output may provide a tool name or argument body.
+4. **Verify canonical evidence before handoff.** The snapshot handler resolves each returned URI through the same
+   injected artifact-store authority and checks artifact type, Data ownership, producer, requester, actor, status,
+   scope and matching dataset identity. It adds bounded provenance including the payload digest, then discards the MCP
+   response and artifact payload. Incomplete final quality returns a blocked result with the canonical evidence refs
+   retained so an operator can inspect the failure.
+5. **Make the shared shell operationally resumable.** Add an injected checkpointer option, stable task digest and
+   specialist thread configuration to the common shell. Reopening a saver with the same task resumes after accepted
+   actions; changed content under the same task ID and conflicting action/result replay fail closed. Checkpoints retain
+   only the task boundary, decisions, action summaries, canonical handoffs, bindings, counters and structured issues.
+6. **Cut over instead of adding a compatibility path.** Replace the monolithic Data graph module with a focused Data
+   specialist package and remove `DataAgentState`, the legacy graph builders, the LLM policy that emitted tool names and
+   arguments, raw-envelope checkpoint fields, payload-to-handoff conversion and their obsolete tests/exports. Direct
+   Data MCP tools remain available for explicit operator use; no legacy import alias is added.
+
+Implementation evidence: `trader_agents.data_agent` provides the strict request/task factory, deterministic policy,
+three responsibility-named action handlers and production catalog/graph assembly. The shared shell accepts an injected
+checkpointer, retains stable task and accepted-action digests, and exposes a resume helper that rejects task drift.
+Focused tests cover contracts, permission and loading prerequisites, forged command/owner/side-effect envelopes,
+missing refs, scope drift, incomplete quality with retained refs, action budgets, exact replay, task conflicts, and
+in-process MCP execution for existing and permitted sample-loaded data. The sample path proves no duplicate market rows
+or canonical records. A Postgres-marked restart test covers fresh-saver resumption without repeating accepted actions
+when the verification database is configured.
+Package-boundary checks keep the shared shell free of Data/MCP dependencies and restrict the Data package to public
+governance, artifact-store, MCP-client and tool-constant boundaries. The legacy `DataAgentState`, monolithic graph
+builders, model-selected tool arguments, raw-envelope fields, payload-to-handoff helper, tests and exports were removed
+without compatibility aliases. Direct Data MCP tools remain registered for operator use.
 
 ### Final Composition And Performance
 
@@ -212,14 +306,15 @@ review authority.
 
 These work items have no unmet hard product dependency:
 
-1. AGENT-1: define the specialist graph contract and common policy shell over the orchestration contracts.
-2. ML-1: establish the MLflow runtime and mutation policy.
-3. ML-2: implement point-in-time feature-set specifications.
-4. ML-7: summarize existing prediction evidence and establish the drift contract.
-5. QUAL-ML-RUNTIME: place 39H-I under a new controlled qualification baseline.
-6. ROB-1: define general robustness attacks and immutable variants.
-7. REV-1: add general return attribution.
-8. DATA-1: make quality reports calendar aware.
+1. ORCH-5: compose the Research Coordinator, production Data specialist and fixed workflow executor without replay.
+2. AGENT-DESIGN: add approval-aware protocol proposal and an Experiment Design specialist graph.
+3. ML-1: establish the MLflow runtime and mutation policy.
+4. ML-2: implement point-in-time feature-set specifications.
+5. ML-7: summarize existing prediction evidence and establish the drift contract.
+6. QUAL-ML-RUNTIME: place 39H-I under a new controlled qualification baseline.
+7. ROB-1: define general robustness attacks and immutable variants.
+8. REV-1: add general return attribution.
+9. DATA-1: make quality reports calendar aware.
 
 This is a choice of parallel frontiers, not an instruction to execute the list in order.
 
