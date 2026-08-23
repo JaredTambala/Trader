@@ -7,7 +7,7 @@ capabilities remain open.
 It does not define request schemas, repeat historical implementation narratives, or prescribe one linear delivery
 sequence. Use the [capability roadmap](../../plans/research_capability_roadmap.md) for remaining work and dependencies.
 
-Last reviewed: 2026-08-20.
+Last reviewed: 2026-08-23.
 
 ## How To Read Capability State
 
@@ -92,7 +92,7 @@ orchestrated canonical write through a contextual artifact-store boundary.
 | Prediction monitoring and drift | absent | none | deferred | Prediction events exist, but summarisation, realized-target joining and drift reports do not. |
 | Walk-forward optimisation | absent | none | deferred | Provider-neutral optimisation can be reused inside folds, but fold planning, locked OOS execution, stitching and audit are not implemented. |
 | Attribution and broad performance critique | partial | focused | partially registered | Backtest and optimisation reports contain substantial measures; general attribution and skeptical evaluation tools remain open. |
-| Higher-level orchestration | implemented for the supplied-implementation/Data/design path | integration | bounded composition library plus registered persistence tools | A resumable runner executes explicit Data and Experiment Design tasks through code-owned routes, persists an immutable proposal, pauses for operator approval, then enters the fixed workflow without replaying accepted work. Methods, ML, general robustness and final review composition remain open. |
+| Higher-level orchestration | implemented for the supplied-implementation/Data/design path | controlled | bounded composition library plus registered persistence tools | A resumable runner executes explicit Data and Experiment Design tasks through code-owned routes, persists an immutable proposal, pauses for operator approval, then enters the fixed workflow without replaying accepted work. The exact bounded surface is accepted under `controlled_orchestration_v1`; Methods, ML, general robustness and final review composition remain open. |
 | Live or paper runtime mutation by research agents | intentionally absent | not applicable | prohibited | Research agents cannot place orders, mutate brokers, clear halts or deploy into an active runtime. |
 
 ## Implemented Orchestration At A Glance
@@ -237,7 +237,7 @@ There is no registered MCP-only path producing the prerequisite model and featur
 | Agent | Current operational state | Target state | Main gap |
 | --- | --- | --- | --- |
 | Data Agent | A deterministic resumable specialist graph validates explicit scope, optionally performs separately approved sample loading, captures an exact canonical snapshot, revalidates both refs and returns manifest/quality handoffs or typed issues. The default composition catalog executes it before protocol approval. | Reliable specialist subgraph composed into every workflow that requires new Data evidence. | Broader calendar-aware quality; arbitrary provider backfill is deliberately not a replay-safe specialist action. |
-| Experiment Design Agent | A deterministic resumable graph validates a complete design task, calls one registered proposal operation, revalidates the canonical proposal and returns a digest-pinned handoff. A pure helper applies exact operator decisions to produce the unchanged approved or blocked protocol. | Formulate an explicit, approval-aware experiment protocol from supplied strategy/risk implementations and Data requirements. | Free-form brief interpretation and dynamic binding from a new Data result are intentionally absent; controlled fresh-process qualification remains open. |
+| Experiment Design Agent | A deterministic resumable graph validates a complete design task, calls one registered proposal operation, revalidates the canonical proposal and returns a digest-pinned handoff. A pure helper applies exact operator decisions to produce the unchanged approved or blocked protocol. | Formulate an explicit, approval-aware experiment protocol from supplied strategy/risk implementations and Data requirements. | The explicit Data/design composition path has controlled fresh-process qualification. Free-form brief interpretation and dynamic binding from a new Data result remain intentionally absent. |
 | Quantitative Methods Agent | Allowlist, approved decision boundary and deterministic MCP tools exist. No complete specialist graph coordinates them. | Optional source/evidence/methodology and computational-method producer that returns canonical refs and blockers. | Bounded planning and handoff graph; composite-method representation remains deferred. It is not a prerequisite for supplied implementations. |
 | Research Coordinator | A deterministic policy selects the first unaccepted explicit specialist task, requests objective/protocol approvals or unresolved canonical inputs, uniquely selects the registered supplied-implementation template and reports matching terminal outcomes. Composition executes those decisions through the Data and Experiment Design routes. | Compose additional bounded specialist workflows while preserving the same narrow decision boundary. | Optional producer, general Robustness and final Evaluation graphs and routes; Data/design-to-fixed-workflow composition is implemented. |
 | ML Agent | Ownership and deployment MCP tools exist; no ML Agent graph exists. | Optional producer coordinating point-in-time features, training, evaluation, registry evidence, deployment validation and monitoring for model-backed strategies. | Deterministic ML lifecycle tools must be built before the graph can be useful. |
@@ -386,14 +386,23 @@ Runtime prediction and model-backed strategy integration were subsequently imple
 focused, broad-regression, real local MLflow and isolated Postgres integration evidence, but they are not part of the
 v6 controlled acceptance record. A future qualification task must preserve that distinction.
 
-The responsibility-named `controlled_orchestration_v1` harness is now implemented for the current Data/design/fixed-
-workflow composition surface. It adds an isolated checkpoint role/schema, fresh Python and stdio MCP processes at
-resume boundaries, payload-free call and retry evidence, real Postgres end-to-end and response-loss paths, the eight-
-task and three-symbol/1,000-bar measurements, and a freeze-wide acceptance record. This is qualification
-infrastructure, not a passed qualification: the orchestration implementation is still at `integration` until its
-current changes are committed, tagged `verification-orchestration-v1-freeze`, every mandatory phase passes in the
-guarded Postgres environment, and `verification_control.orchestration_acceptance_records` contains the passed record.
-No such record is claimed here.
+The current Data/design/fixed-workflow composition surface is controlled under the
+`controlled_orchestration_v1` profile:
+
+- Git tag: `verification-orchestration-v1-freeze`
+- Revision: `b1f49bd2e8f71bedc4bd66724df756a5935f3eca`
+- Acceptance authority: `verification_control.orchestration_acceptance_records`
+- Acceptance status: `passed`
+- Qualified specialists: Data Agent and Experiment Design Agent under bounded deterministic coordination
+- Qualified workflow: `supplied_implementation_to_evidence`, with operator approval authority
+
+All seven responsibility-named phase records passed on that revision with empty blockers, matching freeze identity,
+passed isolation and unchanged operator fingerprints. The retained call ledger contains 88 calls: 86 accepted calls
+plus one deliberately lost response and its one identical retry with matching argument and result identities. Local
+bounded-scale evidence covers the eight-explicit-task limit and a three-symbol/1,000-bar baseline; these measurements
+are not universal service-level objectives. The acceptance record explicitly excludes prose-to-task inference,
+dynamic specialist-task binding, unavailable specialist routes, optional external providers, deployment, paper
+trading and live trading.
 
 ## Known Product Limits
 

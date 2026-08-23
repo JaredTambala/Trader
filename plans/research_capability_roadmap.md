@@ -6,7 +6,7 @@ graph rather than a presumed linear sequence.
 Read [Research Product State](../docs/research_agents/product_state.md) first for the current operational baseline.
 Architecture, agent ownership, MCP registration and tool contracts remain canonical in their respective documents.
 
-Last reviewed: 2026-08-20.
+Last reviewed: 2026-08-23.
 
 ## Roadmap Rules
 
@@ -76,7 +76,7 @@ Orchestration is a cross-cutting capability and may advance in parallel with ML,
 | ORCH-3 | Deterministic implementation-to-evidence workflow | complete | ORCH-1, ORCH-2, BASE-DATA, BASE-EXP, BASE-OPT | Knowledge provenance, model deployment refs | ORCH-4 | A fixed supplied-implementation template compiles approved protocols into typed MCP capability DAGs and mechanically executes validation, specifications, baseline, optional optimisation, sealed holdout, Evaluation and Adversarial handoffs. Canonical Data snapshots, objective/protocol/plan/outcome records, payload-hash revalidation, bounded retries, typed stops and resume without accepted-step replay are implemented. |
 | ORCH-4 | Bounded Research Coordinator planning policy | complete | ORCH-3 | LLM provider | ORCH-5, ORCH-6 | A deterministic policy and one-node graph select exactly one code-registered workflow or emit typed prerequisite, approval, terminal-report or blocker actions. Strict decisions cannot express tool calls or experiment overrides; missing canonical inputs, unknown/ambiguous templates, identity drift and ownership/content violations fail closed. |
 | ORCH-5 | Multi-specialist composition | complete | ORCH-4, AGENT-1, AGENT-DATA | AGENT-DESIGN, AGENT-QUANT, AGENT-ML, REV-3 | Incremental specialist coordination, ORCH-6 | A resumable composition runner accepts explicit bounded specialist tasks, selects only code-registered authority routes, validates results against the original task and canonical store, and continues into registered workflow execution without replay. Acceptance includes a real Data specialist to operator-approved protocol to terminal fixed-workflow path; unavailable specialists remain typed prerequisites. |
-| ORCH-6 | Controlled orchestration qualification | in_progress | ORCH-3, ORCH-4, ORCH-5, AGENT-DESIGN | Existing controlled Postgres/optimisation fixtures | Release-ready orchestration | The `controlled_orchestration_v1` harness, isolated checkpoint role, fresh-process drivers, bounded ledgers and mandatory test surfaces are implemented. Qualification remains open until a clean committed freeze passes every responsibility-named phase and writes its acceptance record. |
+| ORCH-6 | Controlled orchestration qualification | complete | ORCH-3, ORCH-4, ORCH-5, AGENT-DESIGN | Existing controlled Postgres/optimisation fixtures | Release-ready orchestration | `verification-orchestration-v1-freeze` at `b1f49bd2e8f71bedc4bd66724df756a5935f3eca` passed every mandatory phase with operator isolation intact and wrote the passed `controlled_orchestration_v1` acceptance record. Optional providers and unavailable specialist routes remain outside the qualified surface. |
 
 The `ORCH-GOV` work item was an architecture and governance gate, not an agent rename exercise. It removed the assumption that an
 agent identity owns every artifact produced by tools on its allowlist. Canonical metadata now distinguishes:
@@ -179,7 +179,7 @@ request drift, the real in-process Data-to-approved-protocol-to-terminal-workflo
 re-entry after persistence, and Postgres saver reopening after the Data phase and during workflow execution. The
 implementation lineage is `e5401d6` for Coordinator policy, `1b0c0ae` for the specialist shell and production Data
 specialist, `6cbc886` for the operational saver boundary, and `28c1d33` for fixed workflow execution. Fresh-process,
-bounded-scale and controlled-release evidence remain `ORCH-6` work.
+bounded-scale and controlled-release evidence were subsequently established by `ORCH-6`.
 
 #### Controlled Orchestration Qualification Plan
 
@@ -244,19 +244,17 @@ queries only when the harness exists. After every mandatory phase passes, update
 record the freeze and acceptance evidence, mark this work item complete and leave optional providers and unimplemented
 specialists explicitly unqualified. A product, schema, fixture, lock, policy or acceptance-test change after the freeze
 invalidates affected evidence and requires the profile to restart; a discovered product defect is fixed before a new
-freeze rather than waived in the verdict. Until that record exists, the current qualification remains `integration`
-and this work item remains `in_progress`.
+freeze rather than waived in the verdict.
 
-Implementation status (2026-08-20): the closed verification-profile mapping, orchestration freeze contract,
-checkpoint-only role/schema provisioning, credential-free manifest fields, payload-free call ledger, response-loss
-classification, retained fixture revalidation, scale measurements, fresh Python/stdio resume worker and all five
-planned test modules now exist. Building the four-trial fixture also exposed and fixed the compiler boundary that must
-translate protocol categorical `choices` into optimiser-tool `values`. `operations.md` contains the exact phase
-commands and inspection queries. Local
-non-Postgres collection, focused policy tests, Ruff and compile checks pass; Postgres tests collect and skip without
-the guarded environment. The work item is not complete: the composition/design changes are still uncommitted,
-`verification-orchestration-v1-freeze` does not yet identify them, the controlled Postgres phases have not run, and no
-orchestration acceptance record exists.
+Implementation status (2026-08-23): complete. The clean product freeze
+`b1f49bd2e8f71bedc4bd66724df756a5935f3eca`, tagged `verification-orchestration-v1-freeze`, passed runtime isolation,
+core checks, real Postgres end-to-end execution, fresh-process recovery/idempotency, policy/security failures,
+bounded-scale qualification and final acceptance under the `controlled_orchestration_v1` profile. All seven phase
+rows have passed qualification and isolation, empty blockers and unchanged operator fingerprints. The recovery ledger
+records one deliberate response loss and one identical retry with the same argument digest and result identity. The
+scale records cover eight explicit Data tasks with a ninth rejected before MCP and the three-symbol/1,000-bar baseline.
+`verification_control.orchestration_acceptance_records` contains the passed canonical record naming the qualified
+surface, exclusions and residual risks. Optional providers and unimplemented specialist routes remain unqualified.
 
 ### ML Lifecycle
 
@@ -440,8 +438,8 @@ Implementation evidence is in `tests/test_experiment_design.py`, `tests/test_exp
 projection, identity, documentation and package-boundary suites. It covers strict request parsing, explicit costs and
 execution limits, canonical input pinning, scope drift, exact proposal replay, approval identity, permission
 prerequisites, resumable action execution, the real in-process proposal-to-approval-to-fixed-workflow path, distinct
-proposal/protocol persistence and fresh-saver recovery. Fresh-process and controlled-scale qualification remain
-`ORCH-6`; they are not part of this completed capability item.
+proposal/protocol persistence and fresh-saver recovery. Fresh-process and controlled-scale qualification were
+`ORCH-6` work; they were not part of this earlier capability item.
 
 ### Final Composition And Performance
 
@@ -457,14 +455,13 @@ review authority.
 
 These work items have no unmet hard product dependency:
 
-1. ORCH-6: qualify fresh-process composition, restart/resume, failure, bounded-scale and operator isolation.
-2. ML-1: establish the MLflow runtime and mutation policy.
-3. ML-2: implement point-in-time feature-set specifications.
-4. ML-7: summarize existing prediction evidence and establish the drift contract.
-5. QUAL-ML-RUNTIME: place 39H-I under a new controlled qualification baseline.
-6. ROB-1: define general robustness attacks and immutable variants.
-7. REV-1: add general return attribution.
-8. DATA-1: make quality reports calendar aware.
+1. ML-1: establish the MLflow runtime and mutation policy.
+2. ML-2: implement point-in-time feature-set specifications.
+3. ML-7: summarize existing prediction evidence and establish the drift contract.
+4. QUAL-ML-RUNTIME: place 39H-I under a new controlled qualification baseline.
+5. ROB-1: define general robustness attacks and immutable variants.
+6. REV-1: add general return attribution.
+7. DATA-1: make quality reports calendar aware.
 
 This is a choice of parallel frontiers, not an instruction to execute the list in order.
 

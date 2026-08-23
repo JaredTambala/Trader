@@ -533,7 +533,7 @@ def test_docs_define_shared_specialist_boundary_and_bounded_composition() -> Non
     )
     assert "| ORCH-5 | Multi-specialist composition | complete |" in roadmap
     assert (
-        "| ORCH-6 | Controlled orchestration qualification | in_progress |"
+        "| ORCH-6 | Controlled orchestration qualification | complete |"
         in roadmap
     )
     assert "#### Implemented Research Composition" in roadmap
