@@ -11,14 +11,20 @@ import pytest
 
 from trader.event_store import PostgresEventStore
 from tests.support.postgres_verification import (
+    LEGACY_VERIFICATION_PROFILE,
     MUTATION_GATE_NAMES,
+    ORCHESTRATION_VERIFICATION_PROFILE,
     RETAIN_EVIDENCE_PHASE_ENV,
+    VERIFICATION_PROFILE_ENV,
     VerificationConfigurationError,
+    _validate_phase,
     assert_verification_database,
     build_runtime_manifest,
+    checkpoint_test_conninfo,
     _is_harness_path,
     _validate_outcome,
     load_operator_settings,
+    load_qualification_profile,
     load_optuna_test_settings,
     load_retained_evidence_phase,
     load_test_settings,
@@ -99,6 +105,93 @@ def test_phase_outcome_contract_requires_explicit_consistent_blockers() -> None:
         _validate_outcome("blocked", ())
     with pytest.raises(VerificationConfigurationError, match="cannot record blockers"):
         _validate_outcome("passed", ("contradiction",))
+
+
+def test_qualification_profiles_are_closed_and_legacy_is_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert load_qualification_profile({}).name == LEGACY_VERIFICATION_PROFILE
+    _validate_phase("57J")
+    with pytest.raises(VerificationConfigurationError, match="phase must be one of"):
+        _validate_phase("ORCHESTRATION_RUNTIME")
+
+    monkeypatch.setenv(VERIFICATION_PROFILE_ENV, ORCHESTRATION_VERIFICATION_PROFILE)
+    profile = load_qualification_profile()
+    assert profile.name == ORCHESTRATION_VERIFICATION_PROFILE
+    assert profile.requires_checkpoint_role is True
+    _validate_phase("ORCHESTRATION_RUNTIME")
+    with pytest.raises(VerificationConfigurationError, match="phase must be one of"):
+        _validate_phase("57J")
+    with pytest.raises(VerificationConfigurationError, match=VERIFICATION_PROFILE_ENV):
+        load_qualification_profile({VERIFICATION_PROFILE_ENV: "unregistered"})
+
+
+def test_orchestration_profile_pins_exact_policy_and_retention(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(VERIFICATION_PROFILE_ENV, ORCHESTRATION_VERIFICATION_PROFILE)
+    disabled = {name: False for name in MUTATION_GATE_NAMES}
+    _validate_phase_policy_gates("ORCHESTRATION_RUNTIME", disabled)
+    _validate_phase_policy_gates("ORCHESTRATION_POLICY", disabled)
+    _validate_phase_policy_gates(
+        "ORCHESTRATION_E2E",
+        {
+            **disabled,
+            "TRADER_MCP_ALLOW_BACKTESTS": True,
+            "TRADER_MCP_ALLOW_OPTIMIZATION": True,
+        },
+    )
+    _validate_phase_policy_gates(
+        "ORCHESTRATION_RECOVERY",
+        {**disabled, "TRADER_MCP_ALLOW_BACKTESTS": True},
+    )
+    with pytest.raises(VerificationConfigurationError, match="requires exactly"):
+        _validate_phase_policy_gates(
+            "ORCHESTRATION_RECOVERY",
+            {
+                **disabled,
+                "TRADER_MCP_ALLOW_BACKTESTS": True,
+                "TRADER_MCP_ALLOW_OPTIMIZATION": True,
+            },
+        )
+    retained = {
+        VERIFICATION_PROFILE_ENV: ORCHESTRATION_VERIFICATION_PROFILE,
+        RETAIN_EVIDENCE_PHASE_ENV: "orchestration_recovery",
+    }
+    assert load_retained_evidence_phase(retained) == "ORCHESTRATION_RECOVERY"
+    with pytest.raises(VerificationConfigurationError, match="may only retain"):
+        load_retained_evidence_phase(
+            {
+                VERIFICATION_PROFILE_ENV: ORCHESTRATION_VERIFICATION_PROFILE,
+                RETAIN_EVIDENCE_PHASE_ENV: "ORCHESTRATION_POLICY",
+            }
+        )
+
+
+def test_checkpoint_role_is_distinct_and_schema_pinned() -> None:
+    values = {
+        "PG_TEST_HOST": "localhost",
+        "PG_TEST_PORT": "5432",
+        "PG_TEST_DB": "trader_test",
+        "PG_TEST_USER": "product_test",
+        "PG_TEST_PASSWORD": "product-secret",
+        "PG_CHECKPOINT_TEST_HOST": "localhost",
+        "PG_CHECKPOINT_TEST_PORT": "5432",
+        "PG_CHECKPOINT_TEST_DB": "trader_test",
+        "PG_CHECKPOINT_TEST_USER": "checkpoint_test",
+        "PG_CHECKPOINT_TEST_PASSWORD": "checkpoint-secret",
+        "TRADER_CHECKPOINT_SCHEMA": "qualification_checkpoints",
+    }
+    conninfo = checkpoint_test_conninfo(values)
+    assert "user=checkpoint_test" in conninfo
+    assert "search_path=qualification_checkpoints" in conninfo
+    with pytest.raises(VerificationConfigurationError, match="must differ"):
+        checkpoint_test_conninfo(
+            {
+                **values,
+                "PG_CHECKPOINT_TEST_USER": "product_test",
+            }
+        )
 
 
 def test_retained_evidence_contract_is_explicitly_limited_to_qualified_phases() -> None:

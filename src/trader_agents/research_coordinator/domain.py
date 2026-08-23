@@ -25,6 +25,7 @@ from trader_research.governance import (
 class CoordinatorAction(str, Enum):
     """Closed set of next actions the Research Coordinator may select."""
 
+    EXECUTE_REGISTERED_SPECIALIST_TASK = "execute_registered_specialist_task"
     EXECUTE_REGISTERED_WORKFLOW = "execute_registered_workflow"
     REQUEST_PREREQUISITE = "request_prerequisite"
     REQUEST_APPROVAL = "request_approval"
@@ -90,9 +91,10 @@ class CoordinationDecision:
     """One validated next action for a bounded research objective.
 
     The selected action determines which optional fields are legal. Executable
-    decisions pin a registered template and compiler-produced plan. Prerequisite
-    and approval decisions contain only typed unresolved dependencies. Terminal
-    decisions reproduce canonical outcome identity and permitted actions.
+    decisions pin either one registered specialist route or one registered
+    workflow template and compiler-produced plan. Prerequisite and approval
+    decisions contain only typed unresolved dependencies. Terminal decisions
+    reproduce canonical outcome identity and permitted actions.
 
     Attributes:
         action: Next permitted coordinator action.
@@ -101,6 +103,10 @@ class CoordinationDecision:
         template_id: Registered workflow template selected for execution.
         template_version: Selected immutable template version.
         plan_id: Deterministically compiled workflow-plan identifier.
+        specialist_task_id: Exact caller-built task selected for execution.
+        specialist_authority: Decision authority addressed by the task.
+        specialist_task_digest: Content digest of the exact selected task.
+        specialist_route_version: Immutable code-owned route version.
         outcome_id: Canonical terminal workflow-outcome identifier.
         outcome_status: Terminal workflow status copied from canonical state.
         next_permitted_actions: Actions copied from a canonical outcome.
@@ -114,6 +120,10 @@ class CoordinationDecision:
     template_id: str | None = None
     template_version: str | None = None
     plan_id: str | None = None
+    specialist_task_id: str | None = None
+    specialist_authority: str | None = None
+    specialist_task_digest: str | None = None
+    specialist_route_version: str | None = None
     outcome_id: str | None = None
     outcome_status: WorkflowOutcomeStatus | None = None
     next_permitted_actions: tuple[str, ...] = ()
@@ -128,6 +138,9 @@ class CoordinationDecision:
             "coordination prerequisite IDs",
         )
         _unique(self.next_permitted_actions, "next permitted actions")
+        if self.action is CoordinatorAction.EXECUTE_REGISTERED_SPECIALIST_TASK:
+            self._validate_specialist_execution()
+            return
         if self.action is CoordinatorAction.EXECUTE_REGISTERED_WORKFLOW:
             self._validate_execution()
             return
@@ -153,15 +166,47 @@ class CoordinationDecision:
             raise ValueError(
                 "executable coordination decisions cannot contain unresolved issues"
             )
+        self._reject_specialist_fields()
+        self._reject_outcome_fields()
+
+    def _validate_specialist_execution(self) -> None:
+        _required_text(self.specialist_task_id or "", "specialist task_id")
+        _required_text(self.specialist_authority or "", "specialist authority")
+        _required_text(self.specialist_task_digest or "", "specialist task digest")
+        _required_text(
+            self.specialist_route_version or "",
+            "specialist route version",
+        )
+        if self.prerequisites or self.blockers:
+            raise ValueError(
+                "specialist execution decisions cannot contain unresolved issues"
+            )
+        self._reject_workflow_fields()
         self._reject_outcome_fields()
 
     def _reject_execution_fields(self) -> None:
+        self._reject_workflow_fields()
+        self._reject_specialist_fields()
+
+    def _reject_workflow_fields(self) -> None:
         if self.template_id is not None:
             raise ValueError("non-execution decisions cannot select a template")
         if self.template_version is not None:
             raise ValueError("non-execution decisions cannot select a template version")
         if self.plan_id is not None:
             raise ValueError("non-execution decisions cannot select a plan")
+
+    def _reject_specialist_fields(self) -> None:
+        if any(
+            value is not None
+            for value in (
+                self.specialist_task_id,
+                self.specialist_authority,
+                self.specialist_task_digest,
+                self.specialist_route_version,
+            )
+        ):
+            raise ValueError("non-specialist decisions cannot select a specialist task")
 
     def _validate_prerequisite_request(self) -> None:
         if not self.prerequisites:
@@ -219,6 +264,10 @@ class CoordinationDecision:
             "template_id": self.template_id,
             "template_version": self.template_version,
             "plan_id": self.plan_id,
+            "specialist_task_id": self.specialist_task_id,
+            "specialist_authority": self.specialist_authority,
+            "specialist_task_digest": self.specialist_task_digest,
+            "specialist_route_version": self.specialist_route_version,
             "outcome_id": self.outcome_id,
             "outcome_status": (
                 self.outcome_status.value if self.outcome_status is not None else None
@@ -253,6 +302,10 @@ class CoordinationDecision:
                 "template_id",
                 "template_version",
                 "plan_id",
+                "specialist_task_id",
+                "specialist_authority",
+                "specialist_task_digest",
+                "specialist_route_version",
                 "outcome_id",
                 "outcome_status",
                 "next_permitted_actions",
@@ -299,6 +352,14 @@ class CoordinationDecision:
             template_id=_optional_text(payload.get("template_id")),
             template_version=_optional_text(payload.get("template_version")),
             plan_id=_optional_text(payload.get("plan_id")),
+            specialist_task_id=_optional_text(payload.get("specialist_task_id")),
+            specialist_authority=_optional_text(payload.get("specialist_authority")),
+            specialist_task_digest=_optional_text(
+                payload.get("specialist_task_digest")
+            ),
+            specialist_route_version=_optional_text(
+                payload.get("specialist_route_version")
+            ),
             outcome_id=_optional_text(payload.get("outcome_id")),
             outcome_status=(
                 _enum_value(

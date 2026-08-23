@@ -1,4 +1,4 @@
-"""MCP registrations for deterministic orchestration evidence records."""
+"""Register protocol-proposal and workflow-evidence MCP operations."""
 
 from __future__ import annotations
 
@@ -10,6 +10,8 @@ from mcp.types import CallToolResult
 
 from trader_mcp.adapters import result_to_mcp_result
 from trader_mcp.constants import (
+    EXPERIMENT_DESIGN_TOOL_DESCRIPTIONS,
+    RESEARCH_CREATE_EXPERIMENT_PROTOCOL_PROPOSAL_TOOL,
     RESEARCH_RECORD_WORKFLOW_OUTCOME_TOOL,
     RESEARCH_REGISTER_EXPERIMENT_WORKFLOW_TOOL,
     RESEARCH_TOOL_DESCRIPTIONS,
@@ -19,6 +21,7 @@ from trader_research.foundation import (
     ResearchArtifactStore,
 )
 from trader_research.governance import (
+    create_experiment_protocol_proposal,
     record_workflow_outcome,
     register_experiment_workflow,
 )
@@ -32,7 +35,7 @@ def register_orchestration_tools(
     *,
     artifact_store_provider: ResearchArtifactStoreProvider,
 ) -> None:
-    """Register workflow contract and terminal-outcome persistence tools."""
+    """Register proposal, workflow-contract, and outcome persistence tools."""
 
     def _store(
         requested_by: str,
@@ -43,6 +46,30 @@ def register_orchestration_tools(
             requested_by=requested_by,
             actor=actor,
         )
+
+    @server.tool(
+        name=RESEARCH_CREATE_EXPERIMENT_PROTOCOL_PROPOSAL_TOOL,
+        description=EXPERIMENT_DESIGN_TOOL_DESCRIPTIONS[
+            RESEARCH_CREATE_EXPERIMENT_PROTOCOL_PROPOSAL_TOOL
+        ],
+    )
+    def research_create_experiment_protocol_proposal(
+        objective: dict[str, Any],
+        design_request: dict[str, Any],
+        task_id: str,
+        requested_by: str,
+        actor: str,
+    ) -> CallToolResult:
+        """Persist one proposal after canonical input and identity validation."""
+        result = create_experiment_protocol_proposal(
+            objective=objective,
+            design_request=design_request,
+            task_id=task_id,
+            requested_by=requested_by,
+            actor=actor,
+            artifact_store=_store(requested_by, actor),
+        )
+        return CallToolResult(**result_to_mcp_result(result))
 
     @server.tool(
         name=RESEARCH_REGISTER_EXPERIMENT_WORKFLOW_TOOL,

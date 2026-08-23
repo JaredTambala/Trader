@@ -14,6 +14,8 @@ from trader_mcp.constants import (
     RESEARCH_REGISTER_EXPERIMENT_WORKFLOW_TOOL,
 )
 from trader_research.foundation import (
+    ResearchArtifactNotFound,
+    ResearchArtifactRecord,
     ResearchArtifactStore,
     ResearchArtifactStoreError,
     json_payload_hash,
@@ -26,6 +28,8 @@ from trader_research.governance import (
     PARAMETER_OPTIMIZATION_EVALUATION_REPORT,
     PARAMETER_OPTIMIZATION_ROBUSTNESS_REPORT,
     RESEARCH_OBJECTIVE,
+    WORKFLOW_OUTCOME,
+    WORKFLOW_PLAN,
     ArtifactReportRef,
     CapabilitySideEffect,
     ResearchIssue,
@@ -81,7 +85,13 @@ class WorkflowExecutionInterrupted(RuntimeError):
 
 @dataclass(frozen=True)
 class WorkflowExecution:
-    """Terminal result from one mechanical workflow execution."""
+    """Terminal result from one mechanical workflow execution.
+
+    Attributes:
+        outcome: Deterministic terminal workflow summary.
+        public_state: Bounded checkpoint projection for operators.
+        outcome_ref: Canonical persisted reference to the terminal outcome.
+    """
 
     outcome: WorkflowOutcome
     public_state: Mapping[str, Any]
@@ -97,16 +107,51 @@ async def execute_compiled_research_workflow(
     artifact_store: ResearchArtifactStore,
     max_tool_calls: int | None = None,
 ) -> WorkflowExecution:
-    """Run or resume a compiled workflow through registered MCP tools only."""
+    """Run or resume a compiled workflow through registered MCP tools only.
+
+    Matching canonical objective, protocol, plan, and outcome records are
+    revalidated and reused on re-entry. Accepted workflow steps remain protected
+    by the checkpoint shell, so resuming a completed or interrupted workflow does
+    not repeat their registered MCP calls.
+
+    Args:
+        compiled: Deterministically compiled approved workflow.
+        workflow_id: Stable operational identity and execution provenance.
+        tool_client: MCP boundary used for registered workflow operations.
+        checkpointer: Operational saver for accepted step progress.
+        artifact_store: Canonical store shared with the MCP server.
+        max_tool_calls: Optional deliberate interruption limit for this call.
+
+    Returns:
+        Terminal workflow outcome, bounded state, and canonical outcome ref.
+
+    Raises:
+        WorkflowExecutionInterrupted: If the requested call limit is reached.
+        WorkflowExecutionError: If canonical state or MCP envelopes conflict.
+        ValueError: If the workflow identity or call limit is invalid.
+    """
     workflow_id = _required_text(workflow_id, "workflow_id")
     if max_tool_calls is not None and max_tool_calls < 0:
         raise ValueError("max_tool_calls cannot be negative")
     tool_calls = 0
-    await _register_workflow(
+    if not _workflow_registration_exists(
         compiled=compiled,
         workflow_id=workflow_id,
-        tool_client=tool_client,
-    )
+        artifact_store=artifact_store,
+    ):
+        await _register_workflow(
+            compiled=compiled,
+            workflow_id=workflow_id,
+            tool_client=tool_client,
+        )
+        if not _workflow_registration_exists(
+            compiled=compiled,
+            workflow_id=workflow_id,
+            artifact_store=artifact_store,
+        ):
+            raise WorkflowExecutionError(
+                "workflow registration succeeded without canonical records"
+            )
     graph = build_resumable_workflow_graph(
         plan=compiled.plan,
         checkpointer=checkpointer,
@@ -231,11 +276,26 @@ async def execute_compiled_research_workflow(
         workflow_id=workflow_id,
         state=state,
     )
-    outcome_ref = await _record_outcome(
+    outcome_ref = _existing_outcome_ref(
         outcome=outcome,
         workflow_id=workflow_id,
-        tool_client=tool_client,
+        artifact_store=artifact_store,
     )
+    if outcome_ref is None:
+        recorded_ref = await _record_outcome(
+            outcome=outcome,
+            workflow_id=workflow_id,
+            tool_client=tool_client,
+        )
+        outcome_ref = _existing_outcome_ref(
+            outcome=outcome,
+            workflow_id=workflow_id,
+            artifact_store=artifact_store,
+        )
+        if outcome_ref is None or outcome_ref.uri != recorded_ref.uri:
+            raise WorkflowExecutionError(
+                "workflow outcome succeeded without its canonical record"
+            )
     return WorkflowExecution(
         outcome=outcome,
         public_state=workflow_public_state(state),
@@ -267,6 +327,54 @@ async def _register_workflow(
     )
 
 
+def _workflow_registration_exists(
+    *,
+    compiled: CompiledResearchWorkflow,
+    workflow_id: str,
+    artifact_store: ResearchArtifactStore,
+) -> bool:
+    expected = (
+        (
+            RESEARCH_OBJECTIVE,
+            compiled.objective.objective_id,
+            compiled.objective.to_dict(),
+            compiled.objective.status.value,
+        ),
+        (
+            EXPERIMENT_PROTOCOL,
+            compiled.protocol.protocol_id,
+            compiled.protocol.to_dict(),
+            compiled.protocol.status.value,
+        ),
+        (
+            WORKFLOW_PLAN,
+            compiled.plan.plan_id,
+            compiled.plan.to_dict(),
+            compiled.plan.status.value,
+        ),
+    )
+    found = 0
+    for artifact_type, artifact_id, payload, status in expected:
+        try:
+            record = artifact_store.load_artifact_record(artifact_type, artifact_id)
+        except ResearchArtifactNotFound:
+            continue
+        except ResearchArtifactStoreError as exc:
+            raise WorkflowExecutionError(
+                f"workflow registration lookup failed: {artifact_type}:{artifact_id}"
+            ) from exc
+        _validate_existing_workflow_record(
+            record=record,
+            artifact_type=artifact_type,
+            payload=payload,
+            status=status,
+            workflow_id=workflow_id,
+            producer_tool=RESEARCH_REGISTER_EXPERIMENT_WORKFLOW_TOOL,
+        )
+        found += 1
+    return found == len(expected)
+
+
 async def _record_outcome(
     *,
     outcome: WorkflowOutcome,
@@ -295,6 +403,75 @@ async def _record_outcome(
     return refs[0]
 
 
+def _existing_outcome_ref(
+    *,
+    outcome: WorkflowOutcome,
+    workflow_id: str,
+    artifact_store: ResearchArtifactStore,
+) -> ArtifactReportRef | None:
+    try:
+        record = artifact_store.load_artifact_record(
+            WORKFLOW_OUTCOME,
+            outcome.outcome_id,
+        )
+    except ResearchArtifactNotFound:
+        return None
+    except ResearchArtifactStoreError as exc:
+        raise WorkflowExecutionError("workflow outcome lookup failed") from exc
+    _validate_existing_workflow_record(
+        record=record,
+        artifact_type=WORKFLOW_OUTCOME,
+        payload=outcome.to_dict(),
+        status=outcome.status.value,
+        workflow_id=workflow_id,
+        producer_tool=RESEARCH_RECORD_WORKFLOW_OUTCOME_TOOL,
+    )
+    return ArtifactReportRef(
+        artifact_id=record.artifact_id,
+        artifact_type=record.artifact_type,
+        domain_owner=record.domain_owner,
+        uri=record.uri,
+        metadata={
+            "payload_sha256": json_payload_hash(record.payload),
+            "producer_tool": record.producer_tool,
+            "requested_by": record.requested_by,
+            "actor": record.actor,
+            "status": record.status,
+        },
+    )
+
+
+def _validate_existing_workflow_record(
+    *,
+    record: ResearchArtifactRecord,
+    artifact_type: str,
+    payload: Mapping[str, Any],
+    status: str,
+    workflow_id: str,
+    producer_tool: str,
+) -> None:
+    if record.artifact_type != artifact_type or record.payload != payload:
+        raise WorkflowExecutionError(
+            f"canonical workflow record content drift: {record.uri}"
+        )
+    if record.domain_owner != DOMAIN_OWNER_BY_ARTIFACT_TYPE[artifact_type]:
+        raise WorkflowExecutionError(
+            f"canonical workflow record authority drift: {record.uri}"
+        )
+    if record.producer_tool != producer_tool:
+        raise WorkflowExecutionError(
+            f"canonical workflow record producer drift: {record.uri}"
+        )
+    if record.requested_by != workflow_id or record.actor != WORKFLOW_EXECUTOR_ACTOR:
+        raise WorkflowExecutionError(
+            f"canonical workflow record provenance drift: {record.uri}"
+        )
+    if record.status != status:
+        raise WorkflowExecutionError(
+            f"canonical workflow record status drift: {record.uri}"
+        )
+
+
 def _build_arguments(
     *,
     invocation: ToolInvocation,
@@ -305,9 +482,7 @@ def _build_arguments(
     for argument, slot_id in invocation.ref_arguments.items():
         arguments[argument] = _one_ref(bindings, slot_id).uri
     for argument, slot_id in invocation.ref_list_arguments.items():
-        arguments[argument] = [
-            item.uri for item in bindings.get(slot_id, ())
-        ]
+        arguments[argument] = [item.uri for item in bindings.get(slot_id, ())]
     payloads = {
         argument: _load_pinned_payload(
             _one_ref(bindings, slot_id),
@@ -325,12 +500,8 @@ def _build_arguments(
                     bindings,
                     _required_text(entry.get("slot_id"), "risk slot_id"),
                 ).uri,
-                "parameters": dict(
-                    _mapping(entry.get("parameters"))
-                ),
-                "tunable_fields": list(
-                    _sequence(entry.get("tunable_fields"))
-                ),
+                "parameters": dict(_mapping(entry.get("parameters"))),
+                "tunable_fields": list(_sequence(entry.get("tunable_fields"))),
             }
             for entry in invocation.risk_entries
         ]
@@ -545,9 +716,7 @@ def _artifact_bindings(
             )
         refs = tuple(
             ArtifactReportRef.from_dict(item)
-            for item in _mapping_sequence(
-                row.get("produced_artifact_refs")
-            )
+            for item in _mapping_sequence(row.get("produced_artifact_refs"))
         )
         for plan_slot_id in step.output_bindings.values():
             artifact_type = slots[plan_slot_id].artifact_type
@@ -566,15 +735,11 @@ def _load_pinned_payload(
         reference.artifact_id,
     )
     if record.domain_owner != reference.domain_owner:
-        raise WorkflowExecutionError(
-            f"artifact domain drift: {reference.uri}"
-        )
+        raise WorkflowExecutionError(f"artifact domain drift: {reference.uri}")
     expected_hash = str(reference.metadata.get("payload_sha256") or "")
     current_hash = json_payload_hash(record.payload)
     if expected_hash and expected_hash != current_hash:
-        raise WorkflowExecutionError(
-            f"artifact payload drift: {reference.uri}"
-        )
+        raise WorkflowExecutionError(f"artifact payload drift: {reference.uri}")
     return record.payload
 
 
@@ -587,9 +752,7 @@ def _pin_output_ref(
         reference.artifact_id,
     )
     if record.domain_owner != reference.domain_owner:
-        raise WorkflowExecutionError(
-            f"tool artifact domain mismatch: {reference.uri}"
-        )
+        raise WorkflowExecutionError(f"tool artifact domain mismatch: {reference.uri}")
     return ArtifactReportRef(
         artifact_id=reference.artifact_id,
         artifact_type=reference.artifact_type,
@@ -621,9 +784,7 @@ def _artifact_refs(value: object) -> tuple[ArtifactReportRef, ...]:
                     ArtifactReportRef(
                         artifact_id=artifact_id,
                         artifact_type=artifact_type,
-                        domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[
-                            artifact_type
-                        ],
+                        domain_owner=DOMAIN_OWNER_BY_ARTIFACT_TYPE[artifact_type],
                         uri=uri,
                         metadata=_mapping(item.get("metadata")),
                     )
@@ -665,9 +826,7 @@ def _build_outcome(
         PARAMETER_OPTIMIZATION_EVALUATION_REPORT,
         PARAMETER_OPTIMIZATION_ROBUSTNESS_REPORT,
     }
-    review_refs = tuple(
-        item for item in refs if item.artifact_type in review_types
-    )
+    review_refs = tuple(item for item in refs if item.artifact_type in review_types)
     status_text = str(state.get("status") or "")
     status = WorkflowOutcomeStatus(status_text)
     warnings = tuple(
@@ -684,9 +843,7 @@ def _build_outcome(
     )
     next_actions = {
         WorkflowOutcomeStatus.COMPLETED: (
-            ("request_human_review",)
-            if review_refs
-            else ("request_evaluation",)
+            ("request_human_review",) if review_refs else ("request_evaluation",)
         ),
         WorkflowOutcomeStatus.BLOCKED: ("resolve_blockers",),
         WorkflowOutcomeStatus.FAILED: ("inspect_failure",),
@@ -744,9 +901,7 @@ def _require_successful_envelope(
         )
         raise WorkflowExecutionError(message)
     if envelope.get("agent_owner") != agent_owner_for_tool(tool_name):
-        raise WorkflowExecutionError(
-            f"{tool_name} returned an unexpected agent owner"
-        )
+        raise WorkflowExecutionError(f"{tool_name} returned an unexpected agent owner")
     return envelope
 
 
@@ -800,9 +955,7 @@ def _capability_by_id(
     for capability in compiled.plan.capabilities:
         if capability.capability_id == capability_id:
             return capability
-    raise WorkflowExecutionError(
-        f"unknown workflow capability: {capability_id}"
-    )
+    raise WorkflowExecutionError(f"unknown workflow capability: {capability_id}")
 
 
 def _required_text(value: object, label: str) -> str:
@@ -825,6 +978,4 @@ def _sequence(value: object) -> Sequence[Any]:
 
 
 def _mapping_sequence(value: object) -> tuple[Mapping[str, Any], ...]:
-    return tuple(
-        item for item in _sequence(value) if isinstance(item, Mapping)
-    )
+    return tuple(item for item in _sequence(value) if isinstance(item, Mapping))

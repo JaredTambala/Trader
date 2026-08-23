@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import importlib.util
 from pathlib import Path
+import warnings
 
 import pytest
 
@@ -122,7 +123,16 @@ def test_local_mlflow_pyfunc_deployment_passes_real_parity_fixture(
 ) -> None:
     import mlflow
     import pandas as pd
-    from mlflow.pyfunc import PythonModel
+
+    # MLflow 3.14 emits this warning while deriving its own Responses schema.
+    # It is unrelated to the pyfunc model exercised by this integration test.
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r".*Any type hint is inferred as AnyType.*",
+            category=UserWarning,
+        )
+        from mlflow.pyfunc import PythonModel
 
     class _ReturnModel(PythonModel):
         def predict(self, context, model_input, params=None):  # type: ignore[no-untyped-def]

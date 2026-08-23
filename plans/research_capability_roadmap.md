@@ -6,7 +6,7 @@ graph rather than a presumed linear sequence.
 Read [Research Product State](../docs/research_agents/product_state.md) first for the current operational baseline.
 Architecture, agent ownership, MCP registration and tool contracts remain canonical in their respective documents.
 
-Last reviewed: 2026-08-18.
+Last reviewed: 2026-08-20.
 
 ## Roadmap Rules
 
@@ -75,8 +75,8 @@ Orchestration is a cross-cutting capability and may advance in parallel with ML,
 | ORCH-2 | Operational checkpoint and handoff model | complete | ORCH-1 | Postgres LangGraph checkpointer | ORCH-3, recovery | A provider-maintained Postgres LangGraph saver now resumes a bounded coordinator shell across connection lifetimes. Checkpoints retain plan identity/digest, cursor, attempt summaries, canonical artifact refs and issues only; duplicate results are idempotent, conflicts and plan drift fail closed, and public state is explicitly projected. |
 | ORCH-3 | Deterministic implementation-to-evidence workflow | complete | ORCH-1, ORCH-2, BASE-DATA, BASE-EXP, BASE-OPT | Knowledge provenance, model deployment refs | ORCH-4 | A fixed supplied-implementation template compiles approved protocols into typed MCP capability DAGs and mechanically executes validation, specifications, baseline, optional optimisation, sealed holdout, Evaluation and Adversarial handoffs. Canonical Data snapshots, objective/protocol/plan/outcome records, payload-hash revalidation, bounded retries, typed stops and resume without accepted-step replay are implemented. |
 | ORCH-4 | Bounded Research Coordinator planning policy | complete | ORCH-3 | LLM provider | ORCH-5, ORCH-6 | A deterministic policy and one-node graph select exactly one code-registered workflow or emit typed prerequisite, approval, terminal-report or blocker actions. Strict decisions cannot express tool calls or experiment overrides; missing canonical inputs, unknown/ambiguous templates, identity drift and ownership/content violations fail closed. |
-| ORCH-5 | Multi-specialist composition | ready | ORCH-4, AGENT-1, AGENT-DATA | AGENT-DESIGN, AGENT-QUANT, AGENT-ML, REV-3 | Incremental specialist coordination, ORCH-6 | A resumable composition runner accepts explicit bounded specialist tasks, selects only code-registered authority routes, validates results against the original task and canonical store, and continues into registered workflow execution without replay. Acceptance includes a real Data specialist to operator-approved protocol to terminal fixed-workflow path; unavailable specialists remain typed prerequisites. |
-| ORCH-6 | Controlled orchestration qualification | blocked | ORCH-3, ORCH-4 | ORCH-5 | Release-ready orchestration | Fresh-process MCP graph, interruption/resume, approval, policy, failure, bounded-scale and operator-isolation evidence. |
+| ORCH-5 | Multi-specialist composition | complete | ORCH-4, AGENT-1, AGENT-DATA | AGENT-DESIGN, AGENT-QUANT, AGENT-ML, REV-3 | Incremental specialist coordination, ORCH-6 | A resumable composition runner accepts explicit bounded specialist tasks, selects only code-registered authority routes, validates results against the original task and canonical store, and continues into registered workflow execution without replay. Acceptance includes a real Data specialist to operator-approved protocol to terminal fixed-workflow path; unavailable specialists remain typed prerequisites. |
+| ORCH-6 | Controlled orchestration qualification | in_progress | ORCH-3, ORCH-4, ORCH-5, AGENT-DESIGN | Existing controlled Postgres/optimisation fixtures | Release-ready orchestration | The `controlled_orchestration_v1` harness, isolated checkpoint role, fresh-process drivers, bounded ledgers and mandatory test surfaces are implemented. Qualification remains open until a clean committed freeze passes every responsibility-named phase and writes its acceptance record. |
 
 The `ORCH-GOV` work item was an architecture and governance gate, not an agent rename exercise. It removed the assumption that an
 agent identity owns every artifact produced by tools on its allowlist. Canonical metadata now distinguishes:
@@ -143,40 +143,120 @@ approval, requests an absent protocol or unresolved canonical artifact, uniquely
 `supplied_implementation_to_evidence` template, reports a matching terminal outcome or emits a bounded blocker. An
 executable decision pins objective, protocol, template version and compiler-produced plan identity but contains no tool
 name, arguments or experiment configuration. Recompilation rejects unregistered templates, changed identities and plan
-drift. The graph makes no MCP call or canonical write, and specialist invocation remains separate composition work.
+drift. The graph makes no MCP call or canonical write; the composition runner now consumes its bounded decisions.
 
-#### Planned Research Coordinator-Specialist Composition
+#### Implemented Research Composition
 
-The composition layer will connect the existing Coordinator, specialist shell and fixed workflow executor without
-turning any of them into a second authority. Its execution plan is:
+`trader_agents.research_composition` now connects the Coordinator, registered specialist routes and fixed workflow
+executor without merging their authorities. A `ResearchCompositionRequest` binds one approved objective to explicit
+caller-built specialist tasks. The Coordinator selects the first unaccepted task, pins its authority, digest and route
+version, and the runner invokes only the matching code-owned route. The current default catalog contains the production
+Data and Experiment Design specialists. Known but unavailable future specialists remain typed prerequisites; unknown,
+unsupported or ambiguous routing fails closed.
 
-1. **Land one production specialist first.** Adapt the Data Agent to the shared specialist task/result contract, use
-   registered MCP-backed handlers, return canonical snapshot and quality refs, and resume through the operational
-   checkpointer. The composition work cannot be accepted using only fake handlers.
-2. **Add a code-owned specialist route catalog.** Registrations expose stable authority, supported output types and
-   runner version while retaining task builders, graph callables, clients and configuration in code. Unknown,
-   unavailable or ambiguous routes fail closed before specialist execution.
-3. **Extend the Coordinator with one bounded specialist action.** The decision pins the original task ID, authority and
-   task digest. The caller or a role-owned task builder supplies the complete `SpecialistTask`; the Coordinator does
-   not infer symbols, windows, costs, experiment parameters or tool arguments from objective prose.
-4. **Run and resume the composition loop.** A thin runner invokes the registered specialist, validates the terminal
-   `SpecialistResult` against the original task, resolves every handoff from the canonical artifact store, records only
-   bounded task/result summaries and canonical refs, and asks the Coordinator for the next action. Completed task and
-   workflow digests make exact replay idempotent and conflicting replay terminal.
-5. **Reuse the fixed workflow boundary.** When the Coordinator selects the registered workflow, the runner calls the
-   existing compiler/executor and feeds the canonical outcome back for terminal reporting. It does not create MCP
-   arguments, execute research services directly, rewrite the approved protocol or synthesize specialist verdicts.
-6. **Register later specialists independently.** Experiment Design, Quantitative Methods, ML, Robustness and Evaluation
-   routes become available only when their own specialist capabilities are complete. Missing registrations remain
-   explicit prerequisites; optional producers cannot block a supplied-implementation workflow unless the approved
-   objective or protocol requires their artifact type.
+Every completed specialist result is checked against the original task and route, and every handoff is resolved through
+the canonical artifact store before a bounded accepted-result receipt enters checkpoint state. The protocol must consume
+the accepted Data manifest and quality refs exactly. With no protocol, composition pauses for Experiment Design; a
+proposed protocol pauses for approval; the same approved design resumes. Request, task, protocol, route, artifact or
+result drift fails closed.
 
-Acceptance requires deterministic contract tests for route selection and result validation; failure tests for forged,
-missing, conflicting and over-budget results; interruption/resume evidence with no repeated accepted specialist or MCP
-mutation; and one integration path that runs the real Data specialist through MCP, pauses for an operator-supplied
-approved protocol, executes the existing fixed workflow and records one matching terminal outcome. Graph/checkpoint
-state must exclude raw MCP responses, complete artifact payloads, prompts, credentials, model reasoning and tool
-arguments. Fresh-process, bounded-scale and release evidence remain controlled qualification work.
+When ready, composition recompiles the registered workflow decision, derives one stable child workflow identity, runs
+the existing mechanical executor and returns its canonical outcome to the Coordinator for terminal reporting. Matching
+canonical workflow-registration and outcome records are revalidated and reused on re-entry, so accepted mutations and
+workflow steps are not repeated. Parent, specialist and workflow threads remain isolated under the injected
+checkpointer. Checkpoints contain only IDs, digests, bounded decisions/results, refs, counters and issues—not MCP
+responses, artifacts, arguments, prompts, credentials or hidden reasoning.
+
+The old non-authoritative Quant Research Supervisor request/handoff graph, shared state module and exports are removed
+without compatibility aliases. The existing `Quant Research Supervisor Agent` MCP stewardship label is retained for
+its existing tool family. Quantitative Methods, ML, Robustness and Evaluation routes remain independent capability
+work.
+
+Acceptance evidence is in `tests/test_research_composition.py`, `tests/test_postgres_research_composition.py`, the
+specialist contract suites, workflow execution tests and package-boundary tests. It covers strict decisions and requests,
+route unavailability/ambiguity, unsupported outputs, canonical handoff validation, transition limits, protocol and
+request drift, the real in-process Data-to-approved-protocol-to-terminal-workflow path, exact terminal replay, workflow
+re-entry after persistence, and Postgres saver reopening after the Data phase and during workflow execution. The
+implementation lineage is `e5401d6` for Coordinator policy, `1b0c0ae` for the specialist shell and production Data
+specialist, `6cbc886` for the operational saver boundary, and `28c1d33` for fixed workflow execution. Fresh-process,
+bounded-scale and controlled-release evidence remain `ORCH-6` work.
+
+#### Controlled Orchestration Qualification Plan
+
+This work adds controlled release evidence, not another orchestration feature. The surface being qualified is exactly
+the current responsibility graph: explicit Data tasks, an explicit Experiment Design task over already-canonical Data
+refs, immutable proposal persistence, operator-owned approval, the bounded Research Coordinator decision, and the
+fixed supplied-implementation workflow. It does not qualify task inference from prose, dynamic output-to-later-task
+binding, unavailable specialist routes, general Robustness/final Evaluation agents, ML production, optional external
+providers, deployment, paper trading or live trading.
+
+Qualification starts only after the current composition and Experiment Design implementation is committed and the
+product worktree is clean. Create a new code-owned verification profile, `controlled_orchestration_v1`, pinned to a
+new orchestration freeze tag. Generalize the existing controlled harness from one hard-coded freeze and the historical
+`57A`-`57S` phase pattern to a closed mapping of qualification profiles, allowed evidence-phase keys, exact policy
+gates and freeze tags. The existing optimisation v6 profile remains immutable and independently readable. Evidence
+phase keys name verification responsibilities such as `ORCHESTRATION_RECOVERY`; they are database record keys only,
+never architecture, package, class or graph names.
+
+The profile executes these mandatory phases in order:
+
+| Evidence phase | Exact policy boundary | Required evidence |
+| --- | --- | --- |
+| `ORCHESTRATION_RUNTIME` | Every MCP mutation gate false. | Provision and verify the disposable `*_test` database, dedicated product-test role, separate checkpoint role/schema, UTC/locale/lock identity, empty blockers and unchanged read-only operator fingerprint. Checkpoint credentials are never copied into manifests or product artifacts. |
+| `ORCHESTRATION_CORE` | Every MCP mutation gate false. | Ruff, compileall, mypy, non-Postgres tests, documentation tests, package-boundary tests and strict orchestration/agent/MCP contract suites on the frozen product revision. Any skip outside an explicit optional-provider set blocks the phase. |
+| `ORCHESTRATION_E2E` | Only backtest and built-in optimisation execution enabled; loading, broker, raw SQL and external-provider writes false. | A real multi-symbol fixture through Postgres, fresh stdio MCP, Postgres checkpointers, registered Data and Experiment Design routes, immutable proposal, explicit operator approvals, fixed workflow, baseline, four-trial built-in selection, sealed holdout and the existing optimisation-specific Evaluation/Adversarial branch. Every canonical ref and typed projection reconciles. |
+| `ORCHESTRATION_RECOVERY` | Backtests enabled; optimisation and every unrelated mutation gate false. | Separate Python driver and MCP processes reopen the parent, specialist and workflow savers after the approval pause and a deliberate workflow interruption. A response-loss fault after a canonical write proves idempotent retry. Accepted Data/proposal actions, workflow registration, completed plan steps and terminal outcome are not replayed; exact terminal replay performs zero tool calls. |
+| `ORCHESTRATION_POLICY` | Every MCP mutation gate false. | Missing task permission, requested/rejected approval, disabled execution, unknown route/version, request/task/protocol drift, forged envelope metadata, canonical owner/producer/status/hash drift and transition/retry exhaustion all fail closed at the owning boundary. No later tool or broker/runtime mutation occurs, and public/checkpoint failure data stays bounded. |
+| `ORCHESTRATION_SCALE` | Backtests enabled; optimisation and unrelated mutation gates false. | Exercise the eight-task composition limit with real Data tasks, reject a ninth task before MCP, and complete a three-symbol/1,000-bars Data/design/baseline path. Record task/transition/tool-call counts, checkpoint bytes, artifact counts, database bytes and wall time as local bounded measurements; assert structural limits and projection reconciliation rather than claiming a universal service-level objective. |
+| `ORCHESTRATION_ACCEPTANCE` | Every MCP mutation gate false. | Read rather than recreate retained evidence; require every earlier phase on one freeze and lock hash, passed qualification/isolation, empty blockers, matching operator fingerprints, exact call-ledger expectations, bounded-scale rows and resolvable root refs. Write one credential-free acceptance record naming the qualified surface, exclusions and residual risks. |
+
+The controlled fixture reuses the existing realistic market-data and supplied implementation sources instead of
+creating a second research implementation. Setup may seed deterministic bars and create the exact Data snapshots needed
+to build immutable later tasks; all product artifacts are then created or revalidated through public MCP operations.
+One composition request contains the explicit Data tasks followed by the Experiment Design task, whose refs already
+exist by contract. Each resume stage runs in a new Python process, opens a new Postgres saver connection and starts a
+new stdio MCP process. A test-only call ledger stores command, argument digest, result identity and retry disposition in
+`verification_control`; it stores no arguments, envelopes, source, credentials or artifact payloads.
+
+End-to-end acceptance requires all of the following invariants:
+
+1. Data manifest/quality evidence, supplied implementations, protocol proposal, approved protocol, workflow plan,
+   workflow outcome and produced Experiment/Review evidence resolve through `research://postgres/...` and reconcile
+   with their typed projections.
+2. The proposal remains `proposed` and byte-identical after operator decisions; the approved protocol is a separate
+   artifact with the same objective, protocol ID, design digest, approval identities/subjects and canonical inputs;
+   only approval decision lifecycle fields may differ. The Experiment Design actor never appears as the decision actor.
+3. Canonical records retain correct `domain_owner`, `producer_tool`, `requested_by` and `actor`. Checkpoint tables hold
+   only bounded IDs, digests, refs, decisions, counters and issues; they contain no raw MCP response, complete artifact,
+   source code, approval rationale, prompt, credential or hidden reasoning.
+4. Every accepted mutating operation has one effective canonical write. Deliberate response loss may repeat a public
+   call only when the service returns the identical canonical record; it must not create a second artifact or rerun an
+   accepted workflow step.
+5. The operator database fingerprint is identical before and after every phase. The checkpoint role cannot write
+   canonical research/runtime tables, and research-agent tool catalogs expose no broker mutation, halt clearing,
+   reconciliation or raw SQL capability.
+
+Planned test surfaces are `tests/test_postgres_orchestration_evidence_graph.py`,
+`tests/test_postgres_orchestration_recovery.py`, `tests/test_orchestration_policy_security.py`,
+`tests/test_postgres_orchestration_bounded_scale.py` and `tests/test_postgres_orchestration_acceptance.py`, backed by
+responsibility-named fixtures/workers under `tests/support/`. Update `operations.md` with exact commands and inspection
+queries only when the harness exists. After every mandatory phase passes, update `product_state.md` to `controlled`,
+record the freeze and acceptance evidence, mark this work item complete and leave optional providers and unimplemented
+specialists explicitly unqualified. A product, schema, fixture, lock, policy or acceptance-test change after the freeze
+invalidates affected evidence and requires the profile to restart; a discovered product defect is fixed before a new
+freeze rather than waived in the verdict. Until that record exists, the current qualification remains `integration`
+and this work item remains `in_progress`.
+
+Implementation status (2026-08-20): the closed verification-profile mapping, orchestration freeze contract,
+checkpoint-only role/schema provisioning, credential-free manifest fields, payload-free call ledger, response-loss
+classification, retained fixture revalidation, scale measurements, fresh Python/stdio resume worker and all five
+planned test modules now exist. Building the four-trial fixture also exposed and fixed the compiler boundary that must
+translate protocol categorical `choices` into optimiser-tool `values`. `operations.md` contains the exact phase
+commands and inspection queries. Local
+non-Postgres collection, focused policy tests, Ruff and compile checks pass; Postgres tests collect and skip without
+the guarded environment. The work item is not complete: the composition/design changes are still uncommitted,
+`verification-orchestration-v1-freeze` does not yet identify them, the controlled Postgres phases have not run, and no
+orchestration acceptance record exists.
 
 ### ML Lifecycle
 
@@ -225,7 +305,7 @@ optimisation protocols rather than creating a provider-specific WFO optimiser.
 | --- | --- | --- | --- | --- | --- | --- |
 | AGENT-1 | Specialist graph contract and common policy shell | complete | ORCH-1 | Existing Data Agent graph | AGENT-DATA, AGENT-DESIGN, REV-3, ML Agent, Quant Methods graph | 35, 40, 43, 45 |
 | AGENT-DATA | Integrate Data Agent as a resumable specialist | complete | ORCH-2, AGENT-1 | DATA-1 | ORCH-5 | Existing Data Agent tasks |
-| AGENT-DESIGN | Experiment protocol proposal and specialist graph | ready | AGENT-1, BASE-IMPL, BASE-DATA, BASE-EXP | AGENT-DATA, BASE-OPT | ORCH-5 | New |
+| AGENT-DESIGN | Experiment protocol proposal and specialist graph | complete | AGENT-1, BASE-IMPL, BASE-DATA, BASE-EXP | AGENT-DATA, BASE-OPT | ORCH-5 | New |
 | AGENT-QUANT | Quant Methods specialist graph | deferred | AGENT-1 | KNOW-1 | ORCH-5 | 35 |
 | AGENT-ML | ML specialist graph | blocked | AGENT-1, ML-6, ML-7 | ORCH-4 | ORCH-5 | 40 |
 | AGENT-HYP | Hypothesis artifact and graph | deferred | ORCH-1 | Knowledge, ML and experiment evidence | ORCH-5 | 37-38 |
@@ -292,6 +372,77 @@ governance, artifact-store, MCP-client and tool-constant boundaries. The legacy 
 builders, model-selected tool arguments, raw-envelope fields, payload-to-handoff helper, tests and exports were removed
 without compatibility aliases. Direct Data MCP tools remain registered for operator use.
 
+#### Implemented Experiment Design Specialist
+
+The functional addition is a resumable Experiment Design specialist that turns an approved objective, supplied
+strategy/risk configuration and already-canonical Data evidence into one inspectable protocol proposal. It makes the
+approval boundary operational: the proposal names every material assumption and the person asked to decide it;
+composition pauses; an operator supplies explicit decisions; and only the unchanged approved design can enter the
+fixed compiler. The specialist does not execute an experiment, approve its own assumptions, judge the strategy or
+rewrite a design after observing results.
+
+The implementation is deliberately structured and deterministic. It does not translate unrestricted prose or call an
+LLM. A caller must provide strategy and ordered risk configuration, role-labelled Data refs, costs, initial portfolio,
+evaluation and falsification questions, runtime bounds, robustness intent and any optimisation design. Incomplete or
+unknown design fields are rejected at task construction; missing mutation permission becomes a typed prerequisite. A
+code-owned recommendation is allowed only when its value and origin are exposed as a named material assumption
+requiring approval; it is never a hidden default or an approval.
+
+The implemented responsibility sequence is:
+
+1. **Add a strict design boundary.** Introduce an immutable `ExperimentDesignRequest` that reuses the existing typed
+   protocol values and rejects unknown fields, duplicate roles/IDs, unbounded runs, undeclared tunable dimensions,
+   non-sealed optimisation holdouts and incomplete approval routing before any tool call. A responsibility-owned task
+   builder accepts only an approved objective, exact `implementation_version`, `dataset_manifest`,
+   `data_quality_report` and optional optimisation-objective refs, one local-mutation permission and a requested
+   approver. It derives a stable task ID and requests exactly one proposal output.
+2. **Keep proposal evidence immutable.** Add an Experiments-owned `experiment_protocol_proposal` artifact rather than
+   saving a proposed `experiment_protocol` under the ID later used by workflow registration. The proposal wraps the
+   exact proposed `ExperimentProtocol`, objective/task identity and digests, canonical input refs and hashes, design
+   digest and requested `Approval` values. Its content-derived identity and separate artifact type allow an accepted
+   specialist handoff to remain replay-valid after the approved `experiment_protocol` is registered.
+3. **Create one deterministic proposal operation.** Add `research_create_experiment_protocol_proposal` in the
+   governance service layer and register it through MCP as a local canonical mutation. The service resolves every
+   declared ref, checks type, domain, producer metadata, status, payload hash, Data requirement/manifest/quality
+   agreement and optimisation validation, constructs requested approvals for every material assumption, and persists
+   only a `proposed` artifact. An exact retry returns the existing record; conflicting content or provenance under the
+   same identity fails closed. Add a typed Postgres proposal projection instead of reusing the lifecycle row for
+   approved protocols.
+4. **Make Experiment Design an executable identity.** Register the `Experiment Design Agent` definition and role
+   policy with only support reads and the proposal operation on its allowlist. Implement
+   `trader_agents.experiment_design_agent` with responsibility-named domain, action, policy, catalog, graph and route
+   modules. Its deterministic policy either requests a missing design/input/permission prerequisite, executes the one
+   registered proposal action, or completes. The handler alone constructs MCP arguments, validates the full
+   command/owner/side-effect envelope, reloads the canonical proposal and emits a digest-pinned handoff.
+5. **Preserve operator approval authority.** Add a pure approval-application helper that accepts the immutable
+   proposal plus explicit `Approval` decisions, verifies exact subject/assumption/request identities and returns the
+   approved `ExperimentProtocol` only when every material assumption is approved. It performs no persistence and
+   cannot synthesize a decision, approver or rationale. Rejection produces a blocked protocol; changing any design
+   field requires a new proposal identity.
+6. **Connect the route to composition.** Register the Experiment Design route in the default specialist catalog.
+   After accepting its proposal handoff, composition loads the embedded proposed protocol and returns an
+   `awaiting_approval` Coordinator decision. Resume accepts only an operator-supplied approved protocol whose objective,
+   protocol ID, design digest, approval subjects and canonical input refs match the proposal; the existing workflow
+   registration then persists the approved protocol without altering the proposal. Checkpoints retain only the
+   proposal ref/digest and the existing bounded accepted-result receipt.
+7. **Document the operational contract.** Update product state, architecture, agent ownership, MCP catalog, tool
+   contracts, workflows and operations in the implementation change. Architecture and package names use the stable
+   Experiment Design responsibility; this roadmap identifier remains delivery lineage only.
+
+Initial scope requires the Design task to reference Data evidence that already exists when the caller builds the task.
+It does not add mutable tasks or infer a new Design task from a preceding Data result inside the same composition
+request. A general output-to-later-task binding contract, free-form brief interpretation, model-selected defaults,
+autonomous approval, direct service/store writes from agent code, protocol execution and post-result redesign are
+explicitly outside this work item.
+
+Implementation evidence is in `tests/test_experiment_design.py`, `tests/test_experiment_design_specialist.py`,
+`tests/test_experiment_design_composition.py`, `tests/test_postgres_experiment_design_specialist.py`, the shared MCP,
+projection, identity, documentation and package-boundary suites. It covers strict request parsing, explicit costs and
+execution limits, canonical input pinning, scope drift, exact proposal replay, approval identity, permission
+prerequisites, resumable action execution, the real in-process proposal-to-approval-to-fixed-workflow path, distinct
+proposal/protocol persistence and fresh-saver recovery. Fresh-process and controlled-scale qualification remain
+`ORCH-6`; they are not part of this completed capability item.
+
 ### Final Composition And Performance
 
 | ID | Capability | Status | Hard dependencies | Optional inputs | Enables | Legacy lineage |
@@ -306,15 +457,14 @@ review authority.
 
 These work items have no unmet hard product dependency:
 
-1. ORCH-5: compose the Research Coordinator, production Data specialist and fixed workflow executor without replay.
-2. AGENT-DESIGN: add approval-aware protocol proposal and an Experiment Design specialist graph.
-3. ML-1: establish the MLflow runtime and mutation policy.
-4. ML-2: implement point-in-time feature-set specifications.
-5. ML-7: summarize existing prediction evidence and establish the drift contract.
-6. QUAL-ML-RUNTIME: place 39H-I under a new controlled qualification baseline.
-7. ROB-1: define general robustness attacks and immutable variants.
-8. REV-1: add general return attribution.
-9. DATA-1: make quality reports calendar aware.
+1. ORCH-6: qualify fresh-process composition, restart/resume, failure, bounded-scale and operator isolation.
+2. ML-1: establish the MLflow runtime and mutation policy.
+3. ML-2: implement point-in-time feature-set specifications.
+4. ML-7: summarize existing prediction evidence and establish the drift contract.
+5. QUAL-ML-RUNTIME: place 39H-I under a new controlled qualification baseline.
+6. ROB-1: define general robustness attacks and immutable variants.
+7. REV-1: add general return attribution.
+8. DATA-1: make quality reports calendar aware.
 
 This is a choice of parallel frontiers, not an instruction to execute the list in order.
 

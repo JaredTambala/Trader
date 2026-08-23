@@ -252,13 +252,14 @@ def test_compiled_workflow_executes_full_mcp_evidence_graph(
             PARAMETER_OPTIMIZATION_EVALUATION_REPORT,
             PARAMETER_OPTIMIZATION_ROBUSTNESS_REPORT,
         }
-        assert execution.outcome.next_permitted_actions == (
-            "request_human_review",
+        assert execution.outcome.next_permitted_actions == ("request_human_review",)
+        assert (
+            prepared.store.load_artifact(
+                WORKFLOW_OUTCOME,
+                execution.outcome.outcome_id,
+            )["status"]
+            == "completed"
         )
-        assert prepared.store.load_artifact(
-            WORKFLOW_OUTCOME,
-            execution.outcome.outcome_id,
-        )["status"] == "completed"
         tool_names = [name for name, _ in client.calls]
         assert tool_names[0] == RESEARCH_REGISTER_EXPERIMENT_WORKFLOW_TOOL
         assert RESEARCH_RUN_BACKTEST_SPECIFICATION_TOOL in tool_names
@@ -303,6 +304,54 @@ def test_compiled_workflow_executes_full_mcp_evidence_graph(
         assert rejected_payload["errors"][0]["code"] == (
             "workflow_outcome_recording_failed"
         )
+
+    anyio.run(_run)
+
+
+def test_compiler_translates_categorical_dimensions_to_optimizer_values(
+    tmp_path: Path,
+) -> None:
+    """Keep protocol terminology separate from the optimizer tool contract."""
+
+    async def _run() -> None:
+        prepared = await _prepare_workflow(
+            tmp_path,
+            optimization=True,
+            allow_backtests=False,
+        )
+        assert prepared.protocol.optimization is not None
+        protocol = replace(
+            prepared.protocol,
+            optimization=replace(
+                prepared.protocol.optimization,
+                trial_budget=2,
+                dimensions=(
+                    TunableDimension(
+                        dimension_id="period",
+                        target_path="/strategy/parameters/period",
+                        value_type=TunableValueType.CATEGORICAL,
+                        choices=(2, 3),
+                    ),
+                ),
+            ),
+        )
+
+        compiled = compile_supplied_implementation_workflow(
+            objective=prepared.objective,
+            protocol=protocol,
+            artifact_store=prepared.store,
+        )
+
+        invocation = compiled.invocation_for_step(
+            "create_parameter_optimization_plan"
+        )
+        assert invocation.static_arguments["search_space"] == [
+            {
+                "path": "/strategy/parameters/period",
+                "type": "categorical",
+                "values": [2, 3],
+            }
+        ]
 
     anyio.run(_run)
 
@@ -384,8 +433,7 @@ def test_compiled_workflow_stops_when_backtests_are_disabled(
 
         assert execution.outcome.status is WorkflowOutcomeStatus.BLOCKED
         assert any(
-            item.code == "backtests_not_allowed"
-            for item in execution.outcome.blockers
+            item.code == "backtests_not_allowed" for item in execution.outcome.blockers
         ), [item.to_dict() for item in execution.outcome.blockers]
         tool_names = [name for name, _ in client.calls]
         assert tool_names.count(RESEARCH_RUN_BACKTEST_SPECIFICATION_TOOL) == 1
@@ -424,12 +472,11 @@ def test_compiled_workflow_bounds_transport_retries(
 
         assert execution.outcome.status is WorkflowOutcomeStatus.BLOCKED
         assert any(
-            item.code == "tool_transport_error"
-            for item in execution.outcome.blockers
+            item.code == "tool_transport_error" for item in execution.outcome.blockers
         )
-        assert [
-            name for name, _ in client.calls
-        ].count(RESEARCH_VALIDATE_STRATEGY_IMPLEMENTATION_TOOL) == 3
+        assert [name for name, _ in client.calls].count(
+            RESEARCH_VALIDATE_STRATEGY_IMPLEMENTATION_TOOL
+        ) == 3
         assert RESEARCH_RUN_BACKTEST_SPECIFICATION_TOOL not in {
             name for name, _ in client.calls
         }
@@ -478,11 +525,21 @@ def test_compiled_workflow_resumes_without_replaying_accepted_steps(
 
         assert execution.outcome.status is WorkflowOutcomeStatus.COMPLETED
         all_names = [name for name, _ in client.calls]
-        assert all_names.count(RESEARCH_REGISTER_EXPERIMENT_WORKFLOW_TOOL) == 2
+        assert all_names.count(RESEARCH_REGISTER_EXPERIMENT_WORKFLOW_TOOL) == 1
         for tool_name in accepted_tools:
             assert all_names.count(tool_name) == accepted_tools.count(tool_name)
         assert all_names.count(RESEARCH_RUN_BACKTEST_SPECIFICATION_TOOL) == 1
         assert all_names.count(RESEARCH_RECORD_WORKFLOW_OUTCOME_TOOL) == 1
+
+        replay = await execute_compiled_research_workflow(
+            compiled=compiled,
+            workflow_id="workflow_resume",
+            tool_client=client,
+            checkpointer=saver,
+            artifact_store=prepared.store,
+        )
+        assert replay.outcome == execution.outcome
+        assert [name for name, _ in client.calls] == all_names
 
     anyio.run(_run)
 
@@ -601,9 +658,7 @@ async def _prepare_workflow(
         strategy=ProtocolStrategy(
             implementation_ref=strategy_ref,
             parameters={"period": 2},
-            tunable_fields=(
-                ("/strategy/parameters/period",) if optimization else ()
-            ),
+            tunable_fields=(("/strategy/parameters/period",) if optimization else ()),
         ),
         risk_managers=(
             ProtocolRiskManager(

@@ -9,6 +9,7 @@ mechanical executor.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from trader_research.foundation import (
@@ -33,6 +34,15 @@ from trader_agents.orchestration import (
     CompiledResearchWorkflow,
     WorkflowInputUnavailableError,
 )
+from trader_agents.specialists import (
+    AcceptedSpecialistResult,
+    SpecialistRouteAmbiguityError,
+    SpecialistRouteCatalog,
+    SpecialistRouteUnavailableError,
+    SpecialistRouteUnsupportedTaskError,
+    SpecialistTask,
+    specialist_task_digest,
+)
 
 from .catalog import WorkflowTemplateCatalog, default_workflow_template_catalog
 from .domain import CoordinationDecision, CoordinatorAction
@@ -40,25 +50,39 @@ from .domain import CoordinationDecision, CoordinatorAction
 
 @dataclass(frozen=True)
 class ResearchCoordination:
-    """Bounded coordinator decision plus an optional executable workflow.
+    """Bounded decision plus one optional code-owned execution value.
 
     Attributes:
         decision: Public next action containing no tool invocation details.
+        specialist_task: Exact task selected for a registered specialist route;
+            otherwise ``None``.
         compiled_workflow: Compiler-produced workflow when execution is ready;
             otherwise ``None``.
     """
 
     decision: CoordinationDecision
+    specialist_task: SpecialistTask | None = None
     compiled_workflow: CompiledResearchWorkflow | None = None
 
     def __post_init__(self) -> None:
-        """Keep executable decisions and compiled state internally consistent."""
-        executable = (
+        """Keep each executable decision paired with exactly its runtime value."""
+        specialist_execution = (
+            self.decision.action is CoordinatorAction.EXECUTE_REGISTERED_SPECIALIST_TASK
+        )
+        workflow_execution = (
             self.decision.action is CoordinatorAction.EXECUTE_REGISTERED_WORKFLOW
         )
-        if executable != (self.compiled_workflow is not None):
+        if specialist_execution != (self.specialist_task is not None):
+            raise ValueError(
+                "only specialist execution decisions may carry a specialist task"
+            )
+        if workflow_execution != (self.compiled_workflow is not None):
             raise ValueError(
                 "only executable coordination decisions may carry a compiled workflow"
+            )
+        if self.specialist_task is not None and self.compiled_workflow is not None:
+            raise ValueError(
+                "coordination cannot execute a specialist and workflow together"
             )
 
 
@@ -69,6 +93,9 @@ def coordinate_research(
     artifact_store: ResearchArtifactStore,
     outcome: WorkflowOutcome | None = None,
     catalog: WorkflowTemplateCatalog | None = None,
+    specialist_tasks: Sequence[SpecialistTask] = (),
+    accepted_specialist_results: Sequence[AcceptedSpecialistResult] = (),
+    specialist_catalog: SpecialistRouteCatalog | None = None,
 ) -> ResearchCoordination:
     """Select the next permitted action for canonical research state.
 
@@ -82,7 +109,11 @@ def coordinate_research(
         protocol: Optional experiment protocol proposed for the objective.
         artifact_store: Canonical reader used by the selected template compiler.
         outcome: Optional canonical terminal outcome to report.
-        catalog: Optional injected catalog for deterministic tests or composition.
+        catalog: Optional injected workflow catalog for tests or composition.
+        specialist_tasks: Ordered caller-built tasks considered before protocol
+            compilation. The Coordinator never derives their specialist input.
+        accepted_specialist_results: Receipts already validated by composition.
+        specialist_catalog: Code-owned routes available for task selection.
 
     Returns:
         A bounded decision and, only when ready, its compiled workflow.
@@ -91,6 +122,14 @@ def coordinate_research(
     objective_decision = _objective_lifecycle_decision(objective)
     if objective_decision is not None:
         return ResearchCoordination(decision=objective_decision)
+    specialist_decision = _select_specialist_task(
+        objective=objective,
+        tasks=specialist_tasks,
+        accepted_results=accepted_specialist_results,
+        catalog=specialist_catalog,
+    )
+    if specialist_decision is not None:
+        return specialist_decision
     if protocol is None:
         return ResearchCoordination(decision=_request_experiment_protocol(objective))
     if protocol.objective_id != objective.objective_id:
@@ -114,6 +153,121 @@ def coordinate_research(
         protocol=protocol,
         artifact_store=artifact_store,
         catalog=selected_catalog,
+    )
+
+
+def _select_specialist_task(
+    *,
+    objective: ResearchObjective,
+    tasks: Sequence[SpecialistTask],
+    accepted_results: Sequence[AcceptedSpecialistResult],
+    catalog: SpecialistRouteCatalog | None,
+) -> ResearchCoordination | None:
+    """Select the first unaccepted explicit task through a registered route."""
+    task_by_id = {task.task_id: task for task in tasks}
+    if len(task_by_id) != len(tasks):
+        return ResearchCoordination(
+            decision=_blocked(
+                objective=objective,
+                protocol=None,
+                code="duplicate_specialist_task_id",
+                message="Specialist task IDs must be unique within coordination.",
+            )
+        )
+    for task in tasks:
+        if task.objective.to_dict() != objective.to_dict():
+            return ResearchCoordination(
+                decision=_blocked(
+                    objective=objective,
+                    protocol=None,
+                    code="specialist_task_objective_mismatch",
+                    message=(
+                        f"Specialist task {task.task_id} does not contain the exact "
+                        "coordinated objective."
+                    ),
+                )
+            )
+    receipt_by_task = {receipt.task_id: receipt for receipt in accepted_results}
+    if len(receipt_by_task) != len(accepted_results):
+        return ResearchCoordination(
+            decision=_blocked(
+                objective=objective,
+                protocol=None,
+                code="duplicate_specialist_result",
+                message="Accepted specialist result task IDs must be unique.",
+            )
+        )
+    for task_id, receipt in receipt_by_task.items():
+        receipt_task = task_by_id.get(task_id)
+        if receipt_task is None:
+            return ResearchCoordination(
+                decision=_blocked(
+                    objective=objective,
+                    protocol=None,
+                    code="unknown_specialist_result_task",
+                    message=(
+                        f"Accepted specialist result references unknown task {task_id}."
+                    ),
+                )
+            )
+        if (
+            receipt.authority_key != receipt_task.authority_key
+            or receipt.task_digest != specialist_task_digest(receipt_task)
+        ):
+            return ResearchCoordination(
+                decision=_blocked(
+                    objective=objective,
+                    protocol=None,
+                    code="specialist_result_receipt_mismatch",
+                    message=(
+                        f"Accepted specialist result does not match task {task_id}."
+                    ),
+                )
+            )
+    pending = next(
+        (task for task in tasks if task.task_id not in receipt_by_task),
+        None,
+    )
+    if pending is None:
+        return None
+    if catalog is None:
+        return ResearchCoordination(
+            decision=_request_specialist_route(objective, pending)
+        )
+    try:
+        route = catalog.select(pending)
+    except SpecialistRouteUnavailableError:
+        return ResearchCoordination(
+            decision=_request_specialist_route(objective, pending)
+        )
+    except SpecialistRouteAmbiguityError as exc:
+        return ResearchCoordination(
+            decision=_blocked(
+                objective=objective,
+                protocol=None,
+                code="ambiguous_specialist_route",
+                message=str(exc),
+            )
+        )
+    except SpecialistRouteUnsupportedTaskError as exc:
+        return ResearchCoordination(
+            decision=_blocked(
+                objective=objective,
+                protocol=None,
+                code="unsupported_specialist_task",
+                message=str(exc),
+            )
+        )
+    return ResearchCoordination(
+        decision=CoordinationDecision(
+            action=CoordinatorAction.EXECUTE_REGISTERED_SPECIALIST_TASK,
+            objective_id=objective.objective_id,
+            specialist_task_id=pending.task_id,
+            specialist_authority=pending.authority_key,
+            specialist_task_digest=specialist_task_digest(pending),
+            specialist_route_version=route.descriptor.version,
+        ),
+        specialist_task=pending,
     )
 
 
@@ -321,6 +475,26 @@ def _request_experiment_protocol(
         description=(
             "An Experiment Design owner must propose a protocol for the approved "
             "research objective."
+        ),
+    )
+    return CoordinationDecision(
+        action=CoordinatorAction.REQUEST_PREREQUISITE,
+        objective_id=objective.objective_id,
+        prerequisites=(prerequisite,),
+    )
+
+
+def _request_specialist_route(
+    objective: ResearchObjective,
+    task: SpecialistTask,
+) -> CoordinationDecision:
+    prerequisite = _prerequisite(
+        objective_id=objective.objective_id,
+        kind=PrerequisiteKind.CAPABILITY,
+        target=task.authority_key,
+        description=(
+            f"Register an available {task.authority_key} specialist route for "
+            f"task {task.task_id}."
         ),
     )
     return CoordinationDecision(

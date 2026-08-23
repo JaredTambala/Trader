@@ -1183,7 +1183,7 @@ def _search_dimension(value: Any) -> dict[str, Any]:
         "type": value.value_type.value,
     }
     if value.choices:
-        payload["choices"] = list(value.choices)
+        payload["values"] = list(value.choices)
     else:
         payload["low"] = value.lower
         payload["high"] = value.upper

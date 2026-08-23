@@ -74,6 +74,19 @@ RESEARCH_ARTIFACT_SCHEMA_STATEMENTS: tuple[str, ...] = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS research_experiment_protocol_proposals (
+        proposal_id TEXT PRIMARY KEY,
+        protocol_id TEXT NOT NULL,
+        objective_id TEXT NOT NULL,
+        task_id TEXT NOT NULL,
+        design_digest TEXT NOT NULL,
+        status TEXT NOT NULL,
+        requested_by TEXT NOT NULL,
+        proposed_by TEXT NOT NULL,
+        payload JSONB NOT NULL
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS research_experiment_protocols (
         protocol_id TEXT PRIMARY KEY,
         objective_id TEXT NOT NULL,

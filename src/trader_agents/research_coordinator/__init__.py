@@ -2,8 +2,8 @@
 
 Callers can select one typed next action with ``coordinate_research`` or run the
 same policy through a JSON-safe LangGraph adapter. Workflow execution remains in
-``trader_agents.orchestration`` and specialist composition is intentionally
-outside this package.
+``trader_agents.orchestration``; ``trader_agents.research_composition`` connects
+these decisions to registered specialist and workflow execution boundaries.
 """
 
 from .catalog import (

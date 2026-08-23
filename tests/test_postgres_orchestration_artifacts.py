@@ -10,6 +10,7 @@ from trader_research.foundation import (
 )
 from trader_research.governance.artifacts import (
     EXPERIMENT_PROTOCOL,
+    EXPERIMENT_PROTOCOL_PROPOSAL,
     RESEARCH_OBJECTIVE,
     WORKFLOW_OUTCOME,
     WORKFLOW_PLAN,
@@ -24,6 +25,7 @@ def test_research_schema_exposes_orchestration_records_to_pgadmin() -> None:
     schema = "\n".join(RESEARCH_ARTIFACT_SCHEMA_STATEMENTS)
     for table in (
         "research_objectives",
+        "research_experiment_protocol_proposals",
         "research_experiment_protocols",
         "research_workflow_plans",
         "research_workflow_outcomes",
@@ -54,6 +56,26 @@ def test_orchestration_artifacts_have_typed_postgres_projections(
             "requested_by": "operator_1",
             "actor": "operator",
             "status": "approved",
+        },
+    )
+    store.save_artifact(
+        artifact_type=EXPERIMENT_PROTOCOL_PROPOSAL,
+        artifact_id="proposal_1",
+        domain_owner=EXPERIMENTS_DOMAIN_OWNER,
+        producer_tool="research_create_experiment_protocol_proposal",
+        requested_by="composition_1",
+        actor="Experiment Design Agent",
+        status="proposed",
+        payload={
+            "artifact_type": EXPERIMENT_PROTOCOL_PROPOSAL,
+            "proposal_id": "proposal_1",
+            "protocol": {"protocol_id": "protocol_1"},
+            "objective_id": "objective_1",
+            "task_id": "design_task_1",
+            "design_digest": "design_digest_1",
+            "requested_by": "composition_1",
+            "proposed_by": "Experiment Design Agent",
+            "status": "proposed",
         },
     )
     store.save_artifact(
@@ -121,6 +143,14 @@ def test_orchestration_artifacts_have_typed_postgres_projections(
         """,
         ["plan_1"],
     ).fetchone()
+    proposal = store.connection().execute(
+        """
+        SELECT protocol_id, objective_id, task_id, design_digest, status
+        FROM research_experiment_protocol_proposals
+        WHERE proposal_id = %s
+        """,
+        ["proposal_1"],
+    ).fetchone()
     outcome = store.connection().execute(
         """
         SELECT workflow_id, plan_id, status, review_ref_count
@@ -143,6 +173,13 @@ def test_orchestration_artifacts_have_typed_postgres_projections(
         "protocol_id": "protocol_1",
         "template_id": "supplied_implementation_to_evidence",
         "status": "ready",
+    }
+    assert proposal == {
+        "protocol_id": "protocol_1",
+        "objective_id": "objective_1",
+        "task_id": "design_task_1",
+        "design_digest": "design_digest_1",
+        "status": "proposed",
     }
     assert outcome == {
         "workflow_id": "workflow_1",

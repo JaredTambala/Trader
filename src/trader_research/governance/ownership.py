@@ -61,6 +61,10 @@ DATA_AGENT_TOOLS = (
     "data_create_research_snapshot",
 )
 
+EXPERIMENT_DESIGN_AGENT_TOOLS = (
+    "research_create_experiment_protocol_proposal",
+)
+
 QUANTITATIVE_METHODS_TOOLS = (
     "knowledge_register_source",
     "knowledge_ingest_documents",
@@ -213,6 +217,19 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
             "load_result_result.json",
         ),
         initial_tools=(*READ_ONLY_SUPPORT_TOOLS, *DATA_AGENT_TOOLS),
+    ),
+    AgentDefinition(
+        key="experiment_design_agent",
+        display_name="Experiment Design Agent",
+        mission=(
+            "Propose fair, reproducible, approval-aware experiment protocols "
+            "without executing or approving them."
+        ),
+        produced_artifacts=("experiment_protocol_proposal.json",),
+        initial_tools=(
+            *READ_ONLY_SUPPORT_TOOLS,
+            *EXPERIMENT_DESIGN_AGENT_TOOLS,
+        ),
     ),
     AgentDefinition(
         key="quant_methods_agent",
@@ -421,6 +438,10 @@ _AGENT_ALIASES: Mapping[str, str] = {
 
 TOOL_STEWARD_BY_NAME: Mapping[str, str] = {
     **{tool: "Data Agent" for tool in DATA_AGENT_TOOLS},
+    **{
+        tool: "Experiment Design Agent"
+        for tool in EXPERIMENT_DESIGN_AGENT_TOOLS
+    },
     **{tool: "Quantitative Methods Agent" for tool in QUANTITATIVE_METHODS_TOOLS},
     **{tool: "Quantitative Methods Agent" for tool in QUANTITATIVE_METHODS_COMPATIBILITY_TOOLS},
     **{tool: "ML Agent" for tool in ML_AGENT_TOOLS},

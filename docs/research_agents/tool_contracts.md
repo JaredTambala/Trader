@@ -161,12 +161,14 @@ slot.
 
 ## Orchestration Contracts
 
-The declaration contracts add no MCP tools. They define immutable JSON-safe values used before and after deterministic
-tool calls:
+The declaration contracts are transport-neutral. They define immutable JSON-safe values used before and after
+deterministic tool calls:
 
 | Contract | Purpose | Fail-closed checks |
 | --- | --- | --- |
 | `ResearchObjective` | Operator outcome, success criteria, constraints and supplied refs. | Requires stable identity plus explicit requester and actor. |
+| `ExperimentDesignRequest` | Complete structured strategy/risk, Data, cost, runtime, robustness, evaluation and approval-routing choices. | Rejects missing or unknown fields, implicit costs, unbounded runs and invalid existing protocol shapes before any tool call. |
+| `ExperimentProtocolProposal` | Immutable Experiments-owned proposal evidence over exact canonical inputs. | Pins task/objective/design identity, payload-hashed refs and one requested approval per material assumption; it can never carry an approved lifecycle. |
 | `ExperimentProtocol` | Fair test design over supplied implementation and Data requirements. | Approved means every material assumption has an explicit approved decision; optimisation requires selection plus sealed holdout. |
 | `CapabilityDefinition` | Versioned declarative action metadata. | Restricts side effects to research-safe classes and declares exact artifact slots, policy gates and configuration keys. |
 | `Prerequisite` | Required artifact, capability, policy or approval condition. | Resolution evidence and blockers must agree with status. |
@@ -182,9 +184,11 @@ Existing MCP `ToolEnvelope` remains the transport result. The workflow executor 
 ### Research Coordination Decision Contract
 
 `CoordinationDecision` is the complete public output of one Research Coordinator policy pass. Its action is one of
-`execute_registered_workflow`, `request_prerequisite`, `request_approval`, `report_terminal_state` or `block`.
-Executable decisions pin objective ID, protocol ID, registered template ID/version and deterministic plan ID. Other
-actions carry only typed `Prerequisite` values, canonical outcome identity or bounded `ResearchIssue` blockers.
+`execute_registered_specialist_task`, `execute_registered_workflow`, `request_prerequisite`, `request_approval`,
+`report_terminal_state` or `block`. Specialist execution pins task ID, authority, task digest and route version.
+Workflow execution pins objective ID, protocol ID, registered template ID/version and deterministic plan ID. Other
+actions carry only typed `Prerequisite` values, canonical outcome identity or bounded `ResearchIssue` blockers. Fields
+for these actions are mutually exclusive.
 
 The decision schema deliberately has no tool name, tool arguments, symbols, windows, costs, search dimensions or
 protocol payload. Unknown fields are rejected during parsing. Template identity is resolved only through the code-owned
@@ -221,6 +225,45 @@ cannot provide tool names or argument bodies. Snapshot handoffs are accepted onl
 the injected canonical store with matching Data ownership, producer, requester, actor, captured status, request scope
 and dataset identity. Checkpoints contain the refs and payload hashes, not the resolved payloads or MCP envelope.
 
+The production Experiment Design specialist adds `ExperimentDesignRequest` and a task factory that accepts only an
+approved objective, complete design, exact canonical input refs, requester/actor and explicit local-mutation
+permission. Its one action calls `research_create_experiment_protocol_proposal`. The service resolves and hashes every
+declared ref, validates implementation kind/status, Data requirement/manifest/quality agreement and optional
+optimisation validation, then persists only a proposed record. Exact replay returns the same record; conflicting
+content fails without overwrite. The handler reloads the proposal and returns only a canonical digest-pinned handoff.
+
+`apply_experiment_protocol_approvals` is a pure operator-boundary helper. It requires one terminal decision for every
+requested approval and preserves approval ID, subject, assumption, requester and requested approver. All approvals
+produce the matching approved protocol; any rejection produces a blocked protocol. It performs no persistence, and a
+change to any design field requires a new proposal identity.
+
+`SpecialistRouteCatalog` is a separate code-owned boundary over complete specialist graph runners. Public route
+metadata contains only authority, immutable route version and supported output artifact types; those types must belong
+to that authority. Graph builders, MCP clients, stores, checkpointers and runtime configuration remain injected code.
+Unknown or unavailable authorities, unsupported outputs and multiple matching versions fail before graph execution.
+
+### Research Composition Contracts
+
+`ResearchCompositionRequest` fixes one approved objective, stable composition identity, requester/actor and an ordered
+bounded set of complete caller-built `SpecialistTask` values. Every task must carry the exact objective, composition ID
+as requester and composition actor. The runner never derives a task, symbols, date windows, side-effect permission or
+tool arguments from objective prose.
+
+`AcceptedSpecialistResult` is the checkpoint-safe receipt created only after a completed result is validated against the
+original task and selected route. It contains task/authority/route/result digests, canonical artifact refs and exact
+task-slot URI bindings. Composition resolves every handoff from the canonical store and rechecks artifact type,
+authority, producer, requester, actor, status and payload digest before creating that receipt. An approved protocol must
+use the accepted Data manifest and quality refs and, when a proposal was accepted, match its protocol ID, objective,
+design digest and canonical inputs. A different dataset or design cannot silently replace completed specialist work.
+
+Composition state contains only request/objective/task/proposal/protocol digests, proposal ref, accepted receipts, the
+latest bounded result summary, Coordinator decision, child workflow/outcome identity, transition counters and
+structured issues. It excludes
+complete tasks, protocols, artifacts, raw MCP responses, tool arguments, prompts, credentials and model reasoning.
+Composition, specialist and workflow checkpoints use separate thread IDs. Exact terminal replay is a no-op; reused IDs
+with changed request or protocol content, ambiguous routes, invalid results, canonical drift or exhausted transition
+budgets fail closed. This is a Python library contract and adds no MCP tool.
+
 ### Operational Resume Contract
 
 The resume shell uses `WorkflowStepResult` as the only resume input to a checkpointed step. It validates the
@@ -255,12 +298,18 @@ their refs. Pinned input drift, unavailable refs, policy blockers and invalid ca
 are capped at three attempts. `WorkflowExecutionInterrupted` is a deliberate operator/test pause that preserves the
 checkpoint; it is not a terminal outcome.
 
+On re-entry, the executor reloads and fully revalidates any already persisted objective/protocol/plan registration and
+terminal outcome before reusing it. Matching records suppress duplicate persistence calls; content, authority,
+producer, requester, actor or status drift raises `WorkflowExecutionError`. Accepted workflow steps remain governed by
+their independent checkpoint digests.
+
 The execution boundary deliberately transforms and stores different representations at different stages:
 
 | Value | Produced by | Contents | Persistence authority |
 | --- | --- | --- | --- |
 | `ToolInvocation` | Fixed-template compiler | Closed tool name, invocation mode, literal arguments and artifact-slot bindings. | Embedded in the canonical `WorkflowPlan`; never an arbitrary callable or request body. |
 | `ToolEnvelope` | MCP adapter | Transport success/error state, command, allowlist owner, side effect, bounded data, issues and artifact refs. | Ephemeral transport value; not checkpointed as-is. |
+| `ExperimentProtocolProposal` | Experiment Design service before approval | Proposed protocol, requested approvals, task/objective/design digests and digest-pinned canonical inputs. | Canonical Experiments-owned artifact, retained unchanged after approval. |
 | `WorkflowStepResult` | Workflow executor after envelope/ref validation | Attempt identity, status, retry class, canonical refs and bounded issues. | Bounded summary in the workflow checkpointer; not a canonical research claim. |
 | `WorkflowOutcome` | Workflow executor after terminal checkpoint state | Terminal status, produced/review refs, blockers, errors and permitted next actions. | Canonical Orchestration-domain artifact written through MCP. |
 
@@ -273,6 +322,7 @@ executor made the research-design decision.
 | MCP tool | Required input | Canonical output |
 | --- | --- | --- |
 | `data_create_research_snapshot` | One exact Data scope plus `requested_by` and `actor`. | Matching Data-owned `dataset_manifest` and `data_quality_report` records. |
+| `research_create_experiment_protocol_proposal` | Approved objective, complete design request, exact task/requester identity and registered Experiment Design actor. | Immutable Experiments-owned `experiment_protocol_proposal` ref with requested approvals. |
 | `research_register_experiment_workflow` | Approved objective, approved matching protocol, ready matching plan, requester and actor. | Orchestration objective/plan refs plus Experiments-owned protocol ref. |
 | `research_record_workflow_outcome` | Terminal `WorkflowOutcome`, requester and actor; its ready plan and matching objective/protocol must resolve, every produced/review ref must resolve under its declared authority and pinned hash, and review refs must be a subset of produced refs. | Orchestration-owned `workflow_outcome` ref. |
 
@@ -359,6 +409,7 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | `research_get_optimizer_runtime`, `research_create_parameter_optimization_plan`, `research_run_parameter_optimization`, `research_get_parameter_optimization_results` | Quant Research Supervisor Agent | engine health and canonical plan/run/trial ledger |
 | `research_run_parameter_optimization_variants` | Quant Research Supervisor Agent | Adversarial-requested immutable child runs |
 | `research_project_experiment_tracking` | Quant Research Supervisor Agent | non-authoritative tracking projection report |
+| `research_create_experiment_protocol_proposal` | Experiment Design Agent | immutable proposed protocol and requested approvals |
 | `research_register_experiment_workflow` | Quant Research Supervisor Agent | approved objective/protocol and ready plan refs |
 | `research_record_workflow_outcome` | Quant Research Supervisor Agent | terminal workflow outcome ref |
 | `research_create_walk_forward_plan`, `research_run_walk_forward_optimization`, `research_get_walk_forward_results` | Quant Research Supervisor Agent | deferred walk-forward plan/run/result artifacts |

@@ -134,5 +134,6 @@ def test_default_projection_registry_is_partitioned_by_context() -> None:
     assert "parameter_optimization_robustness_report" in projected
     assert "research_objective" in projected
     assert "experiment_protocol" in projected
+    assert "experiment_protocol_proposal" in projected
     assert "workflow_plan" in projected
     assert "workflow_outcome" in projected

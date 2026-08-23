@@ -1,8 +1,10 @@
-"""Expose provider-neutral contracts for bounded research orchestration.
+"""Expose bounded orchestration contracts and deterministic persistence services.
 
-The facade includes objectives, approved protocols, capability snapshots,
-workflow DAGs, approvals, results, and terminal outcomes. It deliberately omits
-tool execution, checkpoint storage, agent policy, and specialist implementations.
+The facade includes objectives, structured design requests, immutable protocol
+proposals, approved protocols, capability snapshots, workflow DAGs, approvals,
+results, terminal outcomes, and the services that persist their canonical
+records. It deliberately omits MCP transport, checkpoint storage, agent policy,
+and specialist implementations.
 """
 
 from .enums import (
@@ -39,6 +41,15 @@ from .protocols import (
     RobustnessRequirement,
     TunableDimension,
 )
+from .proposals import (
+    ExperimentDesignRequest,
+    ExperimentProtocolProposal,
+    apply_experiment_protocol_approvals,
+    build_experiment_protocol_proposal,
+    experiment_design_input_refs,
+    experiment_protocol_design_digest,
+    replace_experiment_design_refs,
+)
 from .workflows import (
     ArtifactSlot,
     CapabilityDefinition,
@@ -49,8 +60,10 @@ from .workflows import (
     WorkflowStepResult,
 )
 from .services import (
+    RESEARCH_CREATE_EXPERIMENT_PROTOCOL_PROPOSAL,
     RESEARCH_RECORD_WORKFLOW_OUTCOME,
     RESEARCH_REGISTER_EXPERIMENT_WORKFLOW,
+    create_experiment_protocol_proposal,
     record_workflow_outcome,
     register_experiment_workflow,
 )
@@ -65,7 +78,9 @@ __all__ = [
     "CapabilitySideEffect",
     "CostAssumption",
     "DatasetRole",
+    "ExperimentDesignRequest",
     "ExperimentProtocol",
+    "ExperimentProtocolProposal",
     "ExperimentProtocolStatus",
     "InitialPortfolio",
     "InitialPosition",
@@ -93,8 +108,15 @@ __all__ = [
     "WorkflowStep",
     "WorkflowStepResult",
     "WorkflowStepStatus",
+    "RESEARCH_CREATE_EXPERIMENT_PROTOCOL_PROPOSAL",
     "RESEARCH_RECORD_WORKFLOW_OUTCOME",
     "RESEARCH_REGISTER_EXPERIMENT_WORKFLOW",
+    "apply_experiment_protocol_approvals",
+    "build_experiment_protocol_proposal",
+    "create_experiment_protocol_proposal",
+    "experiment_design_input_refs",
+    "experiment_protocol_design_digest",
     "record_workflow_outcome",
+    "replace_experiment_design_refs",
     "register_experiment_workflow",
 ]

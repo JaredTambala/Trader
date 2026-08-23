@@ -34,6 +34,11 @@ _ROLE_POLICIES = {
     "data_agent": (
         "Produce bounded dataset manifests, data-quality reports, and explicit load evidence without strategy verdicts."
     ),
+    "experiment_design_agent": (
+        "Propose explicit reproducible experiment protocols and expose every "
+        "material assumption for operator approval without executing, approving, "
+        "or revising experiments after results."
+    ),
     "quant_methods_agent": (
         "Produce source-backed deterministic method, diagnostic, and statistical-inference artifacts without fetching "
         "market data or making verdicts."

@@ -21,9 +21,14 @@ from psycopg.types.json import Jsonb
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+LEGACY_VERIFICATION_PROFILE = "controlled_optimization_v6"
+ORCHESTRATION_VERIFICATION_PROFILE = "controlled_orchestration_v1"
+VERIFICATION_PROFILE_ENV = "TRADER_VERIFICATION_PROFILE"
 FREEZE_TAG = "verification-57i-freeze-v6"
+ORCHESTRATION_FREEZE_TAG = "verification-orchestration-v1-freeze"
 VERIFICATION_MARKER_ID = "trader_verification"
 VERIFICATION_SCHEMA = "verification_control"
+DEFAULT_CHECKPOINT_SCHEMA = "orchestration_checkpoint"
 TEST_DATABASE_SUFFIXES = ("_test", "_testing")
 VERIFICATION_MODE_ENV = "TRADER_VERIFICATION_MODE"
 RETAIN_EVIDENCE_PHASE_ENV = "TRADER_VERIFICATION_RETAIN_PHASE"
@@ -70,6 +75,74 @@ _PHASE_ENABLED_MUTATION_GATES = {
     ),
 }
 _RETAINABLE_EVIDENCE_PHASES = frozenset({"57M", "57N", "57R"})
+
+
+@dataclass(frozen=True)
+class QualificationProfile:
+    """Code-owned contract for one controlled qualification campaign.
+
+    Attributes:
+        name: Stable profile identifier recorded with evidence.
+        freeze_tag: Immutable Git tag containing the product under test.
+        phases: Closed set of accepted evidence record keys.
+        enabled_mutation_gates: Exact enabled mutation gates for each phase.
+        retainable_phases: Phases whose disposable evidence may survive teardown.
+        requires_checkpoint_role: Whether an isolated checkpoint role is mandatory.
+    """
+
+    name: str
+    freeze_tag: str
+    phases: frozenset[str]
+    enabled_mutation_gates: Mapping[str, frozenset[str]]
+    retainable_phases: frozenset[str]
+    requires_checkpoint_role: bool = False
+
+
+_LEGACY_PROFILE = QualificationProfile(
+    name=LEGACY_VERIFICATION_PROFILE,
+    freeze_tag=FREEZE_TAG,
+    phases=frozenset(f"57{letter}" for letter in "ABCDEFGHIJKLMNOPQRS"),
+    enabled_mutation_gates=_PHASE_ENABLED_MUTATION_GATES,
+    retainable_phases=_RETAINABLE_EVIDENCE_PHASES,
+)
+_ORCHESTRATION_PHASES = frozenset(
+    {
+        "ORCHESTRATION_RUNTIME",
+        "ORCHESTRATION_CORE",
+        "ORCHESTRATION_E2E",
+        "ORCHESTRATION_RECOVERY",
+        "ORCHESTRATION_POLICY",
+        "ORCHESTRATION_SCALE",
+        "ORCHESTRATION_ACCEPTANCE",
+    }
+)
+_ORCHESTRATION_EXECUTION_GATES = frozenset(
+    {
+        "TRADER_MCP_ALLOW_BACKTESTS",
+        "TRADER_MCP_ALLOW_OPTIMIZATION",
+    }
+)
+_ORCHESTRATION_PROFILE = QualificationProfile(
+    name=ORCHESTRATION_VERIFICATION_PROFILE,
+    freeze_tag=ORCHESTRATION_FREEZE_TAG,
+    phases=_ORCHESTRATION_PHASES,
+    enabled_mutation_gates={
+        "ORCHESTRATION_E2E": _ORCHESTRATION_EXECUTION_GATES,
+        "ORCHESTRATION_RECOVERY": frozenset({"TRADER_MCP_ALLOW_BACKTESTS"}),
+        "ORCHESTRATION_SCALE": frozenset({"TRADER_MCP_ALLOW_BACKTESTS"}),
+    },
+    retainable_phases=frozenset(
+        {
+            "ORCHESTRATION_E2E",
+            "ORCHESTRATION_RECOVERY",
+            "ORCHESTRATION_SCALE",
+        }
+    ),
+    requires_checkpoint_role=True,
+)
+_QUALIFICATION_PROFILES = {
+    profile.name: profile for profile in (_LEGACY_PROFILE, _ORCHESTRATION_PROFILE)
+}
 
 RUNTIME_TABLES = (
     "runs",
@@ -228,6 +301,37 @@ def verification_mode_enabled(environ: Mapping[str, str] | None = None) -> bool:
     )
 
 
+def load_qualification_profile(
+    environ: Mapping[str, str] | None = None,
+) -> QualificationProfile:
+    """Return the selected closed qualification profile.
+
+    The historical optimisation profile remains the default so existing controlled
+    runbooks do not silently change behavior. New campaigns must opt in explicitly.
+
+    Args:
+        environ: Optional environment mapping used instead of ``os.environ``.
+
+    Returns:
+        The immutable code-owned qualification profile.
+
+    Raises:
+        VerificationConfigurationError: If the requested profile is unknown.
+    """
+    values = os.environ if environ is None else environ
+    name = (
+        str(values.get(VERIFICATION_PROFILE_ENV) or "").strip()
+        or LEGACY_VERIFICATION_PROFILE
+    )
+    profile = _QUALIFICATION_PROFILES.get(name)
+    if profile is None:
+        raise VerificationConfigurationError(
+            f"{VERIFICATION_PROFILE_ENV} must be one of "
+            f"{sorted(_QUALIFICATION_PROFILES)}."
+        )
+    return profile
+
+
 def load_test_settings(
     environ: Mapping[str, str] | None = None,
     *,
@@ -265,6 +369,70 @@ def load_optuna_test_settings(
     return settings
 
 
+def load_checkpoint_test_settings(
+    environ: Mapping[str, str] | None = None,
+) -> PostgresConnectionSettings:
+    """Load the isolated orchestration-checkpoint role settings.
+
+    Args:
+        environ: Optional environment mapping used instead of ``os.environ``.
+
+    Returns:
+        Normalized settings for the checkpoint-only role.
+
+    Raises:
+        VerificationConfigurationError: If settings are incomplete or do not target
+            the configured disposable product-test database.
+    """
+    values = os.environ if environ is None else environ
+    settings = _load_prefixed_settings("PG_CHECKPOINT_TEST", values, required=True)
+    if settings is None:  # pragma: no cover - required=True fails first
+        raise VerificationConfigurationError(
+            "PG_CHECKPOINT_TEST settings are required."
+        )
+    test = _load_prefixed_settings("PG_TEST", values, required=True)
+    if test is None:  # pragma: no cover - required=True fails first
+        raise VerificationConfigurationError("PG_TEST settings are required.")
+    _assert_role_targets_test_database(
+        test,
+        settings,
+        role_prefix="PG_CHECKPOINT_TEST",
+    )
+    _validate_identifier(settings.user, "PG_CHECKPOINT_TEST_USER")
+    if settings.user == test.user:
+        raise VerificationConfigurationError(
+            "PG_CHECKPOINT_TEST_USER must differ from PG_TEST_USER."
+        )
+    return settings
+
+
+def checkpoint_test_conninfo(
+    environ: Mapping[str, str] | None = None,
+) -> str:
+    """Return checkpoint-role conninfo pinned to its isolated schema.
+
+    Args:
+        environ: Optional environment mapping used instead of ``os.environ``.
+
+    Returns:
+        Escaped libpq conninfo suitable for the LangGraph Postgres saver.
+
+    Raises:
+        VerificationConfigurationError: If checkpoint settings or the schema name
+            are incomplete or unsafe.
+    """
+    values = os.environ if environ is None else environ
+    settings = load_checkpoint_test_settings(values)
+    schema = str(
+        values.get("TRADER_CHECKPOINT_SCHEMA", DEFAULT_CHECKPOINT_SCHEMA)
+    ).strip()
+    _validate_identifier(schema, "TRADER_CHECKPOINT_SCHEMA")
+    return make_conninfo(
+        **settings.connect_kwargs(),
+        options=f"-csearch_path={schema}",
+    )
+
+
 def settings_from_mapping(settings: Mapping[str, object]) -> PostgresConnectionSettings:
     """Normalize fixture mapping values into connection settings."""
     return PostgresConnectionSettings(
@@ -276,14 +444,18 @@ def settings_from_mapping(settings: Mapping[str, object]) -> PostgresConnectionS
     )
 
 
-def resolve_freeze_revision() -> str:
-    """Resolve the immutable 57I tag to its commit SHA."""
-    return _git("rev-parse", f"{FREEZE_TAG}^{{}}")
+def resolve_freeze_revision(
+    profile: QualificationProfile | None = None,
+) -> str:
+    """Resolve the selected profile's immutable freeze tag to its commit SHA."""
+    selected = profile or load_qualification_profile()
+    return _git("rev-parse", f"{selected.freeze_tag}^{{}}")
 
 
 def assert_frozen_product() -> Mapping[str, str]:
-    """Require a clean harness revision with product bytes unchanged from 57I."""
-    freeze_revision = resolve_freeze_revision()
+    """Require a clean harness revision with frozen product bytes unchanged."""
+    profile = load_qualification_profile()
+    freeze_revision = resolve_freeze_revision(profile)
     harness_revision = _git("rev-parse", "HEAD")
     status = _git("status", "--porcelain", "--untracked-files=all", allow_empty=True)
     if status:
@@ -306,10 +478,12 @@ def assert_frozen_product() -> Mapping[str, str]:
     )
     if result.returncode != 0:
         raise VerificationConfigurationError(
-            f"Product paths differ from {FREEZE_TAG}; repeat 57I before continuing."
+            f"Product paths differ from {profile.freeze_tag}; create a new freeze "
+            "instead of waiving product drift."
         )
     return {
-        "freeze_tag": FREEZE_TAG,
+        "qualification_profile": profile.name,
+        "freeze_tag": profile.freeze_tag,
         "freeze_revision": freeze_revision,
         "harness_revision": harness_revision,
     }
@@ -387,8 +561,10 @@ def assert_connection_targets_verification_database(
             "Verification marker database identity does not match."
         )
     if marker_freeze != expected_freeze:
+        profile = load_qualification_profile()
         raise VerificationConfigurationError(
-            f"Verification marker freeze revision does not match {FREEZE_TAG}."
+            "Verification marker freeze revision does not match "
+            f"{profile.freeze_tag}."
         )
     if lc_collate != marker_locale or lc_ctype != marker_locale:
         raise VerificationConfigurationError(
@@ -406,6 +582,7 @@ def assert_connection_targets_verification_database(
 
 def build_runtime_manifest(*, phase: str | None = None) -> Mapping[str, Any]:
     """Build a credential-free manifest for the current verification harness."""
+    profile = load_qualification_profile()
     if phase is not None:
         _validate_phase(phase)
     revisions = assert_frozen_product()
@@ -422,9 +599,16 @@ def build_runtime_manifest(*, phase: str | None = None) -> Mapping[str, Any]:
         raise VerificationConfigurationError(
             "Operator and Optuna settings are required."
         )
-    if len({test_settings.user, operator_settings.user, optuna_settings.user}) != 3:
+    role_names = {test_settings.user, operator_settings.user, optuna_settings.user}
+    checkpoint_settings = None
+    if profile.requires_checkpoint_role:
+        checkpoint_settings = load_checkpoint_test_settings()
+        role_names.add(checkpoint_settings.user)
+    expected_role_count = 4 if profile.requires_checkpoint_role else 3
+    if len(role_names) != expected_role_count:
         raise VerificationConfigurationError(
-            "Test, operator, and Optuna roles must be distinct."
+            "Product-test, operator, optional-provider, and required checkpoint "
+            "roles must be distinct."
         )
     _assert_optuna_targets_test_database(test_settings, optuna_settings)
     identity = assert_verification_database(
@@ -446,6 +630,7 @@ def build_runtime_manifest(*, phase: str | None = None) -> Mapping[str, Any]:
         ).fetchone()
     (server_version,) = _row_values(server, "server_version")
     manifest = {
+        "qualification_profile": profile.name,
         "phase": phase,
         "freeze": dict(revisions),
         "dependency_lock_sha256": _sha256_file(REPO_ROOT / "uv.lock"),
@@ -475,12 +660,20 @@ def build_runtime_manifest(*, phase: str | None = None) -> Mapping[str, Any]:
         "python_hash_seed": os.environ.get("PYTHONHASHSEED", ""),
         "process_timezone": os.environ.get("TZ", ""),
     }
+    if checkpoint_settings is not None:
+        checkpoint_schema = os.environ.get(
+            "TRADER_CHECKPOINT_SCHEMA", DEFAULT_CHECKPOINT_SCHEMA
+        )
+        _validate_identifier(checkpoint_schema, "TRADER_CHECKPOINT_SCHEMA")
+        manifest["checkpoint_database"] = checkpoint_settings.public_dict()
+        manifest["checkpoint_schema"] = checkpoint_schema
     manifest["configuration_digest"] = _stable_digest(manifest)
     return manifest
 
 
 def provision_verification_runtime(*, reset: bool) -> Mapping[str, Any]:
     """Provision isolated roles, database, schemas, and verification control tables."""
+    profile = load_qualification_profile()
     revisions = assert_frozen_product()
     admin = _required_settings("PG_ADMIN")
     operator = _required_settings("PG_OPERATOR")
@@ -490,21 +683,35 @@ def provision_verification_runtime(*, reset: bool) -> Mapping[str, Any]:
     _validate_test_identity(test, os.environ)
     _validate_identifier(optuna.user, "PG_OPTUNA_TEST_USER")
     _assert_optuna_targets_test_database(test, optuna)
+    checkpoint = (
+        load_checkpoint_test_settings() if profile.requires_checkpoint_role else None
+    )
     schema_name = os.environ.get("TRADER_OPTUNA_SCHEMA", "trader_optuna_verification")
     _validate_identifier(schema_name, "TRADER_OPTUNA_SCHEMA")
+    checkpoint_schema = os.environ.get(
+        "TRADER_CHECKPOINT_SCHEMA", DEFAULT_CHECKPOINT_SCHEMA
+    )
+    _validate_identifier(checkpoint_schema, "TRADER_CHECKPOINT_SCHEMA")
     if test.dbname in {admin.dbname, operator.dbname}:
         raise VerificationConfigurationError(
             "PG_TEST_DB must differ from both PG_ADMIN_DB and PG_OPERATOR_DB."
         )
-    if len({admin.user, operator.user, test.user, optuna.user}) < 3:
+    isolated_roles = {operator.user, test.user, optuna.user}
+    if checkpoint is not None:
+        isolated_roles.add(checkpoint.user)
+    expected_isolated_roles = 4 if checkpoint is not None else 3
+    if len(isolated_roles) != expected_isolated_roles:
         raise VerificationConfigurationError(
-            "PG_TEST_USER and PG_OPTUNA_TEST_USER must be isolated from the operator role."
+            "Verification product, operator, optional-provider, and checkpoint roles "
+            "must be isolated."
         )
     freeze_revision = revisions["freeze_revision"]
 
     with psycopg.connect(admin.conninfo(), autocommit=True) as connection:
         _ensure_role(connection, test)
         _ensure_role(connection, optuna)
+        if checkpoint is not None:
+            _ensure_role(connection, checkpoint)
         exists = connection.execute(
             "SELECT 1 FROM pg_database WHERE datname = %s", [test.dbname]
         ).fetchone()
@@ -553,6 +760,12 @@ def provision_verification_runtime(*, reset: bool) -> Mapping[str, Any]:
                 sql.Identifier(test.dbname), sql.Identifier(optuna.user)
             )
         )
+        if checkpoint is not None:
+            connection.execute(
+                sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
+                    sql.Identifier(test.dbname), sql.Identifier(checkpoint.user)
+                )
+            )
 
     admin_test = PostgresConnectionSettings(
         host=admin.host,
@@ -589,6 +802,47 @@ def provision_verification_runtime(*, reset: bool) -> Mapping[str, Any]:
                 sql.Identifier(schema_name), sql.Identifier(optuna.user)
             )
         )
+        if checkpoint is not None:
+            connection.execute(
+                sql.SQL("CREATE SCHEMA IF NOT EXISTS {} AUTHORIZATION {}").format(
+                    sql.Identifier(checkpoint_schema), sql.Identifier(checkpoint.user)
+                )
+            )
+            checkpoint_owner = connection.execute(
+                "SELECT r.rolname FROM pg_namespace AS n "
+                "JOIN pg_roles AS r ON r.oid = n.nspowner WHERE n.nspname = %s",
+                [checkpoint_schema],
+            ).fetchone()
+            if checkpoint_owner is None or checkpoint_owner[0] != checkpoint.user:
+                raise VerificationConfigurationError(
+                    "checkpoint schema must be owned by PG_CHECKPOINT_TEST_USER; "
+                    "run provision --reset"
+                )
+            connection.execute(
+                sql.SQL("REVOKE ALL ON SCHEMA {} FROM PUBLIC").format(
+                    sql.Identifier(checkpoint_schema)
+                )
+            )
+            connection.execute(
+                sql.SQL("GRANT USAGE, CREATE ON SCHEMA {} TO {}").format(
+                    sql.Identifier(checkpoint_schema), sql.Identifier(checkpoint.user)
+                )
+            )
+            connection.execute(
+                sql.SQL("GRANT USAGE ON SCHEMA {} TO {}").format(
+                    sql.Identifier(checkpoint_schema), sql.Identifier(test.user)
+                )
+            )
+            connection.execute(
+                sql.SQL(
+                    "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA {} "
+                    "GRANT SELECT ON TABLES TO {}"
+                ).format(
+                    sql.Identifier(checkpoint.user),
+                    sql.Identifier(checkpoint_schema),
+                    sql.Identifier(test.user),
+                )
+            )
 
     _initialize_product_schemas(test)
     with psycopg.connect(test.conninfo(), autocommit=True) as connection:
@@ -621,14 +875,19 @@ def provision_verification_runtime(*, reset: bool) -> Mapping[str, Any]:
             ],
         )
     identity = assert_verification_database(test, freeze_revision=freeze_revision)
-    return {
+    result = {
         "status": "provisioned",
+        "qualification_profile": profile.name,
         "database": identity["database_name"],
         "role": identity["role_name"],
         "freeze_revision": freeze_revision,
         "optuna_schema": schema_name,
         "optuna_role": optuna.user,
     }
+    if checkpoint is not None:
+        result["checkpoint_schema"] = checkpoint_schema
+        result["checkpoint_role"] = checkpoint.user
+    return result
 
 
 def begin_phase(phase: str) -> Mapping[str, Any]:
@@ -941,6 +1200,69 @@ def _ensure_control_schema(connection: psycopg.Connection[Any]) -> None:
         )
         """
     )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS verification_control.orchestration_call_ledger (
+            qualification_profile TEXT NOT NULL,
+            freeze_revision TEXT NOT NULL,
+            phase TEXT NOT NULL,
+            composition_id TEXT NOT NULL,
+            sequence INTEGER NOT NULL CHECK (sequence > 0),
+            command TEXT NOT NULL,
+            argument_digest TEXT NOT NULL,
+            result_identity JSONB NOT NULL,
+            retry_disposition TEXT NOT NULL CHECK (
+                retry_disposition IN (
+                    'accepted', 'identical_retry', 'rejected', 'response_lost'
+                )
+            ),
+            recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            PRIMARY KEY (
+                qualification_profile, freeze_revision, phase,
+                composition_id, sequence
+            )
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS verification_control.orchestration_scale_results (
+            qualification_profile TEXT NOT NULL,
+            freeze_revision TEXT NOT NULL,
+            phase TEXT NOT NULL,
+            profile TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('passed', 'blocked')),
+            task_count INTEGER NOT NULL CHECK (task_count >= 0),
+            transition_count INTEGER NOT NULL CHECK (transition_count >= 0),
+            tool_call_count INTEGER NOT NULL CHECK (tool_call_count >= 0),
+            checkpoint_bytes BIGINT NOT NULL CHECK (checkpoint_bytes >= 0),
+            artifact_count INTEGER NOT NULL CHECK (artifact_count >= 0),
+            database_bytes BIGINT NOT NULL CHECK (database_bytes >= 0),
+            wall_seconds DOUBLE PRECISION NOT NULL CHECK (wall_seconds >= 0),
+            payload JSONB NOT NULL,
+            recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            PRIMARY KEY (qualification_profile, freeze_revision, phase, profile)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS verification_control.orchestration_acceptance_records (
+            qualification_profile TEXT NOT NULL,
+            freeze_revision TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('passed', 'blocked')),
+            qualified_surface JSONB NOT NULL,
+            exclusions JSONB NOT NULL,
+            mandatory_phases JSONB NOT NULL,
+            environment JSONB NOT NULL,
+            evidence_inventory JSONB NOT NULL,
+            commands JSONB NOT NULL,
+            residual_risks JSONB NOT NULL,
+            recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            PRIMARY KEY (qualification_profile, freeze_revision)
+        )
+        """
+    )
 
 
 def _save_fingerprint(
@@ -999,13 +1321,37 @@ def _required_environment_value(name: str) -> str:
 def _assert_optuna_targets_test_database(
     test: PostgresConnectionSettings, optuna: PostgresConnectionSettings
 ) -> None:
-    if (optuna.host, optuna.port, optuna.dbname) != (
+    _assert_role_targets_test_database(
+        test,
+        optuna,
+        role_prefix="PG_OPTUNA_TEST",
+    )
+
+
+def _assert_role_targets_test_database(
+    test: PostgresConnectionSettings,
+    role: PostgresConnectionSettings,
+    *,
+    role_prefix: str,
+) -> None:
+    """Require an isolated role to target the disposable product-test database.
+
+    Args:
+        test: Product-test database settings.
+        role: Isolated role settings to compare.
+        role_prefix: Environment prefix used in actionable errors.
+
+    Raises:
+        VerificationConfigurationError: If host, port, or database differ.
+    """
+    if (role.host, role.port, role.dbname) != (
         test.host,
         test.port,
         test.dbname,
     ):
         raise VerificationConfigurationError(
-            "PG_OPTUNA_TEST settings must target PG_TEST_HOST/PG_TEST_PORT/PG_TEST_DB."
+            f"{role_prefix} settings must target "
+            "PG_TEST_HOST/PG_TEST_PORT/PG_TEST_DB."
         )
 
 
@@ -1077,9 +1423,10 @@ def _validate_identifier(value: str, field_name: str) -> None:
 
 
 def _validate_phase(phase: str) -> None:
-    if not re.fullmatch(r"57[A-S]", phase):
+    profile = load_qualification_profile()
+    if phase not in profile.phases:
         raise VerificationConfigurationError(
-            "phase must be a task identifier from 57A through 57S"
+            f"phase must be one of {sorted(profile.phases)} for profile {profile.name!r}"
         )
 
 
@@ -1088,13 +1435,14 @@ def load_retained_evidence_phase(
 ) -> str | None:
     """Return the explicitly retained verification phase, if configured."""
     values = os.environ if environ is None else environ
+    profile = load_qualification_profile(values)
     value = str(values.get(RETAIN_EVIDENCE_PHASE_ENV, "")).strip().upper()
     if not value:
         return None
-    if value not in _RETAINABLE_EVIDENCE_PHASES:
+    if value not in profile.retainable_phases:
         raise VerificationConfigurationError(
             f"{RETAIN_EVIDENCE_PHASE_ENV} may only retain one of "
-            f"{sorted(_RETAINABLE_EVIDENCE_PHASES)}."
+            f"{sorted(profile.retainable_phases)} for profile {profile.name!r}."
         )
     return value
 
@@ -1103,14 +1451,16 @@ def retain_verification_evidence(
     environ: Mapping[str, str] | None = None,
 ) -> bool:
     """Return whether a controlled retained phase should survive teardown."""
-    return load_retained_evidence_phase(environ) in _RETAINABLE_EVIDENCE_PHASES
+    profile = load_qualification_profile(environ)
+    return load_retained_evidence_phase(environ) in profile.retainable_phases
 
 
 def _validate_phase_policy_gates(
     phase: str | None,
     gates: Mapping[str, bool],
 ) -> None:
-    expected = _PHASE_ENABLED_MUTATION_GATES.get(phase, frozenset())
+    profile = load_qualification_profile()
+    expected = profile.enabled_mutation_gates.get(phase, frozenset())
     enabled = frozenset(name for name, value in gates.items() if value)
     if enabled != expected:
         raise VerificationConfigurationError(

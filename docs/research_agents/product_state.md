@@ -7,7 +7,7 @@ capabilities remain open.
 It does not define request schemas, repeat historical implementation narratives, or prescribe one linear delivery
 sequence. Use the [capability roadmap](../../plans/research_capability_roadmap.md) for remaining work and dependencies.
 
-Last reviewed: 2026-08-18.
+Last reviewed: 2026-08-20.
 
 ## How To Read Capability State
 
@@ -43,10 +43,13 @@ Trader now has one deterministic orchestration template for the supplied-impleme
 Research Coordinator policy over it. The coordinator requests missing objectives, protocols, approvals or canonical
 inputs; uniquely selects the registered template when ready; and reports matching terminal outcomes. The compiled
 workflow is mechanically executed through MCP, checkpointed, resumed and summarized as a canonical outcome.
-The Data Agent is now the first production graph on the common specialist boundary: it validates a bounded market-data
+The Data Agent is a production graph on the common specialist boundary: it validates a bounded market-data
 scope, optionally performs approved replay-safe sample loading, persists an exact snapshot, revalidates both canonical
-refs, and resumes without repeating accepted actions. The principal remaining orchestration gap is automatic
-Coordinator-to-specialist composition.
+refs, and resumes without repeating accepted actions. A bounded composition runner now connects explicit Data tasks,
+an operational Experiment Design specialist, operator-owned protocol approval and the fixed workflow. Experiment
+Design consumes a complete structured request over canonical inputs, persists one immutable proposal, and cannot
+approve or execute it. Quantitative Methods, ML, general Robustness and final Evaluation specialist routes remain
+unimplemented.
 
 ## Product Authority
 
@@ -89,30 +92,37 @@ orchestrated canonical write through a contextual artifact-store boundary.
 | Prediction monitoring and drift | absent | none | deferred | Prediction events exist, but summarisation, realized-target joining and drift reports do not. |
 | Walk-forward optimisation | absent | none | deferred | Provider-neutral optimisation can be reused inside folds, but fold planning, locked OOS execution, stitching and audit are not implemented. |
 | Attribution and broad performance critique | partial | focused | partially registered | Backtest and optimisation reports contain substantial measures; general attribution and skeptical evaluation tools remain open. |
-| Higher-level orchestration | partial | integration | bounded coordinator, resumable Data specialist and library executor plus registered persistence tools | The Research Coordinator selects one closed next action; the Data specialist independently returns verified canonical scope/quality handoffs. Automatic specialist invocation/composition and general robustness/review remain open. |
+| Higher-level orchestration | implemented for the supplied-implementation/Data/design path | integration | bounded composition library plus registered persistence tools | A resumable runner executes explicit Data and Experiment Design tasks through code-owned routes, persists an immutable proposal, pauses for operator approval, then enters the fixed workflow without replaying accepted work. Methods, ML, general robustness and final review composition remain open. |
 | Live or paper runtime mutation by research agents | intentionally absent | not applicable | prohibited | Research agents cannot place orders, mutate brokers, clear halts or deploy into an active runtime. |
 
 ## Implemented Orchestration At A Glance
 
 The implemented orchestration layer combines a bounded Research Coordinator policy with deterministic library
-execution. It is not an unrestricted planner or a single high-level MCP command. It separates four cooperating
+execution. It is not an unrestricted planner or a single high-level MCP command. It separates these cooperating
 responsibilities:
 
 | Stage | Current implementation | Boundary |
 | --- | --- | --- |
 | Declaration contracts | Immutable objective, protocol, approval, capability, artifact-slot, plan, step-result and outcome contracts in the `protocols` and `workflows` modules under `trader_research.governance.orchestration`. | Validates what may run; performs no I/O, MCP calls or checkpointing. |
-| Coordinator policy | Strict `CoordinationDecision`, code-owned `WorkflowTemplateCatalog`, deterministic selection policy and one-node graph in `trader_agents.research_coordinator`. | Requests prerequisites/approvals, selects one registered template or reports terminal state; it cannot express tool arguments, alter protocol scope, call MCP or invoke specialists. |
+| Coordinator policy | Strict `CoordinationDecision`, code-owned `WorkflowTemplateCatalog`, deterministic selection policy and one-node graph in `trader_agents.research_coordinator`. | Selects one explicit unaccepted specialist task, requests prerequisites/approvals, selects one registered template or reports terminal state; it cannot express tool arguments, alter protocol scope, call MCP or execute the selected action. |
 | Specialist policy shell | Strict specialist task/decision/result contracts, authority-scoped action catalogs and a checkpoint-capable policy/action graph in `trader_agents.specialists`. | Executes only injected registered handlers after validating canonical bindings, authority, side effects, policy gates, task digests and accepted-action replay; it does not decide specialist policy, construct MCP arguments or compose itself with the Coordinator. |
 | Data specialist | Strict `DataSpecialistRequest`, deterministic policy and MCP-backed handlers in `trader_agents.data_agent`. | Validates symbols, optionally loads only approved idempotent sample data, captures one exact snapshot, resolves both refs in the canonical store, and returns handoffs or typed issues. It does not use model-selected tools/arguments or expose provider backfill. |
+| Experiment Design specialist | Strict `ExperimentDesignRequest`, deterministic one-action policy and MCP-backed proposal handler in `trader_agents.experiment_design_agent`. | Pins supplied implementations and canonical Data evidence into an immutable Experiments-owned proposal with requested approvals. It cannot infer missing design choices, approve assumptions, execute experiments or redesign after results. |
+| Composition runner | Strict request/state contracts, code-owned specialist routes and a one-transition resumable graph in `trader_agents.research_composition`. | Executes selected Data and Experiment Design tasks, validates every returned handoff, pauses for operator approval, enters the fixed workflow and feeds the canonical outcome back. It does not infer tasks, author or approve protocols, build MCP arguments or reinterpret specialist findings. |
 | Resume shell | A LangGraph shell in `trader_agents.checkpointing` that orders ready plan steps, validates resumed `WorkflowStepResult` values and stores bounded progress. | Performs no research tool call and creates no canonical evidence. |
 | Fixed workflow execution | The versioned `supplied_implementation_to_evidence` compiler and executor in `trader_agents.orchestration`. | Compiles only an already approved objective/protocol and mechanically invokes registered MCP tools; it does not design or independently select the workflow. |
 
 The present call flow is:
 
 ```text
-operator or library caller supplies objective + optional protocol/outcome
-  -> Research Coordinator returns one bounded next action
-  -> [when ready] selects the registered template using approved objective/protocol and canonical refs
+library caller supplies one approved objective + explicit Data and Experiment Design tasks
+  -> composition runner asks the Research Coordinator for one bounded next action
+  -> code-owned Data route runs the resumable specialist graph through MCP
+  -> composition validates the manifest/quality handoffs against the task and canonical store
+  -> code-owned Experiment Design route persists and returns an immutable proposal
+  -> composition resolves the proposal and pauses for its requested approvals
+  -> operator applies explicit decisions without changing the design
+  -> same approved protocol, matching proposal and Data refs: select the registered workflow
   -> compile_supplied_implementation_workflow(...)
        reads and hashes pinned artifacts; returns a ready WorkflowPlan; writes nothing
   -> execute_compiled_research_workflow(...)
@@ -123,9 +133,10 @@ operator or library caller supplies objective + optional protocol/outcome
        -> gives the resume shell one bounded WorkflowStepResult
        -> repeats or resumes until terminal
        records one canonical WorkflowOutcome through MCP
+  -> Research Coordinator reports the matching terminal outcome
 ```
 
-The specialist shell is a reusable library boundary, not an automatically invoked Coordinator workflow. A
+The specialist shell is a reusable library boundary invoked by composition, not by the Coordinator policy itself. A
 `SpecialistTask` names one registered decision authority, approved objective, canonical input refs, requested artifact
 slots, permitted side effects and satisfied policy gates. Its policy may run a code-registered action, request a typed
 prerequisite, complete, or block. Registered handlers parse specialist-specific input and may call MCP; the shell
@@ -140,8 +151,9 @@ both refs retained. Checkpoint state holds only bounded task/decision/action sum
 The deterministic workflow caller must provide the workflow ID, an `McpToolClient`, the same canonical artifact-store view used by the MCP
 tools, and a LangGraph checkpointer. The artifact store holds research evidence and the objective/protocol/plan/outcome
 records. The checkpointer holds only replaceable cursor, attempt, issue, digest and canonical-ref summaries.
-A deliberate pause creates no outcome; resuming with the same workflow ID, plan and checkpointer re-registers the
-immutable workflow records and continues at the next unaccepted step.
+A deliberate pause creates no outcome. Resuming with the same workflow ID, plan and checkpointer revalidates and reuses
+matching canonical registration records, then continues at the next unaccepted step. Terminal replay similarly reuses
+the matching canonical outcome.
 
 The fixed template always revalidates the supplied strategy and ordered risk implementations, creates and validates
 strategy/risk/backtest specifications, and runs a baseline. If optimisation is declared, it also runs selection,
@@ -224,10 +236,10 @@ There is no registered MCP-only path producing the prerequisite model and featur
 
 | Agent | Current operational state | Target state | Main gap |
 | --- | --- | --- | --- |
-| Data Agent | A deterministic resumable specialist graph validates explicit scope, optionally performs separately approved sample loading, captures an exact canonical snapshot, revalidates both refs and returns manifest/quality handoffs or typed issues. | Reliable specialist subgraph automatically composed into larger research workflows. | Coordinator composition and broader calendar-aware quality; arbitrary provider backfill is deliberately not a replay-safe specialist action. |
-| Experiment Design Agent | Decision boundary and typed protocol/approval contracts exist, but no executable identity, graph or protocol-authoring policy exists. Approved protocols can be persisted as part of deterministic workflow registration. | Formulate an explicit, approval-aware experiment protocol from supplied strategy/risk implementations and Data requirements. | Specialist graph and protocol-authoring/approval policy; persistence and deterministic specification execution already exist. |
+| Data Agent | A deterministic resumable specialist graph validates explicit scope, optionally performs separately approved sample loading, captures an exact canonical snapshot, revalidates both refs and returns manifest/quality handoffs or typed issues. The default composition catalog executes it before protocol approval. | Reliable specialist subgraph composed into every workflow that requires new Data evidence. | Broader calendar-aware quality; arbitrary provider backfill is deliberately not a replay-safe specialist action. |
+| Experiment Design Agent | A deterministic resumable graph validates a complete design task, calls one registered proposal operation, revalidates the canonical proposal and returns a digest-pinned handoff. A pure helper applies exact operator decisions to produce the unchanged approved or blocked protocol. | Formulate an explicit, approval-aware experiment protocol from supplied strategy/risk implementations and Data requirements. | Free-form brief interpretation and dynamic binding from a new Data result are intentionally absent; controlled fresh-process qualification remains open. |
 | Quantitative Methods Agent | Allowlist, approved decision boundary and deterministic MCP tools exist. No complete specialist graph coordinates them. | Optional source/evidence/methodology and computational-method producer that returns canonical refs and blockers. | Bounded planning and handoff graph; composite-method representation remains deferred. It is not a prerequisite for supplied implementations. |
-| Research Coordinator | A deterministic policy and one-node graph request objective/protocol approvals, request unresolved canonical inputs, uniquely select the code-registered supplied-implementation template, return its ready plan and report matching terminal outcomes. The earlier Quant Research Supervisor request/handoff skeleton remains non-authoritative. | Compose bounded specialist workflows while preserving the same narrow decision boundary. | Automatic Experiment Design, Data, optional producer, Robustness and Evaluation graph invocation; deterministic template selection and execution handoff are implemented. |
+| Research Coordinator | A deterministic policy selects the first unaccepted explicit specialist task, requests objective/protocol approvals or unresolved canonical inputs, uniquely selects the registered supplied-implementation template and reports matching terminal outcomes. Composition executes those decisions through the Data and Experiment Design routes. | Compose additional bounded specialist workflows while preserving the same narrow decision boundary. | Optional producer, general Robustness and final Evaluation graphs and routes; Data/design-to-fixed-workflow composition is implemented. |
 | ML Agent | Ownership and deployment MCP tools exist; no ML Agent graph exists. | Optional producer coordinating point-in-time features, training, evaluation, registry evidence, deployment validation and monitoring for model-backed strategies. | Deterministic ML lifecycle tools must be built before the graph can be useful. |
 | Evaluation Agent | Optimisation Evaluation service/tool exists; no Evaluation graph exists. | Determine what the complete data, baseline, selection, holdout, cost, risk and robustness evidence supports. | Broader evaluation tools and specialist graph. |
 | Adversarial Agent | Optimisation audit planning and judgment tools exist; no Adversarial graph exists. | Robustness specialist that identifies attacks and reports sensitivity findings without issuing the overall strategy-quality verdict. | General robustness tools and specialist graph. |
@@ -288,10 +300,11 @@ operator research brief with supplied strategy/risk refs
   -> Research Coordinator returns refs, blockers and permitted next actions
 ```
 
-This diagram is the target decision architecture. The implemented Research Coordinator can identify missing objective
-or protocol approval, request an absent protocol or canonical workflow input, select the registered fixed template and
-report a matching terminal outcome. It does not yet invoke the owning specialist graph to satisfy a request. The fixed
-template begins only after the objective and protocol are approved. For an optimising protocol it currently creates
+This diagram is the target decision architecture. The implemented composition runner can execute caller-built tasks
+through registered specialist routes, and the default catalog currently provides Data and Experiment Design. It
+resolves the canonical proposal, pauses for operator decisions, validates the unchanged approved protocol, selects the registered fixed template and returns its terminal outcome to the
+Coordinator. It does not infer a task from objective prose, and unavailable specialist routes remain explicit
+prerequisites. The fixed template begins only after the objective and protocol are approved. For an optimising protocol it currently creates
 the holdout Evaluation before the optional Adversarial branch, then returns both verdict refs for human review; it does
 not run a later agent-authored final Evaluation over robustness evidence.
 
@@ -321,9 +334,9 @@ The provider-neutral declaration layer is implemented in
 - `WorkflowStepResult` exposes command identity, requester/actor, idempotency key, canonical artifact refs, bounded
   public data, issues and explicit retry classification. It is not a checkpoint or a raw tool-call transcript.
 
-These are immutable JSON-safe contracts, not operational behavior. The declaration layer does not persist these values, register
-capabilities from MCP, compile protocols, execute tools, resume workflows or replace the current lightweight
-Supervisor request/handoff skeleton.
+These are immutable JSON-safe contracts, not operational behavior. The declaration layer does not persist these values,
+register capabilities from MCP, compile protocols, execute tools or resume workflows. Operational composition lives in
+`trader_agents`; the obsolete request/handoff supervisor graph has been removed.
 
 The operational resume boundary is implemented in `trader_agents.checkpointing`. A ready `WorkflowPlan` compiles
 into a LangGraph shell that interrupts once per ordered step and waits for an external `WorkflowStepResult`. Its
@@ -344,12 +357,20 @@ sealed holdout, Evaluation, Adversarial attack planning, immutable variants and 
 disabled runtime gates and terminal tool blockers stop later execution. Accepted steps are not replayed after an
 interruption.
 
-`research_register_experiment_workflow` persists the objective, approved protocol and ready plan before execution.
+`research_create_experiment_protocol_proposal` persists the immutable proposed design before approval.
+`research_register_experiment_workflow` persists the objective, separately approved protocol and ready plan before execution.
 `research_record_workflow_outcome` persists the terminal refs, blockers and next permitted actions. These records have
-typed `research_objectives`, `research_experiment_protocols`, `research_workflow_plans` and
-`research_workflow_outcomes` Postgres projections. The Research Coordinator selects and compiles this registered
+typed `research_experiment_protocol_proposals`, `research_objectives`, `research_experiment_protocols`,
+`research_workflow_plans` and `research_workflow_outcomes` Postgres projections. The Research Coordinator selects and compiles this registered
 workflow through a Python policy/graph API; execution remains an explicit library call rather than a generic high-level
 MCP runner.
+
+`trader_agents.research_composition` provides the bounded higher-level library entrypoint. Its request fixes the exact
+objective and explicit specialist tasks; its code-owned route catalog registers Data and Experiment Design. It records
+accepted result receipts only after task, route and canonical handoff validation, requires the approved protocol to
+match the proposal and consume accepted Data refs, and isolates composition, specialist and workflow checkpoint
+threads. Exact replay returns saved terminal state, while changed requests, proposals or protocols fail as identity
+drift. Composition itself adds no generic MCP command.
 
 ## Qualification Baselines
 
@@ -365,14 +386,24 @@ Runtime prediction and model-backed strategy integration were subsequently imple
 focused, broad-regression, real local MLflow and isolated Postgres integration evidence, but they are not part of the
 v6 controlled acceptance record. A future qualification task must preserve that distinction.
 
+The responsibility-named `controlled_orchestration_v1` harness is now implemented for the current Data/design/fixed-
+workflow composition surface. It adds an isolated checkpoint role/schema, fresh Python and stdio MCP processes at
+resume boundaries, payload-free call and retry evidence, real Postgres end-to-end and response-loss paths, the eight-
+task and three-symbol/1,000-bar measurements, and a freeze-wide acceptance record. This is qualification
+infrastructure, not a passed qualification: the orchestration implementation is still at `integration` until its
+current changes are committed, tagged `verification-orchestration-v1-freeze`, every mandatory phase passes in the
+guarded Postgres environment, and `verification_control.orchestration_acceptance_records` contains the passed record.
+No such record is claimed here.
+
 ## Known Product Limits
 
 - Research tools do not place live orders or mutate paper/live sessions.
 - Complex source-discovered composite methodologies are not represented faithfully.
 - ML training, model evaluation, registry promotion and monitoring are not an end-to-end toolchain.
 - General robustness and walk-forward optimisation are not implemented.
-- The supplied-implementation orchestration template is executable, but an operator must still provide an approved
-  objective/protocol and invoke the compiler/executor; bounded coordinator planning is not implemented.
+- The supplied-implementation composition path still requires a caller-built approved objective and explicit specialist
+  tasks. An Experiment Design task must reference Data evidence that already exists; composition does not dynamically
+  rewrite a later task from a Data result. An operator must still decide every material assumption before execution.
 - Implementation validation is a bounded admission check, not an operating-system sandbox.
 - Backtest, holdout and audit evidence can support a research conclusion; none independently grants deployment
   permission.

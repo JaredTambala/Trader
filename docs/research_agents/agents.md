@@ -14,6 +14,7 @@ Ownership definitions do not imply that every named agent has an operational gra
 | --- | --- | --- | --- |
 | Quant Research Supervisor Agent | Coordinate research workflows and synthesize specialist-owned evidence. | Strategy/risk implementation versions, immutable strategy/risk/backtest specifications, canonical backtest runs, optimisation plans/runs/trials, tracking projection reports, comparisons, and planned walk-forward runs. Orchestration-domain objective/plan/outcome records are separately produced through its workflow persistence allowlist. | Registered implementation/specification/backtest/optimisation/projection `research_*` tools plus `research_register_experiment_workflow` and `research_record_workflow_outcome`. |
 | Data Agent | Produce trustworthy bounded market-data manifests and quality evidence. | Symbol discovery reports, dataset manifests, data-quality reports, load result envelopes. | `mcp_health`, `mcp_get_config`, `data_discover_symbols`, `data_get_inventory`, `data_summarize_quality`, `data_create_research_snapshot`, `data_ensure_loaded`. |
+| Experiment Design Agent | Formulate a fair reproducible test over supplied implementations and canonical Data evidence. | Immutable Experiments-owned protocol proposals carrying requested approvals. | `mcp_health`, `mcp_get_config`, `research_create_experiment_protocol_proposal`. |
 | Quantitative Methods Agent | Produce auditable deterministic methods, method evidence, diagnostics, and statistical inference artifacts. | Knowledge manifests, methodology candidates, methodology evidence packets, methodology extraction/validation reports, canonical method cards and derived summaries, implementation manifests, validation reports, diagnostics, multiple-testing reports, method packages, optional kernel manifests. | `mcp_health`, `mcp_get_config`, `knowledge_*`, and current `math_*` tools. |
 | ML Agent | Coordinate point-in-time feature engineering, fitting, MLflow recording/registry, model evaluation, deployment evidence, predictions, and drift. | Current deployment manifests and validation reports; planned feature/training/run/evaluation/version/promotion/drift artifacts. Runtime prediction events are platform evidence carrying ML lineage. | Registered `ml_create_deployment_manifest` and `ml_validate_deployment`; remaining 39A-G/J tools are planned. |
 | Hypothesis Agent | Produce explicit falsifiable strategy hypothesis cards. | Hypothesis cards. | Planned `hypothesis_create_card`. |
@@ -35,7 +36,7 @@ The governance registry approves the smallest set of target roles with distinct 
 | --- | --- | --- | --- |
 | Research Coordinator | Which approved workflow and prerequisites should happen next? | Research objectives, workflow plans, approval requests, handoff summaries and workflow outcomes. | Implementations, specifications, runs, trials, robustness findings, Evaluation reports or research-quality verdicts. |
 | Data Agent | Is the explicit market-data scope available and fit for the proposed protocol? | Dataset manifests, quality reports and load evidence through Data tools. | Strategy logic, optimisation design or performance conclusions. |
-| Experiment Design Agent | What fair reproducible protocol should test the supplied strategy/risk set? | Approval-aware experiment-protocol proposals. | Executing tools, changing the protocol after seeing results or judging strategy quality. |
+| Experiment Design Agent | What fair reproducible protocol should test the supplied strategy/risk set? | Approval-aware experiment-protocol proposals. | Executing experiments, approving assumptions, changing the protocol after results or judging strategy quality. |
 | Robustness Agent | Which claims and assumptions should be attacked, and what sensitivity did executed variants reveal? | Immutable attack plans and per-attack robustness findings. | Executing variants, mutating the baseline or issuing the overall strategy-quality verdict. |
 | Evaluation Agent | What does the complete evidence support after data, holdout, costs, risk and robustness are considered? | Independent attribution and final research-quality assessment. | Repairing the protocol, selecting parameters, executing variants or routing workflows. |
 | Quantitative Methods Agent | What optional source-backed or computational-method evidence can be supplied? | Knowledge, methodology and method-validation artifacts. | Concrete data scope, experiment execution or final quality. |
@@ -56,7 +57,7 @@ Agent identity and domain ownership are separate:
 | --- | --- |
 | Data | Dataset, quality and loading evidence. |
 | Knowledge/Methodology | Source, evidence, method-card and method-validation evidence. |
-| Experiments | Implementation, validation, specification, backtest, comparison, optimisation and tracking evidence. |
+| Experiments | Protocol proposals, implementation, validation, specification, backtest, comparison, optimisation and tracking evidence. |
 | ML | Feature, training, model, deployment and monitoring evidence. |
 | Review | Attribution, Evaluation, attack-plan and robustness evidence. |
 | Orchestration | Research objective, workflow plan, approval and outcome records only. |
@@ -87,10 +88,10 @@ artifact authority.
 The implemented orchestration contracts are declarative governance values, not new agents:
 
 - the operator supplies a `ResearchObjective`;
-- the Experiment Design Agent may propose an `ExperimentProtocol`, but it cannot mark material assumptions approved
-  without explicit `Approval` decisions;
-- the Research Coordinator may select registered `CapabilityDefinition` values and compose a `WorkflowPlan` from typed
-  `Prerequisite` and `ArtifactSlot` values;
+- the Experiment Design Agent persists an immutable `ExperimentProtocolProposal`, but only explicit operator
+  `Approval` decisions can produce the matching approved `ExperimentProtocol`;
+- the Research Coordinator may select an explicit task through a registered specialist route or choose a registered
+  workflow template over typed `Prerequisite` and `ArtifactSlot` values;
 - the non-agent resume shell accepts external `WorkflowStepResult` values and cannot make experiment or
   review decisions;
 - the non-agent compiler instantiates the one approved supplied-implementation template as a plan, and its executor
@@ -103,13 +104,14 @@ summaries and canonical refs through the maintained Postgres LangGraph saver. It
 evidence. The workflow executor connects that shell to registered tool execution through a closed compiler and
 `McpToolClient`.
 
-The Research Coordinator graph normalizes objective, optional protocol and optional outcome payloads, then emits one
-typed `CoordinationDecision`. Draft objectives and proposed protocols request approval; absent protocols or canonical
-inputs request typed prerequisites; complete approved inputs select the sole registered template and return its
-compiler-produced plan; terminal outcomes are reported without reinterpretation. The decision contract contains no
-tool-name, argument or experiment-configuration fields, rejects unknown fields, and is revalidated against the
-code-owned template catalog before a transported decision can be compiled again. The graph itself calls no MCP tool and
-does not invoke specialist graphs.
+The Research Coordinator graph normalizes objective, explicit specialist tasks and accepted-result receipts, optional
+protocol and optional outcome payloads, then emits one typed `CoordinationDecision`. It selects the first unaccepted
+task through a unique registered authority route; draft objectives and proposed protocols request approval; absent
+protocols or canonical inputs request typed prerequisites; complete approved inputs select the sole registered template
+and return its compiler-produced plan; terminal outcomes are reported without reinterpretation. The decision contract
+contains no tool-name, argument or experiment-configuration fields, rejects unknown fields, and is revalidated against
+the code-owned route or template catalog before execution. The graph itself calls no MCP tool. The separate composition
+runner executes the selected route or workflow and returns its bounded result for the next decision.
 
 ## Specialist Graph Boundary
 
@@ -129,13 +131,35 @@ does not invoke specialist graphs.
   scratchpad, credentials or hidden reasoning. An injected checkpointer retains the first task digest and accepted
   action-result digests so exact resume does not repeat accepted work and changed task content fails closed.
 
-This is a reusable invocation boundary, not a new universal agent. `trader_agents.data_agent` is the first production
+This is a reusable invocation boundary, not a new universal agent. `trader_agents.data_agent` is one production
 registration. Its deterministic policy selects `validate_market_data_scope`, optional
 `ensure_market_data_available`, and `capture_market_data_evidence`; handlers alone construct MCP arguments. The final
 handler resolves both snapshot refs from the canonical store and validates scope, ownership, producer, requester,
-actor, status, payload digest and matching dataset identity before returning handoffs. The Research Coordinator does
-not yet invoke the graph. Approval requests remain Coordinator-owned: a specialist reports an approval prerequisite
-or a proposed artifact but cannot approve its own assumptions.
+actor, status, payload digest and matching dataset identity before returning handoffs. The composition runner invokes
+this route when the Coordinator selects an explicit Data task, validates the terminal result and handoffs again, and
+stores only a bounded accepted-result receipt. Approval requests remain Coordinator-owned: a specialist reports an
+approval prerequisite or a proposed artifact but cannot approve its own assumptions.
+
+`trader_agents.experiment_design_agent` is the second production registration. Its strict task carries a complete
+`ExperimentDesignRequest` over exact implementation, manifest, quality and optional optimisation-validation refs. Its
+one deterministic policy action calls `research_create_experiment_protocol_proposal`, reloads the canonical
+Experiments-owned proposal, verifies task/objective/design/provenance identity and returns a digest-pinned handoff. A
+missing local-mutation permission becomes a typed prerequisite. The graph cannot decide approvals, execute the
+protocol, write the store directly or retain the protocol payload in checkpoint state.
+
+## Research Composition Boundary
+
+`trader_agents.research_composition` is the operational connector, not a new decision authority. Its immutable request
+contains an approved objective and ordered caller-built specialist tasks. It may execute only the exact route and
+version selected by the Coordinator, and its default catalog registers Data and Experiment Design. A completed result is accepted only
+when task, authority, route, output bindings, provenance and canonical payload digests agree. The approved protocol must
+match the accepted proposal design and consume accepted Data refs before the fixed workflow may begin.
+
+Composition, specialist and workflow checkpoints use isolated thread identities. Parent state contains task/result
+digests, bounded decisions and result summaries, canonical refs, counters and issues—not full tasks, artifacts, MCP
+responses, tool arguments, prompts or hidden reasoning. Exact terminal replay returns saved state. Changed objective,
+task, proposal, protocol or canonical evidence fails closed. Missing Quantitative Methods, ML, general Robustness and
+final Evaluation routes remain typed prerequisites.
 
 ## Methodology Decision Boundary
 

@@ -8,7 +8,7 @@ tools, persists no artifacts, and stores no hidden model reasoning.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -20,6 +20,11 @@ from trader_research.governance import (
     ResearchObjective,
     WorkflowOutcome,
     get_decision_authority,
+)
+from trader_agents.specialists import (
+    AcceptedSpecialistResult,
+    SpecialistRouteCatalog,
+    SpecialistTask,
 )
 
 from .catalog import WorkflowTemplateCatalog
@@ -39,6 +44,8 @@ class ResearchCoordinatorState(TypedDict, total=False):
         objective: Validated research-objective payload.
         protocol: Optional validated experiment-protocol payload.
         workflow_outcome: Optional canonical terminal-outcome payload.
+        specialist_tasks: Ordered explicit specialist task payloads.
+        accepted_specialist_results: Validated completed-task receipts.
         decision: Bounded next action selected by policy.
         workflow_plan: Compiler-produced ready plan when execution is permitted.
         status: Graph lifecycle status.
@@ -52,6 +59,8 @@ class ResearchCoordinatorState(TypedDict, total=False):
     objective: dict[str, Any]
     protocol: dict[str, Any]
     workflow_outcome: dict[str, Any]
+    specialist_tasks: list[dict[str, Any]]
+    accepted_specialist_results: list[dict[str, Any]]
     decision: dict[str, Any]
     workflow_plan: dict[str, Any]
     status: CoordinatorGraphStatus
@@ -66,6 +75,8 @@ def build_research_coordinator_initial_state(
     objective: ResearchObjective,
     protocol: ExperimentProtocol | None = None,
     outcome: WorkflowOutcome | None = None,
+    specialist_tasks: Sequence[SpecialistTask] = (),
+    accepted_specialist_results: Sequence[AcceptedSpecialistResult] = (),
 ) -> ResearchCoordinatorState:
     """Build validated JSON-safe input state for the coordinator graph.
 
@@ -73,6 +84,8 @@ def build_research_coordinator_initial_state(
         objective: Research objective to coordinate.
         protocol: Optional experiment protocol for the objective.
         outcome: Optional canonical terminal workflow outcome to report.
+        specialist_tasks: Ordered caller-built specialist tasks to consider.
+        accepted_specialist_results: Previously validated completed-task receipts.
 
     Returns:
         Initial graph state containing only public governance contracts.
@@ -89,6 +102,10 @@ def build_research_coordinator_initial_state(
         "objective": objective.to_dict(),
         "protocol": protocol.to_dict() if protocol is not None else {},
         "workflow_outcome": outcome.to_dict() if outcome is not None else {},
+        "specialist_tasks": [task.to_dict() for task in specialist_tasks],
+        "accepted_specialist_results": [
+            result.to_dict() for result in accepted_specialist_results
+        ],
         "decision": {},
         "workflow_plan": {},
         "status": "ready",
@@ -103,6 +120,7 @@ def build_research_coordinator_graph(
     *,
     artifact_store: ResearchArtifactStore,
     catalog: WorkflowTemplateCatalog | None = None,
+    specialist_catalog: SpecialistRouteCatalog | None = None,
 ) -> Any:
     """Build a one-decision Research Coordinator graph.
 
@@ -114,6 +132,7 @@ def build_research_coordinator_graph(
     Args:
         artifact_store: Canonical artifact reader used for template readiness.
         catalog: Optional injected code-owned template catalog.
+        specialist_catalog: Optional injected code-owned specialist routes.
 
     Returns:
         Compiled LangGraph that emits one bounded coordination decision.
@@ -126,6 +145,7 @@ def build_research_coordinator_graph(
             state,
             artifact_store=artifact_store,
             catalog=catalog,
+            specialist_catalog=specialist_catalog,
         )
 
     graph = StateGraph(ResearchCoordinatorState)
@@ -140,6 +160,7 @@ def _select_action(
     *,
     artifact_store: ResearchArtifactStore,
     catalog: WorkflowTemplateCatalog | None,
+    specialist_catalog: SpecialistRouteCatalog | None,
 ) -> ResearchCoordinatorState:
     identity = _mapping(state.get("identity"))
     authority = get_decision_authority("research_coordinator")
@@ -162,12 +183,29 @@ def _select_action(
         outcome = (
             WorkflowOutcome.from_dict(outcome_payload) if outcome_payload else None
         )
+        specialist_tasks = tuple(
+            SpecialistTask.from_dict(item)
+            for item in _strict_mapping_sequence(
+                state.get("specialist_tasks"),
+                "specialist_tasks",
+            )
+        )
+        accepted_specialist_results = tuple(
+            AcceptedSpecialistResult.from_dict(item)
+            for item in _strict_mapping_sequence(
+                state.get("accepted_specialist_results"),
+                "accepted_specialist_results",
+            )
+        )
         result = coordinate_research(
             objective=objective,
             protocol=protocol,
             outcome=outcome,
             artifact_store=artifact_store,
             catalog=catalog,
+            specialist_tasks=specialist_tasks,
+            accepted_specialist_results=accepted_specialist_results,
+            specialist_catalog=specialist_catalog,
         )
     except (TypeError, ValueError) as exc:
         return _failed_state(
@@ -186,6 +224,10 @@ def _select_action(
         "objective": objective.to_dict(),
         "protocol": protocol.to_dict() if protocol is not None else {},
         "workflow_outcome": outcome.to_dict() if outcome is not None else {},
+        "specialist_tasks": [task.to_dict() for task in specialist_tasks],
+        "accepted_specialist_results": [
+            item.to_dict() for item in accepted_specialist_results
+        ],
         "decision": decision.to_dict(),
         "workflow_plan": workflow_plan,
         "status": graph_status,
@@ -199,6 +241,8 @@ def _select_action(
 def _public_status(
     action: CoordinatorAction,
 ) -> tuple[CoordinatorGraphStatus, str]:
+    if action is CoordinatorAction.EXECUTE_REGISTERED_SPECIALIST_TASK:
+        return "completed", "ready_for_specialist_execution"
     if action is CoordinatorAction.EXECUTE_REGISTERED_WORKFLOW:
         return "completed", "ready_for_execution"
     if action is CoordinatorAction.REPORT_TERMINAL_STATE:
@@ -221,6 +265,13 @@ def _failed_state(
         "objective": dict(_mapping(state.get("objective"))),
         "protocol": dict(_mapping(state.get("protocol"))),
         "workflow_outcome": dict(_mapping(state.get("workflow_outcome"))),
+        "specialist_tasks": [
+            dict(item) for item in _mapping_sequence(state.get("specialist_tasks"))
+        ],
+        "accepted_specialist_results": [
+            dict(item)
+            for item in _mapping_sequence(state.get("accepted_specialist_results"))
+        ],
         "decision": {},
         "workflow_plan": {},
         "status": "failed",
@@ -235,3 +286,22 @@ def _mapping(value: object) -> Mapping[str, Any]:
     if isinstance(value, Mapping):
         return value
     return {}
+
+
+def _mapping_sequence(value: object) -> tuple[Mapping[str, Any], ...]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return ()
+    return tuple(item for item in value if isinstance(item, Mapping))
+
+
+def _strict_mapping_sequence(
+    value: object,
+    label: str,
+) -> tuple[Mapping[str, Any], ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise ValueError(f"{label} must be a sequence of mappings")
+    if any(not isinstance(item, Mapping) for item in value):
+        raise ValueError(f"{label} must contain only mappings")
+    return tuple(item for item in value if isinstance(item, Mapping))

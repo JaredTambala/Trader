@@ -174,8 +174,9 @@ Any fallback to `PG_DB` is specifically forbidden.
 
 ### Isolated Postgres Runtime
 
-The controlled harness accepts four explicit connection profiles. It never derives test credentials from `.env`
-operator names:
+The controlled harness accepts four connection profiles for the historical optimisation campaign and a fifth,
+checkpoint-only profile for orchestration qualification. It never derives test credentials from `.env` operator
+names:
 
 | Profile | Variables | Authority |
 |---|---|---|
@@ -183,6 +184,7 @@ operator names:
 | Operator fingerprint | `PG_OPERATOR_HOST`, `PG_OPERATOR_PORT`, `PG_OPERATOR_DB`, `PG_OPERATOR_USER`, `PG_OPERATOR_PASSWORD` | Opens an explicit read-only, repeatable-read transaction; never writes verification evidence here. |
 | Trader verification | `PG_TEST_HOST`, `PG_TEST_PORT`, `PG_TEST_DB`, `PG_TEST_USER`, `PG_TEST_PASSWORD` | Owns the disposable `*_test` database and product test schemas. |
 | Optuna verification | `PG_OPTUNA_TEST_HOST`, `PG_OPTUNA_TEST_PORT`, `PG_OPTUNA_TEST_DB`, `PG_OPTUNA_TEST_USER`, `PG_OPTUNA_TEST_PASSWORD` | Targets the same test database and owns only `TRADER_OPTUNA_SCHEMA`. |
+| Orchestration checkpoints | `PG_CHECKPOINT_TEST_HOST`, `PG_CHECKPOINT_TEST_PORT`, `PG_CHECKPOINT_TEST_DB`, `PG_CHECKPOINT_TEST_USER`, `PG_CHECKPOINT_TEST_PASSWORD` | Required only by `controlled_orchestration_v1`; targets the test database and owns only `TRADER_CHECKPOINT_SCHEMA`. It cannot mutate canonical runtime or research tables. |
 
 Set `PG_TEST_LOCALE` to a locale installed by the Postgres server. Provisioning creates the database from `template0`
 with UTF-8 encoding and pins both `LC_COLLATE` and `LC_CTYPE` to that value. Set `TZ=UTC`, `PYTHONHASHSEED=0`, and
@@ -330,8 +332,9 @@ not run this destructive reset against a database whose research evidence must b
 
 The declaration-contract delivery was contract-only. It added canonical authority declarations for
 `research_objective`, `experiment_protocol`, `workflow_plan`, `approval_request` and `workflow_outcome`, but no
-persistence or execution. The workflow persistence services and executor now supply the explicit boundaries described
-below.
+persistence or execution. The current service layer additionally persists immutable
+`experiment_protocol_proposal` evidence before approval; workflow persistence services and the executor supply the
+remaining explicit boundaries described below.
 
 The contracts can be imported and round-tripped as JSON for design and test work. Existing direct MCP procedures may
 still persist null `requested_by`/`actor` values. A workflow plan or step result supplied as arbitrary JSON is not
@@ -359,6 +362,33 @@ Do not grant the checkpoint role broker/runtime mutation privileges.
 
 The resume shell does not register MCP tools, execute capabilities or create `workflow_outcome` artifacts. A successful
 resume test proves checkpoint continuity and idempotency only.
+
+### Resumable Research Composition
+
+Use `run_research_composition` when the caller has an approved objective and explicit specialist tasks but wants one
+bounded entrypoint to connect specialist evidence to the fixed workflow. The request identity, objective and tasks are
+immutable for the life of the composition thread. Callers must build Data and Experiment Design tasks with their
+responsibility-owned builders rather than passing symbols, dates, costs or runtime choices as loose graph state.
+
+The default route catalog contains Data and Experiment Design. A Design task must reference Data evidence that already
+exists when the immutable composition request is built; composition does not rewrite later tasks from earlier outputs.
+It resolves each accepted handoff in the same canonical store used by MCP. The Design route calls
+`research_create_experiment_protocol_proposal`, validates its proposed-only envelope and reloads the canonical
+proposal. Missing local-mutation permission returns a typed prerequisite. Exact resume does not repeat the proposal
+mutation.
+
+After the proposal handoff is accepted, composition returns `awaiting_approval`. An operator inspects the proposal and
+passes one explicit terminal `Approval` decision per material assumption to
+`apply_experiment_protocol_approvals`. Resume with that approved protocol succeeds only when protocol ID, objective,
+design digest and canonical inputs still match the proposal. A changed request, task, proposal, protocol, route or
+canonical payload requires a new composition and otherwise fails closed. The proposal remains unchanged when
+`research_register_experiment_workflow` later saves the approved protocol in its separate artifact row.
+
+The caller supplies one `McpToolClient`, canonical artifact-store view and checkpointer across the parent composition
+and child specialist/workflow execution. Thread IDs are derived separately, so one layer cannot overwrite another's
+cursor. `max_transitions` bounds parent decisions; `max_workflow_tool_calls` deliberately pauses child workflow
+execution. Exact terminal replay returns the saved bounded state without another specialist action, workflow
+registration, plan step or outcome write. There is no generic MCP composition command.
 
 ### Deterministic Workflow Execution
 
@@ -419,12 +449,12 @@ blocks before the dependent tool executes. Transport retries stop after three at
 `max_tool_calls`; `WorkflowExecutionInterrupted.public_state` reports the bounded state and the same workflow ID,
 compiled plan and checkpointer resume at the next unaccepted step.
 
-`max_tool_calls` counts compiled plan-step calls during that invocation; the initial idempotent workflow-registration
-call and terminal outcome-recording call are outside that limit. Each invocation registers the same immutable
-objective/protocol/plan before reading or resuming checkpoint progress. A resumed invocation may therefore repeat
-`research_register_experiment_workflow`, but it does not replay accepted plan steps. A deliberate pause raises
-`WorkflowExecutionInterrupted` and writes no terminal outcome. Once the checkpoint is terminal, the executor constructs
-and records the outcome and returns `WorkflowExecution`.
+`max_tool_calls` counts compiled plan-step calls during that invocation; workflow registration and terminal outcome
+recording are outside that limit. Before writing, each invocation resolves the deterministic registration IDs. Existing
+matching objective/protocol/plan records are fully revalidated and reused, so a resumed invocation does not repeat
+`research_register_experiment_workflow`. The same rule reuses an existing matching terminal outcome. A deliberate pause
+raises `WorkflowExecutionInterrupted` and writes no terminal outcome. Once the checkpoint is terminal, the executor
+constructs and records the outcome if it is absent, then returns `WorkflowExecution`.
 
 | Condition | Observable behavior |
 | --- | --- |
@@ -443,6 +473,7 @@ The generic `research_artifacts` table remains canonical. The following typed pr
 
 ```sql
 SELECT * FROM public.research_objectives ORDER BY objective_id;
+SELECT * FROM public.research_experiment_protocol_proposals ORDER BY proposal_id;
 SELECT * FROM public.research_experiment_protocols ORDER BY protocol_id;
 SELECT * FROM public.research_workflow_plans ORDER BY plan_id;
 SELECT * FROM public.research_workflow_outcomes ORDER BY outcome_id;
@@ -684,6 +715,129 @@ SELECT freeze_revision, status, mandatory_phases, provider_profiles, environment
        evidence_inventory, commands, residual_risks, recorded_at
 FROM verification_control.acceptance_records;
 ```
+
+### Controlled Orchestration Qualification
+
+`controlled_orchestration_v1` qualifies the implemented Data Agent, Experiment Design, operator approval,
+Research Coordinator and fixed supplied-implementation workflow as one bounded responsibility graph. It adds no
+general planner and does not qualify unavailable specialist routes. The `ORCHESTRATION_*` values below are evidence
+record keys in `verification_control`, not names for architecture components.
+
+Start only after the current product implementation is committed. Tag that clean product revision as
+`verification-orchestration-v1-freeze`; the harness rejects a missing tag, a dirty worktree, product-byte drift, a
+changed harness revision during a phase, an unexpected mutation gate or an operator fingerprint change. Configure the
+admin, operator, product-test and optional-provider profiles described above, plus a distinct checkpoint profile that
+targets the same `PG_TEST_DB`:
+
+```bash
+export TRADER_VERIFICATION_PROFILE=controlled_orchestration_v1
+export TRADER_VERIFICATION_MODE=true
+export TRADER_CHECKPOINT_SCHEMA=orchestration_checkpoint
+export PG_CHECKPOINT_TEST_HOST="$PG_TEST_HOST"
+export PG_CHECKPOINT_TEST_PORT="$PG_TEST_PORT"
+export PG_CHECKPOINT_TEST_DB="$PG_TEST_DB"
+export PG_CHECKPOINT_TEST_USER=trader_orchestration_checkpoint_test
+export PG_CHECKPOINT_TEST_PASSWORD='...'
+export TZ=UTC
+export PYTHONHASHSEED=0
+```
+
+The checkpoint password is used only to build saver connections. Runtime manifests contain its host, port, database,
+role and schema, never its password or a DSN. Provision once with every mutation gate false:
+
+```bash
+export TRADER_MCP_ALLOW_BROKER_MUTATION=false
+export TRADER_MCP_ALLOW_RAW_SQL=false
+export TRADER_MCP_ALLOW_DATA_LOADING=false
+export TRADER_MCP_ALLOW_BACKTESTS=false
+export TRADER_MCP_ALLOW_OPTIMIZATION=false
+export TRADER_MCP_ALLOW_EXTERNAL_RESEARCH_WRITES=false
+export TRADER_MCP_ALLOW_OPTUNA_WRITES=false
+export TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES=false
+uv run python -m tests.support.postgres_verification provision --reset
+```
+
+Run the mandatory phases in this order. `begin` and `end` enforce the exact gate set shown; do not carry a retained
+phase variable into a different phase.
+
+```bash
+uv run python -m tests.support.postgres_verification begin --phase ORCHESTRATION_RUNTIME
+uv run pytest tests/test_postgres_orchestration_runtime.py -m postgres -q -W error
+uv run python -m tests.support.postgres_verification end --phase ORCHESTRATION_RUNTIME --outcome passed
+
+uv run python -m tests.support.postgres_verification begin --phase ORCHESTRATION_CORE
+uv run ruff check src tests
+python -m compileall -q src tests/support
+uv run mypy
+uv run pytest -m 'not postgres' -q -W error
+uv run python -m tests.support.postgres_verification end --phase ORCHESTRATION_CORE --outcome passed
+
+export TRADER_MCP_ALLOW_BACKTESTS=true
+export TRADER_MCP_ALLOW_OPTIMIZATION=true
+export TRADER_VERIFICATION_RETAIN_PHASE=ORCHESTRATION_E2E
+uv run python -m tests.support.postgres_verification begin --phase ORCHESTRATION_E2E
+uv run pytest tests/test_postgres_orchestration_evidence_graph.py -m postgres -q -W error -s
+uv run python -m tests.support.postgres_verification end --phase ORCHESTRATION_E2E --outcome passed
+
+export TRADER_MCP_ALLOW_OPTIMIZATION=false
+export TRADER_VERIFICATION_RETAIN_PHASE=ORCHESTRATION_RECOVERY
+uv run python -m tests.support.postgres_verification begin --phase ORCHESTRATION_RECOVERY
+uv run pytest tests/test_postgres_orchestration_recovery.py -m postgres -q -W error -s
+uv run python -m tests.support.postgres_verification end --phase ORCHESTRATION_RECOVERY --outcome passed
+
+export TRADER_MCP_ALLOW_BACKTESTS=false
+unset TRADER_VERIFICATION_RETAIN_PHASE
+uv run python -m tests.support.postgres_verification begin --phase ORCHESTRATION_POLICY
+uv run pytest tests/test_orchestration_policy_security.py tests/test_research_composition.py tests/test_experiment_design_specialist.py tests/test_package_boundaries.py -q -W error
+uv run python -m tests.support.postgres_verification end --phase ORCHESTRATION_POLICY --outcome passed
+
+export TRADER_MCP_ALLOW_BACKTESTS=true
+export TRADER_VERIFICATION_RETAIN_PHASE=ORCHESTRATION_SCALE
+uv run python -m tests.support.postgres_verification begin --phase ORCHESTRATION_SCALE
+uv run pytest tests/test_postgres_orchestration_bounded_scale.py -m postgres -q -W error -s
+uv run python -m tests.support.postgres_verification end --phase ORCHESTRATION_SCALE --outcome passed
+
+export TRADER_MCP_ALLOW_BACKTESTS=false
+unset TRADER_VERIFICATION_RETAIN_PHASE
+uv run python -m tests.support.postgres_verification begin --phase ORCHESTRATION_ACCEPTANCE
+uv run pytest tests/test_postgres_orchestration_acceptance.py -m postgres -q -W error -s
+uv run python -m tests.support.postgres_verification end --phase ORCHESTRATION_ACCEPTANCE --outcome passed
+```
+
+The end-to-end, recovery and scale phases deliberately retain their disposable evidence. Later phases do not truncate
+that evidence, so acceptance can read one freeze-wide graph. Setup inserts exact fixture bars only when absent and
+otherwise checks their count and content digest. Each resume stage launches a new Python driver, opens the checkpoint
+role anew and starts a fresh stdio MCP server. The response-loss fault retains only a command, argument digest, bounded
+result identity and retry disposition; it never stores arguments, envelopes, source, credentials, approval rationale
+or artifact payloads.
+
+Inspect the credential-free verdict and evidence without expanding canonical payloads:
+
+```sql
+SELECT phase, isolation_status, qualification_status, blockers,
+       manifest->>'qualification_profile' AS profile,
+       operator_before_digest = operator_after_digest AS operator_unchanged
+FROM verification_control.phase_runs
+WHERE phase LIKE 'ORCHESTRATION_%'
+ORDER BY started_at;
+
+SELECT phase, composition_id, sequence, command, argument_digest,
+       retry_disposition, result_identity
+FROM verification_control.orchestration_call_ledger
+ORDER BY phase, composition_id, sequence;
+
+SELECT profile, task_count, transition_count, tool_call_count,
+       checkpoint_bytes, artifact_count, database_bytes, wall_seconds
+FROM verification_control.orchestration_scale_results
+ORDER BY profile;
+
+SELECT qualification_profile, freeze_revision, status, qualified_surface,
+       exclusions, residual_risks
+FROM verification_control.orchestration_acceptance_records;
+```
+
+If any phase blocks, end it with `--outcome blocked --blocker '...'`, stop the campaign and preserve the evidence. A
+product or fixture defect is fixed before creating a new freeze tag; it is never waived in the acceptance record.
 
 ## Typical Local Checks
 

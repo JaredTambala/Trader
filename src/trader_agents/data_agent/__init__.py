@@ -25,6 +25,7 @@ from .policy import (
     VALIDATE_MARKET_DATA_SCOPE_ACTION,
     DataSpecialistPolicy,
 )
+from .route import DATA_SPECIALIST_ROUTE_VERSION, build_data_specialist_route
 
 __all__ = [
     "ALLOW_SAMPLE_DATA_LOADING_GATE",
@@ -33,6 +34,7 @@ __all__ = [
     "DATA_QUALITY_REPORT_TASK_SLOT",
     "DATA_SPECIALIST_ACTION_VERSION",
     "DATA_SPECIALIST_AUTHORITY",
+    "DATA_SPECIALIST_ROUTE_VERSION",
     "ENSURE_MARKET_DATA_AVAILABLE_ACTION",
     "VALIDATE_MARKET_DATA_SCOPE_ACTION",
     "CaptureMarketDataEvidenceHandler",
@@ -44,6 +46,7 @@ __all__ = [
     "ValidateMarketDataScopeHandler",
     "build_data_specialist_catalog",
     "build_data_specialist_graph",
+    "build_data_specialist_route",
     "build_data_specialist_task",
     "data_request_from_task",
 ]

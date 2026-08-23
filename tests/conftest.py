@@ -87,6 +87,7 @@ def _truncate_research_artifact_tables(
             research_workflow_outcomes,
             research_workflow_plans,
             research_experiment_protocols,
+            research_experiment_protocol_proposals,
             research_objectives,
             research_ml_deployment_validations,
             research_ml_deployments,
@@ -137,7 +138,8 @@ def postgres_event_store(
     postgres_settings: dict[str, object],
 ) -> Iterator[PostgresEventStore]:
     store = PostgresEventStore(**postgres_settings)
-    _truncate_runtime_tables(store, postgres_settings)
+    if not retain_verification_evidence():
+        _truncate_runtime_tables(store, postgres_settings)
     try:
         yield store
     finally:
@@ -177,7 +179,8 @@ def postgres_research_artifact_store(
     postgres_settings: dict[str, object],
 ) -> Iterator[PostgresResearchArtifactStore]:
     store = PostgresResearchArtifactStore(**postgres_settings)
-    _truncate_research_artifact_tables(store, postgres_settings)
+    if not retain_verification_evidence():
+        _truncate_research_artifact_tables(store, postgres_settings)
     try:
         yield store
     finally:

@@ -33,16 +33,21 @@ A method card is provenance, not an execution identity. Handwritten, AI-produced
 code receives the same implementation validation. Data Agent artifacts remain the only source of symbols, timeframe,
 date bounds, provider scope, and market-data quality.
 
-One part of that path is now coordinated. The Research Coordinator accepts a typed objective, optional protocol and
-optional terminal outcome, then emits exactly one bounded action: request a prerequisite, request approval, select a
-registered workflow, report terminal state or stop with a blocker. When the approved inputs are complete, it selects
-and compiles the fixed `supplied_implementation_to_evidence` template for execution through MCP with resumable
-checkpoints:
+The supplied-implementation path now has bounded composition. The Research Coordinator accepts a typed objective,
+explicit specialist tasks and accepted-result receipts, optional protocol and optional terminal outcome, then emits
+exactly one bounded action: execute a registered specialist task, request a prerequisite, request approval, select a
+registered workflow, report terminal state or stop with a blocker. The composition runner executes that decision and,
+when approved inputs are complete, enters the fixed `supplied_implementation_to_evidence` template through MCP with
+resumable checkpoints:
 
 ```text
-objective + optional protocol/outcome
-  -> Research Coordinator selects one bounded next action
-  -> [when ready] approved objective + protocol + pinned implementation/Data refs
+approved objective + explicit Data and Experiment Design tasks
+  -> Research Coordinator selects each registered specialist route in order
+  -> composition validates canonical Data and protocol-proposal handoffs
+  -> pause for explicit operator decisions over every material assumption
+  -> unchanged approved protocol
+  -> Research Coordinator selects one bounded workflow action
+  -> approved objective + protocol + pinned implementation/Data refs
   -> deterministic compiler creates one ready, immutable workflow plan
   -> workflow executor registers the plan and asks the resume shell for the next step
   -> executor calls the registered MCP tool and validates its ToolEnvelope
@@ -50,18 +55,22 @@ objective + optional protocol/outcome
   -> repeat until the executor records a canonical terminal WorkflowOutcome
 ```
 
-The coordinator policy, declaration contracts, non-executing resume shell, and closed compiler/executor are separate
-architectural responsibilities. The coordinator does not author protocols, call specialist agents, change approved
-scope, or invent tools; missing state becomes a typed request for its owning domain. The checkpoint database is
-replaceable operational state; canonical data, experiment, review, and workflow artifacts remain in the research
+The coordinator policy, composition runner, declaration contracts, non-executing resume shell, and closed
+compiler/executor are separate architectural responsibilities. The coordinator does not author protocols, call MCP,
+change approved scope, or invent tools; composition invokes only its selected code-owned route or workflow. Missing
+state becomes a typed request for its owning domain. The checkpoint database is replaceable operational state;
+canonical data, experiment, review, and workflow artifacts remain in the research
 artifact store.
 
 A shared specialist policy shell defines how owning-domain graphs are called. It accepts a typed task, validates one
 authority-scoped registered action at a time, and returns canonical handoffs, prerequisites or blockers without
-retaining raw tool responses or hidden reasoning. The Data Agent is the first production specialist on this boundary:
+retaining raw tool responses or hidden reasoning. The Data Agent is a production specialist on this boundary:
 it validates explicit symbol scope, optionally performs separately approved replay-safe sample loading, and returns a
-verified canonical manifest/quality pair through a resumable checkpoint thread. The Research Coordinator does not yet
-invoke that specialist automatically.
+verified canonical manifest/quality pair through a resumable checkpoint thread. The Experiment Design specialist is
+also operational: it validates one complete structured design over existing canonical inputs, persists an immutable
+proposal with requested approvals, and returns a digest-pinned handoff. The Research Coordinator executes neither
+specialist itself; composition invokes selected routes and carries only accepted refs and digests into the next
+decision. Quantitative Methods, ML, general Robustness and final Evaluation routes remain absent.
 
 Trader Postgres is canonical for implementations, specifications, runs, trial ledgers, Evaluation, and Adversarial
 evidence. MCP is the control-plane API over deterministic services. LangGraph agents constrain tool access and preserve
@@ -163,6 +172,8 @@ When documentation and implementation disagree, inspect these current sources an
 - Orchestration declarations and persistence services: `src/trader_research/governance/orchestration/`.
 - Shared specialist contracts, catalogs, policy loop and resume helpers: `src/trader_agents/specialists/`.
 - Production Data specialist request, policy and MCP handlers: `src/trader_agents/data_agent/`.
+- Experiment Design request, policy, proposal action and route: `src/trader_agents/experiment_design_agent/`.
+- Bounded specialist-to-workflow composition and replay validation: `src/trader_agents/research_composition/`.
 - Resumable workflow state: `src/trader_agents/checkpointing/`.
 - Fixed workflow compilation and MCP execution: `src/trader_agents/orchestration/`.
 - Current capability and qualification baseline: `docs/research_agents/product_state.md`.

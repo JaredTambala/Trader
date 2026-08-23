@@ -64,17 +64,34 @@ def test_agent_registry_keys_and_display_names_are_unique() -> None:
     keys = [agent.key for agent in AGENT_DEFINITIONS]
     display_names = [agent.display_name for agent in AGENT_DEFINITIONS]
 
-    assert len(keys) == len(set(keys)) == 7
-    assert len(display_names) == len(set(display_names)) == 7
+    assert len(keys) == len(set(keys)) == 8
+    assert len(display_names) == len(set(display_names)) == 8
     assert set(display_names) == {
         "Quant Research Supervisor Agent",
         "Data Agent",
+        "Experiment Design Agent",
         "Quantitative Methods Agent",
         "ML Agent",
         "Hypothesis Agent",
         "Evaluation Agent",
         "Adversarial Agent",
     }
+
+
+def test_experiment_design_identity_has_only_proposal_authority() -> None:
+    identity = build_agent_identity("Experiment Design Agent")
+
+    assert identity.agent_key == "experiment_design_agent"
+    assert set(identity.tool_allowlist) == {
+        "mcp_health",
+        "mcp_get_config",
+        "research_create_experiment_protocol_proposal",
+    }
+    assert identity.output_artifacts == ("experiment_protocol_proposal.json",)
+    assert (
+        agent_owner_for_tool("research_create_experiment_protocol_proposal")
+        == "Experiment Design Agent"
+    )
 
 
 def test_target_decision_authorities_are_explicit_and_non_executing() -> None:

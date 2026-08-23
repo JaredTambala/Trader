@@ -12,6 +12,7 @@ from typing import Any
 
 from trader_research.foundation.artifacts import ResearchArtifactRecord
 from trader_research.governance.artifacts import (
+    EXPERIMENT_PROTOCOL_PROPOSAL,
     IMPLEMENTATION_VERSION,
     IMPLEMENTATION_VALIDATION_REPORT,
     STRATEGY_SPECIFICATION,
@@ -26,6 +27,51 @@ from trader_research.governance.artifacts import (
     EXPERIMENT_TRACKING_PROJECTION_REPORT,
     BACKTEST_RUN,
 )
+
+
+def write_experiment_protocol_proposal(
+    connection: Any,
+    record: ResearchArtifactRecord,
+    json_value: Any,
+) -> None:
+    """Upsert query fields for one immutable experiment protocol proposal.
+
+    Proposal and future approved-protocol rows remain separate so workflow
+    registration cannot overwrite specialist handoff evidence. The complete
+    proposal payload remains authoritative in the canonical artifact table.
+    """
+    payload = dict(record.payload)
+    protocol = payload.get("protocol") or {}
+    if not isinstance(protocol, MappingABC):
+        protocol = {}
+    connection.execute(
+        """
+        INSERT INTO research_experiment_protocol_proposals (
+            proposal_id, protocol_id, objective_id, task_id, design_digest,
+            status, requested_by, proposed_by, payload
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (proposal_id) DO UPDATE SET
+            protocol_id = EXCLUDED.protocol_id,
+            objective_id = EXCLUDED.objective_id,
+            task_id = EXCLUDED.task_id,
+            design_digest = EXCLUDED.design_digest,
+            status = EXCLUDED.status,
+            requested_by = EXCLUDED.requested_by,
+            proposed_by = EXCLUDED.proposed_by,
+            payload = EXCLUDED.payload
+        """,
+        [
+            record.artifact_id,
+            protocol.get("protocol_id"),
+            payload.get("objective_id"),
+            payload.get("task_id"),
+            payload.get("design_digest"),
+            payload.get("status") or record.status,
+            payload.get("requested_by"),
+            payload.get("proposed_by"),
+            json_value(payload),
+        ],
+    )
 
 
 def write_implementation_version(
@@ -492,6 +538,7 @@ def write_backtest_run(
 
 
 PROJECTION_WRITERS = {
+    EXPERIMENT_PROTOCOL_PROPOSAL: write_experiment_protocol_proposal,
     IMPLEMENTATION_VERSION: write_implementation_version,
     IMPLEMENTATION_VALIDATION_REPORT: write_implementation_validation_report,
     STRATEGY_SPECIFICATION: write_strategy_specification,

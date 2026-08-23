@@ -392,7 +392,7 @@ def test_product_state_separates_implementation_qualification_and_availability()
         "`none`, `focused`, `integration`, `controlled`",
         "`unregistered`, `registered`, `gated`, `operator_only`, `deferred`",
         "`Implemented` does not mean autonomously orchestrated",
-        "Coordinator-to-specialist composition",
+        "A bounded composition runner now connects explicit Data tasks",
         "commit `577c774`",
         "but they are not part of the",
     ):
@@ -455,7 +455,7 @@ def test_docs_define_non_overlapping_experiment_research_decisions() -> None:
     for phrase in (
         "Agents own bounded decisions. Domain contexts own canonical artifacts.",
         "`ExperimentProtocol`",
-        "The experiment protocol is a proposal until material assumptions are explicitly approved",
+        "The canonical proposal remains immutable while material assumptions are decided",
         "The workflow executor is not an agent",
         "Robustness findings feed Evaluation",
         "`domain_owner`",
@@ -494,7 +494,7 @@ def test_docs_define_non_overlapping_experiment_research_decisions() -> None:
     assert "## Target Orchestrated Supplied-Strategy Workflow" in workflows
 
 
-def test_docs_define_shared_specialist_boundary_without_claiming_composition() -> None:
+def test_docs_define_shared_specialist_boundary_and_bounded_composition() -> None:
     product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
     architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
     agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
@@ -511,11 +511,15 @@ def test_docs_define_shared_specialist_boundary_without_claiming_composition() -
         "`SpecialistActionCatalog`",
         "`SpecialistActionOutcome`",
         "`SpecialistResult`",
+        "`SpecialistRouteCatalog`",
+        "`ResearchCompositionRequest`",
+        "`AcceptedSpecialistResult`",
         "canonical input URIs",
         "registered action",
         "permitted side effects",
         "`DataSpecialistRequest`",
         "fresh-saver resumption without repeating accepted actions",
+        "Exact terminal replay",
     ):
         assert phrase in combined
 
@@ -527,19 +531,72 @@ def test_docs_define_shared_specialist_boundary_without_claiming_composition() -
         "| AGENT-DATA | Integrate Data Agent as a resumable specialist | complete |"
         in roadmap
     )
-    assert "| ORCH-5 | Multi-specialist composition | ready |" in roadmap
+    assert "| ORCH-5 | Multi-specialist composition | complete |" in roadmap
     assert (
-        "| AGENT-DESIGN | Experiment protocol proposal and specialist graph | ready |"
+        "| ORCH-6 | Controlled orchestration qualification | in_progress |"
+        in roadmap
+    )
+    assert "#### Implemented Research Composition" in roadmap
+    assert "#### Controlled Orchestration Qualification Plan" in roadmap
+    for phase in (
+        "`ORCHESTRATION_RUNTIME`",
+        "`ORCHESTRATION_CORE`",
+        "`ORCHESTRATION_E2E`",
+        "`ORCHESTRATION_RECOVERY`",
+        "`ORCHESTRATION_POLICY`",
+        "`ORCHESTRATION_SCALE`",
+        "`ORCHESTRATION_ACCEPTANCE`",
+    ):
+        assert phase in roadmap
+    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
+    for phrase in (
+        "### Controlled Orchestration Qualification",
+        "controlled_orchestration_v1",
+        "PG_CHECKPOINT_TEST_USER",
+        "verification_control.orchestration_call_ledger",
+        "verification_control.orchestration_acceptance_records",
+    ):
+        assert phrase in operations
+    assert (
+        "| AGENT-DESIGN | Experiment protocol proposal and specialist graph | complete |"
         in roadmap
     )
     for phrase in (
         "#### Implemented Data Specialist Cutover",
+        "#### Implemented Experiment Design Specialist",
         "`validate_market_data_scope`",
         "`ensure_market_data_available`",
         "`capture_market_data_evidence`",
         "without compatibility aliases",
     ):
         assert phrase in roadmap
+
+
+def test_docs_explain_implemented_experiment_design_approval_boundary() -> None:
+    combined = "\n".join(
+        (
+            PRODUCT_STATE_PATH.read_text(encoding="utf-8"),
+            (DOC_ROOT / "architecture.md").read_text(encoding="utf-8"),
+            (DOC_ROOT / "agents.md").read_text(encoding="utf-8"),
+            (DOC_ROOT / "mcp_tools.md").read_text(encoding="utf-8"),
+            (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8"),
+            (DOC_ROOT / "workflows.md").read_text(encoding="utf-8"),
+            (DOC_ROOT / "operations.md").read_text(encoding="utf-8"),
+        )
+    )
+
+    for phrase in (
+        "`ExperimentDesignRequest`",
+        "`ExperimentProtocolProposal`",
+        "`research_create_experiment_protocol_proposal`",
+        "`apply_experiment_protocol_approvals`",
+        "`research_experiment_protocol_proposals`",
+        "Data and Experiment Design",
+        "immutable proposal",
+        "requested approvals",
+        "cannot approve",
+    ):
+        assert phrase in combined
 
 
 def test_docs_define_declaration_contract_scope_without_claiming_execution() -> None:
@@ -563,7 +620,7 @@ def test_docs_define_declaration_contract_scope_without_claiming_execution() -> 
         "`Approval`",
         "sealed holdout",
         "dependency cycles",
-        "The declaration contracts add no MCP tools",
+        "The declaration contracts are transport-neutral",
         "declaration-contract delivery was contract-only",
     ):
         assert phrase in combined
@@ -657,7 +714,8 @@ def test_docs_explain_current_orchestration_call_and_storage_boundaries() -> Non
     roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
 
     for phrase in (
-        "The coordinator policy, declaration contracts, non-executing resume shell",
+        "The coordinator policy, composition runner, declaration contracts",
+        "non-executing resume shell, and closed compiler/executor",
         "closed compiler/executor are separate architectural responsibilities",
     ):
         assert phrase in normalized_readme
@@ -702,7 +760,7 @@ def test_docs_define_bounded_research_coordinator_policy() -> None:
         "`compile_coordination_decision`",
         "request a prerequisite",
         "unknown templates",
-        "specialist invocation remains separate composition work",
+        "selects the first unaccepted",
     ):
         assert phrase in combined
 

@@ -26,6 +26,8 @@ from trader_mcp.constants import (
     DATA_TOOL_DESCRIPTIONS,
     EVALUATION_TOOL_DESCRIPTIONS,
     EVALUATION_TOOL_NAMES,
+    EXPERIMENT_DESIGN_TOOL_DESCRIPTIONS,
+    EXPERIMENT_DESIGN_TOOL_NAMES,
     KNOWLEDGE_ASSEMBLE_METHODOLOGY_EVIDENCE_TOOL,
     KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL,
     KNOWLEDGE_DISCOVER_METHODOLOGY_CANDIDATES_TOOL,
@@ -752,6 +754,15 @@ def build_config_envelope(
             ],
         },
     ]
+    tool_metadata.extend(
+        {
+            "name": tool_name,
+            "agent_owner": agent_owner_for_tool(tool_name),
+            "side_effect": SideEffect.LOCAL_MUTATING.value,
+            "description": EXPERIMENT_DESIGN_TOOL_DESCRIPTIONS[tool_name],
+        }
+        for tool_name in EXPERIMENT_DESIGN_TOOL_NAMES
+    )
     tool_metadata.extend(
         {
             "name": tool_name,

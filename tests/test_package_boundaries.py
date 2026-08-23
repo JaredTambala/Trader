@@ -131,6 +131,16 @@ RETIRED_RESEARCH_HUB_IMPORTS = {
     "trader_research.postgres_artifact_store",
 }
 
+RETIRED_AGENT_ORCHESTRATION_SURFACES = {
+    Path("src/trader_agents/quant_research.py"),
+    Path("src/trader_agents/state.py"),
+}
+
+RETIRED_AGENT_ORCHESTRATION_IMPORTS = {
+    "trader_agents.quant_research",
+    "trader_agents.state",
+}
+
 RETIRED_METHODOLOGY_SURFACES = {
     Path("src/trader_research/methods"),
     Path("src/trader_research/method_implementations"),
@@ -567,9 +577,30 @@ def test_data_specialist_uses_public_governance_store_and_mcp_boundaries() -> No
     assert offenders == []
 
 
+def test_experiment_design_specialist_uses_public_bounded_boundaries() -> None:
+    forbidden = (
+        "trader",
+        "trader_mcp.contracts",
+        "trader_mcp.server",
+        "trader_research.data",
+        "trader_research.experiments",
+        "trader_research.infrastructure",
+    )
+    offenders: list[str] = []
+    for path in Path("src/trader_agents/experiment_design_agent").glob("*.py"):
+        for imported in sorted(_imported_modules(path)):
+            if imported in forbidden or imported.startswith(
+                tuple(f"{prefix}." for prefix in forbidden)
+            ):
+                offenders.append(f"{path}: imports {imported}")
+            if imported.startswith(("trader_research.foundation.", "trader_research.governance.")):
+                offenders.append(f"{path}: imports {imported}")
+
+    assert offenders == []
+
+
 def test_legacy_data_agent_graph_surfaces_are_removed() -> None:
     assert not Path("src/trader_agents/data_agent_policy.py").exists()
-    state = Path("src/trader_agents/state.py").read_text(encoding="utf-8")
     package = Path("src/trader_agents/__init__.py").read_text(encoding="utf-8")
     for name in (
         "DataAgentState",
@@ -580,8 +611,50 @@ def test_legacy_data_agent_graph_surfaces_are_removed() -> None:
         "build_data_agent_workflow_graph",
         "data_agent_handoffs_from_state",
     ):
-        assert name not in state
         assert name not in package
+
+
+def test_retired_agent_orchestration_surfaces_and_imports_are_removed() -> None:
+    assert [
+        str(path)
+        for path in sorted(RETIRED_AGENT_ORCHESTRATION_SURFACES)
+        if path.exists()
+    ] == []
+    offenders: list[str] = []
+    for root in (Path("src"), Path("tests"), Path("examples")):
+        for path in root.rglob("*.py"):
+            if path == Path("tests/test_package_boundaries.py"):
+                continue
+            for imported in _imported_modules(path):
+                if imported in RETIRED_AGENT_ORCHESTRATION_IMPORTS or any(
+                    imported.startswith(f"{module}.")
+                    for module in RETIRED_AGENT_ORCHESTRATION_IMPORTS
+                ):
+                    offenders.append(f"{path}: imports {imported}")
+    assert offenders == []
+
+
+def test_research_composition_uses_public_agent_and_governance_boundaries() -> None:
+    forbidden = (
+        "trader",
+        "trader_mcp",
+        "trader_research.data",
+        "trader_research.experiments",
+        "trader_research.infrastructure",
+        "trader_research.knowledge",
+        "trader_research.methodology",
+        "trader_research.ml",
+        "trader_research.review",
+    )
+    offenders: list[str] = []
+    for path in Path("src/trader_agents/research_composition").rglob("*.py"):
+        for imported in sorted(_imported_modules(path)):
+            if imported in forbidden or imported.startswith(
+                tuple(f"{prefix}." for prefix in forbidden)
+            ):
+                offenders.append(f"{path}: imports {imported}")
+
+    assert offenders == []
 
 
 def test_repo_code_does_not_import_retired_legacy_research_surfaces() -> None:

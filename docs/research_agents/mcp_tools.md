@@ -26,6 +26,7 @@ MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded 
 | Backtest/result/comparison tools | `trader_research.experiments` |
 | Optimisation engines and ledger | `trader_research.experiments` |
 | Tracking projections | `trader_research.experiments` |
+| Experiment protocol proposals | `trader_research.governance.orchestration` over the canonical Experiments store |
 | Evaluation tools | `trader_research.review` |
 | Adversarial tools | `trader_research.review` |
 | ML Agent deployment tools | `trader_research.ml` plus the optional lazy `trader_mlflow` inference adapter |
@@ -43,10 +44,11 @@ There is no registered high-level workflow-execution tool. The fixed compiler/ex
 `trader_agents.orchestration` and uses the ordinary registered tools listed below through `McpToolClient`. This keeps
 each Data, Experiment and Review contract, side-effect declaration, policy gate and artifact authority visible.
 
-The catalog contains only the bridges needed by that library: the Data table includes the operation that materializes
-an exact inventory/quality pair, and the Supervisor table includes two operations that persist the initial governance
-records and terminal outcome. Those operations do not compile a plan, advance a checkpoint or execute a plan step.
-Resume state belongs to the separately configured LangGraph checkpointer, not to MCP.
+The catalog contains only the bridges needed by that library: Data can materialize an exact inventory/quality pair,
+Experiment Design can persist an immutable proposed protocol, and the Supervisor table includes two operations that
+persist the initial approved governance records and terminal outcome. Those operations do not compile a plan, decide
+approvals, advance a checkpoint or execute a plan step. Resume state belongs to the separately configured LangGraph
+checkpointer, not to MCP.
 
 ## Data Agent Tools
 
@@ -134,6 +136,16 @@ Both tools require a configured `ResearchArtifactStore`; no filesystem fallback 
 model, but it rejects unknown or unavailable adapter profiles. The second is the controlled model-loading boundary.
 Neither tool writes to MLflow, changes an alias, starts a service, grants live eligibility, or mutates broker state.
 
+## Experiment Design Agent Tools
+
+| Tool | Side effect | Primary output | Notes |
+| --- | --- | --- | --- |
+| `research_create_experiment_protocol_proposal` | `local_mutating` | Canonical Experiments-owned `experiment_protocol_proposal` ref. | Requires an approved objective, a complete structured design, exact canonical implementation/Data inputs, explicit requester and the registered Experiment Design actor. It persists requested approvals only and is idempotent for exact replay. |
+
+The operation validates canonical types, ownership, producer metadata, status, payload hashes, implementation kind,
+Data scope/quality agreement and optional optimisation validation before saving. It cannot approve a material
+assumption, register the approved protocol, execute an experiment or overwrite conflicting proposal evidence.
+
 ## Quant Research Supervisor Tools
 
 | Tool | Side effect | Primary output | Notes |
@@ -185,8 +197,8 @@ Maintained or externally produced source enters the same implementation registry
 The config envelope reports static registration flags plus runtime policy:
 
 - Broker-mutating and raw SQL tools are not registered.
-- Data, knowledge, math, implementation, specification, canonical backtest, optimisation, Evaluation, Adversarial and
-  orchestration-record tool families are registered.
+- Data, knowledge, math, implementation, specification, canonical backtest, optimisation, Experiment Design,
+  Evaluation, Adversarial and orchestration-record tool families are registered.
 - Backtest execution is separately gated by `TRADER_MCP_ALLOW_BACKTESTS`.
 - Optimisation execution additionally requires `TRADER_MCP_ALLOW_OPTIMIZATION`.
 - Optuna writes require `TRADER_MCP_ALLOW_EXTERNAL_RESEARCH_WRITES` and `TRADER_MCP_ALLOW_OPTUNA_WRITES`.
@@ -214,8 +226,8 @@ The next planned tool work is not additional knowledge extraction. It is:
   concentration attacks
 
 Higher-level orchestration composes the registered tools in this catalog through a fixed compiler/executor; it is not a
-new generic MCP tool that bypasses their contracts. The two workflow MCP tools persist governance records and do not
-execute the graph. Current orchestration state and remaining dependencies are recorded in
+new generic MCP tool that bypasses their contracts. The Experiment Design operation persists proposal evidence; the
+two workflow MCP tools persist approved governance records and do not execute the graph. Current orchestration state and remaining dependencies are recorded in
 [product_state.md](product_state.md#implemented-orchestration-at-a-glance) and the
 [capability roadmap](../../plans/research_capability_roadmap.md#orchestration).
 

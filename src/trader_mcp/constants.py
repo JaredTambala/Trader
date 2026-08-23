@@ -195,6 +195,9 @@ RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS_TOOL: Final = (
 RESEARCH_PROJECT_EXPERIMENT_TRACKING_TOOL: Final = (
     "research_project_experiment_tracking"
 )
+RESEARCH_CREATE_EXPERIMENT_PROTOCOL_PROPOSAL_TOOL: Final = (
+    "research_create_experiment_protocol_proposal"
+)
 RESEARCH_REGISTER_EXPERIMENT_WORKFLOW_TOOL: Final = (
     "research_register_experiment_workflow"
 )
@@ -222,6 +225,11 @@ DATA_TOOL_NAMES: Final = (
     DATA_CREATE_RESEARCH_SNAPSHOT_TOOL,
 )
 """Data Agent tool names exposed by the MCP server."""
+
+EXPERIMENT_DESIGN_TOOL_NAMES: Final = (
+    RESEARCH_CREATE_EXPERIMENT_PROTOCOL_PROPOSAL_TOOL,
+)
+"""Experiment Design Agent tool names exposed by the MCP server."""
 
 ML_TOOL_NAMES: Final = (
     ML_CREATE_DEPLOYMENT_MANIFEST_TOOL,
@@ -306,6 +314,7 @@ ADVERSARIAL_TOOL_NAMES: Final = (
 REGISTERED_TOOL_NAMES: Final = (
     *SUPPORT_TOOL_NAMES,
     *DATA_TOOL_NAMES,
+    *EXPERIMENT_DESIGN_TOOL_NAMES,
     *ML_TOOL_NAMES,
     *KNOWLEDGE_TOOL_NAMES,
     *MATH_TOOL_NAMES,
@@ -331,6 +340,14 @@ DATA_TOOL_DESCRIPTIONS: Final = {
     ),
 }
 """Descriptions for Data Agent tools exposed by the MCP server."""
+
+EXPERIMENT_DESIGN_TOOL_DESCRIPTIONS: Final = {
+    RESEARCH_CREATE_EXPERIMENT_PROTOCOL_PROPOSAL_TOOL: (
+        "Persist one immutable approval-aware protocol proposal over canonical "
+        "implementation and Data evidence."
+    ),
+}
+"""Descriptions for Experiment Design Agent tools exposed by the MCP server."""
 
 ML_TOOL_DESCRIPTIONS: Final = {
     ML_CREATE_DEPLOYMENT_MANIFEST_TOOL: (
@@ -464,5 +481,6 @@ CAPABILITY_REGISTRATION_FLAGS: Final = {
     "evaluation_tools_registered": True,
     "adversarial_tools_registered": True,
     "orchestration_tools_registered": True,
+    "experiment_design_tools_registered": True,
 }
 """Safety flags for registered and intentionally unregistered tool families."""

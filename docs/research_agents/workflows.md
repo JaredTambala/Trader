@@ -3,10 +3,11 @@
 Research workflows are built as deterministic MCP tool chains first, then composed by LangGraph agents once the tool
 surface is useful. All workflows stay outside live trading.
 
-The procedures in this document describe callable tool graphs, not unrestricted autonomous behavior. The Data Agent is
-the first specialist on the common resumable task/result boundary. Separately, the Research Coordinator selects a bounded
-next action and compiles the one registered implementation-to-evidence workflow when its approved inputs are ready.
-The fixed workflow executor then runs that plan mechanically through MCP. See
+The procedures in this document describe callable tool graphs, not unrestricted autonomous behavior. Data and
+Experiment Design are specialists on the common resumable task/result boundary. The Research Coordinator selects a
+bounded next action, and composition executes their registered routes, pauses for explicit operator decisions over the
+immutable proposal, then enters the one registered implementation-to-evidence workflow. The fixed executor runs that
+plan mechanically through MCP. See
 [product_state.md](product_state.md#agent-state) and the
 [orchestration roadmap](../../plans/research_capability_roadmap.md#orchestration).
 
@@ -39,9 +40,8 @@ optimisation audit are implemented. ML versioning and broader cost/data perturba
 
 ## Target Orchestrated Supplied-Strategy Workflow
 
-This is the target higher-level agent path. Bounded next-action selection, the reusable specialist task/result shell,
-the production Data specialist, and the middle deterministic execution segment are implemented; automatic
-invocation/composition and the remaining specialist graphs are not:
+This is the target higher-level agent path. Bounded Data-and-design-to-fixed-workflow composition is implemented.
+Optional producer, general Robustness and final Evaluation specialist graphs are not:
 
 ```text
 operator brief with supplied strategy and risk-manager refs
@@ -59,7 +59,7 @@ operator brief with supplied strategy and risk-manager refs
   -> Research Coordinator returns refs, blockers and permitted next actions
 ```
 
-The experiment protocol owns the proposed test design: strategy/risk refs, Data requirements, costs, initial state,
+The immutable protocol proposal owns the proposed test design: strategy/risk refs, Data requirements, costs, initial state,
 selection/holdout policy, tunable dimensions, objective, constraints, search budget, robustness requirements,
 evaluation questions and approval points. It cannot be rewritten after observing results. The workflow executor is not
 an agent and makes no design, selection or quality judgment.
@@ -83,8 +83,26 @@ The task permits side-effect classes and policy gates explicitly. Policy decisio
 canonical input URIs and declared output slots; they cannot inject MCP tool names or arguments. The handler owns the
 role-specific typed request and strips raw transport data before returning. The shell requires canonical artifact URIs
 for accepted handoffs and can use an injected checkpointer. A stable task digest and accepted-action digests prevent
-task drift or accepted-action replay. The Data action catalog is operational; there is currently no Coordinator edge
-into it.
+task drift or accepted-action replay. The Data and Experiment Design action catalogs are operational through the
+default composition routes. The Coordinator selects routes by task identity, authority, digest and version;
+composition performs the calls and validates the returned evidence.
+
+The implemented composition sequence is:
+
+1. The caller supplies one approved objective and explicit specialist tasks; composition never derives Data scope or
+   experiment choices from objective prose. The Design task must reference Data evidence that already exists.
+2. The Coordinator selects the first unaccepted task through the unique code-owned route. The Data graph returns a
+   manifest and quality handoff or a typed prerequisite/blocker.
+3. The Experiment Design graph validates its complete request and exact input refs, calls
+   `research_create_experiment_protocol_proposal`, reloads the immutable proposal and returns its canonical handoff.
+4. Composition resolves the proposal, checkpoints a bounded receipt and pauses for the requested approvals. The
+   operator applies explicit decisions with `apply_experiment_protocol_approvals` and resumes with that unchanged
+   approved protocol. Its design digest and Data refs must match the accepted proposal.
+5. The Coordinator selects the fixed template; composition runs the executor and gives its canonical outcome back to
+   the Coordinator for terminal reporting.
+
+Exact replay does not repeat accepted specialist actions, workflow registration, workflow steps or outcome recording.
+Changed request/task/proposal/protocol content, route ambiguity, invalid handoffs and transition-budget exhaustion fail closed.
 
 ### Declaration, Resume, And Deterministic Execution
 
@@ -94,8 +112,9 @@ one executable fixed template:
 1. A `ResearchObjective` fixes operator intent, success criteria, supplied refs and constraints.
 2. An `ExperimentProtocol` fixes implementation refs, role-labelled Data requirements, costs, initial state,
    optimisation design, robustness requirements, falsification criteria and material approval decisions.
-3. The Research Coordinator emits one closed `CoordinationDecision`: request a prerequisite, request approval, execute
-   a registered workflow, report terminal state or block. It contains no tool arguments or experiment overrides.
+3. The Research Coordinator emits one closed `CoordinationDecision`: execute a registered specialist task, request a
+   prerequisite, request approval, execute a registered workflow, report terminal state or block. It contains no tool
+   arguments or experiment overrides.
 4. A code-owned `WorkflowTemplateCatalog` accepts only registered template IDs and versions. Exactly one eligible
    template must match an approved protocol before compilation.
 5. A `WorkflowPlan` selects only versioned `CapabilityDefinition` entries, binds their inputs and outputs to typed
@@ -171,8 +190,10 @@ compiler/executor automates. The same MCP tools remain callable individually for
    `research_register_risk_manager_implementation` for the supplied source. Direct callers may preflight with
    `research_validate_strategy_implementation` and `research_validate_risk_manager_implementation`; the compiled plan
    runs those validations again from the pinned implementation refs before creating specifications.
-3. **Approve the design outside the executor.** Construct an approved objective and matching protocol that names exact
-   implementation and Data refs, costs, initial state, runtime limits and all material decisions. When optimisation is
+3. **Propose and approve the design outside the executor.** Build a complete `ExperimentDesignRequest` and run the
+   Experiment Design specialist, or call `research_create_experiment_protocol_proposal` through an explicit operator
+   procedure. Inspect its canonical proposal, decide every requested `Approval`, and use
+   `apply_experiment_protocol_approvals` to obtain the unchanged approved protocol. When optimisation is
    declared, first use `research_register_optimization_objective` and
    `research_validate_optimization_objective`; the protocol must pin the passed validation plus separate selection and
    sealed-holdout Data snapshots.
