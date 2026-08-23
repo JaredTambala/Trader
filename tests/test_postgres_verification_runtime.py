@@ -110,6 +110,7 @@ def test_phase_outcome_contract_requires_explicit_consistent_blockers() -> None:
 def test_qualification_profiles_are_closed_and_legacy_is_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv(VERIFICATION_PROFILE_ENV, raising=False)
     assert load_qualification_profile({}).name == LEGACY_VERIFICATION_PROFILE
     _validate_phase("57J")
     with pytest.raises(VerificationConfigurationError, match="phase must be one of"):
@@ -210,7 +211,10 @@ def test_retained_evidence_contract_is_explicitly_limited_to_qualified_phases() 
         load_retained_evidence_phase({RETAIN_EVIDENCE_PHASE_ENV: "57L"})
 
 
-def test_57m_phase_policy_requires_only_backtest_and_optimization_gates() -> None:
+def test_57m_phase_policy_requires_only_backtest_and_optimization_gates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(VERIFICATION_PROFILE_ENV, raising=False)
     disabled = {name: False for name in MUTATION_GATE_NAMES}
     _validate_phase_policy_gates(None, disabled)
     enabled = {
