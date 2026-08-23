@@ -167,7 +167,7 @@ def test_eight_real_tasks_and_three_symbol_baseline_scale(
         }
     )
     completed = _mapping(completed_stage["result"])
-    assert completed["status"] == "completed"
+    assert completed["status"] == "completed", str(completed.get("errors"))
     elapsed = time.perf_counter() - started
     measurements = _measurements()
     persist_scale_result(
@@ -265,7 +265,7 @@ def _measurements() -> Mapping[str, int]:
         row = connection.execute(
             "SELECT pg_database_size(current_database()) AS database_bytes, "
             "(SELECT count(*) FROM research_artifacts) AS artifact_count, "
-            "COALESCE((SELECT sum(pg_total_relation_size(format('%I.%I', "
+            "COALESCE((SELECT sum(pg_total_relation_size(format('%%I.%%I', "
             "schemaname, tablename)::regclass)) FROM pg_tables "
             "WHERE schemaname = %s), 0) AS checkpoint_bytes",
             [checkpoint_schema],

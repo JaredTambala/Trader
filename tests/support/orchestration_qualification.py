@@ -274,21 +274,28 @@ async def prepare_qualification_request(
             holdout_requirement,
             requested_by=normalized_composition_id,
         )
+    objective_id = (
+        "objective_controlled_orchestration_v1"
+        if include_optimization
+        else f"objective_{normalized_composition_id}"
+    )
+    if include_optimization:
+        success_criterion = (
+            "Produce baseline, selection, holdout, Evaluation, and "
+            "Adversarial evidence."
+        )
+    elif normalized_composition_id == RECOVERY_COMPOSITION_ID:
+        success_criterion = (
+            "Produce canonical baseline evidence after a bounded restart."
+        )
+    else:
+        success_criterion = (
+            "Produce canonical baseline evidence within declared scale bounds."
+        )
     objective = ResearchObjective(
-        objective_id=(
-            "objective_controlled_orchestration_v1"
-            if include_optimization
-            else "objective_controlled_orchestration_recovery_v1"
-        ),
+        objective_id=objective_id,
         statement="Evaluate the supplied multi-asset implementation deterministically.",
-        success_criteria=(
-            (
-                "Produce baseline, selection, holdout, Evaluation, and "
-                "Adversarial evidence."
-                if include_optimization
-                else "Produce canonical baseline evidence after a bounded restart."
-            ),
-        ),
+        success_criteria=(success_criterion,),
         supplied_artifact_refs=(strategy_ref, risk_ref),
         requested_by=QUALIFICATION_OPERATOR,
         actor=QUALIFICATION_OPERATOR,
