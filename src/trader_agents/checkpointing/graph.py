@@ -192,6 +192,7 @@ def _record_result(
             {
                 "current_step_index": next_index,
                 "next_attempt": 1,
+                "blockers": [],
                 "status": "completed" if next_index >= step_count else "ready",
                 "public_status": (
                     "completed"

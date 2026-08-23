@@ -186,6 +186,19 @@ def test_checkpoint_graph_retries_and_rejects_plan_drift() -> None:
         assert retry["next_attempt"] == 2
         assert retry["public_status"] == "awaiting_step_result"
 
+        recovered = await graph.ainvoke(
+            Command(
+                resume=_result(
+                    workflow_id=workflow_id,
+                    step_id="inventory",
+                    attempt=2,
+                ).to_dict()
+            ),
+            config,
+        )
+        assert recovered["pending_step_id"] == "quality"
+        assert recovered["blockers"] == []
+
         drifted_graph = build_resumable_workflow_graph(
             plan=_plan(quality_threshold=0.95),
             checkpointer=saver,
