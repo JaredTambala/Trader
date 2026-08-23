@@ -142,16 +142,32 @@ def test_response_loss_reconciles_and_fresh_process_resume_does_not_replay(
     )
     assert replayed["result"] == completed
     assert replayed["calls"] == []
-    assert len(
-        postgres_research_artifact_store.list_artifacts(artifact_type=WORKFLOW_PLAN)
+    workflow_id = str(completed["workflow_id"])
+    assert _workflow_artifact_count(
+        postgres_research_artifact_store,
+        artifact_type=WORKFLOW_PLAN,
+        workflow_id=workflow_id,
     ) == 1
-    assert len(
-        postgres_research_artifact_store.list_artifacts(
-            artifact_type=WORKFLOW_OUTCOME
-        )
+    assert _workflow_artifact_count(
+        postgres_research_artifact_store,
+        artifact_type=WORKFLOW_OUTCOME,
+        workflow_id=workflow_id,
     ) == 1
     _assert_identical_retry_evidence()
     _assert_checkpoint_payload_is_bounded()
+
+
+def _workflow_artifact_count(
+    artifact_store: PostgresResearchArtifactStore,
+    *,
+    artifact_type: str,
+    workflow_id: str,
+) -> int:
+    """Count canonical artifacts attributed to one qualification workflow."""
+    return sum(
+        record.requested_by == workflow_id
+        for record in artifact_store.list_artifacts(artifact_type=artifact_type)
+    )
 
 
 def _assert_identical_retry_evidence() -> None:
