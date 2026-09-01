@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from hashlib import sha256
 import json
 import os
@@ -20,6 +20,7 @@ from pydantic import ValidationError
 from trader_agents import (
     AgentPhase,
     AgentRole,
+    AgenticResearchRuntime,
     AgenticSliceResult,
     AgendaTaskProposal,
     BudgetLedger,
@@ -27,12 +28,14 @@ from trader_agents import (
     CompositeDataScope,
     CanonicalEvidenceRef,
     CoordinatorAgenda,
+    CoordinatorDecision,
     DataAgentTurn,
     DataInputRole,
     DataResearchAgent,
     DataScopeItem,
     LlmTokenUsage,
     McpToolDescription,
+    OperatorCancellation,
     ParameterContract,
     PolicyContext,
     PolicyViolation,
@@ -67,6 +70,7 @@ from trader_agents import (
     validate_runtime_pins,
 )
 from trader_agents.coordinator import (
+    _apply_coordinator_loop_policy,
     _data_scope_for_task,
     _validate_first_slice_agenda,
 )
@@ -306,6 +310,86 @@ def test_scheduler_parallelizes_ready_work_and_honors_hard_joins() -> None:
     assert second == ()
 
 
+def test_coordinator_semantic_loop_guard_ignores_paraphrase_and_new_attempt_id() -> None:
+    """Equivalent revisions stop when prose and delegation identity change."""
+    session = _session()
+    task = _task("data", "data_research")
+    agenda = CoordinatorAgenda(
+        objective_summary="Resolve the approved Data scope.",
+        tasks=[task, _task("strategy", "strategy_engineering")],
+    )
+
+    def _return(attempt: int) -> tuple[Any, SpecialistReturn]:
+        delegation = build_delegation(
+            session_id=session.session_id,
+            branch_id="data-branch",
+            task=task,
+            required_input_refs=[],
+            permitted_side_effects=["read_only", "local_mutating"],
+            reserved_model_calls=4,
+            reserved_tool_calls=8,
+            reserved_tokens=4_000,
+            attempt=attempt,
+        )
+        result = SpecialistReturn(
+            delegation_id=delegation.delegation_id,
+            session_id=session.session_id,
+            branch_id=delegation.branch_id,
+            attempt_id=delegation.attempt_id,
+            role="data_research",
+            program_id="data-research-v2",
+            model_profile_id=session.model_profile_id,
+            tool_catalog_id=session.tool_catalog_id,
+            status="blocked",
+            blockers=[
+                {
+                    "code": "data_missing",
+                    "message": "The approved scope remains incomplete.",
+                }
+            ],
+            budget_used=BudgetUsage(),
+        )
+        return delegation, result
+
+    first_delegation, first_return = _return(1)
+    second_delegation, second_return = _return(2)
+    first = CoordinatorDecision(
+        action="revise",
+        summary="Ask Data Research to inspect the unresolved gap again.",
+        reviewed_delegation_ids=[first_delegation.delegation_id],
+        criteria_applied=["complete approved coverage"],
+        affected_task_ids=["data"],
+        expected_information_gain="Determine whether the gap can be resolved.",
+    )
+    paraphrase = first.model_copy(
+        update={
+            "summary": "Retry the same missing Data investigation.",
+            "reviewed_delegation_ids": [second_delegation.delegation_id],
+            "expected_information_gain": "Check the unresolved coverage once more.",
+        }
+    )
+    fingerprints: dict[str, int] = {}
+
+    accepted = _apply_coordinator_loop_policy(
+        first,
+        agenda=agenda,
+        new_returns=[first_return],
+        delegations=[first_delegation],
+        loop_fingerprints=fingerprints,
+    )
+    stopped = _apply_coordinator_loop_policy(
+        paraphrase,
+        agenda=agenda,
+        new_returns=[second_return],
+        delegations=[second_delegation],
+        loop_fingerprints=fingerprints,
+    )
+
+    assert accepted.action.value == "revise"
+    assert stopped.action.value == "stop_fail_closed"
+    assert stopped.blockers[0].code == "low_information_loop"
+
+
 def test_agenda_decomposes_disjoint_data_and_joins_before_construction() -> None:
     """Code-owned policy accepts complete disjoint fan-out and hard joins."""
     base_scope = composite_data_scope_from_session(_session())
@@ -462,10 +546,12 @@ def test_role_scoped_mcp_runtime_validates_transport_envelope() -> None:
     )
     ledger = BudgetLedger(session.budget)
     client = _FakeMcpClient()
+    traces = RecordingTraceSink()
     runtime = RoleScopedMcpRuntime(
         client=client,
         catalogue=first_slice_tool_catalogue(),
         ledger=ledger,
+        trace_sink=traces,
     )
     context = PolicyContext(
         session=session,
@@ -504,6 +590,12 @@ def test_role_scoped_mcp_runtime_validates_transport_envelope() -> None:
     assert result.observation.ok is True
     assert result.observation.summary["coverage"] == "complete"
     assert ledger.usage.tool_calls == 1
+    assert [span["name"] for span in traces.spans] == [
+        "agent.mcp.data_get_inventory",
+        "agent.mcp_result.data_get_inventory",
+    ]
+    assert traces.spans[-1]["attributes"]["trader.result_ok"] is True
+    assert all("source_code" not in str(span) for span in traces.spans)
 
 
 def test_data_research_loop_uses_model_selected_tools_and_exact_snapshot() -> None:
@@ -860,6 +952,210 @@ def test_strategy_loop_authors_checks_admits_and_cleans_workspace() -> None:
     assert mcp.destroyed is True
 
 
+def test_strategy_loop_repairs_actionable_failed_admission_in_new_attempt() -> None:
+    """Failed admission is cleaned up before one bounded new candidate attempt."""
+    session = replace(
+        _session(session_id="session-strategy-repair"),
+        budget=AgentBudget(
+            max_model_calls=24,
+            max_tool_calls=24,
+            max_tokens=24_000,
+            max_duration_seconds=600,
+            max_mutations=20,
+            max_revisions=2,
+            concurrency_limit=2,
+        ),
+    )
+    contract = strategy_build_contract_from_session(
+        session,
+        branch_id="strategy-repair-branch",
+    )
+    delegation = build_delegation(
+        session_id=session.session_id,
+        branch_id="strategy-repair-branch",
+        task=_task("strategy-repair", "strategy_engineering"),
+        required_input_refs=[],
+        permitted_side_effects=["read_only", "local_mutating"],
+        reserved_model_calls=24,
+        reserved_tool_calls=24,
+        reserved_tokens=12_000,
+        attempt=1,
+    )
+    candidate_attempts = [
+        stable_research_id(
+            "candidate_attempt",
+            {
+                "delegation_id": delegation.delegation_id,
+                "specialist_attempt_id": delegation.attempt_id,
+                "repair_count": repair_count,
+            },
+        )
+        for repair_count in (0, 1)
+    ]
+    implementation_refs = [
+        _evidence_payload(
+            "implementation_version",
+            f"implementation-repair-{index}",
+            domain_owner="Experiments",
+        )
+        for index in (1, 2)
+    ]
+    validation_refs = [
+        _evidence_payload(
+            "implementation_validation_report",
+            f"validation-repair-{index}",
+            domain_owner="Experiments",
+        )
+        for index in (1, 2)
+    ]
+    responses: list[Mapping[str, Any]] = [
+        _strategy_tool_turn(
+            "repair-search",
+            "research_search_implementations",
+            {"query": "cross asset momentum", "implementation_kinds": ["strategy"]},
+        ),
+        {
+            "action": "choose_build",
+            "public_rationale": "No prior implementation matches the contract.",
+            "build_decision": "author",
+        },
+    ]
+    for index, workspace_id in enumerate(
+        ("workspace-repair-1", "workspace-repair-2")
+    ):
+        package_id = f"package-repair-{index + 1}"
+        responses.extend(
+            [
+                _strategy_tool_turn(
+                    f"create-{index}",
+                    "coding_create_workspace",
+                    {
+                        "attempt_id": candidate_attempts[index],
+                        "build_contract_id": contract.contract_id,
+                    },
+                    mutation_reason="Create an isolated candidate attempt.",
+                ),
+                _strategy_tool_turn(
+                    f"write-{index}",
+                    "coding_write_candidate_file",
+                    {
+                        "workspace_id": workspace_id,
+                        "relative_path": "implementation.py",
+                        "content": (
+                            "def build_strategy():\n"
+                            f"    return {{'revision': {index}}}\n"
+                        ),
+                    },
+                    mutation_reason="Write the complete candidate source.",
+                ),
+                _strategy_tool_turn(
+                    f"check-{index}",
+                    "coding_run_check",
+                    {"workspace_id": workspace_id, "check_name": "pytest"},
+                    mutation_reason="Run the isolated candidate check.",
+                ),
+                _strategy_tool_turn(
+                    f"package-{index}",
+                    "coding_package_candidate",
+                    {
+                        "workspace_id": workspace_id,
+                        "implementation_path": "implementation.py",
+                    },
+                ),
+                _strategy_tool_turn(
+                    f"register-{index}",
+                    "research_register_strategy_implementation",
+                    {
+                        "name": contract.name,
+                        "version": f"0.1.{index}",
+                        "candidate_package_id": package_id,
+                        "factory_name": "build_strategy",
+                        "dependencies": [],
+                        "authoring_origin": "agent_authored",
+                        "metadata": {"candidate_package_id": package_id},
+                    },
+                    mutation_reason="Register the exact candidate package.",
+                ),
+                _strategy_tool_turn(
+                    f"validate-{index}",
+                    "research_validate_strategy_implementation",
+                    {
+                        "implementation_version_uri": implementation_refs[index][
+                            "uri"
+                        ],
+                        "requested_by": session.session_id,
+                        "actor": "Strategy Engineering Agent",
+                    },
+                    mutation_reason="Request independent deterministic admission.",
+                ),
+            ]
+        )
+        if index == 0:
+            responses.append(
+                {
+                    "action": "change_phase",
+                    "public_rationale": (
+                        "The admission finding is actionable without changing "
+                        "the accepted build contract."
+                    ),
+                    "next_phase": "construct",
+                }
+            )
+    responses.append(
+        {
+            "action": "return_result",
+            "public_rationale": "The repaired candidate passed independent admission.",
+            "final_conclusion": {
+                "status": "ready",
+                "answered_questions": ["A repaired candidate was admitted."],
+                "findings": [
+                    "The first attempt failed and the second passed admission."
+                ],
+                "evidence_refs": [implementation_refs[1], validation_refs[1]],
+                "unresolved_questions": [],
+                "assumptions": [],
+                "uncertainty": [],
+                "blockers": [],
+                "advisory_next_actions": ["coordinator review"],
+            },
+        }
+    )
+    mcp = _StrategyRepairMcpClient(
+        implementation_refs=implementation_refs,
+        validation_refs=validation_refs,
+    )
+    program = first_slice_programs().for_role(AgentRole.STRATEGY_ENGINEERING)
+    agent = StrategyEngineeringAgent(
+        model_runner=StructuredModelRunner(StaticJsonLlmClient(responses)),
+        mcp_client=mcp,
+        tool_catalogue=first_slice_tool_catalogue(),
+    )
+
+    async def _run() -> SpecialistReturn:
+        return await agent.run(
+            session=session,
+            delegation=delegation,
+            build_contract=contract,
+            program=program,
+            profile=development_model_profiles().get(program.model_profile_id),
+        )
+
+    result = anyio.run(_run)
+
+    assert result.status.value == "ready"
+    assert result.budget_used.revisions == 1
+    assert mcp.validation_calls == 2
+    assert mcp.destroyed_workspaces == [
+        "workspace-repair-1",
+        "workspace-repair-2",
+    ]
+    assert [
+        call["attempt_id"]
+        for name, call in mcp.calls
+        if name == "coding_create_workspace"
+    ] == candidate_attempts
+
+
 def test_coordinator_graph_parallel_joins_verifies_and_concludes() -> None:
     """Both specialists rejoin one writer before a grounded conclusion."""
     session = _session()
@@ -1028,6 +1324,7 @@ def test_coordinator_graph_parallel_joins_verifies_and_concludes() -> None:
         "permitted_next_actions": ["hand off to Experiment Design"],
     }
     coordinator_client = StaticJsonLlmClient((agenda, conclusion))
+    traces = RecordingTraceSink()
     catalogue = first_slice_tool_catalogue()
     programs = first_slice_programs()
     profiles = development_model_profiles()
@@ -1044,7 +1341,10 @@ def test_coordinator_graph_parallel_joins_verifies_and_concludes() -> None:
         },
     )
     coordinator = ResearchCoordinator(
-        model_runner=StructuredModelRunner(coordinator_client),
+        model_runner=StructuredModelRunner(
+            coordinator_client,
+            trace_sink=traces,
+        ),
         mcp_client=coordinator_mcp,
         data_agent=DataResearchAgent(
             model_runner=StructuredModelRunner(StaticJsonLlmClient(data_responses)),
@@ -1062,6 +1362,7 @@ def test_coordinator_graph_parallel_joins_verifies_and_concludes() -> None:
         tool_catalogue=catalogue,
         programs=programs,
         model_profiles=profiles,
+        trace_sink=traces,
     )
     initial = build_agent_checkpoint_state(
         session_id=session.session_id,
@@ -1090,6 +1391,14 @@ def test_coordinator_graph_parallel_joins_verifies_and_concludes() -> None:
     assert result.budget_used.model_calls == 12
     assert len(coordinator_client.requests) == 2
     assert coordinator_mcp.read_calls == 4
+    assert "agent.coordinator.commit_decision" in {
+        span["name"] for span in traces.spans
+    }
+    assert all(
+        span["attributes"]["trader.session_id"] == session.session_id
+        for span in traces.spans
+    )
+    assert all("prompt" not in str(span) for span in traces.spans)
 
 
 def test_coordinator_interrupt_resumes_with_a_fresh_graph_instance() -> None:
@@ -1200,6 +1509,172 @@ def test_coordinator_interrupt_resumes_with_a_fresh_graph_instance() -> None:
     result = AgenticSliceResult.model_validate(resumed["terminal_result"])
     assert result.status == "blocked"
     assert result.decision.action.value == "stop_fail_closed"
+
+
+def test_coordinator_replays_checkpointed_decision_after_lost_receipt_response() -> None:
+    """A canonical receipt retry cannot trigger a second model decision."""
+    session = _session(session_id="session-coordinator-receipt-recovery")
+    session_ref = _evidence_payload(
+        "research_session",
+        session.session_id,
+        domain_owner="Orchestration",
+    )
+    ambiguous_agenda = {
+        "objective_summary": "A material strategy rule is unspecified.",
+        "material_ambiguities": ["Define the missing material rule."],
+        "tasks": [],
+    }
+    ask = {
+        "action": "ask_operator",
+        "summary": "The session cannot proceed without operator authority.",
+        "reviewed_delegation_ids": [],
+        "cited_evidence_refs": [],
+        "criteria_applied": ["do not invent material semantics"],
+        "affected_task_ids": [],
+        "operator_question": "Provide or decline the missing material rule.",
+        "blockers": [],
+        "permitted_next_actions": ["answer the clarification"],
+    }
+    model = StaticJsonLlmClient((ambiguous_agenda, ask))
+    catalogue = first_slice_tool_catalogue()
+    programs = first_slice_programs()
+    profiles = development_model_profiles()
+    mcp = _CoordinatorMcpClient(
+        session_ref=session_ref,
+        artifacts={},
+        interrupt_decision_once=True,
+    )
+    coordinator = ResearchCoordinator(
+        model_runner=StructuredModelRunner(model),
+        mcp_client=mcp,
+        data_agent=DataResearchAgent(
+            model_runner=StructuredModelRunner(StaticJsonLlmClient(())),
+            mcp_client=_DataLoopMcpClient({}, {}),
+            tool_catalogue=catalogue,
+        ),
+        strategy_agent=StrategyEngineeringAgent(
+            model_runner=StructuredModelRunner(StaticJsonLlmClient(())),
+            mcp_client=_StrategyLoopMcpClient({}, {}),
+            tool_catalogue=catalogue,
+        ),
+        tool_catalogue=catalogue,
+        programs=programs,
+        model_profiles=profiles,
+    )
+    saver = InMemorySaver()
+    config = coordinator_thread_config(session.session_id)
+    initial = build_agent_checkpoint_state(
+        session_id=session.session_id,
+        session_digest=session.session_digest,
+        branch_id="root",
+        coordinator_program_id="research-coordinator-v2",
+        model_profile_id=session.model_profile_id,
+        tool_catalog_id=catalogue.catalogue_id,
+    )
+
+    async def _run() -> tuple[Mapping[str, Any], Any]:
+        first_graph = coordinator.build_graph(
+            session=session,
+            checkpointer=saver,
+        )
+        with pytest.raises(asyncio.CancelledError):
+            await first_graph.ainvoke(initial, config)
+        recovered_graph = coordinator.build_graph(
+            session=session,
+            checkpointer=saver,
+        )
+        output = await recovered_graph.ainvoke(None, config)
+        return output, await recovered_graph.aget_state(config)
+
+    output, snapshot = anyio.run(_run)
+
+    assert output["status"] == "awaiting_operator"
+    assert snapshot.interrupts
+    assert len(model.requests) == 2
+    assert len(mcp.decision_payloads) == 2
+    assert mcp.decision_payloads[0] == mcp.decision_payloads[1]
+
+
+def test_runtime_cancellation_is_terminal_canonical_and_replay_safe() -> None:
+    """The owning operator can cancel an interrupted session exactly once."""
+    session = _session(session_id="session-runtime-cancellation")
+    session_ref = _evidence_payload(
+        "research_session",
+        session.session_id,
+        domain_owner="Orchestration",
+    )
+    responses = (
+        {
+            "objective_summary": "A material strategy rule is unspecified.",
+            "material_ambiguities": ["Define the missing material rule."],
+            "tasks": [],
+        },
+        {
+            "action": "ask_operator",
+            "summary": "The session requires operator clarification.",
+            "reviewed_delegation_ids": [],
+            "cited_evidence_refs": [],
+            "criteria_applied": ["do not invent material semantics"],
+            "affected_task_ids": [],
+            "operator_question": "Provide or decline the missing material rule.",
+            "blockers": [],
+            "permitted_next_actions": ["answer or cancel"],
+        },
+    )
+    model = StaticJsonLlmClient(responses)
+    catalogue = first_slice_tool_catalogue()
+    programs = first_slice_programs()
+    profiles = development_model_profiles()
+    mcp = _CoordinatorMcpClient(session_ref=session_ref, artifacts={})
+    coordinator = ResearchCoordinator(
+        model_runner=StructuredModelRunner(model),
+        mcp_client=mcp,
+        data_agent=DataResearchAgent(
+            model_runner=StructuredModelRunner(StaticJsonLlmClient(())),
+            mcp_client=_DataLoopMcpClient({}, {}),
+            tool_catalogue=catalogue,
+        ),
+        strategy_agent=StrategyEngineeringAgent(
+            model_runner=StructuredModelRunner(StaticJsonLlmClient(())),
+            mcp_client=_StrategyLoopMcpClient({}, {}),
+            tool_catalogue=catalogue,
+        ),
+        tool_catalogue=catalogue,
+        programs=programs,
+        model_profiles=profiles,
+    )
+    runtime = AgenticResearchRuntime(
+        coordinator=coordinator,
+        checkpointer=InMemorySaver(),
+        tool_catalogue=catalogue,
+        programs=programs,
+        model_profiles=profiles,
+    )
+
+    async def _run() -> tuple[Any, Any, Any, Mapping[str, Any]]:
+        interrupted = await runtime.start(session)
+        cancelled = await runtime.cancel(
+            session,
+            OperatorCancellation(
+                operator_id=session.operator_id,
+                reason="Stop this session before any further research work.",
+            ),
+        )
+        replayed = await runtime.start(session)
+        inspected = await runtime.inspect(session)
+        return interrupted, cancelled, replayed, inspected
+
+    interrupted, cancelled, replayed, inspected = anyio.run(_run)
+
+    assert interrupted.kind == "operator_clarification_required"
+    assert cancelled.status == "cancelled"
+    assert cancelled.decision.blockers[0].code == "operator_cancelled"
+    assert replayed == cancelled
+    assert inspected["status"] == "cancelled"
+    assert inspected["pending_interrupt"] == {}
+    assert len(model.requests) == 2
+    assert len(mcp.decision_payloads) == 2
+    assert mcp.decision_payloads[-1]["status"] == "cancelled"
 
 
 def test_checkpoint_state_is_bounded_redacted_and_thread_isolated() -> None:
@@ -1519,6 +1994,112 @@ def test_data_specialist_recovers_across_fresh_postgres_connections() -> None:
     ]
 
 
+@pytest.mark.postgres
+def test_coordinator_recovers_checkpointed_decision_across_postgres_connections() -> None:
+    """A fresh coordinator commits the exact pre-crash decision without LLM use."""
+    dsn = str(os.environ.get("TRADER_AGENTS_CHECKPOINT_DSN") or "").strip()
+    if not dsn:
+        pytest.skip("TRADER_AGENTS_CHECKPOINT_DSN is required")
+    session = _session(session_id=f"session-pg-coordinator-{uuid4().hex}")
+    session_ref = _evidence_payload(
+        "research_session",
+        session.session_id,
+        domain_owner="Orchestration",
+    )
+    agenda = {
+        "objective_summary": "A material strategy rule is unspecified.",
+        "material_ambiguities": ["Define the missing material rule."],
+        "tasks": [],
+    }
+    decision = {
+        "action": "ask_operator",
+        "summary": "The session requires operator clarification.",
+        "reviewed_delegation_ids": [],
+        "cited_evidence_refs": [],
+        "criteria_applied": ["do not invent material semantics"],
+        "affected_task_ids": [],
+        "operator_question": "Provide or decline the missing material rule.",
+        "blockers": [],
+        "permitted_next_actions": ["answer the clarification"],
+    }
+    catalogue = first_slice_tool_catalogue()
+    programs = first_slice_programs()
+    profiles = development_model_profiles()
+    decision_payloads: list[dict[str, Any]] = []
+    first_model = StaticJsonLlmClient((agenda, decision))
+    recovered_model = StaticJsonLlmClient(())
+
+    def _coordinator(
+        model: StaticJsonLlmClient,
+        mcp: _CoordinatorMcpClient,
+    ) -> ResearchCoordinator:
+        return ResearchCoordinator(
+            model_runner=StructuredModelRunner(model),
+            mcp_client=mcp,
+            data_agent=DataResearchAgent(
+                model_runner=StructuredModelRunner(StaticJsonLlmClient(())),
+                mcp_client=_DataLoopMcpClient({}, {}),
+                tool_catalogue=catalogue,
+            ),
+            strategy_agent=StrategyEngineeringAgent(
+                model_runner=StructuredModelRunner(StaticJsonLlmClient(())),
+                mcp_client=_StrategyLoopMcpClient({}, {}),
+                tool_catalogue=catalogue,
+            ),
+            tool_catalogue=catalogue,
+            programs=programs,
+            model_profiles=profiles,
+        )
+
+    initial = build_agent_checkpoint_state(
+        session_id=session.session_id,
+        session_digest=session.session_digest,
+        branch_id="root",
+        coordinator_program_id="research-coordinator-v2",
+        model_profile_id=session.model_profile_id,
+        tool_catalog_id=catalogue.catalogue_id,
+    )
+    config = coordinator_thread_config(session.session_id)
+
+    async def _run() -> tuple[Mapping[str, Any], int]:
+        first_mcp = _CoordinatorMcpClient(
+            session_ref=session_ref,
+            artifacts={},
+            interrupt_decision_once=True,
+            decision_payloads=decision_payloads,
+        )
+        async with open_postgres_checkpointer(dsn=dsn, setup=True) as first_saver:
+            first_graph = _coordinator(first_model, first_mcp).build_graph(
+                session=session,
+                checkpointer=first_saver,
+            )
+            with pytest.raises(asyncio.CancelledError):
+                await first_graph.ainvoke(initial, config)
+
+        recovered_mcp = _CoordinatorMcpClient(
+            session_ref=session_ref,
+            artifacts={},
+            decision_payloads=decision_payloads,
+        )
+        async with open_postgres_checkpointer(dsn=dsn) as recovered_saver:
+            recovered_graph = _coordinator(
+                recovered_model,
+                recovered_mcp,
+            ).build_graph(
+                session=session,
+                checkpointer=recovered_saver,
+            )
+            output = await recovered_graph.ainvoke(None, config)
+        return output, len(recovered_model.requests)
+
+    output, recovered_model_calls = anyio.run(_run)
+
+    assert output["status"] == "awaiting_operator"
+    assert recovered_model_calls == 0
+    assert len(decision_payloads) == 2
+    assert decision_payloads[0] == decision_payloads[1]
+
+
 @dataclass
 class _FakeMcpClient:
     """Small MCP transport fake with one Data inventory operation."""
@@ -1732,6 +2313,8 @@ class _CoordinatorMcpClient:
     session_ref: Mapping[str, Any]
     artifacts: Mapping[str, Mapping[str, Any]]
     read_calls: int = 0
+    interrupt_decision_once: bool = False
+    decision_payloads: list[dict[str, Any]] = field(default_factory=list)
 
     async def list_tools(self) -> Sequence[McpToolDescription]:
         """Expose every coordinator capability with permissive test schemas."""
@@ -1785,6 +2368,10 @@ class _CoordinatorMcpClient:
         elif tool_name == "research_record_agent_decision":
             side_effect = "local_mutating"
             receipt = arguments["receipt"]
+            assert isinstance(receipt, Mapping)
+            self.decision_payloads.append(dict(receipt))
+            if self.interrupt_decision_once and len(self.decision_payloads) == 1:
+                raise asyncio.CancelledError
             receipt_id = str(receipt["receipt_id"])
             reference = _evidence_payload(
                 "agent_decision_receipt",
@@ -1893,6 +2480,132 @@ class _StrategyBuildMcpClient:
                 "errors": [],
             },
             "isError": False,
+        }
+
+
+@dataclass
+class _StrategyRepairMcpClient:
+    """MCP fake covering failed admission and a bounded replacement attempt."""
+
+    implementation_refs: Sequence[Mapping[str, Any]]
+    validation_refs: Sequence[Mapping[str, Any]]
+    calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+    validation_calls: int = 0
+    destroyed_workspaces: list[str] = field(default_factory=list)
+    _workspace_count: int = 0
+    _workspace_sources: dict[str, str] = field(default_factory=dict)
+
+    async def list_tools(self) -> Sequence[McpToolDescription]:
+        """Expose every Strategy capability with permissive test schemas."""
+        catalogue = first_slice_tool_catalogue()
+        names = {
+            definition.name
+            for phase in AgentPhase
+            for definition in catalogue.available(
+                role=AgentRole.STRATEGY_ENGINEERING,
+                phase=phase,
+                approval_policy={"coding_workspace": "approved"},
+            )
+        }
+        return tuple(
+            McpToolDescription(
+                name=name,
+                description=f"Test schema for {name}.",
+                input_schema={"type": "object", "additionalProperties": True},
+            )
+            for name in sorted(names)
+        )
+
+    async def call_tool(
+        self,
+        tool_name: str,
+        arguments: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Return attempt-specific artifacts and fail the first admission."""
+        copied_arguments = dict(arguments)
+        self.calls.append((tool_name, copied_arguments))
+        artifacts: Mapping[str, Any] = {}
+        errors: list[dict[str, str]] = []
+        ok = True
+        side_effect = "local_mutating"
+        if tool_name == "research_search_implementations":
+            side_effect = "read_only"
+            data: dict[str, Any] = {"result_count": 0, "implementations": []}
+        elif tool_name == "coding_create_workspace":
+            self._workspace_count += 1
+            workspace_id = f"workspace-repair-{self._workspace_count}"
+            data = {"workspace": {"workspace_id": workspace_id}}
+        elif tool_name == "coding_write_candidate_file":
+            workspace_id = str(arguments["workspace_id"])
+            source = str(arguments["content"])
+            self._workspace_sources[workspace_id] = source
+            data = {
+                "workspace_id": workspace_id,
+                "content_sha256": sha256(source.encode("utf-8")).hexdigest(),
+            }
+        elif tool_name == "coding_run_check":
+            data = {"check": {"check_name": "pytest", "status": "passed"}}
+        elif tool_name == "coding_package_candidate":
+            side_effect = "read_only"
+            workspace_id = str(arguments["workspace_id"])
+            source = self._workspace_sources[workspace_id]
+            data = {
+                "candidate_package": {
+                    "package_id": f"package-repair-{self._workspace_count}",
+                    "source_hash": sha256(source.encode("utf-8")).hexdigest(),
+                    "source_code": source,
+                }
+            }
+        elif tool_name == "research_register_strategy_implementation":
+            attempt_index = self._workspace_count - 1
+            data = {"implementation_version": {"status": "registered"}}
+            artifacts = {
+                "implementation_version": self.implementation_refs[attempt_index]
+            }
+        elif tool_name == "research_validate_strategy_implementation":
+            attempt_index = self.validation_calls
+            self.validation_calls += 1
+            artifacts = {
+                "implementation_validation_report": self.validation_refs[
+                    attempt_index
+                ]
+            }
+            if attempt_index == 0:
+                ok = False
+                data = {
+                    "implementation_validation_report": {
+                        "status": "failed",
+                        "actionable": True,
+                    }
+                }
+                errors = [
+                    {
+                        "code": "implementation_admission_failed",
+                        "message": "The isolated candidate failed deterministic checks.",
+                    }
+                ]
+            else:
+                data = {
+                    "implementation_validation_report": {"status": "passed"}
+                }
+        elif tool_name == "coding_destroy_workspace":
+            workspace_id = str(arguments["workspace_id"])
+            self.destroyed_workspaces.append(workspace_id)
+            data = {"workspace_id": workspace_id, "status": "destroyed"}
+        else:
+            raise AssertionError(f"unexpected Strategy repair tool: {tool_name}")
+        return {
+            "structuredContent": {
+                "ok": ok,
+                "command": tool_name,
+                "agent_owner": "Strategy Engineering Agent",
+                "side_effect": side_effect,
+                "data": data,
+                "artifacts": artifacts,
+                "warnings": [],
+                "errors": errors,
+            },
+            "isError": not ok,
         }
 
 

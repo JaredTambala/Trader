@@ -110,6 +110,54 @@ def test_decision_receipts_verify_evidence_sequence_and_budget() -> None:
     assert resolved.data["agent_decision_receipt"]["receipt_id"] == second.receipt_id
 
 
+def test_cancelled_decision_is_terminal_and_requires_public_reason() -> None:
+    """Canonical cancellation blocks every later branch transition."""
+    store = InMemoryResearchArtifactStore()
+    session = _session()
+    create_agent_session(session.to_dict(), artifact_store=store)
+    cancelled = build_agent_decision_receipt(
+        session_id=session.session_id,
+        branch_id="branch-cancelled",
+        sequence=1,
+        actor="Research Coordinator",
+        program_id="coordinator-v1",
+        model_profile_id=session.model_profile_id,
+        action="stop_fail_closed",
+        status=AgentDecisionStatus.CANCELLED,
+        summary="The owning operator cancelled the session.",
+        blockers=(
+            ResearchIssue(
+                code="operator_cancelled",
+                message="No further work is authorized.",
+            ),
+        ),
+    )
+    later = build_agent_decision_receipt(
+        session_id=session.session_id,
+        branch_id="branch-cancelled",
+        sequence=2,
+        actor="Research Coordinator",
+        program_id="coordinator-v1",
+        model_profile_id=session.model_profile_id,
+        action="revise",
+        status=AgentDecisionStatus.ACCEPTED,
+        summary="This transition must not follow cancellation.",
+    )
+
+    cancelled_result = record_agent_decision(
+        cancelled.to_dict(),
+        artifact_store=store,
+    )
+    later_result = record_agent_decision(
+        later.to_dict(),
+        artifact_store=store,
+    )
+
+    assert cancelled_result.ok is True
+    assert later_result.ok is False
+    assert "terminal research branch" in later_result.errors[0]["message"]
+
+
 def test_decision_receipt_rejects_unapproved_program_and_budget_overrun() -> None:
     store = InMemoryResearchArtifactStore()
     session = _session()

@@ -168,3 +168,9 @@ model requests with one bounded validation repair; explicit custom nodes for det
 interrupt/resume for operator authority; parallel specialist/tool work with declared joins; and MLflow as a redacted
 diagnostic projection. Canonical Trader/Postgres artifacts remain the only product evidence. PydanticAI is not a
 production dependency, and DSPy remains a later offline program-optimization option after evaluation data exists.
+
+The current first-slice implementation checkpoints a validated coordinator decision before its canonical receipt
+mutation, then commits the exact checkpointed decision. A fresh-process resume can therefore reconcile a lost receipt
+response without another model call. Owning-operator cancellation is a separate canonical terminal transition, and
+semantic loop fingerprints ignore model paraphrase and disposable attempt/artifact identities. These controls are
+implemented but remain subject to the roadmap's full security, trace, scale, and repeated real-model qualification.

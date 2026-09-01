@@ -13,7 +13,7 @@ import anyio
 from trader_research.foundation import stable_research_id
 from trader_research.governance import ResearchSession
 
-from .contracts import OperatorResponse
+from .contracts import OperatorCancellation, OperatorResponse
 from .inputs import (
     composite_data_scope_from_session,
     strategy_build_contract_from_session,
@@ -79,6 +79,14 @@ async def _run_command(
                     operator_id=args.operator_id,
                 ),
             )
+        if args.command == "cancel":
+            return await runtime.cancel(
+                session,
+                OperatorCancellation(
+                    operator_id=args.operator_id,
+                    reason=args.reason,
+                ),
+            )
         if args.command == "inspect":
             return _PublicMapping(await runtime.inspect(session))
     raise ValueError(f"unsupported command: {args.command}")
@@ -134,6 +142,14 @@ def _parser() -> argparse.ArgumentParser:
     resume.add_argument("--answer", required=True)
     resume.add_argument("--operator-id", required=True)
     resume.add_argument("--setup-checkpoint-schema", action="store_true")
+    cancel = subparsers.add_parser(
+        "cancel",
+        help="cancel a checkpointed research session",
+    )
+    cancel.add_argument("--session", type=Path, required=True)
+    cancel.add_argument("--reason", required=True)
+    cancel.add_argument("--operator-id", required=True)
+    cancel.add_argument("--setup-checkpoint-schema", action="store_true")
     return parser
 
 

@@ -122,7 +122,22 @@ uv run trader-agent resume \
   --operator-id operator-name
 ```
 
-Use `--setup-checkpoint-schema` on `resume` or `inspect` only when an operator is deliberately provisioning a fresh
+Cancel a checkpointed non-terminal session using the owning operator identity and a bounded public reason:
+
+```bash
+uv run trader-agent cancel \
+  --session /absolute/path/to/session.json \
+  --reason 'Operator stopped this investigation.' \
+  --operator-id operator-name
+```
+
+Cancellation writes an append-only canonical `cancelled` decision receipt and a terminal checkpoint result. Repeating
+the same command returns that terminal result. In one runtime process, cancellation first stops the active session
+task; across processes it takes effect from the latest completed checkpoint, so mutation-specific operation journals
+remain the authority for reconciling work interrupted between checkpoints. It cannot cancel a different operator's
+session or replace an already terminal conclusion.
+
+Use `--setup-checkpoint-schema` on `resume`, `cancel`, or `inspect` only when an operator is deliberately provisioning a fresh
 checkpoint database. Do not use the research artifact-store DSN as an implicit fallback. Checkpoints can be expired
 after terminal evidence is confirmed because they are operational state, not research authority.
 

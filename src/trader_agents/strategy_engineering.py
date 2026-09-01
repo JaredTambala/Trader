@@ -341,6 +341,22 @@ class StrategyEngineeringAgent:
                     proposal=proposal,
                     observation=execution.observation,
                 )
+                if (
+                    proposal.tool_name.startswith("research_validate_")
+                    and not execution.observation.ok
+                ):
+                    await _cleanup_workspace(
+                        runtime=runtime,
+                        session=session,
+                        delegation=delegation,
+                        build_contract=build_contract,
+                        program=program,
+                        phase=phase,
+                        ledger=ledger,
+                        loop_fingerprints=loop_fingerprints,
+                        state=lifecycle,
+                        correlation=correlation,
+                    )
                 if execution.observation.ok:
                     successful_steps.append(
                         checkpoint_step(

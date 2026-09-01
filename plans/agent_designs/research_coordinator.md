@@ -1,6 +1,6 @@
 # Research Coordinator Agent Design
 
-Status: architecture record accepted; shared pattern review and implementation remain pending.
+Status: architecture record and first-slice patterns accepted; implementation in progress and qualification pending.
 
 Last reviewed: 2026-08-28.
 
@@ -10,8 +10,9 @@ remains in [Agentic Research Orchestration Redesign](../agentic_orchestration_re
 in the [Research Capability Roadmap](../research_capability_roadmap.md).
 
 The responsibility boundary and complete architecture record were accepted in design review on 2026-08-24. The shared
-agent-pattern review, concrete schemas, model profiles, and measured operating limits remain open and do not invalidate
-that boundary.
+first-slice pattern review, concrete schemas, development model profile, decide/commit recovery boundary, semantic loop
+guard, and operator cancellation transition are implemented. Security, scale, repeated real-model, and controlled
+operational qualification remain open and do not invalidate that boundary.
 
 ## Mission and exclusive decisions
 
@@ -255,7 +256,8 @@ during production qualification:
 
 - promotion model providers and any per-role profile overrides;
 - final field limits within the accepted structured agenda, delegation, decision, and evidence-return contracts;
-- exact scheduler use of LangGraph subgraphs, parallel dispatch, and cancellation;
+- production-scale qualification of the implemented parallel dispatch, joins, checkpointed decide/commit boundary,
+  and explicit owning-operator cancellation;
 - initial concurrency, revision, fork, token, time, and cost limits;
 - scheduler batching behavior when several returns arrive together;
 - trace redaction and retained payload policy; and

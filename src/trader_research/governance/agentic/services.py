@@ -309,7 +309,10 @@ def _validate_receipt_sequence(
             raise ValueError("the first branch decision must have sequence 1")
         return
     latest = max(branch_receipts, key=lambda item: item.sequence)
-    if latest.status is AgentDecisionStatus.TERMINAL:
+    if latest.status in {
+        AgentDecisionStatus.CANCELLED,
+        AgentDecisionStatus.TERMINAL,
+    }:
         raise ValueError("a terminal research branch cannot accept another decision")
     if receipt.sequence != latest.sequence + 1:
         raise ValueError("decision sequence must append exactly after the latest receipt")

@@ -273,8 +273,11 @@ Optuna optimisation, result lookup, immutable variant execution, tracking projec
 and parameter-optimisation Adversarial planning/judgment. Candidate/stack and loose baseline/portfolio backtest tools are
 not registered after the cutover.
 
-The model-backed Coordinator, Data Research, and Strategy Engineering loops are implemented but not controlled. Their
-fresh-process recovery, real sandbox, trace, security, and repeated real-model qualification remains active work.
+The model-backed Coordinator, Data Research, and Strategy Engineering loops are implemented but not controlled.
+Focused recovery covers specialist reads, Data mutations, candidate mutation handoffs, and coordinator decision
+receipt reconciliation; explicit owning-operator cancellation and bounded failed-admission repair are implemented.
+Real sandbox, production trace/security/scale, cross-process cancellation, and repeated real-model qualification
+remain active work.
 Experiment Design, Knowledge Research, Quantitative Methods, Robustness/WFO, Evaluation, recommendation synthesis, and
 ML model-backed loops remain planned or parked unless the active roadmap says otherwise.
 

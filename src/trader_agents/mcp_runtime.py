@@ -124,33 +124,65 @@ class RoleScopedMcpRuntime:
             )
         _validate_shallow_arguments(proposal.arguments, transport_tool.input_schema)
         started = time.perf_counter()
+        try:
+            with self.trace_sink.span(
+                f"agent.mcp.{proposal.tool_name}",
+                span_type="TOOL",
+                attributes=correlated_attributes(
+                    correlation,
+                    **{
+                        "trader.tool_name": proposal.tool_name,
+                        "trader.call_id": proposal.call_id,
+                        "trader.side_effect": (
+                            authorized.definition.side_effect.value
+                        ),
+                        **_trace_identity_attributes(proposal.arguments),
+                    },
+                ),
+            ):
+                response = await self.client.call_tool(
+                    proposal.tool_name,
+                    proposal.arguments,
+                )
+                observation = _normalize_response(
+                    response,
+                    proposal=proposal,
+                    definition=authorized.definition,
+                    max_observation_bytes=self.max_observation_bytes,
+                )
+        finally:
+            duration_ms = max(
+                0,
+                round((time.perf_counter() - started) * 1_000),
+            )
+            self.ledger.record_tool_call(
+                side_effect=authorized.definition.side_effect,
+                duration_ms=duration_ms,
+            )
         with self.trace_sink.span(
-            f"agent.mcp.{proposal.tool_name}",
-            span_type="TOOL",
+            f"agent.mcp_result.{proposal.tool_name}",
+            span_type="CHAIN",
             attributes=correlated_attributes(
                 correlation,
                 **{
                     "trader.tool_name": proposal.tool_name,
                     "trader.call_id": proposal.call_id,
-                    "trader.side_effect": authorized.definition.side_effect.value,
+                    "trader.result_ok": observation.ok,
+                    "trader.evidence_count": len(observation.evidence_refs),
+                    "trader.evidence_types": sorted(
+                        item.artifact_type
+                        for item in observation.evidence_refs
+                    ),
+                    "trader.evidence_refs": sorted(
+                        item.uri for item in observation.evidence_refs
+                    ),
+                    "trader.error_codes": sorted(
+                        item.code for item in observation.errors
+                    ),
                 },
             ),
         ):
-            response = await self.client.call_tool(
-                proposal.tool_name,
-                proposal.arguments,
-            )
-        duration_ms = max(0, round((time.perf_counter() - started) * 1_000))
-        self.ledger.record_tool_call(
-            side_effect=authorized.definition.side_effect,
-            duration_ms=duration_ms,
-        )
-        observation = _normalize_response(
-            response,
-            proposal=proposal,
-            definition=authorized.definition,
-            max_observation_bytes=self.max_observation_bytes,
-        )
+            pass
         return McpExecutionResult(
             authorized_call=authorized,
             observation=observation,
@@ -225,6 +257,34 @@ def _requires_runtime_operation(proposal: ToolCallProposal) -> bool:
     mode = str(proposal.arguments.get("mode") or "").strip().lower()
     dry_run = proposal.arguments.get("dry_run", True)
     return mode == "sample" or (mode == "backfill" and dry_run is False)
+
+
+def _trace_identity_attributes(
+    arguments: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project only allowlisted public lineage values into trace attributes."""
+    allowed = (
+        "acquisition_plan_id",
+        "artifact_ref",
+        "attempt_id",
+        "build_contract_id",
+        "candidate_attempt_id",
+        "candidate_package_id",
+        "implementation_ref",
+        "operation_id",
+        "workspace_id",
+    )
+    projected = {
+        f"trader.argument.{key}": arguments[key]
+        for key in allowed
+        if isinstance(arguments.get(key), (str, int, float, bool))
+    }
+    receipt = arguments.get("receipt")
+    if isinstance(receipt, Mapping):
+        receipt_id = receipt.get("receipt_id")
+        if isinstance(receipt_id, str) and receipt_id:
+            projected["trader.argument.receipt_id"] = receipt_id
+    return projected
 
 
 def _normalize_response(

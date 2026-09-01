@@ -460,6 +460,7 @@ class AgenticSliceResult(StrictPublicModel):
         "completed",
         "awaiting_operator",
         "blocked",
+        "cancelled",
         "failed",
     ]
     summary: str = Field(min_length=1, max_length=2_000)
@@ -477,6 +478,7 @@ class AgenticSliceResult(StrictPublicModel):
             "completed": {CoordinatorAction.CONCLUDE},
             "awaiting_operator": {CoordinatorAction.ASK_OPERATOR},
             "blocked": {CoordinatorAction.STOP_FAIL_CLOSED},
+            "cancelled": {CoordinatorAction.STOP_FAIL_CLOSED},
             "failed": {CoordinatorAction.STOP_FAIL_CLOSED},
         }
         if self.decision.action not in expected_actions[self.status]:
@@ -510,6 +512,13 @@ class OperatorResponse(StrictPublicModel):
     approved: bool
     answer: str = Field(min_length=1, max_length=2_000)
     operator_id: str = Field(min_length=1, max_length=200)
+
+
+class OperatorCancellation(StrictPublicModel):
+    """Explicit operator request to terminate one checkpointed session."""
+
+    operator_id: str = Field(min_length=1, max_length=200)
+    reason: str = Field(min_length=1, max_length=2_000)
 
 
 class DataScopeItem(StrictPublicModel):

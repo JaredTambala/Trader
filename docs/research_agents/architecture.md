@@ -332,8 +332,11 @@ The current implemented slice is deliberately bounded:
   when mutation domains do not conflict. The Coordinator remains the single writer of shared graph state.
 - PostgreSQL checkpoints contain bounded operational state only. Tool-produced artifacts and decision receipts remain
   canonical in Trader research persistence; checkpoints never become research evidence.
-- The runtime can return a grounded terminal result or a bounded operator interrupt and exposes start, resume, and
-  redacted inspect operations. Production qualification is still pending.
+- A validated coordinator decision is checkpointed before its canonical receipt mutation. Receipt retry and
+  reconciliation commit that exact decision rather than asking the model again; semantic fingerprints prevent
+  paraphrases or disposable IDs from resetting a low-information loop.
+- The runtime can return a grounded terminal result or a bounded operator interrupt and exposes start, resume,
+  owning-operator cancellation, and redacted inspect operations. Production qualification is still pending.
 
 The implementation is split by responsibility and call direction:
 
@@ -343,7 +346,7 @@ The implementation is split by responsibility and call direction:
 | Data Research (`data_research.py`) | Composite approved scope, Data program, Data-scoped MCP client | Complete readiness/snapshot evidence or typed blockers | Strategy design, unapproved loading, direct provider/service access |
 | Strategy Engineering (`strategy_engineering.py`) | Typed build contract, Strategy program, catalogue/Coding Workspace/admission MCP client | Exact reused or newly admitted implementation evidence; package-backed builds register by immutable package identity | Backtesting, outcome-driven revision, host execution, direct-source registration, self-admission |
 | Scheduler and policy (`scheduler.py`, `policy.py`) | Typed agenda/delegations, phase, approvals, usage, tool proposals | Ready set, reservations, authorized calls, fail-closed violations | Scientific judgment or MCP execution |
-| Runtime and checkpoints (`runtime.py`, `checkpointing/`) | Exact session pins, environment configuration, PostgreSQL saver | Start/resume/inspect lifecycle and bounded recoverable state | Canonical evidence authority or persistence fallback |
+| Runtime and checkpoints (`runtime.py`, `checkpointing/`) | Exact session pins, environment configuration, PostgreSQL saver | Start/resume/cancel/inspect lifecycle and bounded recoverable state | Canonical evidence authority or persistence fallback |
 | MCP adapters (`trader_mcp`) | Bounded tool arguments | `ToolEnvelope` values and canonical artifact refs | Agent policy, agenda construction, or checkpoint ownership |
 
 ```text
@@ -359,6 +362,9 @@ Every model output is parsed into a strict public schema. Invalid structured out
 repair. Tool proposals are authorized against the exact program, role, phase, session scope, approval policy, mutation
 lifecycle, and remaining budget before MCP dispatch. Tool descriptions and observations are bounded, and raw prompts,
 messages, secrets, hidden reasoning, and complete tool responses are excluded from checkpoints and decision records.
+MCP call/result and coordinator commit spans retain only correlation identities, allowlisted public operation or
+artifact identities, evidence types/URIs, and public error codes. Malformed envelopes fail inside the traced boundary
+and still consume the crossed tool-call budget.
 The current `strategy-engineering-v2` program and `first-slice-tool-policy-v2` require package-backed registration:
 complete candidate source remains in the coding service's immutable package, the model supplies only its exact ID, and
 the MCP adapter resolves source and injects candidate-attempt/build-contract/repository lineage before Experiments

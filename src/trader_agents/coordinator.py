@@ -35,6 +35,7 @@ from .contracts import (
     CoordinatorAgenda,
     CoordinatorDecision,
     CompositeDataScope,
+    OperatorCancellation,
     PublicIssue,
     SpecialistDelegation,
     SpecialistReturn,
@@ -48,7 +49,7 @@ from .inputs import (
     strategy_build_contract_from_session,
 )
 from .mcp_runtime import RoleScopedMcpRuntime
-from .policy import BudgetLedger, PolicyContext
+from .policy import BudgetLedger, PolicyContext, PolicyViolation
 from .profiles import AgentProgramRegistry, ModelProfileRegistry
 from .scheduler import SchedulingError, compute_ready_set
 from .strategy_engineering import StrategyEngineeringAgent
@@ -414,6 +415,65 @@ class ResearchCoordinator:
                         item.delegation_id for item in new_returns
                     ],
                 )
+            loop_fingerprints = dict(state.get("loop_fingerprints", {}))
+            decision = _apply_coordinator_loop_policy(
+                decision,
+                agenda=agenda,
+                new_returns=new_returns,
+                delegations=[
+                    SpecialistDelegation.model_validate(item)
+                    for item in state.get("delegations", [])
+                ],
+                loop_fingerprints=loop_fingerprints,
+            )
+            if decision.action in {
+                CoordinatorAction.REVISE,
+                CoordinatorAction.REVISIT,
+                CoordinatorAction.FORK,
+            }:
+                try:
+                    ledger.record_revision()
+                except PolicyViolation as exc:
+                    decision = _fail_closed_decision(
+                        code=exc.code,
+                        message=str(exc),
+                        reviewed_delegation_ids=[
+                            item.delegation_id for item in new_returns
+                        ],
+                    )
+            return {
+                "decision": decision.model_dump(mode="json"),
+                "loop_fingerprints": loop_fingerprints,
+                "budget_usage": ledger.usage.model_dump(mode="json"),
+                "phase": AgentPhase.REVIEW.value,
+                "status": "committing_decision",
+            }
+
+        async def commit_decision_node(
+            state: AgentCheckpointState,
+        ) -> AgentCheckpointState:
+            """Persist and apply one already-checkpointed public decision."""
+            _validate_state_session(state, session)
+            decision = CoordinatorDecision.model_validate(state.get("decision", {}))
+            returns = [
+                SpecialistReturn.model_validate(item)
+                for item in state.get("specialist_returns", [])
+            ]
+            cursor = int(state.get("review_cursor", 0))
+            new_returns = returns[cursor:]
+            agenda = CoordinatorAgenda.model_validate(state.get("agenda", {}))
+            _validate_coordinator_decision(
+                decision,
+                agenda=agenda,
+                new_returns=new_returns,
+                all_returns=returns,
+                verified_refs=[
+                    item.model_dump(mode="json")
+                    for item in _refs_from_state(state)
+                ],
+                completed_task_ids=list(state.get("completed_task_ids", [])),
+            )
+            ledger = _ledger(session, state)
             receipt_ref = await self._record_decision(
                 session=session,
                 state=state,
@@ -471,6 +531,7 @@ class ResearchCoordinator:
         graph.add_node("interpret_brief", interpret_node)
         graph.add_node("dispatch_ready_specialists", dispatch_node)
         graph.add_node("review_evidence", review_node)
+        graph.add_node("commit_decision", commit_decision_node)
         graph.add_node("await_operator", operator_interrupt_node)
         graph.add_edge(START, "ensure_session")
         graph.add_edge("ensure_session", "interpret_brief")
@@ -483,8 +544,9 @@ class ResearchCoordinator:
             },
         )
         graph.add_edge("dispatch_ready_specialists", "review_evidence")
+        graph.add_edge("review_evidence", "commit_decision")
         graph.add_conditional_edges(
-            "review_evidence",
+            "commit_decision",
             _route_after_review,
             {
                 "dispatch": "dispatch_ready_specialists",
@@ -494,6 +556,92 @@ class ResearchCoordinator:
         )
         graph.add_edge("await_operator", "interpret_brief")
         return graph.compile(checkpointer=checkpointer)
+
+    async def cancel_state(
+        self,
+        *,
+        session: ResearchSession,
+        state: AgentCheckpointState,
+        cancellation: OperatorCancellation,
+    ) -> AgentCheckpointState:
+        """Build and persist one operator-authorized terminal cancellation.
+
+        Args:
+            session: Exact immutable research session being cancelled.
+            state: Latest validated coordinator checkpoint state.
+            cancellation: Bounded request from the owning operator.
+
+        Returns:
+            Terminal checkpoint update carrying a canonical cancelled receipt.
+        """
+        _validate_state_session(state, session)
+        if cancellation.operator_id != session.operator_id:
+            raise ValueError("operator cancellation identity does not match session")
+        if state.get("terminal_result"):
+            raise ValueError("a terminal research session cannot be cancelled")
+        ledger = _ledger(session, state)
+        decision = _fail_closed_decision(
+            code="operator_cancelled",
+            message=cancellation.reason,
+        ).model_copy(
+            update={
+                "summary": "The owning operator cancelled this research session.",
+                "criteria_applied": ["explicit owning-operator cancellation"],
+                "permitted_next_actions": [
+                    "inspect retained evidence",
+                    "start a new research session when appropriate",
+                ],
+            }
+        )
+        coordinator_program = self.programs.for_role(
+            AgentRole.RESEARCH_COORDINATOR
+        )
+        receipt_ref = await self._record_decision(
+            session=session,
+            state=state,
+            decision=decision,
+            program_id=coordinator_program.program_id,
+            ledger=ledger,
+            status_override=AgentDecisionStatus.CANCELLED,
+            metadata={
+                "operator_id": cancellation.operator_id,
+                "control_transition": "operator_cancellation",
+            },
+        )
+        returns = [
+            SpecialistReturn.model_validate(item)
+            for item in state.get("specialist_returns", [])
+        ]
+        result = AgenticSliceResult(
+            session_id=session.session_id,
+            branch_id=str(state["branch_id"]),
+            status="cancelled",
+            summary=decision.summary,
+            data_return=_latest_return(returns, AgentRole.DATA_RESEARCH.value),
+            strategy_return=_latest_return(
+                returns,
+                AgentRole.STRATEGY_ENGINEERING.value,
+            ),
+            decision=decision,
+            decision_receipt_ref=receipt_ref,
+            budget_used=ledger.usage,
+            permitted_next_actions=decision.permitted_next_actions,
+        )
+        return {
+            "status": "cancelled",
+            "phase": AgentPhase.TERMINAL.value,
+            "active_delegations": [],
+            "pending_interrupt": {},
+            "operator_response": {},
+            "decision": decision.model_dump(mode="json"),
+            "decision_receipt_ref": receipt_ref.model_dump(mode="json"),
+            "budget_usage": ledger.usage.model_dump(mode="json"),
+            "blockers": [
+                item.model_dump(mode="json") for item in decision.blockers
+            ],
+            "terminal_result": result.model_dump(mode="json"),
+            "next_sequence": int(state.get("next_sequence", 1)) + 1,
+        }
 
     async def _run_specialist(
         self,
@@ -618,9 +766,11 @@ class ResearchCoordinator:
         decision: CoordinatorDecision,
         program_id: str,
         ledger: BudgetLedger,
+        status_override: AgentDecisionStatus | None = None,
+        metadata: Mapping[str, Any] | None = None,
     ) -> CanonicalEvidenceRef:
         """Persist one append-only public decision receipt through MCP."""
-        status = _receipt_status(decision.action)
+        status = status_override or _receipt_status(decision.action)
         receipt = build_agent_decision_receipt(
             session_id=session.session_id,
             branch_id=str(state["branch_id"]),
@@ -647,6 +797,7 @@ class ResearchCoordinator:
             metadata={
                 "tool_catalog_id": self.tool_catalogue.catalogue_id,
                 "reviewed_delegation_ids": decision.reviewed_delegation_ids,
+                **dict(metadata or {}),
             },
         )
         runtime = self._coordinator_runtime(ledger)
@@ -676,16 +827,29 @@ class ResearchCoordinator:
             expected_evidence=["canonical decision receipt"],
             mutation_reason="Append the coordinator's public evidence decision.",
         )
-        result = await runtime.execute(
-            proposal,
-            context=context,
-            correlation=_correlation(
-                session=session,
-                branch_id=str(state["branch_id"]),
-                program_id=program_id,
-                tool_catalog_id=self.tool_catalogue.catalogue_id,
-            ),
+        correlation = _correlation(
+            session=session,
+            branch_id=str(state["branch_id"]),
+            program_id=program_id,
+            tool_catalog_id=self.tool_catalogue.catalogue_id,
         )
+        with self.trace_sink.span(
+            "agent.coordinator.commit_decision",
+            span_type="CHAIN",
+            attributes={
+                **correlation.attributes(),
+                "trader.receipt_id": receipt.receipt_id,
+                "trader.decision_action": decision.action.value,
+                "trader.decision_status": status.value,
+                "trader.decision_sequence": receipt.sequence,
+                "trader.evidence_count": len(receipt.evidence_refs),
+            },
+        ):
+            result = await runtime.execute(
+                proposal,
+                context=context,
+                correlation=correlation,
+            )
         if not result.observation.ok:
             raise RuntimeError("coordinator decision receipt persistence failed")
         reference = next(
@@ -992,6 +1156,106 @@ def _validate_coordinator_decision(
             raise ValueError("conclusion requires every agenda task to be completed")
 
 
+def _apply_coordinator_loop_policy(
+    decision: CoordinatorDecision,
+    *,
+    agenda: CoordinatorAgenda,
+    new_returns: Sequence[SpecialistReturn],
+    delegations: Sequence[SpecialistDelegation],
+    loop_fingerprints: dict[str, int],
+) -> CoordinatorDecision:
+    """Stop materially equivalent coordinator transitions from looping.
+
+    The fingerprint deliberately excludes model prose, delegation IDs,
+    candidate IDs, and artifact IDs. It retains the structural agenda,
+    affected responsibilities, evidence types, specialist verdict classes,
+    and blocker codes. Paraphrasing or producing another equivalent candidate
+    therefore cannot reset the loop guard, while genuinely different evidence
+    or a different approved task structure creates a new transition class.
+
+    Args:
+        decision: Validated model-proposed coordinator transition.
+        agenda: Current code-validated agenda.
+        new_returns: Newly joined specialist results under review.
+        delegations: Accepted delegation history used to recover task identity.
+        loop_fingerprints: Mutable checkpoint-owned semantic counters.
+
+    Returns:
+        The original decision, or a deterministic fail-closed decision when
+        the same semantic transition class was already accepted once.
+    """
+    guarded_actions = {
+        CoordinatorAction.REVISE,
+        CoordinatorAction.REVISIT,
+        CoordinatorAction.FORK,
+        CoordinatorAction.ASK_OPERATOR,
+    }
+    if decision.action not in guarded_actions:
+        return decision
+    tasks_by_delegation = {
+        item.delegation_id: item.task for item in delegations
+    }
+    return_classes = []
+    for item in new_returns:
+        task = tasks_by_delegation.get(item.delegation_id)
+        return_classes.append(
+            {
+                "task_id": task.task_id if task is not None else "unknown",
+                "role": item.role,
+                "work_kind": task.work_kind if task is not None else "unknown",
+                "scope_item_ids": (
+                    sorted(task.scope_item_ids) if task is not None else []
+                ),
+                "status": item.status.value,
+                "evidence_types": sorted(
+                    reference.artifact_type for reference in item.evidence_refs
+                ),
+                "blocker_codes": sorted(blocker.code for blocker in item.blockers),
+            }
+        )
+    fingerprint = json_payload_hash(
+        {
+            "action": decision.action.value,
+            "affected_task_ids": sorted(decision.affected_task_ids),
+            "agenda": [
+                {
+                    "task_id": task.task_id,
+                    "role": task.role,
+                    "work_kind": task.work_kind,
+                    "join_mode": task.join_mode,
+                    "scope_item_ids": sorted(task.scope_item_ids),
+                    "dependencies": sorted(task.dependencies),
+                    "mutation_requested": task.mutation_requested,
+                }
+                for task in sorted(agenda.tasks, key=lambda item: item.task_id)
+            ],
+            "return_classes": sorted(
+                return_classes,
+                key=lambda item: (item["task_id"], item["role"]),
+            ),
+            "cited_evidence_types": sorted(
+                reference.artifact_type
+                for reference in decision.cited_evidence_refs
+            ),
+            "blocker_codes": sorted(item.code for item in decision.blockers),
+        }
+    )
+    prior_count = int(loop_fingerprints.get(fingerprint, 0))
+    if prior_count >= 1:
+        return _fail_closed_decision(
+            code="low_information_loop",
+            message=(
+                "The coordinator repeated a materially equivalent transition "
+                "without a new evidence class or task structure."
+            ),
+            reviewed_delegation_ids=[
+                item.delegation_id for item in new_returns
+            ],
+        )
+    loop_fingerprints[fingerprint] = prior_count + 1
+    return decision
+
+
 def _apply_decision(
     state: Mapping[str, Any],
     *,
@@ -1116,7 +1380,7 @@ def _route_after_review(
     status = str(state.get("status") or "")
     if status == "awaiting_operator":
         return "interrupt"
-    if status in {"completed", "blocked", "failed"}:
+    if status in {"completed", "blocked", "cancelled", "failed"}:
         return "end"
     return "dispatch"
 

@@ -1,6 +1,6 @@
 # Strategy Engineering Agent Design
 
-Status: architecture record accepted; implementation and qualification remain pending.
+Status: architecture record accepted; first-slice implementation in progress and qualification pending.
 
 Last reviewed: 2026-09-01.
 
@@ -296,6 +296,11 @@ compute budgets. A failed admission may lead to revision only when the agent rec
 Every revision is a new content-addressed candidate attempt. An equivalent failure without new evidence or materially
 changed source terminates the loop. Brief ambiguity, prohibited dependencies, sandbox-policy denial, missing authority,
 or a behaviorally material change escalates immediately instead of consuming repair attempts.
+
+The first-slice implementation destroys a failed candidate workspace before admitting a repair transition, increments
+the revision budget, derives a new immutable candidate-attempt identity, and requires independent admission again.
+Focused tests cover one actionable failure followed by one admitted replacement; real-container, recovery, malicious-
+content, and repeated real-model qualification remain open.
 
 Passing admission completes the mission; the agent cannot continue polishing or optimizing admitted code. Budget
 exhaustion returns complete attempt lineage, the strongest available candidate and admission evidence, unresolved

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Mapping
-from contextlib import AsyncExitStack, asynccontextmanager
-from dataclasses import dataclass
+from contextlib import AsyncExitStack, asynccontextmanager, suppress
+from dataclasses import dataclass, field
 import os
 from pathlib import Path
 import shlex
@@ -27,6 +28,7 @@ from .checkpointing import (
 from .contracts import (
     AgentRole,
     AgenticSliceResult,
+    OperatorCancellation,
     OperatorInterrupt,
     OperatorResponse,
 )
@@ -68,6 +70,11 @@ class AgenticResearchRuntime:
     tool_catalogue: ToolCatalogue
     programs: AgentProgramRegistry
     model_profiles: ModelProfileRegistry
+    _active_tasks: dict[str, asyncio.Task[Any]] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
 
     async def start(self, session: ResearchSession) -> AgentRunOutcome:
         """Start, recover, or return the current exact research session.
@@ -79,6 +86,14 @@ class AgenticResearchRuntime:
             Terminal grounded result or bounded operator interrupt.
         """
         self._validate_session(session)
+        async with self._active_session(session.session_id):
+            return await self._start_unlocked(session)
+
+    async def _start_unlocked(
+        self,
+        session: ResearchSession,
+    ) -> AgentRunOutcome:
+        """Run start/recovery while this runtime owns the session task."""
         graph = self.coordinator.build_graph(
             session=session,
             checkpointer=self.checkpointer,
@@ -125,6 +140,15 @@ class AgenticResearchRuntime:
         self._validate_session(session)
         if response.operator_id != session.operator_id:
             raise ValueError("operator response identity does not match the session")
+        async with self._active_session(session.session_id):
+            return await self._resume_unlocked(session, response)
+
+    async def _resume_unlocked(
+        self,
+        session: ResearchSession,
+        response: OperatorResponse,
+    ) -> AgentRunOutcome:
+        """Resume while this runtime owns the session task."""
         graph = self.coordinator.build_graph(
             session=session,
             checkpointer=self.checkpointer,
@@ -133,16 +157,77 @@ class AgenticResearchRuntime:
         snapshot = await graph.aget_state(config)
         if not snapshot.values:
             raise ValueError("research session has no operational checkpoint")
+        current = _outcome_if_available(session.session_id, snapshot.values)
+        if current is not None:
+            return current
         if not snapshot.interrupts:
-            current = _outcome_if_available(session.session_id, snapshot.values)
-            if current is not None:
-                return current
             raise ValueError("research session is not awaiting operator input")
         output = await graph.ainvoke(
             Command(resume=response.model_dump(mode="json")),
             config,
         )
         return _outcome(session.session_id, output)
+
+    async def cancel(
+        self,
+        session: ResearchSession,
+        cancellation: OperatorCancellation,
+    ) -> AgenticSliceResult:
+        """Cancel one checkpointed session and persist the public transition.
+
+        An in-flight invocation owned by this runtime is cancelled first. The
+        last completed checkpoint is then advanced to an explicit terminal
+        state with a canonical cancelled decision receipt. Provider mutations
+        interrupted at that boundary remain protected by their operation
+        journals and are not blindly replayed.
+
+        Args:
+            session: Exact immutable research session to terminate.
+            cancellation: Owning operator identity and bounded public reason.
+
+        Returns:
+            Terminal cancelled result retained in the coordinator checkpoint.
+        """
+        self._validate_session(session)
+        if cancellation.operator_id != session.operator_id:
+            raise ValueError("operator cancellation identity does not match session")
+        current_task = asyncio.current_task()
+        active_task = self._active_tasks.get(session.session_id)
+        if (
+            active_task is not None
+            and active_task is not current_task
+            and not active_task.done()
+        ):
+            active_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await active_task
+        graph = self.coordinator.build_graph(
+            session=session,
+            checkpointer=self.checkpointer,
+        )
+        config = coordinator_thread_config(session.session_id)
+        snapshot = await graph.aget_state(config)
+        if not snapshot.values:
+            raise ValueError("research session has no operational checkpoint")
+        current = _outcome_if_available(session.session_id, snapshot.values)
+        if isinstance(current, AgenticSliceResult):
+            if current.status == "cancelled":
+                return current
+            raise ValueError("a terminal research session cannot be cancelled")
+        updates = await self.coordinator.cancel_state(
+            session=session,
+            state=snapshot.values,
+            cancellation=cancellation,
+        )
+        await graph.aupdate_state(config, updates, as_node="commit_decision")
+        terminal_snapshot = await graph.aget_state(config)
+        terminal = _outcome_if_available(
+            session.session_id,
+            terminal_snapshot.values,
+        )
+        if not isinstance(terminal, AgenticSliceResult):
+            raise RuntimeError("cancellation did not produce a terminal result")
+        return terminal
 
     async def inspect(self, session: ResearchSession) -> dict[str, Any]:
         """Return the redacted operator-visible checkpoint projection."""
@@ -166,6 +251,25 @@ class AgenticResearchRuntime:
             agent_programs=self.programs,
             tool_catalogue=self.tool_catalogue,
         )
+
+    @asynccontextmanager
+    async def _active_session(
+        self,
+        session_id: str,
+    ) -> AsyncIterator[None]:
+        """Enforce one in-process writer task for a research session."""
+        task = asyncio.current_task()
+        if task is None:
+            raise RuntimeError("agent runtime requires an active asyncio task")
+        existing = self._active_tasks.get(session_id)
+        if existing is not None and existing is not task and not existing.done():
+            raise RuntimeError("research session already has an active runtime task")
+        self._active_tasks[session_id] = task
+        try:
+            yield
+        finally:
+            if self._active_tasks.get(session_id) is task:
+                self._active_tasks.pop(session_id, None)
 
 
 @asynccontextmanager

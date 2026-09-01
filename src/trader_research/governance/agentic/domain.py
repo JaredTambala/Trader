@@ -70,6 +70,7 @@ class AgentDecisionStatus(str, Enum):
     ACCEPTED = "accepted"
     AWAITING_OPERATOR = "awaiting_operator"
     BLOCKED = "blocked"
+    CANCELLED = "cancelled"
     TERMINAL = "terminal"
 
 
@@ -391,8 +392,13 @@ class AgentDecisionReceipt:
             _required_text(action, "next_action")
         if self.status is AgentDecisionStatus.AWAITING_OPERATOR and not self.blockers:
             raise ValueError("awaiting_operator decisions require a structured blocker")
-        if self.status is AgentDecisionStatus.BLOCKED and not self.blockers:
-            raise ValueError("blocked decisions require a structured blocker")
+        if self.status in {
+            AgentDecisionStatus.BLOCKED,
+            AgentDecisionStatus.CANCELLED,
+        } and not self.blockers:
+            raise ValueError(
+                "blocked or cancelled decisions require a structured blocker"
+            )
         _json_mapping(self.metadata, "metadata")
 
     @property
