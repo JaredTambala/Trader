@@ -5,10 +5,10 @@ in canonical agent, product, MCP, user, and roadmap documentation.
 
 Last reviewed: 2026-09-01.
 
-Implementation note: the accepted Coordinator/Data/Strategy records and shared patterns are canonical. The first MCP
-tranche now registers implementation catalogue/comparison and fail-closed Coding Workspace capabilities, while
-Research Session, general canonical reads, runtime selection, model-backed loops, recovery, and qualification remain
-open. This record must not be read as a completion claim.
+Implementation note: the accepted Coordinator/Data/Strategy records and shared patterns are canonical. The reviewed
+first-slice MCP inventory, evaluation dataset, and measured LangGraph runtime selection are now complete. The
+production model-backed loops, clean runtime cutover, recovery/security qualification, and user workflow remain open.
+This record must not be read as a completion claim.
 
 This is a temporary sub-document of the [Agent Designs](../agent_designs.md) workbook. It converts the selected
 Coordinator–Data–Strategy direction into a reviewable implementation sequence. It does not replace the owning
@@ -118,10 +118,10 @@ dependency table permits it.
 | Implementation authorization | User accepts this plan as amended and the roadmap records the selected work. | Explicit review decision with any remaining spike-owned choices named. | Production code changes. |
 
 Current state on 2026-09-01: the Coordinator, Data Research, and Strategy Engineering architecture records plus the
-first-slice shared pattern review are accepted. Implementation-catalogue, isolated Coding Workspace, immutable Research
-Session/public-decision evidence, and bounded canonical-read operations are registered. The formal capability inventory
-and evaluation charter remain active; the framework decision, remaining deterministic gaps, production runtime, and
-qualification remain incomplete.
+first-slice shared pattern review are accepted. The complete capability inventory is canonical in
+`docs/research_agents/tool_contracts.md`; the versioned 12-case evaluation dataset and provisional thresholds are in
+`tests/fixtures/agentic_slice_scenarios.json`. LangGraph is selected through the measured spike below. Remaining
+deterministic gaps, the production runtime and agent programs, and controlled qualification remain incomplete.
 
 ## Entry and handoff contract for the first slice
 
@@ -193,9 +193,11 @@ The coordinator may invoke Data Research and Strategy Engineering through versio
 the agent runtime. The specialists' interactions with Trader, research services and coding infrastructure occur only
 through MCP. An agent invocation is not itself a new all-powerful MCP endpoint.
 
-## Capability inventory hypotheses
+## Reviewed capability inventory
 
-These are starting hypotheses to test in the formal MCP inventory, not approved tool contracts.
+The complete operation-by-operation inventory is canonical in
+[Research Agent Tool Contracts](../../docs/research_agents/tool_contracts.md#first-slice-capability-and-trust-boundary-inventory).
+The summary below records the disposition that shaped the first implementation tranche.
 
 | Capability | Current position | Proposed disposition for the slice |
 | --- | --- | --- |
@@ -206,8 +208,8 @@ These are starting hypotheses to test in the formal MCP inventory, not approved 
 | Data research snapshot | Registered canonical mutation. | Retain; require exact composite-scope identity and matching revalidated inventory/quality generations. |
 | Canonical artifact reads | A registered exact-ref operation now validates artifact type and owner and returns hash, lineage metadata, and a bounded payload. | Retain; add pagination or projection-specific reads only when representative model context proves the exact bounded read insufficient. |
 | Maintained template lists | Registered metadata-only lists. | Retain as one catalogue tier; do not mistake them for a complete implementation search surface. |
-| Previous implementation search and resolution | Incomplete. | Add versioned typed/lexical/semantic search, exact manifest/admission/provenance resolution, bounded eligible source retrieval and reproducible catalogue identity. |
-| Brief-to-implementation comparison | Incomplete. | Add deterministic field-alignment support and a canonical or validated compatibility record; the model still judges reuse/adapt/author. |
+| Previous implementation search and resolution | Registered bounded typed/lexical search, exact version/admission resolution, optional bounded source retrieval, and reproducible catalogue identity. Semantic ranking is not required for the first slice. | Retain; qualify model use without treating ranking as admission. |
+| Brief-to-implementation comparison | Registered deterministic field-level match/difference/unknown evidence and direct-reuse eligibility. | Retain; the model still judges reuse/adapt/author and cannot infer semantic equivalence or efficacy. |
 | Workspace creation, read/search, edit, checks, packaging and cleanup | Registered as a default-off Coding Workspace family with a pinned read-only repository, separate candidate writes, bounded operations, container-only checks, inert packaging, and exact cleanup. | Retain and qualify against a real OCI runtime; no host execution fallback. |
 | Dependency resolution | Registered policy validation accepts only approved pinned dependencies and installs nothing. | Retain for the slice; future approved mirrors remain a separate capability when dependency installation is required. |
 | Strategy/risk registration and validation | Registered content-addressed admission path. | Retain independent services; reshape ownership/inputs only where required to accept exact workspace packages and immutable attempt lineage. |
@@ -261,6 +263,35 @@ remove meaningful judgment from the agents.
 LangChain/LangGraph remains the leading hypothesis because it already fits the accepted graph, interrupt and Postgres
 checkpoint direction. The spike is still required: existing LangGraph use proves library integration, not the target
 model/tool loop or the relative fit of the current APIs.
+
+#### Recorded framework and observability decision
+
+The disposable comparison ran on 2026-09-01 against PostgreSQL 14.24, Ollama `qwen3.5:9b` with thinking disabled,
+real MCP stdio transport, strict Pydantic schemas, and MLflow 3.14 traces. Both candidates received the same two brief
+profiles and the same role-narrowed Data/implementation-catalogue choices. Both ran a legal parallel MCP branch,
+reviewed fail-closed tool evidence, made one evidence-responsive Data revision decision, interrupted for operator
+authority, resumed through a newly opened PostgreSQL connection, and produced queryable redacted traces.
+
+| Candidate and brief | Time | Model / MCP calls | Input / output tokens | Structured output | Evidence-responsive result |
+| --- | ---: | ---: | ---: | --- | --- |
+| LangGraph 1.2.2, multi-asset | 31.004s | 5 / 2 | 4,118 / 1,809 | No repair | Inventory plus implementation search; Data returned blocked; coordinator stopped fail closed. |
+| LangGraph 1.2.2, exact refs | 41.257s | 6 / 2 | 6,349 / 2,448 | One bounded repair | Quality plus implementation search; different agenda digest; coordinator requested operator clarification. |
+| PydanticAI 2.37.0, multi-asset | 51.290s | 5 / 2 | 5,448 / 3,172 | No repair | Inventory plus implementation search; Data returned blocked; coordinator requested operator clarification. |
+| PydanticAI 2.37.0, exact refs | 56.289s | 5 / 3 | 5,162 / 3,128 | No repair | Inventory, implementation search, then alternative symbol discovery; different agenda digest; coordinator requested operator clarification. |
+
+The four retained trace identities were `tr-008c5fbf8e1494ca5ad36800bb7f0b48`,
+`tr-fdb9e4624f0312c25e580232d72c4fff`, `tr-133a424f48799b7e06aae7e4ae9da1ad`, and
+`tr-c70adfb2c78f2efd8dae9630c63ba8b7`. A verification query found all four. Native LangGraph checkpoint tables held
+each interrupted thread. PydanticAI's agents provided concise structured-output ergonomics, but equivalent durable
+resume required a comparison-only custom PostgreSQL table and handwritten suspension/control flow.
+
+LangGraph 1.2.2 with `langgraph-checkpoint-postgres` 3.1.x is selected for the production control runtime. Its native
+thread/checkpoint namespace, interrupts, multi-node joins, pending-write recovery, and existing package boundary fit
+the accepted single-writer architecture with less custom lifecycle machinery. PydanticAI is not added as a production
+dependency. This is a runtime-fit decision, not a claim that one library's model abstraction is universally better.
+Production structured output uses provider-neutral JSON-schema requests, strict Pydantic validation, and at most one
+bounded validation-feedback repair. The primary development profile is `ollama-qwen35-9b-json-v1`; promotion still
+requires repeated qualification against a frozen model/profile identity.
 
 ### Build the agent runtime foundation
 
@@ -416,7 +447,7 @@ Unless review changes them, this plan recommends:
 
 - stopping the first slice at Data readiness plus an admitted candidate;
 - using the operator-specified build-contract route for every first-slice end-to-end fixture;
-- treating LangChain/LangGraph as the leading runtime candidate while retaining a genuine PydanticAI comparison;
+- using the measured LangGraph runtime selection recorded above; PydanticAI is not a production dependency;
 - using Postgres for canonical evidence and agent checkpointing in separate namespaces;
 - using a rootless or equivalently isolated OCI/Docker workspace with networking disabled by default;
 - requiring one primary real-model profile for acceptance and recording provider portability as a later concern; and

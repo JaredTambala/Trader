@@ -1,4 +1,4 @@
-"""MCP client wrappers used by deterministic agent graphs."""
+"""MCP transport clients used by the model-backed agent runtime."""
 
 from __future__ import annotations
 
@@ -27,6 +27,30 @@ class McpToolClient(Protocol):
             MCP-style result mapping with `content`, `structuredContent`, and
             `isError` fields.
         """
+
+    async def list_tools(self) -> Sequence["McpToolDescription"]:
+        """Return the MCP server's current public tool schemas."""
+
+
+@dataclass(frozen=True)
+class McpToolDescription:
+    """Bounded transport description for one registered MCP operation."""
+
+    name: str
+    description: str
+    input_schema: Mapping[str, Any]
+    output_schema: Mapping[str, Any] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-native model-facing tool description."""
+        payload = {
+            "name": self.name,
+            "description": self.description,
+            "input_schema": dict(self.input_schema),
+        }
+        if self.output_schema is not None:
+            payload["output_schema"] = dict(self.output_schema)
+        return payload
 
 
 @dataclass(frozen=True)
@@ -77,6 +101,28 @@ class StdioMcpToolClient:
             "structuredContent": dict(result.structuredContent or {}),
             "isError": bool(result.isError),
         }
+
+    async def list_tools(self) -> Sequence[McpToolDescription]:
+        """List current MCP tool schemas through one isolated stdio session."""
+        server_params = self._server_parameters()
+        async with stdio_client(server_params) as (read_stream, write_stream):
+            async with ClientSession(
+                read_stream,
+                write_stream,
+                read_timeout_seconds=timedelta(seconds=self.read_timeout_seconds),
+            ) as session:
+                await session.initialize()
+                result = await session.list_tools()
+        return tuple(_tool_description(item) for item in result.tools)
+
+    def _server_parameters(self) -> StdioServerParameters:
+        """Build the exact stdio server process parameters."""
+        return StdioServerParameters(
+            command=self.command,
+            args=list(self.args),
+            cwd=self.cwd,
+            env=dict(self.env) if self.env is not None else None,
+        )
 
 
 @dataclass
@@ -172,6 +218,13 @@ class PersistentStdioMcpToolClient:
             "isError": bool(result.isError),
         }
 
+    async def list_tools(self) -> Sequence[McpToolDescription]:
+        """List current MCP tool schemas over the persistent session."""
+        if self._session is None:
+            raise RuntimeError("PersistentStdioMcpToolClient must be used as an async context manager")
+        result = await self._session.list_tools()
+        return tuple(_tool_description(item) for item in result.tools)
+
 
 def _content_block_to_dict(block: object) -> dict[str, Any]:
     """Convert an MCP content block to a JSON-safe mapping.
@@ -188,3 +241,21 @@ def _content_block_to_dict(block: object) -> dict[str, Any]:
     if isinstance(block, Mapping):
         return dict(block)
     return {"type": "unknown", "text": str(block)}
+
+
+def _tool_description(tool: object) -> McpToolDescription:
+    """Normalize one MCP SDK tool descriptor at the transport boundary."""
+    name = str(getattr(tool, "name", "") or "").strip()
+    if not name:
+        raise ValueError("MCP tool descriptor is missing a name")
+    description = str(getattr(tool, "description", "") or "").strip()
+    input_schema = getattr(tool, "inputSchema", None)
+    if not isinstance(input_schema, Mapping):
+        raise ValueError(f"MCP tool {name} has no input schema")
+    output_schema = getattr(tool, "outputSchema", None)
+    return McpToolDescription(
+        name=name,
+        description=description,
+        input_schema=dict(input_schema),
+        output_schema=(dict(output_schema) if isinstance(output_schema, Mapping) else None),
+    )

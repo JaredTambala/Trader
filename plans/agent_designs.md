@@ -123,7 +123,7 @@ artifact ownership, context isolation, or the requirement that every specialist 
 ## Accepted first-slice pattern review
 
 The user authorized implementation of the reviewed Coordinator–Data–Strategy slice on 2026-09-01. The following shared
-patterns are accepted for that slice; framework APIs remain subject to the measured spike:
+patterns are accepted for that slice and are now bound to the measured LangGraph runtime selection:
 
 - **Supervisor with specialist capabilities:** the Coordinator is the only user-facing model. Data Research and
   Strategy Engineering are versioned specialist model programs exposed to the coordinator runtime as bounded
@@ -153,3 +153,18 @@ patterns are accepted for that slice; framework APIs remain subject to the measu
 
 The slice does not use an independent Evaluation agent because it stops before experimental evidence. Evaluation of
 agent behavior is an offline qualification concern and cannot be replaced by the Coordinator's product judgment.
+
+### Accepted first-slice runtime pattern
+
+The real-model comparison selected LangGraph 1.2.2 with the 3.1.x Postgres checkpointer for the production control
+runtime. PydanticAI 2.37.0 also produced strict structured outputs, parallel MCP observations, an evidence-responsive
+revision, and a safe terminal result, but equivalent durable interruption required a separate custom checkpoint table
+and handwritten lifecycle control. The comparison used PostgreSQL 14.24, Ollama `qwen3.5:9b` with thinking disabled,
+real stdio MCP calls, and correlated MLflow 3.14 traces across two materially different briefs.
+
+The runtime choice implements rather than changes the accepted patterns. Production uses LangGraph threads and
+checkpoint namespaces for operational state; strict Pydantic contracts for model outputs; provider-neutral JSON-schema
+model requests with one bounded validation repair; explicit custom nodes for deterministic policy and MCP calls; native
+interrupt/resume for operator authority; parallel specialist/tool work with declared joins; and MLflow as a redacted
+diagnostic projection. Canonical Trader/Postgres artifacts remain the only product evidence. PydanticAI is not a
+production dependency, and DSPy remains a later offline program-optimization option after evaluation data exists.

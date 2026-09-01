@@ -311,6 +311,13 @@ LangGraph is the agent identity and orchestration layer. Agent graphs decide whi
 retained, how specialist handoffs are routed, and which artifact must be produced. Agent code should call MCP tools
 rather than core platform internals when a tool exists.
 
+The first model-backed slice selected LangGraph 1.2.2 with `langgraph-checkpoint-postgres` 3.1.x after a real-model
+comparison with PydanticAI 2.37.0. The comparison used strict Pydantic outputs, dynamically narrowed MCP choices,
+parallel observations, an evidence-led specialist revision, an operator interrupt, resume through a new PostgreSQL
+connection, and MLflow-correlated traces. PydanticAI required custom durable suspension/control glue for the equivalent
+path and is not a production dependency. Production model calls remain behind a provider-neutral client; the initial
+development profile is Ollama `qwen3.5:9b`, temperature zero, thinking disabled, and one bounded schema repair.
+
 ## Higher-Level Orchestration Architecture
 
 Orchestration is a cross-cutting control capability over deterministic tools, not the final step of a linear delivery

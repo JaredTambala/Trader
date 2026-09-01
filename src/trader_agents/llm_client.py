@@ -64,6 +64,39 @@ class LlmClient(Protocol):
         """Return a JSON-native object emitted by an LLM backend."""
 
 
+class UsageAwareLlmClient(LlmClient, Protocol):
+    """LLM client that also reports provider token/model metadata."""
+
+    async def complete_json_with_usage(
+        self,
+        llm_request: LlmJsonRequest,
+    ) -> "LlmJsonCompletion":
+        """Return structured JSON together with public usage metadata."""
+
+
+@dataclass(frozen=True)
+class LlmTokenUsage:
+    """Public provider token counts for one model call."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+    def __post_init__(self) -> None:
+        """Reject negative provider counters."""
+        if self.input_tokens < 0 or self.output_tokens < 0:
+            raise ValueError("LLM token counts cannot be negative")
+
+
+@dataclass(frozen=True)
+class LlmJsonCompletion:
+    """Structured model payload and bounded provider metadata."""
+
+    payload: Mapping[str, Any]
+    usage: LlmTokenUsage
+    provider: str
+    model: str
+
+
 class JsonHttpTransport(Protocol):
     """Small async JSON POST transport used by runtime LLM clients."""
 
@@ -83,10 +116,16 @@ class StaticJsonLlmClient:
     """Deterministic fake LLM client for graph and policy tests."""
 
     responses: Sequence[Mapping[str, Any]]
+    usages: Sequence[LlmTokenUsage] = ()
 
     def __post_init__(self) -> None:
         """Copy responses and initialize captured requests."""
         self._responses = [dict(response) for response in self.responses]
+        if self.usages and len(self.usages) != len(self._responses):
+            raise ValueError("StaticJsonLlmClient usages must match responses")
+        self._usages = list(self.usages) or [
+            LlmTokenUsage() for _ in self._responses
+        ]
         self.requests: list[LlmJsonRequest] = []
 
     async def complete_json(self, llm_request: LlmJsonRequest) -> Mapping[str, Any]:
@@ -94,7 +133,25 @@ class StaticJsonLlmClient:
         self.requests.append(llm_request)
         if not self._responses:
             raise LlmRequestError("StaticJsonLlmClient has no remaining responses")
+        self._usages.pop(0)
         return self._responses.pop(0)
+
+    async def complete_json_with_usage(
+        self,
+        llm_request: LlmJsonRequest,
+    ) -> LlmJsonCompletion:
+        """Return the next fake response and configured public usage."""
+        self.requests.append(llm_request)
+        if not self._responses:
+            raise LlmRequestError("StaticJsonLlmClient has no remaining responses")
+        payload = self._responses.pop(0)
+        usage = self._usages.pop(0)
+        return LlmJsonCompletion(
+            payload=payload,
+            usage=usage,
+            provider="static",
+            model=llm_request.model or "static-json",
+        )
 
 
 @dataclass(frozen=True)
@@ -158,6 +215,14 @@ class OpenAICompatibleJsonLlmClient:
 
     async def complete_json(self, llm_request: LlmJsonRequest) -> Mapping[str, Any]:
         """Call an OpenAI-compatible chat endpoint and parse JSON content."""
+        completion = await self.complete_json_with_usage(llm_request)
+        return completion.payload
+
+    async def complete_json_with_usage(
+        self,
+        llm_request: LlmJsonRequest,
+    ) -> LlmJsonCompletion:
+        """Call an OpenAI-compatible endpoint with public usage metadata."""
         payload = {
             "model": llm_request.model or self.config.model,
             "messages": llm_request.messages_payload(),
@@ -184,7 +249,21 @@ class OpenAICompatibleJsonLlmClient:
         if not isinstance(message, Mapping):
             raise LlmRequestError("OpenAI-compatible choice did not include a message")
         content = message.get("content")
-        return _decode_json_content(content)
+        usage = response.get("usage")
+        usage_mapping = usage if isinstance(usage, Mapping) else {}
+        return LlmJsonCompletion(
+            payload=_decode_json_content(content),
+            usage=LlmTokenUsage(
+                input_tokens=_non_negative_integer(
+                    usage_mapping.get("prompt_tokens")
+                ),
+                output_tokens=_non_negative_integer(
+                    usage_mapping.get("completion_tokens")
+                ),
+            ),
+            provider=self.config.provider,
+            model=llm_request.model or self.config.model,
+        )
 
 
 @dataclass(frozen=True)
@@ -196,6 +275,14 @@ class OllamaJsonLlmClient:
 
     async def complete_json(self, llm_request: LlmJsonRequest) -> Mapping[str, Any]:
         """Call an Ollama chat endpoint and parse JSON content."""
+        completion = await self.complete_json_with_usage(llm_request)
+        return completion.payload
+
+    async def complete_json_with_usage(
+        self,
+        llm_request: LlmJsonRequest,
+    ) -> LlmJsonCompletion:
+        """Call Ollama and retain public token counters."""
         payload = {
             "model": llm_request.model or self.config.model,
             "messages": llm_request.messages_payload(),
@@ -213,7 +300,17 @@ class OllamaJsonLlmClient:
         message = response.get("message")
         if not isinstance(message, Mapping):
             raise LlmRequestError("Ollama response did not include a message")
-        return _decode_json_content(message.get("content"))
+        return LlmJsonCompletion(
+            payload=_decode_json_content(message.get("content")),
+            usage=LlmTokenUsage(
+                input_tokens=_non_negative_integer(
+                    response.get("prompt_eval_count")
+                ),
+                output_tokens=_non_negative_integer(response.get("eval_count")),
+            ),
+            provider=self.config.provider,
+            model=llm_request.model or self.config.model,
+        )
 
 
 @dataclass(frozen=True)
@@ -230,6 +327,24 @@ class RuntimeConfiguredLlmClient:
             transport=self.transport,
         )
         return await client.complete_json(llm_request)
+
+    async def complete_json_with_usage(
+        self,
+        llm_request: LlmJsonRequest,
+    ) -> LlmJsonCompletion:
+        """Resolve and call the configured usage-aware backend."""
+        client = build_llm_client_from_env(
+            self.env if self.env is not None else os.environ,
+            transport=self.transport,
+        )
+        if not isinstance(
+            client,
+            (OllamaJsonLlmClient, OpenAICompatibleJsonLlmClient),
+        ):
+            raise LlmConfigurationError(
+                "configured LLM client does not report token usage"
+            )
+        return await client.complete_json_with_usage(llm_request)
 
 
 def build_llm_client_from_env(
@@ -323,3 +438,8 @@ def _decode_json_content(content: object) -> Mapping[str, Any]:
     if not isinstance(decoded, Mapping):
         raise LlmRequestError("LLM message content JSON was not an object")
     return decoded
+
+
+def _non_negative_integer(value: object) -> int:
+    """Normalize an optional provider token counter."""
+    return value if isinstance(value, int) and value >= 0 else 0

@@ -63,12 +63,14 @@ capabilities are now in progress, but the model-backed runtime has not been impl
 No compatibility is required with existing `trader_agents` imports, graphs, checkpoints, tasks, policies, catalogs, or
 fixed workflow state.
 
-The proposed system uses a model-backed Research Coordinator supervising context-isolated specialist agents. Models
+The target system uses a model-backed Research Coordinator supervising context-isolated specialist agents. Models
 will own research planning, delegation, tool choice, replanning, and synthesis; deterministic Trader and research
 services will continue to own data mutation, code admission, backtests, accounting, optimisation, artifact validation,
-policy enforcement, and broker isolation. LangChain/LangGraph is the recommended primary runtime subject to a real
-framework spike, DSPy is reserved for evaluation-driven program optimization, MCP remains the capability boundary, and
-MLflow covers both complex-signal lifecycle and agent trace/evaluation lifecycle.
+policy enforcement, and broker isolation. The real-model framework spike selected LangGraph 1.2.2 with its 3.1.x
+Postgres checkpointer. Strict Pydantic schemas validate provider-neutral JSON outputs with one bounded repair; the
+development profile is Ollama `qwen3.5:9b` with thinking disabled for control decisions. DSPy remains reserved for
+later evaluation-driven program optimization, MCP is the capability boundary, and MLflow covers complex-signal plus
+agent trace/evaluation lifecycle without becoming product authority.
 
 Every specialist return will rejoin the coordinator. The coordinator is expected to inspect its canonical evidence and
 choose explicitly whether to advance, request revision, revisit an earlier responsibility, create a separately tracked
@@ -86,21 +88,21 @@ apply. Model-generated source maps and summaries are navigation aids, never cita
 detail blocks or branches the method rather than being guessed. The complete target is in
 [Research-Backed Implementation Architecture](../../plans/agentic_orchestration_redesign.md#research-backed-implementation-architecture).
 
-The active roadmap now places the design/evaluation charter and framework spike ahead of production agent work. The
-controlled `verification-orchestration-v1-freeze` record remains valid evidence only for the frozen deterministic
-surface.
+The design/evaluation charter, 12-case `first-agentic-slice-evaluation-v1` dataset, complete first-slice capability
+inventory, and framework/observability decision now precede the active production runtime work. The controlled
+`verification-orchestration-v1-freeze` record remains valid evidence only for the frozen deterministic surface.
 
-Design review has accepted the standard architecture record required for every agent and the complete Research
-Coordinator boundary, including its authority, context, capability surface, model-owned control loop, single-writer
-state, evidence return, termination, evaluation, and parallel scheduling rules. Specialist designs and the subsequent
-shared agent-pattern review remain pending, so the overall charter is still `in_progress`. The durable working record is
-[Agent Designs](../../plans/agent_designs.md). This is planning
-evidence only and does not make a model-backed agent operational.
+Design review has accepted the complete Research Coordinator, Data Research, and Strategy Engineering records plus the
+shared first-slice pattern review. The measured runtime choice implements those boundaries through native Postgres
+checkpoints/interrupts, single-writer state, parallel branches with explicit joins, strict model outputs, role-scoped
+MCP, and redacted traces. Later specialist records remain under review or parked. The durable working record is
+[Agent Designs](../../plans/agent_designs.md); accepted design and spike evidence still do not make the production
+model-backed loop operational.
 
-The Data Research Agent architecture review is now active. Its accepted working requirements cover multi-asset
+The Data Research Agent architecture is accepted for the first slice. Its requirements cover multi-asset
 composite scope, model-selected use of an evolving role-scoped MCP data catalogue, readiness assessment, and bounded
 backfill inside a pre-approved acquisition envelope. Work outside that envelope returns through the coordinator for
-operator authority. Its remaining architecture record is not yet accepted.
+operator authority.
 
 The Knowledge Research Agent review is now active in the separate
 [Knowledge Research design](../../plans/agent_designs/knowledge_research.md). The existing iterative retrieval,
@@ -515,9 +517,10 @@ tool-catalog, scope, approval, Python-quality, implementation-input, and budget 
 canonical evidence and enforce per-branch sequence, cumulative budget, and terminal-stop invariants. They deliberately
 exclude prompts, hidden reasoning, credentials, raw messages, and complete tool transcripts.
 
-Composite Data-agent contracts, production model programs, dynamic role catalogues, coordinator/specialist loops,
-fresh-process Postgres recovery qualification, MLflow trace correlation, and real-model evaluation remain outstanding.
-The active status and gates are recorded in the capability roadmap.
+Production composite Data behavior, model programs, dynamic role catalogues, coordinator/specialist loops,
+fresh-process Postgres recovery qualification, the production MLflow trace sink, and repeated real-model evaluation
+remain outstanding. The operation-by-operation inventory and versioned evaluation cases are complete; active status
+and gates are recorded in the capability roadmap.
 
 ## Qualification Baselines
 

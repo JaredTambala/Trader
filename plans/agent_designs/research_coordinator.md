@@ -75,9 +75,11 @@ session context, available specialist descriptions, decision schema, evidence-re
 authority limits. It produces structured agendas, delegations, evidence-review decisions, approval requests, and final
 synthesis rather than relying on prose parsing for control flow.
 
-The concrete provider, model class, prompts, schema representation, sampling/reasoning settings, and dynamic model
-policy are selected and versioned through the framework spike. A model or program upgrade is a product change and must
-be evaluated before promotion.
+The first-slice framework spike selected LangGraph 1.2.2 with the 3.1.x Postgres checkpointer and strict Pydantic
+structured outputs. The development model profile is `ollama-qwen35-9b-json-v1`: Ollama `qwen3.5:9b`, temperature zero,
+thinking disabled for bounded control decisions, provider-neutral JSON-schema requests, and at most one validation
+repair. Exact prompts and agent-program identities remain versioned production artifacts. A model, program, schema, or
+sampling-policy upgrade is a product change and must be evaluated before promotion.
 
 ## Capability surface
 
@@ -245,13 +247,15 @@ Coordinator evaluation covers:
 A successful demonstration is not acceptance. Promotion thresholds and representative fixtures are established through
 the design/evaluation charter and framework measurements.
 
-## Spike-owned implementation decisions
+## Measured implementation decisions
 
-The accepted architecture intentionally leaves these implementation choices to measurement:
+The framework comparison resolved the primary runtime, development model profile, structured-output mechanism,
+Postgres checkpoint direction, and MLflow trace projection. The following tuning choices remain measurement-driven
+during production qualification:
 
-- concrete model providers, model classes, and per-role profiles;
-- exact structured agenda, delegation, decision, and evidence-return schemas;
-- framework APIs for subagent invocation, parallel dispatch, interrupts, and persistence;
+- promotion model providers and any per-role profile overrides;
+- final field limits within the accepted structured agenda, delegation, decision, and evidence-return contracts;
+- exact scheduler use of LangGraph subgraphs, parallel dispatch, and cancellation;
 - initial concurrency, revision, fork, token, time, and cost limits;
 - scheduler batching behavior when several returns arrive together;
 - trace redaction and retained payload policy; and
