@@ -59,6 +59,7 @@ class AgentCheckpointState(TypedDict, total=False):
     tool_catalog_id: str
     agenda: dict[str, Any]
     delegations: list[dict[str, Any]]
+    active_delegations: list[dict[str, Any]]
     specialist_returns: list[dict[str, Any]]
     accepted_return_digests: dict[str, str]
     decision: dict[str, Any]
@@ -114,6 +115,7 @@ def build_agent_checkpoint_state(
         "tool_catalog_id": _required_text(tool_catalog_id, "tool_catalog_id"),
         "agenda": {},
         "delegations": [],
+        "active_delegations": [],
         "specialist_returns": [],
         "accepted_return_digests": {},
         "decision": {},
@@ -150,8 +152,7 @@ def validate_agent_checkpoint_state(state: Mapping[str, Any]) -> None:
     unknown_fields = set(state) - allowed_fields
     if unknown_fields:
         raise ValueError(
-            "checkpoint has unknown fields: "
-            + ", ".join(sorted(unknown_fields))
+            "checkpoint has unknown fields: " + ", ".join(sorted(unknown_fields))
         )
     for key in (
         "session_id",
@@ -176,6 +177,10 @@ def validate_agent_checkpoint_state(state: Mapping[str, Any]) -> None:
         raise ValueError("review_cursor cannot be negative")
 
     delegations = _mapping_sequence(state.get("delegations"), "delegations")
+    active_delegations = _mapping_sequence(
+        state.get("active_delegations"),
+        "active_delegations",
+    )
     returns = _mapping_sequence(
         state.get("specialist_returns"),
         "specialist_returns",
@@ -183,6 +188,10 @@ def validate_agent_checkpoint_state(state: Mapping[str, Any]) -> None:
     evidence = _mapping_sequence(state.get("evidence_refs"), "evidence_refs")
     if len(delegations) > MAX_DELEGATIONS:
         raise ValueError(f"checkpoint supports at most {MAX_DELEGATIONS} delegations")
+    if len(active_delegations) > MAX_DELEGATIONS:
+        raise ValueError(
+            f"checkpoint supports at most {MAX_DELEGATIONS} active delegations"
+        )
     if len(returns) > MAX_SPECIALIST_RETURNS:
         raise ValueError(
             f"checkpoint supports at most {MAX_SPECIALIST_RETURNS} specialist returns"
@@ -194,6 +203,19 @@ def validate_agent_checkpoint_state(state: Mapping[str, Any]) -> None:
     for payload in delegations:
         delegation = SpecialistDelegation.model_validate(payload)
         _require_session_identity(state, delegation.session_id, "delegation")
+    known_delegation_ids = {
+        SpecialistDelegation.model_validate(payload).delegation_id
+        for payload in delegations
+    }
+    active_ids = set()
+    for payload in active_delegations:
+        delegation = SpecialistDelegation.model_validate(payload)
+        _require_session_identity(state, delegation.session_id, "active delegation")
+        if delegation.delegation_id not in known_delegation_ids:
+            raise ValueError("active delegation is absent from delegation history")
+        active_ids.add(delegation.delegation_id)
+    if len(active_ids) != len(active_delegations):
+        raise ValueError("active delegation identities must be unique")
     for payload in returns:
         specialist_return = SpecialistReturn.model_validate(payload)
         _require_session_identity(state, specialist_return.session_id, "return")
@@ -244,7 +266,10 @@ def validate_agent_checkpoint_state(state: Mapping[str, Any]) -> None:
     if len(set(completed)) != len(completed):
         raise ValueError("completed_task_ids must be unique")
     branches = _optional_mapping(state.get("branch_by_task"), "branch_by_task")
-    if any(not str(key).strip() or not str(value).strip() for key, value in branches.items()):
+    if any(
+        not str(key).strip() or not str(value).strip()
+        for key, value in branches.items()
+    ):
         raise ValueError("branch_by_task requires non-empty string identities")
 
     issue_count = 0
@@ -277,8 +302,7 @@ def coordinator_thread_config(session_id: str) -> dict[str, Any]:
     identity = _required_text(session_id, "session_id")
     return {
         "configurable": {
-            "thread_id": f"agent-session:{identity}",
-            "checkpoint_ns": "coordinator",
+            "thread_id": f"agent-session:{identity}:coordinator",
         }
     }
 
@@ -293,8 +317,7 @@ def specialist_thread_config(
     delegation = _required_text(delegation_id, "delegation_id")
     return {
         "configurable": {
-            "thread_id": f"agent-session:{session}",
-            "checkpoint_ns": f"specialist:{delegation}",
+            "thread_id": (f"agent-session:{session}:specialist:{delegation}"),
         }
     }
 
@@ -314,6 +337,7 @@ def agent_public_state(state: Mapping[str, Any]) -> dict[str, Any]:
             "tool_catalog_id",
             "agenda",
             "delegations",
+            "active_delegations",
             "specialist_returns",
             "decision",
             "evidence_refs",

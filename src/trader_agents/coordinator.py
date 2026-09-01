@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
@@ -27,11 +28,13 @@ from .contracts import (
     AgentPhase,
     AgentRole,
     AgenticSliceResult,
+    AgendaTaskProposal,
     BudgetUsage,
     CanonicalEvidenceRef,
     CoordinatorAction,
     CoordinatorAgenda,
     CoordinatorDecision,
+    CompositeDataScope,
     PublicIssue,
     SpecialistDelegation,
     SpecialistReturn,
@@ -94,9 +97,7 @@ class ResearchCoordinator:
         Returns:
             Compiled graph with coordinator-only state writes and interrupts.
         """
-        coordinator_program = self.programs.for_role(
-            AgentRole.RESEARCH_COORDINATOR
-        )
+        coordinator_program = self.programs.for_role(AgentRole.RESEARCH_COORDINATOR)
         profile = self.model_profiles.get(session.model_profile_id)
 
         async def ensure_session_node(
@@ -160,8 +161,11 @@ class ResearchCoordinator:
                 instruction=(
                     "Interpret the operator objective into a visible first-slice "
                     "agenda. Declare material ambiguity instead of inventing "
-                    "strategy semantics. Include Data Research and Strategy "
-                    "Engineering tasks when the approved inputs are sufficient."
+                    "strategy semantics. Use separate soft-join tasks only for "
+                    "genuinely independent Data scopes or catalogue work, and "
+                    "add a hard-join reconciliation task before a complete "
+                    "specialist handoff. Include both responsibilities when "
+                    "the approved inputs are sufficient."
                 ),
                 public_context={
                     "session": _public_session(session),
@@ -188,7 +192,10 @@ class ResearchCoordinator:
                 ),
             )
             agenda = invocation.output
-            _validate_first_slice_agenda(agenda)
+            _validate_first_slice_agenda(
+                agenda,
+                data_scope=composite_data_scope_from_session(session),
+            )
             branch_by_task = {
                 task.task_id: _branch_id(session.session_id, task.task_id)
                 for task in agenda.tasks
@@ -202,6 +209,7 @@ class ResearchCoordinator:
                     for task in agenda.tasks
                 },
                 "completed_task_ids": [],
+                "active_delegations": [],
                 "operator_response": {},
                 "status": "running",
                 "phase": AgentPhase.INTERPRET.value,
@@ -211,91 +219,99 @@ class ResearchCoordinator:
         async def dispatch_node(
             state: AgentCheckpointState,
         ) -> AgentCheckpointState:
-            """Run only the scheduler's legal ready set and hard-join results."""
+            """Dispatch legal work and checkpoint at an explicit join boundary."""
             _validate_state_session(state, session)
             agenda = CoordinatorAgenda.model_validate(state.get("agenda", {}))
             ledger = _ledger(session, state)
-            mutation_keys = {
-                task.task_id: (
-                    f"data-scope:{composite_data_scope_from_session(session).scope_id}"
-                    if task.role == AgentRole.DATA_RESEARCH.value
-                    else f"candidate-branch:{state['branch_by_task'][task.task_id]}"
-                ,)
-                for task in agenda.tasks
-            }
-            ready = compute_ready_set(
-                agenda,
-                completed_task_ids=list(state.get("completed_task_ids", [])),
-                mutation_keys_by_task=mutation_keys,
-                budget=session.budget,
-                usage=ledger.usage,
-            )
-            if not ready:
+            attempts = dict(state.get("task_attempts", {}))
+            branches = dict(state.get("branch_by_task", {}))
+            active = [
+                SpecialistDelegation.model_validate(item)
+                for item in state.get("active_delegations", [])
+            ]
+            new_delegations: list[SpecialistDelegation] = []
+            if not active:
+                data_scope = composite_data_scope_from_session(session)
+                mutation_keys = {
+                    task.task_id: _mutation_keys_for_task(
+                        task,
+                        data_scope=data_scope,
+                        branch_id=str(branches[task.task_id]),
+                    )
+                    for task in agenda.tasks
+                }
+                ready = compute_ready_set(
+                    agenda,
+                    completed_task_ids=list(state.get("completed_task_ids", [])),
+                    mutation_keys_by_task=mutation_keys,
+                    budget=session.budget,
+                    usage=ledger.usage,
+                )
+                for scheduled in ready:
+                    task = scheduled.task
+                    attempt = int(attempts.get(task.task_id, 0)) + 1
+                    attempts[task.task_id] = attempt
+                    delegation = build_delegation(
+                        session_id=session.session_id,
+                        branch_id=str(branches[task.task_id]),
+                        task=task,
+                        required_input_refs=_refs_from_state(state),
+                        permitted_side_effects=["read_only", "local_mutating"],
+                        reserved_model_calls=scheduled.reservation.model_calls,
+                        reserved_tool_calls=scheduled.reservation.tool_calls,
+                        reserved_tokens=scheduled.reservation.tokens,
+                        attempt=attempt,
+                    )
+                    new_delegations.append(delegation)
+                active.extend(new_delegations)
+            if not active:
                 if set(state.get("completed_task_ids", [])) == {
                     task.task_id for task in agenda.tasks
                 }:
                     return {"phase": AgentPhase.REVIEW.value}
                 raise SchedulingError("agenda has pending work but no legal ready task")
-            attempts = dict(state.get("task_attempts", {}))
-            branches = dict(state.get("branch_by_task", {}))
-            delegations = []
-            coroutines = []
-            for scheduled in ready:
-                task = scheduled.task
-                attempt = int(attempts.get(task.task_id, 0)) + 1
-                attempts[task.task_id] = attempt
-                branch_id = str(branches[task.task_id])
-                delegation = build_delegation(
-                    session_id=session.session_id,
-                    branch_id=branch_id,
-                    task=task,
-                    required_input_refs=_refs_from_state(state),
-                    permitted_side_effects=["read_only", "local_mutating"],
-                    reserved_model_calls=scheduled.reservation.model_calls,
-                    reserved_tool_calls=scheduled.reservation.tool_calls,
-                    reserved_tokens=scheduled.reservation.tokens,
-                    attempt=attempt,
+
+            running = [
+                (
+                    delegation,
+                    asyncio.create_task(
+                        self._run_specialist(
+                            session=session,
+                            delegation=delegation,
+                            checkpointer=checkpointer,
+                        )
+                    ),
                 )
-                delegations.append(delegation)
-                if task.role == AgentRole.DATA_RESEARCH.value:
-                    data_program = self.programs.for_role(AgentRole.DATA_RESEARCH)
-                    coroutines.append(
-                        self.data_agent.run(
-                            session=session,
-                            delegation=delegation,
-                            scope=composite_data_scope_from_session(session),
-                            program=data_program,
-                            profile=self.model_profiles.get(
-                                data_program.model_profile_id
-                            ),
-                        )
-                    )
-                else:
-                    strategy_program = self.programs.for_role(
-                        AgentRole.STRATEGY_ENGINEERING
-                    )
-                    coroutines.append(
-                        self.strategy_agent.run(
-                            session=session,
-                            delegation=delegation,
-                            build_contract=strategy_build_contract_from_session(
-                                session,
-                                branch_id=branch_id,
-                            ),
-                            program=strategy_program,
-                            profile=self.model_profiles.get(
-                                strategy_program.model_profile_id
-                            ),
-                        )
-                    )
-            results = await asyncio.gather(*coroutines)
+                for delegation in active
+            ]
+            return_when = (
+                asyncio.FIRST_COMPLETED
+                if any(delegation.task.join_mode == "soft" for delegation in active)
+                else asyncio.ALL_COMPLETED
+            )
+            done, pending = await asyncio.wait(
+                [task for _, task in running],
+                return_when=return_when,
+            )
+            for runtime_task in pending:
+                runtime_task.cancel()
+            if pending:
+                with suppress(asyncio.CancelledError):
+                    await asyncio.gather(*pending)
+            joined = [
+                (delegation, task.result())
+                for delegation, task in running
+                if task in done
+            ]
+            joined_delegations = [item[0] for item in joined]
+            results = [item[1] for item in joined]
             accepted, digests = _accept_specialist_returns(
                 state,
-                delegations=delegations,
+                delegations=joined_delegations,
                 results=results,
             )
             completed = list(state.get("completed_task_ids", []))
-            for delegation, result in zip(delegations, results, strict=True):
+            for delegation, result in joined:
                 if result.delegation_id == delegation.delegation_id:
                     completed.append(delegation.task.task_id)
                     ledger.merge(result.budget_used)
@@ -306,7 +322,12 @@ class ResearchCoordinator:
             return {
                 "delegations": [
                     *state.get("delegations", []),
-                    *(item.model_dump(mode="json") for item in delegations),
+                    *(item.model_dump(mode="json") for item in new_delegations),
+                ],
+                "active_delegations": [
+                    delegation.model_dump(mode="json")
+                    for delegation, task in running
+                    if task not in done
                 ],
                 "specialist_returns": [
                     *state.get("specialist_returns", []),
@@ -435,7 +456,9 @@ class ResearchCoordinator:
             if not isinstance(response["approved"], bool):
                 raise ValueError("operator resume approved must be a boolean")
             if not response["answer"] or len(str(response["answer"])) > 2_000:
-                raise ValueError("operator resume answer must contain 1 to 2000 characters")
+                raise ValueError(
+                    "operator resume answer must contain 1 to 2000 characters"
+                )
             return {
                 "operator_response": response,
                 "pending_interrupt": {},
@@ -471,6 +494,42 @@ class ResearchCoordinator:
         )
         graph.add_edge("await_operator", "interpret_brief")
         return graph.compile(checkpointer=checkpointer)
+
+    async def _run_specialist(
+        self,
+        *,
+        session: ResearchSession,
+        delegation: SpecialistDelegation,
+        checkpointer: BaseCheckpointSaver[Any] | None,
+    ) -> SpecialistReturn:
+        """Run or resume the exact specialist named by one delegation."""
+        if delegation.task.role == AgentRole.DATA_RESEARCH.value:
+            program = self.programs.for_role(AgentRole.DATA_RESEARCH)
+            return await self.data_agent.run(
+                session=session,
+                delegation=delegation,
+                scope=_data_scope_for_task(
+                    composite_data_scope_from_session(session),
+                    delegation.task,
+                ),
+                program=program,
+                profile=self.model_profiles.get(program.model_profile_id),
+                checkpointer=checkpointer,
+            )
+        if delegation.task.role == AgentRole.STRATEGY_ENGINEERING.value:
+            program = self.programs.for_role(AgentRole.STRATEGY_ENGINEERING)
+            return await self.strategy_agent.run(
+                session=session,
+                delegation=delegation,
+                build_contract=strategy_build_contract_from_session(
+                    session,
+                    branch_id=delegation.branch_id,
+                ),
+                program=program,
+                profile=self.model_profiles.get(program.model_profile_id),
+                checkpointer=checkpointer,
+            )
+        raise ValueError(f"unsupported specialist role: {delegation.task.role}")
 
     def _coordinator_runtime(self, ledger: BudgetLedger) -> RoleScopedMcpRuntime:
         """Build a coordinator-scoped MCP runtime over the shared transport."""
@@ -525,15 +584,21 @@ class ResearchCoordinator:
                 ),
             )
             if not result.observation.ok:
-                raise RuntimeError(f"canonical evidence verification failed: {reference.uri}")
+                raise RuntimeError(
+                    f"canonical evidence verification failed: {reference.uri}"
+                )
             returned = {item.uri: item for item in result.observation.evidence_refs}
             if reference.uri not in returned:
-                raise RuntimeError("canonical read did not return the requested exact ref")
+                raise RuntimeError(
+                    "canonical read did not return the requested exact ref"
+                )
             record = result.observation.summary.get("record")
             if not isinstance(record, Mapping):
                 raise RuntimeError("canonical read returned no bounded record metadata")
             if record.get("domain_owner") != reference.domain_owner:
-                raise RuntimeError("canonical evidence owner does not match specialist ref")
+                raise RuntimeError(
+                    "canonical evidence owner does not match specialist ref"
+                )
             verified.append(
                 {
                     "reference": reference.model_dump(mode="json"),
@@ -566,7 +631,9 @@ class ResearchCoordinator:
             action=decision.action.value,
             status=status,
             summary=decision.summary,
-            evidence_refs=tuple(_artifact_ref(item) for item in decision.cited_evidence_refs),
+            evidence_refs=tuple(
+                _artifact_ref(item) for item in decision.cited_evidence_refs
+            ),
             budget_used=AgentBudgetUsage(
                 model_calls=ledger.usage.model_calls,
                 tool_calls=ledger.usage.tool_calls,
@@ -592,7 +659,8 @@ class ResearchCoordinator:
                 AgentPhase.AWAITING_OPERATOR
                 if decision.action is CoordinatorAction.ASK_OPERATOR
                 else AgentPhase.TERMINAL
-                if decision.action in {
+                if decision.action
+                in {
                     CoordinatorAction.CONCLUDE,
                     CoordinatorAction.STOP_FAIL_CLOSED,
                 }
@@ -681,19 +749,171 @@ def _coordinator_policy_context(
     )
 
 
-def _validate_first_slice_agenda(agenda: CoordinatorAgenda) -> None:
-    """Require both specialist responsibilities or explicit ambiguity."""
+def _validate_first_slice_agenda(
+    agenda: CoordinatorAgenda,
+    *,
+    data_scope: CompositeDataScope,
+) -> None:
+    """Validate legal specialist decomposition for the first agentic slice.
+
+    A compact agenda may contain one complete task for each specialist. Larger
+    Data scopes may instead be partitioned into disjoint investigations whose
+    evidence is joined by one reconciliation task. Strategy catalogue work may
+    similarly fan out, but every construction task must wait for all catalogue
+    tasks. These structural rules are code-owned so the model cannot invent
+    unsafe parallelism or omit approved scope.
+
+    Args:
+        agenda: Model-proposed visible task graph.
+        data_scope: Exact operator-approved composite Data requirement.
+
+    Raises:
+        ValueError: If task ownership, scope coverage, or join semantics are
+            invalid.
+    """
     if agenda.material_ambiguities:
         return
-    roles = [task.role for task in agenda.tasks]
     required: set[Literal["data_research", "strategy_engineering"]] = {
         AgentRole.DATA_RESEARCH.value,
         AgentRole.STRATEGY_ENGINEERING.value,
     }
-    if set(roles) != required:
+    if {task.role for task in agenda.tasks} != required:
         raise ValueError("first-slice agenda requires Data and Strategy tasks")
-    if any(roles.count(role) != 1 for role in required):
-        raise ValueError("first-slice agenda requires exactly one task per role")
+
+    data_tasks = [
+        task for task in agenda.tasks if task.role == AgentRole.DATA_RESEARCH.value
+    ]
+    strategy_tasks = [
+        task
+        for task in agenda.tasks
+        if task.role == AgentRole.STRATEGY_ENGINEERING.value
+    ]
+    approved_scope_ids = {item.item_id for item in data_scope.items}
+    for task in data_tasks:
+        unknown = set(task.scope_item_ids) - approved_scope_ids
+        if unknown:
+            raise ValueError(
+                "Data task claims unknown scope items: " + ", ".join(sorted(unknown))
+            )
+
+    if len(data_tasks) == 1:
+        task = data_tasks[0]
+        if task.work_kind != "complete" or task.join_mode != "hard":
+            raise ValueError("a single Data task must be a hard-join complete task")
+        if task.scope_item_ids and set(task.scope_item_ids) != approved_scope_ids:
+            raise ValueError("a complete Data task must cover the full scope")
+    else:
+        reconciliation = [task for task in data_tasks if task.work_kind == "reconcile"]
+        investigations = [
+            task for task in data_tasks if task.work_kind == "investigate"
+        ]
+        if len(reconciliation) != 1 or len(investigations) < 2:
+            raise ValueError(
+                "decomposed Data work requires independent investigations "
+                "and exactly one reconciliation"
+            )
+        if len(investigations) + 1 != len(data_tasks):
+            raise ValueError(
+                "decomposed Data work may contain only investigations and "
+                "one reconciliation"
+            )
+        claimed: set[str] = set()
+        for task in investigations:
+            scope_ids = set(task.scope_item_ids)
+            if not scope_ids:
+                raise ValueError(
+                    "each Data investigation must claim explicit scope items"
+                )
+            overlap = claimed.intersection(scope_ids)
+            if overlap:
+                raise ValueError(
+                    "parallel Data investigations overlap scope items: "
+                    + ", ".join(sorted(overlap))
+                )
+            claimed.update(scope_ids)
+        if claimed != approved_scope_ids:
+            raise ValueError(
+                "parallel Data investigations must cover the full approved scope"
+            )
+        join_task = reconciliation[0]
+        investigation_ids = {task.task_id for task in investigations}
+        if join_task.join_mode != "hard":
+            raise ValueError("Data reconciliation must use a hard join")
+        if not investigation_ids.issubset(set(join_task.dependencies)):
+            raise ValueError("Data reconciliation must depend on every investigation")
+        if (
+            join_task.scope_item_ids
+            and set(join_task.scope_item_ids) != approved_scope_ids
+        ):
+            raise ValueError("Data reconciliation must cover the full scope")
+
+    if len(strategy_tasks) == 1:
+        task = strategy_tasks[0]
+        if task.work_kind != "complete" or task.join_mode != "hard":
+            raise ValueError("a single Strategy task must be a hard-join complete task")
+        return
+
+    catalogue_tasks = [task for task in strategy_tasks if task.work_kind == "catalogue"]
+    construction_tasks = [
+        task for task in strategy_tasks if task.work_kind == "construct"
+    ]
+    if not catalogue_tasks or not construction_tasks:
+        raise ValueError(
+            "decomposed Strategy work requires catalogue and construction tasks"
+        )
+    if len(catalogue_tasks) + len(construction_tasks) != len(strategy_tasks):
+        raise ValueError(
+            "decomposed Strategy work may contain only catalogue and construction tasks"
+        )
+    catalogue_ids = {task.task_id for task in catalogue_tasks}
+    for task in construction_tasks:
+        if task.join_mode != "hard":
+            raise ValueError("Strategy construction must use a hard join")
+        if not catalogue_ids.issubset(set(task.dependencies)):
+            raise ValueError(
+                "Strategy construction must depend on every catalogue task"
+            )
+
+
+def _data_scope_for_task(
+    data_scope: CompositeDataScope,
+    task: AgendaTaskProposal,
+) -> CompositeDataScope:
+    """Return the exact approved Data subscope assigned to one task."""
+    if not task.scope_item_ids or task.work_kind in {"complete", "reconcile"}:
+        return data_scope
+    requested = set(task.scope_item_ids)
+    items = [item for item in data_scope.items if item.item_id in requested]
+    if len(items) != len(requested):
+        raise ValueError("Data task subscope contains an unknown scope item")
+    return data_scope.model_copy(
+        update={
+            "scope_id": stable_research_id(
+                "composite_data_subscope",
+                {
+                    "parent_scope_id": data_scope.scope_id,
+                    "task_id": task.task_id,
+                    "scope_item_ids": sorted(requested),
+                },
+            ),
+            "items": items,
+        }
+    )
+
+
+def _mutation_keys_for_task(
+    task: AgendaTaskProposal,
+    *,
+    data_scope: CompositeDataScope,
+    branch_id: str,
+) -> tuple[str, ...]:
+    """Derive trusted resource locks for one model-proposed mutating task."""
+    if not task.mutation_requested:
+        return ()
+    if task.role == AgentRole.DATA_RESEARCH.value:
+        scope_ids = task.scope_item_ids or [item.item_id for item in data_scope.items]
+        return tuple(f"data-scope-item:{item_id}" for item_id in sorted(scope_ids))
+    return (f"candidate-branch:{branch_id}",)
 
 
 def _accept_specialist_returns(
@@ -740,15 +960,21 @@ def _validate_coordinator_decision(
     verified_uris = {str(item.get("uri") or "") for item in verified_refs}
     cited_uris = {item.uri for item in decision.cited_evidence_refs}
     if not cited_uris.issubset(verified_uris):
-        raise ValueError("coordinator cited evidence that was not independently verified")
+        raise ValueError(
+            "coordinator cited evidence that was not independently verified"
+        )
     known_tasks = {task.task_id for task in agenda.tasks}
     if not set(decision.affected_task_ids).issubset(known_tasks):
         raise ValueError("coordinator decision affects an unknown agenda task")
-    if decision.action in {
-        CoordinatorAction.REVISE,
-        CoordinatorAction.REVISIT,
-        CoordinatorAction.FORK,
-    } and not decision.affected_task_ids:
+    if (
+        decision.action
+        in {
+            CoordinatorAction.REVISE,
+            CoordinatorAction.REVISIT,
+            CoordinatorAction.FORK,
+        }
+        and not decision.affected_task_ids
+    ):
         raise ValueError("revision, revisit, or fork requires affected tasks")
     if decision.action is CoordinatorAction.CONCLUDE:
         latest_by_role = {item.role: item for item in all_returns}
@@ -799,9 +1025,7 @@ def _apply_decision(
         CoordinatorAction.STOP_FAIL_CLOSED,
     }:
         status: Literal["completed", "blocked"] = (
-            "completed"
-            if decision.action is CoordinatorAction.CONCLUDE
-            else "blocked"
+            "completed" if decision.action is CoordinatorAction.CONCLUDE else "blocked"
         )
         data_return = _latest_return(returns, AgentRole.DATA_RESEARCH.value)
         strategy_return = _latest_return(

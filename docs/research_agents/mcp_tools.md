@@ -172,12 +172,12 @@ assumption, register the approved protocol, execute an experiment or overwrite c
 | `coding_get_workspace` | `read_only` | Bounded workspace status. | Returns policy, files, checks, and lifecycle state without exposing host paths. |
 | `coding_search_repository` | `read_only` | Bounded text matches. | Searches only approved roots in the pinned repository snapshot. |
 | `coding_read_repository_file` | `read_only` | Bounded repository text. | Rejects path escape, unsupported file types, and oversized reads. |
-| `coding_write_candidate_file` | `local_mutating` | Candidate file hash and size. | Replaces one complete bounded file inside the candidate directory. |
+| `coding_write_candidate_file` | `local_mutating` | Candidate file hash, size, and replay status. | Replaces one complete bounded file inside the candidate directory; a trusted or content-derived operation identity makes exact lost-response replay idempotent and rejects conflicting reuse. |
 | `coding_read_candidate_file` | `read_only` | Bounded candidate text. | Reads only supported files inside the exact workspace. |
 | `coding_resolve_dependencies` | `read_only` | Dependency-policy verdict. | Validates against the pinned image allowlist and never installs packages. |
 | `coding_run_check` | `local_mutating` | Bounded check receipt. | Runs only named compile, Ruff, or pytest commands in a networkless, resource-bounded container; no host fallback exists. |
 | `coding_package_candidate` | `read_only` | Inert candidate package. | Returns exact source and file hashes without importing or executing the candidate. |
-| `coding_destroy_workspace` | `local_mutating` | Destruction receipt. | Removes only the exact disposable workspace. |
+| `coding_destroy_workspace` | `local_mutating` | Destruction receipt and replay status. | Removes only the exact disposable workspace and retains a source-free tombstone so exact cleanup replay is safe. |
 | `research_register_strategy_implementation` | `local_mutating` | `implementation_version`. | Content-addressed source; methodology provenance is optional. |
 | `research_validate_strategy_implementation` | `local_mutating` | `implementation_validation_report`. | Static safety, interface, parameters, and deterministic fixture. |
 | `research_register_risk_manager_implementation` | `local_mutating` | `implementation_version`. | Same intake for supplied or produced risk code. |

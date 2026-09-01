@@ -333,6 +333,13 @@ requires repeated qualification against a frozen model/profile identity.
   and fail-closed termination.
 - Produce the terminal grounded slice summary without claiming experimental efficacy.
 
+Implementation progress remains unqualified: Data and Strategy now checkpoint each accepted model/tool step in
+separate source-free specialist threads; Data recovery has passed a focused fresh-connection PostgreSQL test. Agenda
+policy supports disjoint Data and catalogue fan-out with explicit hard reconciliation, and soft joins preserve
+unfinished delegation identity for checkpointed resume. Coding candidate writes and workspace destruction now use
+source-free replay records. These facts narrow the remaining recovery work but do not satisfy the end-to-end,
+security, sandbox, repeated-model, or frozen-acceptance gates below.
+
 ### Qualify and cut over
 
 - Run focused contracts first, followed by MCP/package-boundary, sandbox, Postgres recovery and end-to-end suites.

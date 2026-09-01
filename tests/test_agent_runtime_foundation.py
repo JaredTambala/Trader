@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha256
+import json
+import os
 from typing import Any
+from uuid import uuid4
 
 import anyio
 from langgraph.checkpoint.memory import InMemorySaver
@@ -34,25 +38,36 @@ from trader_agents import (
     RecordingTraceSink,
     ResearchCoordinator,
     RoleScopedMcpRuntime,
+    SpecialistReturn,
     StaticJsonLlmClient,
     StrategyEngineeringAgent,
     StructuredModelRunner,
     ToolCallProposal,
+    ToolObservation,
     ToolPolicy,
     TraceCorrelation,
     agent_checkpoint_digest,
     build_agent_checkpoint_state,
+    build_specialist_checkpoint_state,
     build_delegation,
     composite_data_scope_from_session,
     compute_ready_set,
     coordinator_thread_config,
+    checkpoint_safe_observation,
     development_model_profiles,
     first_slice_programs,
     first_slice_tool_catalogue,
+    open_postgres_checkpointer,
     specialist_thread_config,
+    specialist_checkpoint_digest,
     strategy_build_contract_from_session,
     validate_agent_checkpoint_state,
+    validate_specialist_checkpoint_state,
     validate_runtime_pins,
+)
+from trader_agents.coordinator import (
+    _data_scope_for_task,
+    _validate_first_slice_agenda,
 )
 from trader_research.foundation import stable_research_id
 from trader_research.governance import AgentBudget, ResearchSession
@@ -216,6 +231,108 @@ def test_scheduler_parallelizes_ready_work_and_honors_hard_joins() -> None:
     assert second == ()
 
 
+def test_agenda_decomposes_disjoint_data_and_joins_before_construction() -> None:
+    """Code-owned policy accepts complete disjoint fan-out and hard joins."""
+    base_scope = composite_data_scope_from_session(_session())
+    base_item = base_scope.items[0]
+    data_scope = base_scope.model_copy(
+        update={
+            "items": [
+                base_item.model_copy(
+                    update={"item_id": "btc-prices", "symbols": ["BTC/USD"]}
+                ),
+                base_item.model_copy(
+                    update={"item_id": "eth-prices", "symbols": ["ETH/USD"]}
+                ),
+            ]
+        }
+    )
+    agenda = CoordinatorAgenda(
+        objective_summary="Investigate both assets and construct one candidate.",
+        tasks=[
+            _task(
+                "btc-data",
+                "data_research",
+                work_kind="investigate",
+                join_mode="soft",
+                scope_item_ids=["btc-prices"],
+            ),
+            _task(
+                "eth-data",
+                "data_research",
+                work_kind="investigate",
+                join_mode="soft",
+                scope_item_ids=["eth-prices"],
+            ),
+            _task(
+                "data-join",
+                "data_research",
+                work_kind="reconcile",
+                dependencies=["btc-data", "eth-data"],
+            ),
+            _task(
+                "catalogue",
+                "strategy_engineering",
+                work_kind="catalogue",
+                join_mode="soft",
+            ),
+            _task(
+                "construct",
+                "strategy_engineering",
+                work_kind="construct",
+                dependencies=["catalogue", "data-join"],
+            ),
+        ],
+    )
+
+    _validate_first_slice_agenda(agenda, data_scope=data_scope)
+
+    btc_scope = _data_scope_for_task(data_scope, agenda.tasks[0])
+    assert [item.item_id for item in btc_scope.items] == ["btc-prices"]
+    assert btc_scope.scope_id != data_scope.scope_id
+
+
+def test_agenda_rejects_overlapping_parallel_data_scopes() -> None:
+    """The model cannot assign the same mutable Data scope to parallel work."""
+    base_scope = composite_data_scope_from_session(_session())
+    base_item = base_scope.items[0]
+    data_scope = base_scope.model_copy(
+        update={
+            "items": [
+                base_item.model_copy(update={"item_id": "first"}),
+                base_item.model_copy(update={"item_id": "second"}),
+            ]
+        }
+    )
+    agenda = CoordinatorAgenda(
+        objective_summary="Invalid overlapping decomposition.",
+        tasks=[
+            _task(
+                "one",
+                "data_research",
+                work_kind="investigate",
+                scope_item_ids=["first"],
+            ),
+            _task(
+                "two",
+                "data_research",
+                work_kind="investigate",
+                scope_item_ids=["first", "second"],
+            ),
+            _task(
+                "join",
+                "data_research",
+                work_kind="reconcile",
+                dependencies=["one", "two"],
+            ),
+            _task("strategy", "strategy_engineering"),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="overlap"):
+        _validate_first_slice_agenda(agenda, data_scope=data_scope)
+
+
 def test_structured_model_repairs_once_and_records_redacted_spans() -> None:
     """Malformed public JSON receives one bounded schema-only repair."""
     valid = {
@@ -232,6 +349,7 @@ def test_structured_model_repairs_once_and_records_redacted_spans() -> None:
     program = first_slice_programs().for_role(AgentRole.DATA_RESEARCH)
     profile = development_model_profiles().get(program.model_profile_id)
     ledger = BudgetLedger(_budget())
+
     async def _run() -> Any:
         return await runner.invoke(
             program=program,
@@ -299,6 +417,7 @@ def test_role_scoped_mcp_runtime_validates_transport_envelope() -> None:
         purpose="Inspect exact requested coverage.",
         expected_evidence=["coverage gaps"],
     )
+
     async def _run() -> Any:
         return await runtime.execute(
             proposal,
@@ -528,7 +647,7 @@ def test_strategy_loop_authors_checks_admits_and_cleans_workspace() -> None:
     source = (
         '"""Candidate strategy produced from the approved build contract."""\n\n'
         "def build_strategy():\n"
-        "    \"\"\"Return a deterministic candidate marker.\"\"\"\n"
+        '    """Return a deterministic candidate marker."""\n'
         "    return {'name': 'CrossAssetMomentum'}\n"
     )
     implementation_ref = _evidence_payload(
@@ -853,16 +972,12 @@ def test_coordinator_graph_parallel_joins_verifies_and_concludes() -> None:
         model_runner=StructuredModelRunner(coordinator_client),
         mcp_client=coordinator_mcp,
         data_agent=DataResearchAgent(
-            model_runner=StructuredModelRunner(
-                StaticJsonLlmClient(data_responses)
-            ),
+            model_runner=StructuredModelRunner(StaticJsonLlmClient(data_responses)),
             mcp_client=_DataLoopMcpClient(manifest_ref, quality_ref),
             tool_catalogue=catalogue,
         ),
         strategy_agent=StrategyEngineeringAgent(
-            model_runner=StructuredModelRunner(
-                StaticJsonLlmClient(strategy_responses)
-            ),
+            model_runner=StructuredModelRunner(StaticJsonLlmClient(strategy_responses)),
             mcp_client=_StrategyLoopMcpClient(
                 implementation_ref,
                 validation_ref,
@@ -1030,12 +1145,303 @@ def test_checkpoint_state_is_bounded_redacted_and_thread_isolated() -> None:
         session_id=session.session_id,
         delegation_id="delegation-1",
     )["configurable"]
-    assert coordinator["thread_id"] == specialist["thread_id"]
-    assert coordinator["checkpoint_ns"] != specialist["checkpoint_ns"]
+    assert coordinator["thread_id"] != specialist["thread_id"]
+    assert coordinator["thread_id"].endswith(":coordinator")
+    assert ":specialist:delegation-1" in specialist["thread_id"]
     unsafe = dict(state)
     unsafe["terminal_result"] = {"api_key": "not-allowed"}
     with pytest.raises(ValueError, match="forbidden"):
         validate_agent_checkpoint_state(unsafe)
+
+
+def test_specialist_checkpoint_redacts_source_and_raw_command_output() -> None:
+    """Specialist recovery stores hashes and refs, never complete source text."""
+    session = _session()
+    delegation = build_delegation(
+        session_id=session.session_id,
+        branch_id="strategy-redaction",
+        task=_task("strategy-redaction", "strategy_engineering"),
+        required_input_refs=[],
+        permitted_side_effects=["read_only", "local_mutating"],
+        reserved_model_calls=4,
+        reserved_tool_calls=8,
+        reserved_tokens=4_000,
+        attempt=1,
+    )
+    raw = ToolObservation(
+        call_id="package-1",
+        tool_name="coding_package_candidate",
+        ok=True,
+        command="coding_package_candidate",
+        agent_owner="Strategy Engineering Agent",
+        side_effect="read_only",
+        summary={
+            "candidate_package": {
+                "package_id": "package-1",
+                "source_code": "raise RuntimeError('must not persist')",
+                "source_hash": "a" * 64,
+                "content": "private candidate content",
+                "stdout": "raw command output",
+            }
+        },
+    )
+    safe = checkpoint_safe_observation(raw)
+    package = safe.summary["candidate_package"]
+    assert package == {"package_id": "package-1", "source_hash": "a" * 64}
+
+    state = build_specialist_checkpoint_state(
+        session_id=session.session_id,
+        session_digest=session.session_digest,
+        delegation=delegation,
+        role=AgentRole.STRATEGY_ENGINEERING,
+        phase=AgentPhase.ADMIT.value,
+        program_id="strategy-engineering-v1",
+        model_profile_id=session.model_profile_id,
+        tool_catalog_id=session.tool_catalog_id,
+    )
+    state["observations"] = [safe.model_dump(mode="json")]
+    validate_specialist_checkpoint_state(state)
+    assert len(specialist_checkpoint_digest(state)) == 64
+    encoded = json.dumps(state)
+    assert "must not persist" not in encoded
+    assert "private candidate content" not in encoded
+    assert "raw command output" not in encoded
+
+    unsafe = dict(state)
+    unsafe["observations"] = [raw.model_dump(mode="json")]
+    with pytest.raises(ValueError, match="forbidden"):
+        validate_specialist_checkpoint_state(unsafe)
+
+
+def test_data_specialist_recovers_in_fresh_instance_without_repeating_tool() -> None:
+    """A fresh Data agent resumes after a model interruption at a saved step."""
+    session = _session()
+    scope = composite_data_scope_from_session(session)
+    task = _task("data-recovery", "data_research")
+    delegation = build_delegation(
+        session_id=session.session_id,
+        branch_id="data-recovery-branch",
+        task=task,
+        required_input_refs=[],
+        permitted_side_effects=["read_only", "local_mutating"],
+        reserved_model_calls=6,
+        reserved_tool_calls=10,
+        reserved_tokens=6_000,
+        attempt=1,
+    )
+    scope_arguments = {
+        "symbols": ["BTC/USD", "ETH/USD"],
+        "asset_class": "crypto",
+        "timeframe": "1h",
+        "start": "2024-01-01T00:00:00Z",
+        "end": "2024-06-30T23:00:00Z",
+    }
+    manifest_ref = _evidence_payload("dataset_manifest", "recovery-manifest")
+    quality_ref = _evidence_payload("data_quality_report", "recovery-quality")
+    first_model = _InterruptingJsonLlmClient(
+        (_data_tool_turn("inventory", "data_get_inventory", scope_arguments),)
+    )
+    remaining = (
+        _data_tool_turn("quality", "data_summarize_quality", scope_arguments),
+        {
+            "action": "change_phase",
+            "public_rationale": "The exact scope can now be captured.",
+            "next_phase": "review",
+        },
+        _data_tool_turn(
+            "snapshot",
+            "data_create_research_snapshot",
+            {
+                **scope_arguments,
+                "requested_by": session.session_id,
+                "actor": "Data Research Agent",
+            },
+            mutation_reason="Capture recovered exact Data evidence.",
+        ),
+        {
+            "action": "return_result",
+            "public_rationale": "Recovered evidence covers the exact scope.",
+            "final_conclusion": {
+                "status": "ready",
+                "answered_questions": ["The requested Data is ready."],
+                "findings": ["Recovery retained the completed inventory step."],
+                "evidence_refs": [manifest_ref, quality_ref],
+                "unresolved_questions": [],
+                "assumptions": [],
+                "uncertainty": [],
+                "blockers": [],
+                "advisory_next_actions": ["coordinator review"],
+            },
+        },
+    )
+    mcp = _DataLoopMcpClient(manifest_ref, quality_ref)
+    catalogue = first_slice_tool_catalogue()
+    program = first_slice_programs().for_role(AgentRole.DATA_RESEARCH)
+    profile = development_model_profiles().get(program.model_profile_id)
+    saver = InMemorySaver()
+
+    async def _run() -> SpecialistReturn:
+        interrupted_agent = DataResearchAgent(
+            model_runner=StructuredModelRunner(first_model),
+            mcp_client=mcp,
+            tool_catalogue=catalogue,
+        )
+        with pytest.raises(asyncio.CancelledError):
+            await interrupted_agent.run(
+                session=session,
+                delegation=delegation,
+                scope=scope,
+                program=program,
+                profile=profile,
+                checkpointer=saver,
+            )
+        recovered_agent = DataResearchAgent(
+            model_runner=StructuredModelRunner(StaticJsonLlmClient(remaining)),
+            mcp_client=mcp,
+            tool_catalogue=catalogue,
+        )
+        return await recovered_agent.run(
+            session=session,
+            delegation=delegation,
+            scope=scope,
+            program=program,
+            profile=profile,
+            checkpointer=saver,
+        )
+
+    result = anyio.run(_run)
+    assert result.status.value == "ready"
+    assert mcp.calls.count("data_get_inventory") == 1
+    assert mcp.calls == [
+        "data_get_inventory",
+        "data_summarize_quality",
+        "data_create_research_snapshot",
+    ]
+
+
+@pytest.mark.postgres
+def test_data_specialist_recovers_across_fresh_postgres_connections() -> None:
+    """Postgres recovery survives new saver, graph, agent, and model objects."""
+    dsn = str(os.environ.get("TRADER_AGENTS_CHECKPOINT_DSN") or "").strip()
+    if not dsn:
+        pytest.skip("TRADER_AGENTS_CHECKPOINT_DSN is required")
+    session = _session(session_id=f"session-pg-recovery-{uuid4().hex}")
+    scope = composite_data_scope_from_session(session)
+    delegation = build_delegation(
+        session_id=session.session_id,
+        branch_id="data-postgres-recovery",
+        task=_task("data-postgres-recovery", "data_research"),
+        required_input_refs=[],
+        permitted_side_effects=["read_only", "local_mutating"],
+        reserved_model_calls=6,
+        reserved_tool_calls=10,
+        reserved_tokens=6_000,
+        attempt=1,
+    )
+    scope_arguments = {
+        "symbols": ["BTC/USD", "ETH/USD"],
+        "asset_class": "crypto",
+        "timeframe": "1h",
+        "start": "2024-01-01T00:00:00Z",
+        "end": "2024-06-30T23:00:00Z",
+    }
+    manifest_ref = _evidence_payload("dataset_manifest", "pg-manifest")
+    quality_ref = _evidence_payload("data_quality_report", "pg-quality")
+    calls: list[str] = []
+    catalogue = first_slice_tool_catalogue()
+    program = first_slice_programs().for_role(AgentRole.DATA_RESEARCH)
+    profile = development_model_profiles().get(program.model_profile_id)
+
+    async def _run() -> SpecialistReturn:
+        async with open_postgres_checkpointer(dsn=dsn, setup=True) as first_saver:
+            first_agent = DataResearchAgent(
+                model_runner=StructuredModelRunner(
+                    _InterruptingJsonLlmClient(
+                        (
+                            _data_tool_turn(
+                                "inventory",
+                                "data_get_inventory",
+                                scope_arguments,
+                            ),
+                        )
+                    )
+                ),
+                mcp_client=_DataLoopMcpClient(
+                    manifest_ref,
+                    quality_ref,
+                    calls=calls,
+                ),
+                tool_catalogue=catalogue,
+            )
+            with pytest.raises(asyncio.CancelledError):
+                await first_agent.run(
+                    session=session,
+                    delegation=delegation,
+                    scope=scope,
+                    program=program,
+                    profile=profile,
+                    checkpointer=first_saver,
+                )
+
+        remaining = (
+            _data_tool_turn("quality", "data_summarize_quality", scope_arguments),
+            {
+                "action": "change_phase",
+                "public_rationale": "The exact scope can now be captured.",
+                "next_phase": "review",
+            },
+            _data_tool_turn(
+                "snapshot",
+                "data_create_research_snapshot",
+                {
+                    **scope_arguments,
+                    "requested_by": session.session_id,
+                    "actor": "Data Research Agent",
+                },
+                mutation_reason="Capture exact Postgres recovery evidence.",
+            ),
+            {
+                "action": "return_result",
+                "public_rationale": "The recovered scope has exact evidence.",
+                "final_conclusion": {
+                    "status": "ready",
+                    "answered_questions": ["The requested Data is ready."],
+                    "findings": ["Fresh-process recovery retained inventory."],
+                    "evidence_refs": [manifest_ref, quality_ref],
+                    "unresolved_questions": [],
+                    "assumptions": [],
+                    "uncertainty": [],
+                    "blockers": [],
+                    "advisory_next_actions": ["coordinator review"],
+                },
+            },
+        )
+        async with open_postgres_checkpointer(dsn=dsn) as recovered_saver:
+            recovered_agent = DataResearchAgent(
+                model_runner=StructuredModelRunner(StaticJsonLlmClient(remaining)),
+                mcp_client=_DataLoopMcpClient(
+                    manifest_ref,
+                    quality_ref,
+                    calls=calls,
+                ),
+                tool_catalogue=catalogue,
+            )
+            return await recovered_agent.run(
+                session=session,
+                delegation=delegation,
+                scope=scope,
+                program=program,
+                profile=profile,
+                checkpointer=recovered_saver,
+            )
+
+    result = anyio.run(_run)
+    assert result.status.value == "ready"
+    assert calls == [
+        "data_get_inventory",
+        "data_summarize_quality",
+        "data_create_research_snapshot",
+    ]
 
 
 @dataclass
@@ -1098,6 +1504,7 @@ class _DataLoopMcpClient:
 
     manifest_ref: Mapping[str, Any]
     quality_ref: Mapping[str, Any]
+    calls: list[str] = field(default_factory=list)
 
     async def list_tools(self) -> Sequence[McpToolDescription]:
         """Expose every code-owned Data capability with permissive test schemas."""
@@ -1129,6 +1536,7 @@ class _DataLoopMcpClient:
         arguments: Mapping[str, Any],
     ) -> Mapping[str, Any]:
         """Return read-only observations or exact snapshot refs."""
+        self.calls.append(tool_name)
         side_effect = (
             "local_mutating"
             if tool_name == "data_create_research_snapshot"
@@ -1153,6 +1561,23 @@ class _DataLoopMcpClient:
             },
             "isError": False,
         }
+
+
+@dataclass
+class _InterruptingJsonLlmClient:
+    """Return configured JSON, then simulate abrupt process cancellation."""
+
+    responses: Sequence[Mapping[str, Any]]
+
+    def __post_init__(self) -> None:
+        """Copy responses so tests can safely reuse their input fixtures."""
+        self._responses = [dict(response) for response in self.responses]
+
+    async def complete_json(self, _: Any) -> Mapping[str, Any]:
+        """Return one response or interrupt before another model result."""
+        if not self._responses:
+            raise asyncio.CancelledError
+        return self._responses.pop(0)
 
 
 @dataclass
@@ -1375,9 +1800,7 @@ class _StrategyBuildMcpClient:
             artifacts = {"implementation_version": self.implementation_ref}
         elif tool_name == "research_validate_strategy_implementation":
             data = {"implementation_validation_report": {"status": "passed"}}
-            artifacts = {
-                "implementation_validation_report": self.validation_ref
-            }
+            artifacts = {"implementation_validation_report": self.validation_ref}
         elif tool_name == "coding_destroy_workspace":
             self.destroyed = True
             data = {"workspace_id": self.workspace_id, "status": "destroyed"}
@@ -1398,12 +1821,12 @@ class _StrategyBuildMcpClient:
         }
 
 
-def _session() -> ResearchSession:
+def _session(*, session_id: str = "session-foundation") -> ResearchSession:
     """Build one complete first-slice session fixture."""
     catalogue = first_slice_tool_catalogue()
     programs = first_slice_programs()
     return ResearchSession(
-        session_id="session-foundation",
+        session_id=session_id,
         objective="Prepare a multi-asset momentum candidate.",
         success_definition="Return exact Data and admission evidence.",
         operator_id="operator-test",
@@ -1414,7 +1837,7 @@ def _session() -> ResearchSession:
         scope_envelope={
             "data_scope": CompositeDataScope(
                 scope_id="scope-foundation",
-                session_id="session-foundation",
+                session_id=session_id,
                 items=[
                     DataScopeItem(
                         item_id="prices",
@@ -1506,11 +1929,17 @@ def _task(
     *,
     dependencies: list[str] | None = None,
     mutation_requested: bool = False,
+    work_kind: str = "complete",
+    join_mode: str = "hard",
+    scope_item_ids: list[str] | None = None,
 ) -> AgendaTaskProposal:
     """Build one visible agenda task fixture."""
     return AgendaTaskProposal(
         task_id=task_id,
         role=role,  # type: ignore[arg-type]
+        work_kind=work_kind,  # type: ignore[arg-type]
+        join_mode=join_mode,  # type: ignore[arg-type]
+        scope_item_ids=scope_item_ids or [],
         question="Return the required canonical evidence.",
         required_evidence=["exact canonical refs"],
         dependencies=dependencies or [],

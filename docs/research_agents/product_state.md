@@ -48,8 +48,11 @@ before exact reuse or isolated authorship, checks, packaging, registration, and 
 
 The former deterministic `trader_agents` coordinator, specialist shell, composition runner, and fixed executor have
 been removed without compatibility imports. Their controlled acceptance remains valid only for the frozen Git tag; it
-does not qualify the replacement. The new slice still needs fresh-process PostgreSQL recovery, real Coding Workspace,
-MLflow trace, security/prompt-injection, repeated real-model, scale, and final operational acceptance evidence.
+does not qualify the replacement. Data and Strategy specialist loops now persist bounded source-free checkpoints, and
+a focused Data test proves resume through a new PostgreSQL connection without repeating an accepted inventory call.
+Coding Workspace writes and destruction now have source-free replay records. Full coordinator recovery, real isolated
+Coding Workspace, MLflow trace, security/prompt-injection, repeated real-model, scale, and final operational acceptance
+evidence remain outstanding.
 
 ## Active Agentic Redesign
 
@@ -69,7 +72,7 @@ later evaluation-driven program optimization, MCP is the capability boundary, an
 agent trace/evaluation lifecycle without becoming product authority.
 
 Every specialist return rejoins the coordinator. The coordinator inspects its canonical evidence and
-choose explicitly whether to advance, request revision, revisit an earlier responsibility, create a separately tracked
+chooses explicitly whether to advance, request revision, revisit an earlier responsibility, create a separately tracked
 research branch, request operator authority, conclude, or fail closed. Hyperparameter and asset changes must stay
 inside the brief and prospective protocol or create new approved lineage; equivalent low-information loops, exhausted
 budgets, evaluation contamination, and decisions outside coordinator authority terminate or interrupt rather than
@@ -94,6 +97,12 @@ checkpoints/interrupts, single-writer state, parallel branches with explicit joi
 MCP, and redacted traces. Later specialist records remain under review or parked. The durable working record is
 [Agent Designs](../../plans/agent_designs.md); accepted design, implemented loops, and focused tests still do not make
 the production model-backed slice controlled.
+
+The implemented agenda boundary now admits either one complete task per specialist or explicit decomposition. Data
+fan-out must partition every approved scope item without overlap and hard-join through a Data-owned reconciliation;
+Strategy catalogue fan-out must hard-join before construction. The scheduler derives mutation locks from trusted scope
+or candidate-branch identity. A soft join checkpoints the first completed return while unfinished specialist
+delegations retain their identity and resume from their own checkpoint thread.
 
 The Data Research Agent architecture is accepted for the first slice. Its requirements cover multi-asset
 composite scope, model-selected use of an evolving role-scoped MCP data catalogue, readiness assessment, and bounded

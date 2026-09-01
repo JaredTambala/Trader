@@ -2,16 +2,29 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.graph import END, START, StateGraph
+
+from trader_research.foundation import json_payload_hash
 from trader_research.governance import AgentBudget, ResearchSession
 
 from .catalogue import ToolCatalogue
+from .checkpointing import (
+    SpecialistCheckpointState,
+    build_specialist_checkpoint_state,
+    checkpoint_safe_observation,
+    checkpoint_step,
+    specialist_thread_config,
+    validate_specialist_checkpoint_state,
+)
 from .contracts import (
     AgentPhase,
     AgentRole,
+    BudgetUsage,
     CanonicalEvidenceRef,
     CompositeDataScope,
     DataAgentTurn,
@@ -55,8 +68,9 @@ class DataResearchAgent:
         scope: CompositeDataScope,
         program: AgentProgram,
         profile: ModelProfile,
+        checkpointer: BaseCheckpointSaver[Any] | None = None,
     ) -> SpecialistReturn:
-        """Execute one bounded Data specialist invocation.
+        """Execute or recover one bounded Data specialist invocation.
 
         Args:
             session: Immutable operator authority and global ceilings.
@@ -64,23 +78,75 @@ class DataResearchAgent:
             scope: Complete role-labelled approved Data requirement.
             program: Exact Data Research model program.
             profile: Exact admitted model profile.
+            checkpointer: Optional isolated operational checkpoint backend.
 
         Returns:
             Trusted specialist return with measured usage and observed refs.
         """
         _validate_entry(session, delegation, scope, program, profile)
-        ledger = BudgetLedger(_delegation_budget(session, delegation))
-        runtime = RoleScopedMcpRuntime(
-            client=self.mcp_client,
-            catalogue=self.tool_catalogue,
-            ledger=ledger,
-            trace_sink=self.trace_sink,
+        graph = self._build_graph(
+            session=session,
+            delegation=delegation,
+            scope=scope,
+            program=program,
+            profile=profile,
+            checkpointer=checkpointer,
         )
-        phase = AgentPhase.INVESTIGATE
-        observations: list[ToolObservation] = []
-        observed_refs: dict[str, CanonicalEvidenceRef] = {}
-        loop_fingerprints: dict[str, int] = {}
-        successful_steps: list[tuple[str, Mapping[str, Any]]] = []
+        initial = build_specialist_checkpoint_state(
+            session_id=session.session_id,
+            session_digest=session.session_digest,
+            delegation=delegation,
+            role=AgentRole.DATA_RESEARCH,
+            phase=AgentPhase.INVESTIGATE.value,
+            program_id=program.program_id,
+            model_profile_id=profile.profile_id,
+            tool_catalog_id=self.tool_catalogue.catalogue_id,
+        )
+        if checkpointer is None:
+            output = await graph.ainvoke(initial)
+        else:
+            config = specialist_thread_config(
+                session_id=session.session_id,
+                delegation_id=delegation.delegation_id,
+            )
+            snapshot = await graph.aget_state(config)
+            if snapshot.values:
+                _validate_checkpoint_identity(
+                    snapshot.values,
+                    session=session,
+                    delegation=delegation,
+                    program=program,
+                    profile=profile,
+                    catalogue=self.tool_catalogue,
+                )
+                terminal = _terminal_return(snapshot.values)
+                if terminal is not None:
+                    return terminal
+                output = await graph.ainvoke(None, config)
+            else:
+                output = await graph.ainvoke(initial, config)
+        terminal = _terminal_return(output)
+        if terminal is None:
+            raise RuntimeError("Data specialist graph returned no terminal result")
+        return terminal
+
+    def _build_graph(
+        self,
+        *,
+        session: ResearchSession,
+        delegation: SpecialistDelegation,
+        scope: CompositeDataScope,
+        program: AgentProgram,
+        profile: ModelProfile,
+        checkpointer: BaseCheckpointSaver[Any] | None,
+    ) -> Any:
+        """Compile one isolated checkpointed Data model/tool loop.
+
+        Raw MCP observations are held only in the current process. The durable
+        state receives a redacted projection, so a recovered model may need to
+        re-read source-like content through MCP before making its next choice.
+        """
+        transient_observations: dict[str, ToolObservation] = {}
         correlation = TraceCorrelation(
             session_id=session.session_id,
             branch_id=delegation.branch_id,
@@ -91,8 +157,52 @@ class DataResearchAgent:
             tool_catalog_id=self.tool_catalogue.catalogue_id,
         )
 
-        try:
-            while ledger.usage.model_calls < delegation.reserved_model_calls:
+        async def step_node(
+            state: SpecialistCheckpointState,
+        ) -> SpecialistCheckpointState:
+            """Run one model choice and at most one authorized MCP operation."""
+            _validate_checkpoint_identity(
+                state,
+                session=session,
+                delegation=delegation,
+                program=program,
+                profile=profile,
+                catalogue=self.tool_catalogue,
+            )
+            ledger = BudgetLedger(
+                _delegation_budget(session, delegation),
+                usage=BudgetUsage.model_validate(state.get("budget_usage", {})),
+            )
+            observations = [
+                ToolObservation.model_validate(item)
+                for item in state.get("observations", [])
+            ]
+            observed_refs = {
+                reference.uri: reference
+                for reference in (
+                    CanonicalEvidenceRef.model_validate(item)
+                    for item in state.get("evidence_refs", [])
+                )
+            }
+            loop_fingerprints = dict(state.get("loop_fingerprints", {}))
+            successful_step_records = list(state.get("successful_steps", []))
+            successful_steps: list[tuple[str, Mapping[str, Any]]] = [
+                (str(item["tool_name"]), dict(item["arguments"]))
+                for item in successful_step_records
+            ]
+            phase = AgentPhase(str(state["phase"]))
+            runtime = RoleScopedMcpRuntime(
+                client=self.mcp_client,
+                catalogue=self.tool_catalogue,
+                ledger=ledger,
+                trace_sink=self.trace_sink,
+            )
+            try:
+                if ledger.usage.model_calls >= delegation.reserved_model_calls:
+                    raise PolicyViolation(
+                        "delegation_model_budget_exhausted",
+                        "Data Research did not reach a conclusion inside its model reservation",
+                    )
                 context = _policy_context(
                     session=session,
                     delegation=delegation,
@@ -120,10 +230,14 @@ class DataResearchAgent:
                         "composite_data_scope": scope.model_dump(mode="json"),
                         "phase": phase.value,
                         "available_tools": list(tools),
-                        "observations": [
-                            item.model_dump(mode="json")
-                            for item in observations[-12:]
-                        ],
+                        "observations": _model_observations(
+                            observations,
+                            transient_observations,
+                        ),
+                        "recovery_note": (
+                            "Source-like payloads are not checkpointed. Re-read "
+                            "an authorized resource when a recovered summary is insufficient."
+                        ),
                         "successful_tool_sequence": [
                             name for name, _ in successful_steps
                         ],
@@ -140,7 +254,7 @@ class DataResearchAgent:
                         scope=scope,
                         successful_steps=successful_steps,
                     )
-                    return build_specialist_return(
+                    specialist_result = build_specialist_return(
                         delegation=delegation,
                         role=AgentRole.DATA_RESEARCH.value,
                         program_id=program.program_id,
@@ -150,44 +264,107 @@ class DataResearchAgent:
                         budget_used=ledger.usage,
                         available_evidence_refs=list(observed_refs.values()),
                     )
+                    return _validated_update(
+                        state,
+                        {
+                            "status": "completed",
+                            "phase": AgentPhase.TERMINAL.value,
+                            "budget_usage": ledger.usage.model_dump(mode="json"),
+                            "terminal_return": specialist_result.model_dump(
+                                mode="json"
+                            ),
+                            "step_sequence": int(state["step_sequence"]) + 1,
+                        },
+                    )
                 if turn.action == "change_phase":
                     phase = _next_data_phase(phase, turn.next_phase)
-                    continue
+                    return _validated_update(
+                        state,
+                        {
+                            "phase": phase.value,
+                            "budget_usage": ledger.usage.model_dump(mode="json"),
+                            "step_sequence": int(state["step_sequence"]) + 1,
+                        },
+                    )
                 proposal = turn.tool_call
                 if proposal is None:
                     raise ValueError("call_tool turn is missing a tool proposal")
-                result = await runtime.execute(
+                execution = await runtime.execute(
                     proposal,
                     context=context,
                     correlation=correlation,
                 )
-                fingerprint = result.authorized_call.fingerprint
+                fingerprint = execution.authorized_call.fingerprint
                 prior = loop_fingerprints.get(fingerprint, 0)
                 if prior:
                     ledger.record_revision()
                 loop_fingerprints[fingerprint] = prior + 1
-                observations.append(result.observation)
-                for reference in result.observation.evidence_refs:
+                transient_observations[execution.observation.call_id] = (
+                    execution.observation
+                )
+                observations.append(checkpoint_safe_observation(execution.observation))
+                observations = observations[-24:]
+                for reference in execution.observation.evidence_refs:
                     observed_refs[reference.uri] = reference
-                if result.observation.ok:
-                    successful_steps.append(
-                        (proposal.tool_name, dict(proposal.arguments))
+                if execution.observation.ok:
+                    successful_step_records.append(
+                        checkpoint_step(
+                            tool_name=proposal.tool_name,
+                            arguments=proposal.arguments,
+                        )
                     )
-            raise PolicyViolation(
-                "delegation_model_budget_exhausted",
-                "Data Research did not reach a conclusion inside its model reservation",
-            )
-        except (PolicyViolation, StructuredOutputError, RuntimeError, ValueError) as exc:
-            return _failed_return(
-                session=session,
-                delegation=delegation,
-                program=program,
-                profile=profile,
-                catalogue=self.tool_catalogue,
-                ledger=ledger,
-                observed_refs=list(observed_refs.values()),
-                error=exc,
-            )
+                return _validated_update(
+                    state,
+                    {
+                        "observations": [
+                            item.model_dump(mode="json") for item in observations
+                        ],
+                        "successful_steps": successful_step_records[-32:],
+                        "evidence_refs": [
+                            item.model_dump(mode="json")
+                            for item in observed_refs.values()
+                        ],
+                        "loop_fingerprints": loop_fingerprints,
+                        "budget_usage": ledger.usage.model_dump(mode="json"),
+                        "step_sequence": int(state["step_sequence"]) + 1,
+                    },
+                )
+            except (
+                PolicyViolation,
+                StructuredOutputError,
+                RuntimeError,
+                ValueError,
+            ) as exc:
+                specialist_result = _failed_return(
+                    session=session,
+                    delegation=delegation,
+                    program=program,
+                    profile=profile,
+                    catalogue=self.tool_catalogue,
+                    ledger=ledger,
+                    observed_refs=list(observed_refs.values()),
+                    error=exc,
+                )
+                return _validated_update(
+                    state,
+                    {
+                        "status": "failed",
+                        "phase": AgentPhase.TERMINAL.value,
+                        "budget_usage": ledger.usage.model_dump(mode="json"),
+                        "terminal_return": specialist_result.model_dump(mode="json"),
+                        "step_sequence": int(state["step_sequence"]) + 1,
+                    },
+                )
+
+        graph = StateGraph(SpecialistCheckpointState)
+        graph.add_node("model_tool_step", step_node)
+        graph.add_edge(START, "model_tool_step")
+        graph.add_conditional_edges(
+            "model_tool_step",
+            _route_specialist_step,
+            {"continue": "model_tool_step", "end": END},
+        )
+        return graph.compile(checkpointer=checkpointer)
 
 
 def _validate_entry(
@@ -239,9 +416,9 @@ def _policy_context(
     program: AgentProgram,
     catalogue: ToolCatalogue,
     phase: AgentPhase,
-    usage: Any,
+    usage: BudgetUsage,
     loop_fingerprints: Mapping[str, int],
-    successful_steps: list[tuple[str, Mapping[str, Any]]],
+    successful_steps: Sequence[tuple[str, Mapping[str, Any]]],
 ) -> PolicyContext:
     """Build fresh trusted policy context after every accepted transition."""
     return PolicyContext(
@@ -258,6 +435,79 @@ def _policy_context(
         delegation=delegation,
         data_scope=scope,
     )
+
+
+def _validate_checkpoint_identity(
+    state: Mapping[str, Any],
+    *,
+    session: ResearchSession,
+    delegation: SpecialistDelegation,
+    program: AgentProgram,
+    profile: ModelProfile,
+    catalogue: ToolCatalogue,
+) -> None:
+    """Require recovered state to match every immutable invocation pin."""
+    validate_specialist_checkpoint_state(state)
+    expected = {
+        "session_id": session.session_id,
+        "session_digest": session.session_digest,
+        "delegation_id": delegation.delegation_id,
+        "delegation_digest": json_payload_hash(delegation.model_dump(mode="json")),
+        "branch_id": delegation.branch_id,
+        "attempt_id": delegation.attempt_id,
+        "role": AgentRole.DATA_RESEARCH.value,
+        "program_id": program.program_id,
+        "model_profile_id": profile.profile_id,
+        "tool_catalog_id": catalogue.catalogue_id,
+    }
+    mismatched = [
+        key
+        for key, expected_value in expected.items()
+        if state.get(key) != expected_value
+    ]
+    if mismatched:
+        raise ValueError(
+            "Data specialist checkpoint identity drift: " + ", ".join(mismatched)
+        )
+
+
+def _validated_update(
+    state: Mapping[str, Any],
+    update: Mapping[str, Any],
+) -> SpecialistCheckpointState:
+    """Validate the complete next state before returning a graph update."""
+    candidate = {**dict(state), **dict(update)}
+    validate_specialist_checkpoint_state(candidate)
+    return cast(SpecialistCheckpointState, dict(update))
+
+
+def _route_specialist_step(
+    state: SpecialistCheckpointState,
+) -> str:
+    """Continue until a strict terminal specialist return is checkpointed."""
+    return "end" if state.get("terminal_return") else "continue"
+
+
+def _terminal_return(
+    state: Mapping[str, Any],
+) -> SpecialistReturn | None:
+    """Parse a checkpointed terminal return when one is present."""
+    payload = state.get("terminal_return")
+    if not isinstance(payload, Mapping) or not payload:
+        return None
+    return SpecialistReturn.model_validate(payload)
+
+
+def _model_observations(
+    observations: list[ToolObservation],
+    transient: Mapping[str, ToolObservation],
+) -> list[dict[str, Any]]:
+    """Overlay transient raw observations onto persisted safe projections."""
+    projected = []
+    for observation in observations[-12:]:
+        selected = transient.get(observation.call_id, observation)
+        projected.append(selected.model_dump(mode="json"))
+    return projected
 
 
 def _next_data_phase(
@@ -292,7 +542,7 @@ def _validate_data_conclusion(
     conclusion: SpecialistConclusion,
     *,
     scope: CompositeDataScope,
-    successful_steps: list[tuple[str, Mapping[str, Any]]],
+    successful_steps: Sequence[tuple[str, Mapping[str, Any]]],
 ) -> None:
     """Require exact post-remediation snapshots for ready Data verdicts."""
     if conclusion.status is not SpecialistStatus.READY:
@@ -305,12 +555,13 @@ def _validate_data_conclusion(
     missing = [
         item.item_id
         for item in scope.items
-        if not any(_arguments_cover_item(arguments, item) for arguments in snapshot_arguments)
+        if not any(
+            _arguments_cover_item(arguments, item) for arguments in snapshot_arguments
+        )
     ]
     if missing:
         raise ValueError(
-            "ready Data conclusion lacks exact snapshots for: "
-            + ", ".join(missing)
+            "ready Data conclusion lacks exact snapshots for: " + ", ".join(missing)
         )
     for index, (name, arguments) in enumerate(successful_steps):
         if name != "data_ensure_loaded" or arguments.get("dry_run") is not False:

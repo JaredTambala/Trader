@@ -20,6 +20,7 @@ from typing import Any, Protocol
 from trader_research.foundation import (
     ApplicationResult,
     error_result,
+    json_payload_hash,
     stable_research_id,
     success_result,
 )
@@ -45,7 +46,11 @@ CODING_DESTROY_WORKSPACE = "coding_destroy_workspace"
 
 _MANIFEST_NAME = "workspace.json"
 _CANDIDATE_DIRECTORY = "candidate"
-_SEARCHABLE_REPOSITORY_SUFFIXES = frozenset({".py", ".md", ".toml", ".json", ".yaml", ".yml"})
+_OPERATION_DIRECTORY = ".operations"
+_TOMBSTONE_DIRECTORY = ".destroyed"
+_SEARCHABLE_REPOSITORY_SUFFIXES = frozenset(
+    {".py", ".md", ".toml", ".json", ".yaml", ".yml"}
+)
 
 
 class ContainerRunner(Protocol):
@@ -108,7 +113,9 @@ class DockerContainerRunner:
             raise ValueError("timeout_seconds must be positive")
         executable = shutil.which(self.executable)
         if executable is None:
-            raise RuntimeError(f"container executable is unavailable: {self.executable}")
+            raise RuntimeError(
+                f"container executable is unavailable: {self.executable}"
+            )
         invocation = [
             executable,
             "run",
@@ -209,7 +216,9 @@ class CodingWorkspaceService:
         """
         try:
             normalized_attempt = _required_identifier(attempt_id, "attempt_id")
-            normalized_contract = _required_identifier(build_contract_id, "build_contract_id")
+            normalized_contract = _required_identifier(
+                build_contract_id, "build_contract_id"
+            )
             workspace_id = stable_research_id(
                 "coding_workspace",
                 {
@@ -219,6 +228,10 @@ class CodingWorkspaceService:
                 },
             )
             workspace_path = self._workspace_path(workspace_id)
+            if self._tombstone_path(workspace_id).exists():
+                raise ValueError(
+                    "candidate attempt was already destroyed and cannot be reopened"
+                )
             manifest = {
                 "workspace_id": workspace_id,
                 "attempt_id": normalized_attempt,
@@ -229,7 +242,9 @@ class CodingWorkspaceService:
             if workspace_path.exists():
                 existing = self._load_manifest(workspace_id)
                 if existing != manifest:
-                    raise ValueError("workspace identity resolves to conflicting manifest")
+                    raise ValueError(
+                        "workspace identity resolves to conflicting manifest"
+                    )
             else:
                 (workspace_path / _CANDIDATE_DIRECTORY).mkdir(parents=True)
                 self._write_manifest(workspace_path, manifest)
@@ -247,8 +262,13 @@ class CodingWorkspaceService:
     def get_workspace(self, workspace_id: str) -> ApplicationResult:
         """Return bounded status for one exact workspace identity."""
         try:
-            manifest = self._load_manifest(workspace_id)
-            files = self._candidate_files(workspace_id)
+            workspace_path = self._workspace_path(workspace_id)
+            if workspace_path.exists():
+                manifest = self._load_manifest(workspace_id)
+                files = self._candidate_files(workspace_id)
+            else:
+                manifest = self._load_tombstone(workspace_id)
+                files = []
         except (OSError, ValueError) as exc:
             return error_result(
                 command=CODING_GET_WORKSPACE,
@@ -270,7 +290,11 @@ class CodingWorkspaceService:
         self,
         *,
         query: str,
-        roots: Sequence[str] = ("src/trader", "src/trader_standard", "docs/python_code_quality.md"),
+        roots: Sequence[str] = (
+            "src/trader",
+            "src/trader_standard",
+            "docs/python_code_quality.md",
+        ),
         limit: int = 20,
     ) -> ApplicationResult:
         """Search bounded text files in the pinned read-only repository.
@@ -298,7 +322,9 @@ class CodingWorkspaceService:
             )
         try:
             candidates = self._repository_files(roots)
-            matches = _search_files(candidates, self.policy.repository_root, normalized_query, int(limit))
+            matches = _search_files(
+                candidates, self.policy.repository_root, normalized_query, int(limit)
+            )
         except (OSError, ValueError, UnicodeError) as exc:
             return error_result(
                 command=CODING_SEARCH_REPOSITORY,
@@ -339,7 +365,9 @@ class CodingWorkspaceService:
             command=CODING_READ_REPOSITORY_FILE,
             data={
                 "repository_revision": self.policy.repository_revision,
-                "relative_path": path.relative_to(self.policy.repository_root).as_posix(),
+                "relative_path": path.relative_to(
+                    self.policy.repository_root
+                ).as_posix(),
                 "content": content,
                 "content_sha256": sha256(content.encode("utf-8")).hexdigest(),
             },
@@ -350,13 +378,18 @@ class CodingWorkspaceService:
         workspace_id: str,
         relative_path: str,
         content: str,
+        *,
+        operation_id: str | None = None,
     ) -> ApplicationResult:
-        """Write one bounded candidate file inside an active workspace.
+        """Idempotently write one bounded file inside an active workspace.
 
         Args:
             workspace_id: Exact active workspace identity.
             relative_path: Candidate-relative path with an allowed suffix.
             content: Complete replacement text for the file.
+            operation_id: Optional stable transition identity. Agent runtime
+                supplies one so a lost response can be resolved without
+                replaying or silently replacing an accepted write.
 
         Returns:
             Exact path-independent content hash and updated workspace byte use.
@@ -366,34 +399,103 @@ class CodingWorkspaceService:
             encoded = str(content).encode("utf-8")
             if len(encoded) > self.policy.max_file_bytes:
                 raise ValueError("candidate file exceeds max_file_bytes")
+            content_hash = sha256(encoded).hexdigest()
             candidate_root = self._candidate_root(workspace_id)
             path = _safe_relative_target(
                 candidate_root,
                 relative_path,
                 allowed_suffixes=SUPPORTED_CANDIDATE_SUFFIXES,
             )
+            normalized_path = path.relative_to(candidate_root).as_posix()
+            resolved_operation_id = _required_identifier(
+                operation_id
+                or stable_research_id(
+                    "coding_write_operation",
+                    {
+                        "workspace_id": workspace_id,
+                        "relative_path": normalized_path,
+                        "content_sha256": content_hash,
+                    },
+                ),
+                "operation_id",
+            )
+            request_hash = json_payload_hash(
+                {
+                    "command": CODING_WRITE_CANDIDATE_FILE,
+                    "workspace_id": workspace_id,
+                    "relative_path": normalized_path,
+                    "content_sha256": content_hash,
+                }
+            )
+            prior = self._recover_write_operation(
+                workspace_id=workspace_id,
+                operation_id=resolved_operation_id,
+                path=path,
+                candidate_root=candidate_root,
+            )
+            if prior is not None:
+                if prior["request_hash"] != request_hash:
+                    return error_result(
+                        command=CODING_WRITE_CANDIDATE_FILE,
+                        code="coding_operation_conflict",
+                        message=(
+                            "operation_id already identifies a different "
+                            "candidate write"
+                        ),
+                        data={"accepted_operation": prior},
+                    )
+                if prior["status"] == "accepted":
+                    return success_result(
+                        command=CODING_WRITE_CANDIDATE_FILE,
+                        data={**dict(prior["result"]), "idempotent_replay": True},
+                    )
             existing_size = path.stat().st_size if path.exists() else 0
             current_size = self._workspace_size(candidate_root)
-            if current_size - existing_size + len(encoded) > self.policy.max_workspace_bytes:
+            if (
+                current_size - existing_size + len(encoded)
+                > self.policy.max_workspace_bytes
+            ):
                 raise ValueError("candidate workspace exceeds max_workspace_bytes")
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(str(content), encoding="utf-8")
+            operation = {
+                "operation_id": resolved_operation_id,
+                "command": CODING_WRITE_CANDIDATE_FILE,
+                "workspace_id": workspace_id,
+                "request_hash": request_hash,
+                "relative_path": normalized_path,
+                "content_sha256": content_hash,
+                "content_bytes": len(encoded),
+                "status": "prepared",
+            }
+            self._write_json_atomic(
+                self._operation_path(workspace_id, resolved_operation_id),
+                operation,
+            )
+            self._write_bytes_atomic(
+                path,
+                encoded,
+                operation_id=resolved_operation_id,
+            )
+            result = {
+                "workspace_id": workspace_id,
+                "relative_path": normalized_path,
+                "content_sha256": content_hash,
+                "content_bytes": len(encoded),
+                "workspace_bytes": self._workspace_size(candidate_root),
+                "operation_id": resolved_operation_id,
+                "idempotent_replay": False,
+            }
+            self._write_json_atomic(
+                self._operation_path(workspace_id, resolved_operation_id),
+                {**operation, "status": "accepted", "result": result},
+            )
         except (OSError, ValueError, UnicodeError) as exc:
             return error_result(
                 command=CODING_WRITE_CANDIDATE_FILE,
                 code="candidate_write_failed",
                 message=str(exc),
             )
-        return success_result(
-            command=CODING_WRITE_CANDIDATE_FILE,
-            data={
-                "workspace_id": workspace_id,
-                "relative_path": path.relative_to(candidate_root).as_posix(),
-                "content_sha256": sha256(encoded).hexdigest(),
-                "content_bytes": len(encoded),
-                "workspace_bytes": self._workspace_size(candidate_root),
-            },
-        )
+        return success_result(command=CODING_WRITE_CANDIDATE_FILE, data=result)
 
     def read_candidate_file(
         self,
@@ -495,7 +597,9 @@ class CodingWorkspaceService:
         payload = {
             "workspace_id": workspace_id,
             "check_name": normalized_check,
-            "status": "passed" if execution.exit_code == 0 and not execution.timed_out else "failed",
+            "status": "passed"
+            if execution.exit_code == 0 and not execution.timed_out
+            else "failed",
             **execution.to_dict(),
         }
         if payload["status"] == "passed":
@@ -503,7 +607,11 @@ class CodingWorkspaceService:
         return error_result(
             command=CODING_RUN_CHECK,
             code="coding_check_failed",
-            message=("coding check timed out" if execution.timed_out else "coding check returned non-zero"),
+            message=(
+                "coding check timed out"
+                if execution.timed_out
+                else "coding check returned non-zero"
+            ),
             data={"check": payload},
         )
 
@@ -533,7 +641,9 @@ class CodingWorkspaceService:
             )
             ast.parse(source_code, filename=implementation_path)
             files = []
-            for path in sorted(item for item in candidate_root.rglob("*") if item.is_file()):
+            for path in sorted(
+                item for item in candidate_root.rglob("*") if item.is_file()
+            ):
                 relative_path = path.relative_to(candidate_root).as_posix()
                 content = path.read_bytes()
                 files.append(
@@ -575,11 +685,33 @@ class CodingWorkspaceService:
         )
 
     def destroy_workspace(self, workspace_id: str) -> ApplicationResult:
-        """Permanently remove one exact disposable workspace after validation."""
+        """Idempotently remove one exact disposable workspace.
+
+        A small source-free tombstone is written before deletion. Recovery can
+        therefore finish cleanup after a crash or return the accepted result
+        after a lost response without recreating or broadly deleting state.
+        """
         try:
             workspace_path = self._workspace_path(workspace_id)
-            manifest = self._load_manifest(workspace_id)
-            shutil.rmtree(workspace_path)
+            tombstone_path = self._tombstone_path(workspace_id)
+            idempotent_replay = tombstone_path.exists()
+            if idempotent_replay:
+                manifest = self._load_tombstone(workspace_id)
+            else:
+                manifest = {
+                    **self._load_manifest(workspace_id),
+                    "status": "destroying",
+                    "recoverable": False,
+                }
+                self._write_json_atomic(tombstone_path, manifest)
+            if workspace_path.exists():
+                shutil.rmtree(workspace_path)
+            manifest = {
+                **manifest,
+                "status": "destroyed",
+                "recoverable": False,
+            }
+            self._write_json_atomic(tombstone_path, manifest)
         except (OSError, ValueError) as exc:
             return error_result(
                 command=CODING_DESTROY_WORKSPACE,
@@ -592,6 +724,7 @@ class CodingWorkspaceService:
                 "workspace_id": manifest["workspace_id"],
                 "status": "destroyed",
                 "recoverable": False,
+                "idempotent_replay": idempotent_replay,
             },
         )
 
@@ -608,15 +741,115 @@ class CodingWorkspaceService:
     def _load_manifest(self, workspace_id: str) -> dict[str, Any]:
         path = self._workspace_path(workspace_id) / _MANIFEST_NAME
         payload = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(payload, Mapping) or payload.get("workspace_id") != workspace_id:
+        if (
+            not isinstance(payload, Mapping)
+            or payload.get("workspace_id") != workspace_id
+        ):
             raise ValueError("workspace manifest identity mismatch")
         return dict(payload)
 
-    def _write_manifest(self, workspace_path: Path, manifest: Mapping[str, Any]) -> None:
-        (workspace_path / _MANIFEST_NAME).write_text(
-            json.dumps(dict(manifest), indent=2, sort_keys=True),
+    def _tombstone_path(self, workspace_id: str) -> Path:
+        """Return the exact source-free cleanup receipt path for a workspace."""
+        normalized = _required_identifier(workspace_id, "workspace_id")
+        directory = (self.policy.workspace_root / _TOMBSTONE_DIRECTORY).resolve()
+        if directory.parent != self.policy.workspace_root:
+            raise ValueError("workspace tombstone directory escapes workspace_root")
+        return directory / f"{normalized}.json"
+
+    def _load_tombstone(self, workspace_id: str) -> dict[str, Any]:
+        """Load and validate one exact workspace cleanup receipt."""
+        path = self._tombstone_path(workspace_id)
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if (
+            not isinstance(payload, Mapping)
+            or payload.get("workspace_id") != workspace_id
+        ):
+            raise ValueError("workspace tombstone identity mismatch")
+        if payload.get("status") not in {"destroying", "destroyed"}:
+            raise ValueError("workspace tombstone status is invalid")
+        return dict(payload)
+
+    def _operation_path(self, workspace_id: str, operation_id: str) -> Path:
+        """Return one exact service-owned operation receipt path."""
+        normalized = _required_identifier(operation_id, "operation_id")
+        directory = (
+            self._workspace_path(workspace_id) / _OPERATION_DIRECTORY
+        ).resolve()
+        if directory.parent != self._workspace_path(workspace_id):
+            raise ValueError("workspace operation directory escapes workspace")
+        return directory / f"{normalized}.json"
+
+    def _recover_write_operation(
+        self,
+        *,
+        workspace_id: str,
+        operation_id: str,
+        path: Path,
+        candidate_root: Path,
+    ) -> dict[str, Any] | None:
+        """Resolve an accepted or prepared write without reapplying content."""
+        operation_path = self._operation_path(workspace_id, operation_id)
+        if not operation_path.exists():
+            return None
+        payload = json.loads(operation_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, Mapping):
+            raise ValueError("workspace operation receipt must be an object")
+        operation = dict(payload)
+        expected = {
+            "operation_id": operation_id,
+            "command": CODING_WRITE_CANDIDATE_FILE,
+            "workspace_id": workspace_id,
+        }
+        if any(operation.get(key) != value for key, value in expected.items()):
+            raise ValueError("workspace operation receipt identity mismatch")
+        if operation.get("status") not in {"prepared", "accepted"}:
+            raise ValueError("workspace operation receipt status is invalid")
+        if operation["status"] == "accepted":
+            if not isinstance(operation.get("result"), Mapping):
+                raise ValueError("accepted workspace operation has no result")
+            return operation
+        expected_hash = str(operation.get("content_sha256") or "")
+        if path.is_file() and sha256(path.read_bytes()).hexdigest() == expected_hash:
+            result = {
+                "workspace_id": workspace_id,
+                "relative_path": str(operation.get("relative_path") or ""),
+                "content_sha256": expected_hash,
+                "content_bytes": int(operation.get("content_bytes") or 0),
+                "workspace_bytes": self._workspace_size(candidate_root),
+                "operation_id": operation_id,
+                "idempotent_replay": True,
+            }
+            operation = {**operation, "status": "accepted", "result": result}
+            self._write_json_atomic(operation_path, operation)
+        return operation
+
+    def _write_manifest(
+        self, workspace_path: Path, manifest: Mapping[str, Any]
+    ) -> None:
+        self._write_json_atomic(workspace_path / _MANIFEST_NAME, manifest)
+
+    @staticmethod
+    def _write_json_atomic(path: Path, payload: Mapping[str, Any]) -> None:
+        """Replace one service-owned JSON record atomically on one filesystem."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(f"{path.suffix}.tmp")
+        temporary.write_text(
+            json.dumps(dict(payload), indent=2, sort_keys=True),
             encoding="utf-8",
         )
+        temporary.replace(path)
+
+    @staticmethod
+    def _write_bytes_atomic(
+        path: Path,
+        content: bytes,
+        *,
+        operation_id: str,
+    ) -> None:
+        """Atomically replace one candidate file with complete bounded bytes."""
+        temporary = path.with_name(f".{path.name}.{operation_id}.tmp")
+        temporary.write_bytes(content)
+        temporary.replace(path)
 
     def _require_active_workspace(self, workspace_id: str) -> Mapping[str, Any]:
         manifest = self._load_manifest(workspace_id)
@@ -631,7 +864,9 @@ class CodingWorkspaceService:
                 "relative_path": path.relative_to(candidate_root).as_posix(),
                 "content_bytes": path.stat().st_size,
             }
-            for path in sorted(item for item in candidate_root.rglob("*") if item.is_file())
+            for path in sorted(
+                item for item in candidate_root.rglob("*") if item.is_file()
+            )
         ]
 
     def _repository_files(self, roots: Sequence[str]) -> tuple[Path, ...]:
@@ -647,18 +882,26 @@ class CodingWorkspaceService:
             files.extend(
                 candidate
                 for candidate in path.rglob("*")
-                if candidate.is_file() and candidate.suffix in _SEARCHABLE_REPOSITORY_SUFFIXES
+                if candidate.is_file()
+                and candidate.suffix in _SEARCHABLE_REPOSITORY_SUFFIXES
             )
         return tuple(dict.fromkeys(sorted(files)))
 
     @staticmethod
     def _workspace_size(candidate_root: Path) -> int:
-        return sum(path.stat().st_size for path in candidate_root.rglob("*") if path.is_file())
+        return sum(
+            path.stat().st_size for path in candidate_root.rglob("*") if path.is_file()
+        )
 
 
 def _container_check_command(check_name: str) -> list[str]:
     commands = {
-        "compile": ["python", "-m", "py_compile", "/workspace/candidate/implementation.py"],
+        "compile": [
+            "python",
+            "-m",
+            "py_compile",
+            "/workspace/candidate/implementation.py",
+        ],
         "ruff": ["ruff", "check", "/workspace/candidate"],
         "pytest": ["pytest", "-q", "/workspace/candidate"],
     }
@@ -690,14 +933,18 @@ def _bounded_text(value: object, max_bytes: int) -> str:
     if len(encoded) <= max_bytes:
         return encoded.decode("utf-8", errors="replace")
     marker = b"\n...[output truncated]"
-    return (encoded[: max_bytes - len(marker)] + marker).decode("utf-8", errors="replace")
+    return (encoded[: max_bytes - len(marker)] + marker).decode(
+        "utf-8", errors="replace"
+    )
 
 
 def _required_identifier(value: str, label: str) -> str:
     normalized = str(value or "").strip()
     if not normalized:
         raise ValueError(f"{label} is required")
-    if not all(character.isalnum() or character in {"-", "_"} for character in normalized):
+    if not all(
+        character.isalnum() or character in {"-", "_"} for character in normalized
+    ):
         raise ValueError(f"{label} contains unsupported characters")
     return normalized
 
@@ -757,7 +1004,9 @@ def _search_files(
     for path in files:
         if path.stat().st_size > 512_000:
             continue
-        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        for line_number, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(), start=1
+        ):
             if needle not in line.casefold():
                 continue
             matches.append(

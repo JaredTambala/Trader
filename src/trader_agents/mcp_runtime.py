@@ -8,6 +8,8 @@ import json
 import time
 from typing import Any, Literal
 
+from trader_research.foundation import stable_research_id
+
 from .catalogue import ToolCatalogue, ToolDefinition
 from .contracts import (
     CanonicalEvidenceRef,
@@ -113,10 +115,13 @@ class RoleScopedMcpRuntime:
             Authorized call plus a bounded public observation.
         """
         await self._ensure_transport_catalogue()
+        proposal = _bind_runtime_operation(proposal, context)
         authorized = self.policy.authorize(proposal, context)
         transport_tool = self._transport_tools.get(proposal.tool_name)
         if transport_tool is None:
-            raise RuntimeError(f"MCP tool disappeared after catalogue refresh: {proposal.tool_name}")
+            raise RuntimeError(
+                f"MCP tool disappeared after catalogue refresh: {proposal.tool_name}"
+            )
         _validate_shallow_arguments(proposal.arguments, transport_tool.input_schema)
         started = time.perf_counter()
         with self.trace_sink.span(
@@ -166,6 +171,44 @@ class RoleScopedMcpRuntime:
             await self.refresh_transport_catalogue()
 
 
+def _bind_runtime_operation(
+    proposal: ToolCallProposal,
+    context: PolicyContext,
+) -> ToolCallProposal:
+    """Bind model-proposed coding writes to one deterministic transition.
+
+    The model chooses whether and what to write. Runtime code supplies the
+    operation identity, so retrying the same checkpoint step cannot silently
+    turn a lost response into a second or different accepted mutation.
+    """
+    if proposal.tool_name != "coding_write_candidate_file":
+        return proposal
+    delegation = context.delegation
+    if delegation is None:
+        raise ValueError("coding write operation requires a delegation")
+    sequence = context.runtime_state.get("step_sequence")
+    if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence <= 0:
+        raise ValueError("coding write operation requires a positive step sequence")
+    operation_id = stable_research_id(
+        "agent_tool_operation",
+        {
+            "session_id": context.session.session_id,
+            "delegation_id": delegation.delegation_id,
+            "attempt_id": delegation.attempt_id,
+            "step_sequence": sequence,
+            "tool_name": proposal.tool_name,
+        },
+    )
+    return proposal.model_copy(
+        update={
+            "arguments": {
+                **proposal.arguments,
+                "operation_id": operation_id,
+            }
+        }
+    )
+
+
 def _normalize_response(
     response: Mapping[str, Any],
     *,
@@ -208,9 +251,7 @@ def _normalize_response(
         side_effect=_research_side_effect(definition),
         summary=summary,
         evidence_refs=list(_evidence_refs(structured.get("artifacts"))),
-        warnings=list(
-            _issues(structured.get("warnings"), default_code="mcp_warning")
-        ),
+        warnings=list(_issues(structured.get("warnings"), default_code="mcp_warning")),
         errors=list(errors),
     )
 

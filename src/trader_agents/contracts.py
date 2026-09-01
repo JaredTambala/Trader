@@ -123,14 +123,18 @@ class ToolObservation(StrictPublicModel):
     agent_owner: str = Field(min_length=1, max_length=100)
     side_effect: Literal["read_only", "local_mutating", "external_research_mutating"]
     summary: dict[str, Any] = Field(default_factory=dict)
-    evidence_refs: list[CanonicalEvidenceRef] = Field(default_factory=list, max_length=16)
+    evidence_refs: list[CanonicalEvidenceRef] = Field(
+        default_factory=list, max_length=16
+    )
     warnings: list[PublicIssue] = Field(default_factory=list, max_length=16)
     errors: list[PublicIssue] = Field(default_factory=list, max_length=16)
 
     @model_validator(mode="after")
     def validate_observation(self) -> "ToolObservation":
         """Require consistent success/error state and bounded public summary."""
-        _validate_json_mapping(self.summary, "tool observation summary", max_bytes=32_000)
+        _validate_json_mapping(
+            self.summary, "tool observation summary", max_bytes=32_000
+        )
         if self.ok and self.errors:
             raise ValueError("successful tool observation cannot contain errors")
         if not self.ok and not self.errors:
@@ -143,11 +147,43 @@ class AgendaTaskProposal(StrictPublicModel):
 
     task_id: str = Field(min_length=1, max_length=200)
     role: Literal["data_research", "strategy_engineering"]
+    work_kind: Literal[
+        "complete",
+        "investigate",
+        "reconcile",
+        "catalogue",
+        "construct",
+    ] = "complete"
+    join_mode: Literal["soft", "hard"] = "hard"
+    scope_item_ids: list[str] = Field(default_factory=list, max_length=12)
     question: str = Field(min_length=1, max_length=800)
     required_evidence: list[str] = Field(min_length=1, max_length=12)
     dependencies: list[str] = Field(default_factory=list, max_length=12)
     expected_information_gain: str = Field(min_length=1, max_length=600)
     mutation_requested: bool = False
+
+    @model_validator(mode="after")
+    def validate_role_work(self) -> "AgendaTaskProposal":
+        """Reject work kinds that cross specialist ownership boundaries."""
+        allowed = {
+            AgentRole.DATA_RESEARCH.value: {
+                "complete",
+                "investigate",
+                "reconcile",
+            },
+            AgentRole.STRATEGY_ENGINEERING.value: {
+                "complete",
+                "catalogue",
+                "construct",
+            },
+        }
+        if self.work_kind not in allowed[self.role]:
+            raise ValueError(f"{self.work_kind} is not valid for role {self.role}")
+        if self.role == AgentRole.STRATEGY_ENGINEERING.value and self.scope_item_ids:
+            raise ValueError("Strategy tasks cannot claim Data scope items")
+        if len(set(self.scope_item_ids)) != len(self.scope_item_ids):
+            raise ValueError("scope_item_ids must be unique")
+        return self
 
 
 class CoordinatorAgenda(StrictPublicModel):
@@ -168,18 +204,15 @@ class CoordinatorAgenda(StrictPublicModel):
             unknown = set(task.dependencies) - known
             if unknown:
                 raise ValueError(
-                    "agenda task dependencies are unknown: " + ", ".join(sorted(unknown))
+                    "agenda task dependencies are unknown: "
+                    + ", ".join(sorted(unknown))
                 )
             if task.task_id in task.dependencies:
                 raise ValueError("agenda task cannot depend on itself")
-        dependencies = {
-            task.task_id: set(task.dependencies) for task in self.tasks
-        }
+        dependencies = {task.task_id: set(task.dependencies) for task in self.tasks}
         while dependencies:
             ready = {
-                task_id
-                for task_id, required in dependencies.items()
-                if not required
+                task_id for task_id, required in dependencies.items() if not required
             }
             if not ready:
                 raise ValueError("agenda task dependencies contain a cycle")
@@ -201,7 +234,9 @@ class SpecialistDelegation(StrictPublicModel):
     branch_id: str = Field(min_length=1, max_length=200)
     attempt_id: str = Field(min_length=1, max_length=200)
     task: AgendaTaskProposal
-    required_input_refs: list[CanonicalEvidenceRef] = Field(default_factory=list, max_length=16)
+    required_input_refs: list[CanonicalEvidenceRef] = Field(
+        default_factory=list, max_length=16
+    )
     permitted_side_effects: list[
         Literal["read_only", "local_mutating", "external_research_mutating"]
     ] = Field(min_length=1, max_length=3)
@@ -236,7 +271,9 @@ class SpecialistReturn(StrictPublicModel):
     answered_questions: list[str] = Field(default_factory=list, max_length=16)
     unresolved_questions: list[str] = Field(default_factory=list, max_length=16)
     findings: list[str] = Field(default_factory=list, max_length=24)
-    evidence_refs: list[CanonicalEvidenceRef] = Field(default_factory=list, max_length=24)
+    evidence_refs: list[CanonicalEvidenceRef] = Field(
+        default_factory=list, max_length=24
+    )
     assumptions: list[str] = Field(default_factory=list, max_length=12)
     uncertainty: list[str] = Field(default_factory=list, max_length=12)
     blockers: list[PublicIssue] = Field(default_factory=list, max_length=16)
@@ -248,7 +285,10 @@ class SpecialistReturn(StrictPublicModel):
         """Reject terminal states that contradict blockers or evidence."""
         if self.status is SpecialistStatus.READY and self.blockers:
             raise ValueError("ready specialist return cannot contain blockers")
-        if self.status in {SpecialistStatus.BLOCKED, SpecialistStatus.FAILED} and not self.blockers:
+        if (
+            self.status in {SpecialistStatus.BLOCKED, SpecialistStatus.FAILED}
+            and not self.blockers
+        ):
             raise ValueError("blocked or failed specialist return requires blockers")
         if self.status is SpecialistStatus.READY and not self.evidence_refs:
             raise ValueError("ready specialist return requires canonical evidence")
@@ -265,7 +305,9 @@ class SpecialistConclusion(StrictPublicModel):
     answered_questions: list[str] = Field(default_factory=list, max_length=16)
     unresolved_questions: list[str] = Field(default_factory=list, max_length=16)
     findings: list[str] = Field(default_factory=list, max_length=24)
-    evidence_refs: list[CanonicalEvidenceRef] = Field(default_factory=list, max_length=24)
+    evidence_refs: list[CanonicalEvidenceRef] = Field(
+        default_factory=list, max_length=24
+    )
     assumptions: list[str] = Field(default_factory=list, max_length=12)
     uncertainty: list[str] = Field(default_factory=list, max_length=12)
     blockers: list[PublicIssue] = Field(default_factory=list, max_length=16)
@@ -305,7 +347,9 @@ class CoordinatorDecision(StrictPublicModel):
     action: CoordinatorAction
     summary: str = Field(min_length=1, max_length=1_500)
     reviewed_delegation_ids: list[str] = Field(default_factory=list, max_length=16)
-    cited_evidence_refs: list[CanonicalEvidenceRef] = Field(default_factory=list, max_length=24)
+    cited_evidence_refs: list[CanonicalEvidenceRef] = Field(
+        default_factory=list, max_length=24
+    )
     criteria_applied: list[str] = Field(min_length=1, max_length=16)
     affected_task_ids: list[str] = Field(default_factory=list, max_length=16)
     expected_information_gain: str | None = Field(default=None, max_length=600)
@@ -320,12 +364,18 @@ class CoordinatorDecision(StrictPublicModel):
             raise ValueError("ask_operator decision requires operator_question")
         if self.action is not CoordinatorAction.ASK_OPERATOR and self.operator_question:
             raise ValueError("operator_question is allowed only for ask_operator")
-        if self.action in {
-            CoordinatorAction.REVISE,
-            CoordinatorAction.REVISIT,
-            CoordinatorAction.FORK,
-        } and not self.expected_information_gain:
-            raise ValueError("revision, revisit, or fork requires expected information gain")
+        if (
+            self.action
+            in {
+                CoordinatorAction.REVISE,
+                CoordinatorAction.REVISIT,
+                CoordinatorAction.FORK,
+            }
+            and not self.expected_information_gain
+        ):
+            raise ValueError(
+                "revision, revisit, or fork requires expected information gain"
+            )
         if self.action is CoordinatorAction.STOP_FAIL_CLOSED and not self.blockers:
             raise ValueError("stop_fail_closed requires blockers")
         if self.action is CoordinatorAction.CONCLUDE and not self.cited_evidence_refs:
@@ -702,8 +752,7 @@ def build_specialist_return(
             + ", ".join(sorted(unavailable))
         )
     trusted_evidence = [
-        available_by_uri[reference.uri]
-        for reference in conclusion.evidence_refs
+        available_by_uri[reference.uri] for reference in conclusion.evidence_refs
     ]
     return SpecialistReturn(
         delegation_id=delegation.delegation_id,

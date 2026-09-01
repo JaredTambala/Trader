@@ -34,19 +34,41 @@ class _Runner:
 def test_workspace_is_idempotent_and_packages_inert_source(tmp_path: Path) -> None:
     service = _service(tmp_path)
 
-    first = service.create_workspace(attempt_id="attempt-1", build_contract_id="contract-1")
-    second = service.create_workspace(attempt_id="attempt-1", build_contract_id="contract-1")
+    first = service.create_workspace(
+        attempt_id="attempt-1", build_contract_id="contract-1"
+    )
+    second = service.create_workspace(
+        attempt_id="attempt-1", build_contract_id="contract-1"
+    )
     workspace_id = first.data["workspace"]["workspace_id"]
     written = service.write_candidate_file(
         workspace_id,
         "implementation.py",
         "def build_strategy(**kwargs):\n    return kwargs\n",
+        operation_id="write-step-1",
+    )
+    replayed = service.write_candidate_file(
+        workspace_id,
+        "implementation.py",
+        "def build_strategy(**kwargs):\n    return kwargs\n",
+        operation_id="write-step-1",
+    )
+    conflicted = service.write_candidate_file(
+        workspace_id,
+        "implementation.py",
+        "raise RuntimeError('different write')\n",
+        operation_id="write-step-1",
     )
     packaged = service.package_candidate(workspace_id)
 
     assert first.ok is True
     assert second.data["workspace"]["workspace_id"] == workspace_id
     assert written.ok is True
+    assert written.data["idempotent_replay"] is False
+    assert replayed.ok is True
+    assert replayed.data["idempotent_replay"] is True
+    assert conflicted.ok is False
+    assert conflicted.errors[0]["code"] == "coding_operation_conflict"
     assert packaged.ok is True
     package = packaged.data["candidate_package"]
     assert package["status"] == "packaged_inert_candidate"
@@ -62,7 +84,9 @@ def test_workspace_is_idempotent_and_packages_inert_source(tmp_path: Path) -> No
 
 def test_workspace_rejects_path_escape_and_unsupported_files(tmp_path: Path) -> None:
     service = _service(tmp_path)
-    created = service.create_workspace(attempt_id="attempt-1", build_contract_id="contract-1")
+    created = service.create_workspace(
+        attempt_id="attempt-1", build_contract_id="contract-1"
+    )
     workspace_id = created.data["workspace"]["workspace_id"]
 
     escaped = service.write_candidate_file(workspace_id, "../../outside.py", "pass\n")
@@ -89,7 +113,9 @@ def test_repository_reads_are_bounded_and_read_only(tmp_path: Path) -> None:
 
 def test_dependency_policy_never_installs_unapproved_packages(tmp_path: Path) -> None:
     service = _service(tmp_path)
-    created = service.create_workspace(attempt_id="attempt-1", build_contract_id="contract-1")
+    created = service.create_workspace(
+        attempt_id="attempt-1", build_contract_id="contract-1"
+    )
     workspace_id = created.data["workspace"]["workspace_id"]
 
     accepted = service.resolve_dependencies(workspace_id, ["trader"])
@@ -101,9 +127,13 @@ def test_dependency_policy_never_installs_unapproved_packages(tmp_path: Path) ->
     assert denied.errors[0]["code"] == "dependency_policy_denied"
 
 
-def test_checks_fail_closed_without_runner_and_preserve_bounded_evidence(tmp_path: Path) -> None:
+def test_checks_fail_closed_without_runner_and_preserve_bounded_evidence(
+    tmp_path: Path,
+) -> None:
     unavailable = _service(tmp_path)
-    created = unavailable.create_workspace(attempt_id="attempt-1", build_contract_id="contract-1")
+    created = unavailable.create_workspace(
+        attempt_id="attempt-1", build_contract_id="contract-1"
+    )
     workspace_id = created.data["workspace"]["workspace_id"]
     unavailable.write_candidate_file(workspace_id, "implementation.py", "pass\n")
 
@@ -121,14 +151,26 @@ def test_checks_fail_closed_without_runner_and_preserve_bounded_evidence(tmp_pat
 
 def test_cleanup_removes_only_exact_workspace(tmp_path: Path) -> None:
     service = _service(tmp_path)
-    first = service.create_workspace(attempt_id="attempt-1", build_contract_id="contract-1")
-    second = service.create_workspace(attempt_id="attempt-2", build_contract_id="contract-1")
+    first = service.create_workspace(
+        attempt_id="attempt-1", build_contract_id="contract-1"
+    )
+    second = service.create_workspace(
+        attempt_id="attempt-2", build_contract_id="contract-1"
+    )
 
     destroyed = service.destroy_workspace(first.data["workspace"]["workspace_id"])
+    replayed = service.destroy_workspace(first.data["workspace"]["workspace_id"])
+    resolved = service.get_workspace(first.data["workspace"]["workspace_id"])
     still_present = service.get_workspace(second.data["workspace"]["workspace_id"])
 
     assert destroyed.ok is True
     assert destroyed.data["recoverable"] is False
+    assert destroyed.data["idempotent_replay"] is False
+    assert replayed.ok is True
+    assert replayed.data["idempotent_replay"] is True
+    assert resolved.ok is True
+    assert resolved.data["workspace"]["status"] == "destroyed"
+    assert resolved.data["workspace"]["candidate_files"] == []
     assert still_present.ok is True
 
 

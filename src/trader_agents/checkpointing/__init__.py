@@ -16,6 +16,14 @@ from .postgres import (
     checkpoint_runtime_summary,
     open_postgres_checkpointer,
 )
+from .specialist import (
+    SpecialistCheckpointState,
+    build_specialist_checkpoint_state,
+    checkpoint_safe_observation,
+    checkpoint_step,
+    specialist_checkpoint_digest,
+    validate_specialist_checkpoint_state,
+)
 
 __all__ = [
     "CHECKPOINT_DSN_ENV",
@@ -28,6 +36,12 @@ __all__ = [
     "checkpoint_runtime_summary",
     "coordinator_thread_config",
     "open_postgres_checkpointer",
+    "SpecialistCheckpointState",
+    "build_specialist_checkpoint_state",
+    "checkpoint_safe_observation",
+    "checkpoint_step",
+    "specialist_checkpoint_digest",
     "specialist_thread_config",
     "validate_agent_checkpoint_state",
+    "validate_specialist_checkpoint_state",
 ]

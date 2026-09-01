@@ -48,7 +48,9 @@ def register_coding_tools(
             no safe workspace runtime is configured.
     """
 
-    def _service(command: str, side_effect: SideEffect) -> CodingWorkspaceService | CallToolResult:
+    def _service(
+        command: str, side_effect: SideEffect
+    ) -> CodingWorkspaceService | CallToolResult:
         if not environment.allow_coding_workspace:
             return _blocked(
                 command,
@@ -119,7 +121,9 @@ def register_coding_tools(
         return _result(
             service.search_repository(
                 query=query,
-                roots=tuple(roots) if roots is not None else (
+                roots=tuple(roots)
+                if roots is not None
+                else (
                     "src/trader",
                     "src/trader_standard",
                     "docs/python_code_quality.md",
@@ -140,9 +144,7 @@ def register_coding_tools(
         service = _service(CODING_READ_REPOSITORY_FILE, SideEffect.READ_ONLY)
         if isinstance(service, CallToolResult):
             return service
-        return _result(
-            service.read_repository_file(relative_path, max_bytes=max_bytes)
-        )
+        return _result(service.read_repository_file(relative_path, max_bytes=max_bytes))
 
     @server.tool(
         name=CODING_WRITE_CANDIDATE_FILE,
@@ -152,13 +154,19 @@ def register_coding_tools(
         workspace_id: str,
         relative_path: str,
         content: str,
+        operation_id: str | None = None,
     ) -> CallToolResult:
-        """Write one complete bounded candidate file."""
+        """Idempotently write one complete bounded candidate file."""
         service = _service(CODING_WRITE_CANDIDATE_FILE, SideEffect.LOCAL_MUTATING)
         if isinstance(service, CallToolResult):
             return service
         return _result(
-            service.write_candidate_file(workspace_id, relative_path, content)
+            service.write_candidate_file(
+                workspace_id,
+                relative_path,
+                content,
+                operation_id=operation_id,
+            )
         )
 
     @server.tool(
