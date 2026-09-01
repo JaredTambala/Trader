@@ -528,9 +528,10 @@ The repo still contains deferred interface/platform work, but it is not part of 
 - Reflex UI in `src/ui/`
 - UI backtest workflow as the primary research/control surface
 - API/UI expansion for non-default backtest assumptions and richer strategy selection
-- UI plans in `plans/task_0_8b_breakdown.md` and `plans/task_0_8g_reflex_ui_refactor_plan.md`
+- Historical UI planning retrievable with `git show 39106fc:plans/task_0_8b_breakdown.md` and
+  `git show e6f9563:plans/task_0_8g_reflex_ui_refactor_plan.md`
 
-These remain in the repo for later phases and historical continuity, not as current-phase commitments.
+These UI surfaces remain deferred for later phases, not as current-phase commitments.
 
 ## Runtime contract
 

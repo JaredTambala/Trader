@@ -205,8 +205,8 @@ Each category below records:
 - Test evidence:
   - none
 - Doc evidence:
-  - `plans/task_0_8b_breakdown.md`
-  - `plans/task_0_8g_reflex_ui_refactor_plan.md`
+  - Historical plans are available with `git show 39106fc:plans/task_0_8b_breakdown.md` and
+    `git show e6f9563:plans/task_0_8g_reflex_ui_refactor_plan.md`.
 - Conclusion:
   - These plans remain useful for later phases and should not be treated as current commitments.
 - Action required:
@@ -311,7 +311,7 @@ Each category below records:
 - Previous mismatch:
   - these items were mixed into the active roadmap
 - Code evidence:
-  - `plans/task_0_8g_reflex_ui_refactor_plan.md`
+  - Historical plan: `git show e6f9563:plans/task_0_8g_reflex_ui_refactor_plan.md`
   - `docker-compose.postgres.yml`
 - Conclusion:
   - fixed by deferring them beyond Phase 1

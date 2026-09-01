@@ -17,6 +17,7 @@ Use the existing documentation as the source of truth:
 - Core platform docs: [docs/core/README.md](docs/core/README.md)
 - Research-agent docs: [docs/research_agents/README.md](docs/research_agents/README.md)
 - Current research product state: [docs/research_agents/product_state.md](docs/research_agents/product_state.md)
+- Target model-backed agent designs: [plans/agent_designs.md](plans/agent_designs.md)
 - Research-agent architecture: [docs/research_agents/architecture.md](docs/research_agents/architecture.md)
 - Agent identities, decision boundaries, and artifact authority: [docs/research_agents/agents.md](docs/research_agents/agents.md)
 - Current MCP tool catalog: [docs/research_agents/mcp_tools.md](docs/research_agents/mcp_tools.md)
@@ -93,6 +94,9 @@ Apply [docs/python_code_quality.md](docs/python_code_quality.md) to all Python c
 - Feature work is not complete until active docs and the active capability roadmap reflect the implementation.
 - For research-agent and MCP work, update [plans/research_capability_roadmap.md](plans/research_capability_roadmap.md)
   whenever status, scope, evidence, or follow-on work changes.
+- Update the tracker and general principles in [plans/agent_designs.md](plans/agent_designs.md), plus the owning record
+  under `plans/agent_designs/`, when a target model-backed agent's mission, authority, entry or context boundary,
+  model/tool loop, state, evidence return, termination, evaluation, concurrency, or review status changes.
 - Update [docs/research_agents/tool_contracts.md](docs/research_agents/tool_contracts.md) when tool inputs, outputs,
   envelopes, side effects, or artifact contracts change.
 - Update [docs/research_agents/agents.md](docs/research_agents/agents.md) when agent ownership, boundaries, or
@@ -108,7 +112,7 @@ Apply [docs/python_code_quality.md](docs/python_code_quality.md) to all Python c
 Use the narrowest checks that prove the change, then broaden when shared surfaces are touched.
 
 - Docs-only root instruction changes: run link/text checks such as
-  `rg -n "research_capability_roadmap|product_state|python_code_quality|tool_contracts" AGENTS.md`.
+  `rg -n "agent_designs|research_capability_roadmap|product_state|python_code_quality|tool_contracts" AGENTS.md`.
 - Python changes: run targeted tests for the changed behavior and `uv run ruff check` on touched Python paths.
 - Shared contracts, MCP registration, agent identity, persistence, or package-boundary changes: run the relevant targeted
   suites and consider `uv run pytest -m 'not postgres' -q`.

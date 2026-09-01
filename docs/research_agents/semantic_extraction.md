@@ -28,9 +28,13 @@ could not preserve those stages as one correctly classified composite methodolog
 atomic/component boundaries are deferred under tracker item 33AC. Until that work is reactivated, a blocked candidate
 or absent card is the correct result when the implemented evidence model cannot represent the source faithfully.
 
-Current product work is focused on registering and validating supplied trading implementations, reproducible backtest
-specifications, ML model versioning, and robustness/adversarial evidence. This document remains the maintenance contract
-for the existing semantic-extraction subsystem, not a claim that further autonomous methodology extraction is active.
+The active agentic redesign now includes a planning-only research-backed implementation path for this limitation. It
+does not reactivate the old deterministic composite-card proposal as-is. It adds structure-preserving textbook
+ingestion, iterative multi-source research, a cited research dossier, and a separately validated implementation brief
+before code authoring. The target is specified in
+[Agentic Research Orchestration Redesign](../../plans/agentic_orchestration_redesign.md#research-backed-implementation-architecture).
+This document remains the maintenance contract for implemented semantic extraction and clearly labels the target below;
+no autonomous methodology research behavior is currently available.
 
 ## Invariants
 
@@ -231,6 +235,82 @@ open-ended interpretation only behind the same boundary:
 - failure leaves fields null and produces blockers or warnings.
 
 The adapter may propose an interpretation. It cannot approve evidence or create a canonical card by itself.
+
+## Planned Agentic Knowledge-To-Implementation Path
+
+This section defines the intended evolution of the evidence model. It is design only. Current MCP tools, schemas,
+method-card gates, and agent ownership do not change until implementation and qualification are documented elsewhere.
+
+### Why bounded model completion is not enough
+
+The existing future-adapter boundary assumes that the relevant evidence has already been selected. That is suitable for
+interpreting one bounded method, but it cannot solve a textbook framework whose identity, equations, stages,
+initialization, parameters, examples, and caveats are distributed across chapters or complementary sources. Supplying
+larger chunks also weakens precision without proving that the necessary remote context was found.
+
+The target keeps exact evidence units and claim spans, then adds model-owned navigation and synthesis around them. A
+retrieval unit remains a search container; an understanding unit is the agent's bounded assembly for one question; a
+citation unit remains an exact source element or claim span. Only the final category is evidence.
+
+### Target evidence hierarchy
+
+The current hierarchy remains valid and is extended by planning concepts rather than replaced:
+
+1. A **typed source element** preserves paragraph, heading, equation, table, figure/caption, list, code, footnote, or
+   cross-reference identity plus structural path and page/layout provenance.
+2. A **source map** exposes hierarchy, element inventory, terminology, and derived section/chapter summaries for
+   navigation. Every derived field is versioned and explicitly non-citeable.
+3. An **evidence obligation** names one question that must be resolved for implementation, such as formula semantics,
+   timing, initialization, parameter meaning, failure behavior, or validation.
+4. A **cross-source claim record** associates exact claim spans with one obligation and labels them as corroborating,
+   complementary, conflicting, edition-dependent, or unresolved.
+5. A **research dossier** assembles the method/component graph, obligation coverage, exact citations, conflicts, gaps,
+   rejected interpretations, and an implementation-readiness verdict.
+6. An **implementation brief** converts a passed dossier into typed interfaces, normalized mathematics, ordered
+   pseudocode, state and warmup behavior, parameter semantics, invariants, edge cases, and tests. It records
+   source-backed and Trader engineering decisions separately.
+
+The method card can remain a useful published description, but it is not forced to carry the entire multi-source
+research session or coding handoff. The redesign must decide whether an accepted brief references one or several method
+cards, or whether the dossier supersedes a card for composite implementation work.
+
+Exact source text and embedding input are separate. A contextualized embedding serialization may add title, edition,
+heading path, element type, table header, or caption to improve retrieval, but it is derived and versioned. Evidence
+hits must resolve to the exact canonical source element. Derived source-map summaries use a separate navigation index
+and can only lead to evidence retrieval; they cannot satisfy a citation.
+
+### Target retrieval behavior
+
+A Knowledge Research Agent works inside cumulative source, retrieval, context, token, cost, and time budgets. It:
+
+1. decomposes the implementation question into evidence obligations;
+2. inspects approved-source quality, structure, terminology, and likely coverage;
+3. uses source maps for global navigation and hybrid search for local discovery;
+4. expands exact hits by structural context, including containing sections, definitions, equations, tables, captions,
+   and explicit cross-references;
+5. selects exact claim spans and generates gap-specific follow-up queries;
+6. compares sources without treating source count as a vote;
+7. proposes a dossier only after every material obligation is supported, explicitly unresolved, or blocked.
+
+Repeated retrieval requires an unresolved obligation and expected information gain. Equivalent searches without new
+evidence, budget exhaustion, material conflict, unsuitable sources, or missing implementation detail stop the attempt.
+The model cannot fill the gap from prior knowledge.
+
+### Validation and downstream handoff
+
+Deterministic validators continue to resolve source generations, structural elements, offsets, hashes, roles, target
+bindings, suitability, and quotation bounds. A context-isolated semantic review checks entailment, cross-source
+coverage, conflict handling, and whether dossier synthesis overstates its citations. Generated source maps and model
+reasoning are never accepted as support.
+
+The Quantitative Methods Agent, not the coding agent, turns a validated dossier into the implementation brief. Strategy
+Engineering sees that accepted brief and bounded supporting resources, authors code in an isolated workspace, and
+submits it to ordinary independent admission. Source fidelity does not imply trading efficacy: backtests, prospective
+comparison, robustness, walk-forward analysis, and Evaluation remain separate downstream evidence.
+
+The capability roadmap treats structure-aware ingestion, multi-source dossier research, brief validation, and
+research-backed implementation qualification as separate frontiers. Exact MCP requests, persistence, and artifact
+schemas will be added to current contract documents only when implementation begins.
 
 ## Persistence And Observability
 

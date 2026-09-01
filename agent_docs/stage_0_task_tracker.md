@@ -152,7 +152,8 @@ The frontend interface is no longer part of the active phase. The existing Refle
 - UI-specific pages/state: `src/ui/ui/pages/index.py`, `src/ui/ui/state.py`
 
 ### Related later work
-- See Task 0.8g and `plans/task_0_8g_reflex_ui_refactor_plan.md`
+- See Task 0.8g; its former plan is available with
+  `git show e6f9563:plans/task_0_8g_reflex_ui_refactor_plan.md`.
 
 ---
 
@@ -272,7 +273,7 @@ This is frontend/interface work. It exists in the repo, but it is not part of th
 - Tests: `tests/test_backtest_api.py`
 
 ### Related plan
-- `plans/task_0_8b_breakdown.md`
+- Historical plan: `git show 39106fc:plans/task_0_8b_breakdown.md`
 
 ---
 
@@ -360,7 +361,7 @@ Deferred Beyond Phase 1
 Package-splitting and UI extraction are no longer active-phase concerns. They remain valid later-phase platform work.
 
 ### Evidence
-- Plan file: `plans/task_0_8g_reflex_ui_refactor_plan.md`
+- Historical plan: `git show e6f9563:plans/task_0_8g_reflex_ui_refactor_plan.md`
 
 ---
 

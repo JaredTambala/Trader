@@ -4,6 +4,11 @@ This is the starting point for understanding Trader's research system. The resea
 supplied executable code into deterministic, inspectable evidence. It sits above the core trading runtime and outside
 the live trading hot path.
 
+The currently qualified orchestration layer is a frozen deterministic baseline, not the target agent system. The clean
+model-backed supervisor and specialist redesign is planning-only and is defined in
+[Agentic Research Orchestration Redesign](../../plans/agentic_orchestration_redesign.md). No compatibility with the
+existing `trader_agents` control plane is required.
+
 ## What Trader Research Does
 
 The primary implemented path is:
@@ -92,9 +97,11 @@ product flow.
 | 7 | [operations.md](operations.md) | How is MCP configured, gated, persisted, inspected, and verified? |
 
 The [active capability roadmap](../../plans/research_capability_roadmap.md) records remaining work, hard dependencies,
-parallel workstreams and compact delivery lineage. The [deprecated linear tracker](../../plans/mcp_trading_research_tools_plan.md)
-is a migration pointer only. Files under [history/](history/) explain superseded designs and should not be used to infer
-current tools or import paths.
+parallel workstreams and compact delivery lineage. The
+[agentic orchestration redesign](../../plans/agentic_orchestration_redesign.md) is the target planning authority for the
+new control plane. The [deprecated linear tracker](../../plans/mcp_trading_research_tools_plan.md) is a migration pointer
+only. Files under [history/](history/) explain superseded designs and should not be used to infer current tools or import
+paths.
 
 ## Topic Reading Paths
 
@@ -108,10 +115,14 @@ current tools or import paths.
 
 ### Knowledge Ingestion And Method Cards
 
-1. [semantic_extraction.md](semantic_extraction.md)
-2. [workflows.md: Methodology Operator Workflow](workflows.md#methodology-operator-workflow)
-3. [operations.md: Methodology Operating Checklist](operations.md#methodology-operating-checklist)
-4. [architecture.md: Canonical Method Card Architecture](architecture.md#canonical-method-card-architecture)
+1. [semantic_extraction.md](semantic_extraction.md) for the implemented evidence model and planning-only evolution
+2. [Agentic Research Orchestration Redesign: Research-Backed Implementation Architecture](../../plans/agentic_orchestration_redesign.md#research-backed-implementation-architecture)
+   for the target multi-source dossier and implementation-brief workflow
+3. [Active capability roadmap: Research-backed implementation](../../plans/research_capability_roadmap.md#research-backed-implementation)
+   for status, dependencies, and acceptance evidence
+4. [workflows.md: Methodology Operator Workflow](workflows.md#methodology-operator-workflow)
+5. [operations.md: Methodology Operating Checklist](operations.md#methodology-operating-checklist)
+6. [architecture.md: Canonical Method Card Architecture](architecture.md#canonical-method-card-architecture)
 
 ### Parameter Optimisation And Review
 
@@ -132,13 +143,13 @@ training, model evaluation/registration, and drift remain the 39A-G/J roadmap.
 
 ### Higher-Level Orchestration
 
-1. [product_state.md: Implemented Orchestration At A Glance](product_state.md#implemented-orchestration-at-a-glance)
-2. [architecture.md: Higher-Level Orchestration Architecture](architecture.md#higher-level-orchestration-architecture)
-3. [workflows.md: Target Orchestrated Supplied-Strategy Workflow](workflows.md#target-orchestrated-supplied-strategy-workflow)
-4. [operations.md: Deterministic Workflow Execution](operations.md#deterministic-workflow-execution)
-5. [tool_contracts.md: Orchestration Contracts](tool_contracts.md#orchestration-contracts)
-6. [agents.md: Approved Decision Boundaries](agents.md#approved-decision-boundaries)
-7. [Active capability roadmap: Orchestration](../../plans/research_capability_roadmap.md#orchestration)
+1. [Agentic Research Orchestration Redesign](../../plans/agentic_orchestration_redesign.md) for the planning-only target
+2. [Agent Designs](../../plans/agent_designs.md) for accepted and pending per-agent architecture decisions
+3. [product_state.md: Active Agentic Redesign](product_state.md#active-agentic-redesign) for the current/target boundary
+4. [product_state.md: Implemented Orchestration At A Glance](product_state.md#implemented-orchestration-at-a-glance) for the frozen implementation
+5. [architecture.md: Higher-Level Orchestration Architecture](architecture.md#higher-level-orchestration-architecture) for current code
+6. [operations.md: Deterministic Workflow Execution](operations.md#deterministic-workflow-execution) for current operation
+7. [Active capability roadmap: Active Work Graph](../../plans/research_capability_roadmap.md#active-work-graph)
 
 ## Document Roles
 
@@ -177,4 +188,5 @@ When documentation and implementation disagree, inspect these current sources an
 - Resumable workflow state: `src/trader_agents/checkpointing/`.
 - Fixed workflow compilation and MCP execution: `src/trader_agents/orchestration/`.
 - Current capability and qualification baseline: `docs/research_agents/product_state.md`.
+- Target model-backed coordinator and specialist design: `plans/agentic_orchestration_redesign.md`.
 - Remaining work and dependencies: `plans/research_capability_roadmap.md`.

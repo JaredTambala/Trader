@@ -357,7 +357,7 @@ Repo evidence:
 - `tests/test_backtest_api.py`
 
 Related plan:
-- `plans/task_0_8b_breakdown.md`
+- Historical plan: `git show 39106fc:plans/task_0_8b_breakdown.md`
 
 ---
 
@@ -378,7 +378,7 @@ Reason:
 - package extraction and UI/core separation are valid later-phase cleanup, not active-phase goals
 
 Related plan:
-- `plans/task_0_8g_reflex_ui_refactor_plan.md`
+- Historical plan: `git show e6f9563:plans/task_0_8g_reflex_ui_refactor_plan.md`
 
 ---
 

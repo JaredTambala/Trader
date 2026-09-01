@@ -3,6 +3,11 @@
 Trader separates core trading runtime code from research tooling, MCP transport, and LangGraph agent orchestration.
 Research agents produce deterministic artifacts for inspection and backtesting; they do not control live trading.
 
+This document describes the current frozen implementation. It is not the target control-plane design. The planning-only
+model-backed coordinator and specialist replacement is defined in
+[Agentic Research Orchestration Redesign](../../plans/agentic_orchestration_redesign.md); no compatibility with the
+current `trader_agents` architecture is required.
+
 ## Layer Model
 
 | Package | Responsibility | Must not own |

@@ -7,7 +7,7 @@ capabilities remain open.
 It does not define request schemas, repeat historical implementation narratives, or prescribe one linear delivery
 sequence. Use the [capability roadmap](../../plans/research_capability_roadmap.md) for remaining work and dependencies.
 
-Last reviewed: 2026-08-23.
+Last reviewed: 2026-08-28.
 
 ## How To Read Capability State
 
@@ -49,7 +49,114 @@ refs, and resumes without repeating accepted actions. A bounded composition runn
 an operational Experiment Design specialist, operator-owned protocol approval and the fixed workflow. Experiment
 Design consumes a complete structured request over canonical inputs, persists one immutable proposal, and cannot
 approve or execute it. Quantitative Methods, ML, general Robustness and final Evaluation specialist routes remain
-unimplemented.
+unimplemented; there is no separate Knowledge Research route.
+
+None of these components currently invokes a language model, chooses tools from model output, interprets a free-form
+brief, or replans from observations. The controlled surface is therefore a frozen deterministic orchestration baseline,
+not the target agent system.
+
+## Active Agentic Redesign
+
+The target agent control plane is being redesigned from first principles in
+[Agentic Research Orchestration Redesign](../../plans/agentic_orchestration_redesign.md). Implementation has not begun.
+No compatibility is required with existing `trader_agents` imports, graphs, checkpoints, tasks, policies, catalogs, or
+fixed workflow state.
+
+The proposed system uses a model-backed Research Coordinator supervising context-isolated specialist agents. Models
+will own research planning, delegation, tool choice, replanning, and synthesis; deterministic Trader and research
+services will continue to own data mutation, code admission, backtests, accounting, optimisation, artifact validation,
+policy enforcement, and broker isolation. LangChain/LangGraph is the recommended primary runtime subject to a real
+framework spike, DSPy is reserved for evaluation-driven program optimization, MCP remains the capability boundary, and
+MLflow covers both complex-signal lifecycle and agent trace/evaluation lifecycle.
+
+Every specialist return will rejoin the coordinator. The coordinator is expected to inspect its canonical evidence and
+choose explicitly whether to advance, request revision, revisit an earlier responsibility, create a separately tracked
+research branch, request operator authority, conclude, or fail closed. Hyperparameter and asset changes must stay
+inside the brief and prospective protocol or create new approved lineage; equivalent low-information loops, exhausted
+budgets, evaluation contamination, and decisions outside coordinator authority terminate or interrupt rather than
+silently continuing.
+
+The redesign now also has a planning decision for research-backed implementations. A Knowledge Research Agent will use
+bounded iterative retrieval over approved, structure-preserved textbook sources to produce a multi-source research
+dossier with exact claim-span provenance, conflicts, and gaps. A Quantitative Methods Agent will turn only a validated
+dossier into an implementation brief that separates source-backed semantics from Trader engineering choices. Strategy
+Engineering will author code from an accepted brief, after which normal admission and experimental evidence still
+apply. Model-generated source maps and summaries are navigation aids, never citations. Missing or conflicting material
+detail blocks or branches the method rather than being guessed. The complete target is in
+[Research-Backed Implementation Architecture](../../plans/agentic_orchestration_redesign.md#research-backed-implementation-architecture).
+
+The active roadmap now places the design/evaluation charter and framework spike ahead of production agent work. The
+controlled `verification-orchestration-v1-freeze` record remains valid evidence only for the frozen deterministic
+surface.
+
+Design review has accepted the standard architecture record required for every agent and the complete Research
+Coordinator boundary, including its authority, context, capability surface, model-owned control loop, single-writer
+state, evidence return, termination, evaluation, and parallel scheduling rules. Specialist designs and the subsequent
+shared agent-pattern review remain pending, so the overall charter is still `in_progress`. The durable working record is
+[Agent Designs](../../plans/agent_designs.md). This is planning
+evidence only and does not make a model-backed agent operational.
+
+The Data Research Agent architecture review is now active. Its accepted working requirements cover multi-asset
+composite scope, model-selected use of an evolving role-scoped MCP data catalogue, readiness assessment, and bounded
+backfill inside a pre-approved acquisition envelope. Work outside that envelope returns through the coordinator for
+operator authority. Its remaining architecture record is not yet accepted.
+
+The Knowledge Research Agent review is now active in the separate
+[Knowledge Research design](../../plans/agent_designs/knowledge_research.md). The existing iterative retrieval,
+exact-evidence, cross-source dossier, and fail-closed gap decisions have moved into that build-lifecycle record;
+model-selected use of MCP source registration and ingestion inside a session-approved source envelope is now accepted.
+External acquisition, licensing, and corpus admission remain operator decisions. The remaining Knowledge architecture
+record is not yet accepted.
+
+The Quantitative Methods Agent review has started in its own
+[Quantitative Methods design](../../plans/agent_designs/quantitative_methods.md). Its responsibility is now accepted as
+one pre-code, outcome-blind translation from validated research dossier to implementation-ready quantitative brief.
+Experiment statistics, execution, conformance diagnostics, and result interpretation belong to other agents or
+deterministic services. Behaviorally material Trader adaptations belong explicitly in the brief, while non-semantic
+software design belongs to Strategy Engineering. The remaining Quantitative Methods architecture record is not yet
+accepted.
+
+The Strategy Engineering Agent review has started in its own
+[Strategy Engineering design](../../plans/agent_designs/strategy_engineering.md). Isolated model-selected coding through
+MCP, content-addressed candidate packaging, and independent admission are established constraints. The acceptable
+knowledge-backed and operator-specified entry contracts are both accepted and normalize into a typed build contract.
+Every target coding attempt must first use MCP to discover and compare relevant maintained or previously admitted
+implementations, then explicitly reuse, adapt, or author anew. The current template lists and
+registration/validation tools do not yet provide full versioned implementation ingestion, semantic/typed search,
+bounded retrieval, or brief-compatibility evidence. Only exact maintained or admitted versions are eligible for direct
+reuse; adaptations and untrusted references create new lineage and pass full admission. The target sandbox is now
+bounded as an ephemeral container with a pinned read-only Trader snapshot, separate candidate writes, no general
+network or credentials, MCP-only commands, policy-gated pinned dependencies, resource limits, and no repository or
+deployment authority. Normal authoring is outcome-blind; only a coordinator-authorized defect investigation may expose
+bounded execution traces, and any behavioral change requires a successor build contract and research branch. Concrete
+sandbox mechanics remain spike-owned. Admission repair is bounded by candidate-attempt, tool, time, and compute budgets;
+every revision needs an actionable finding and material source change, while equivalent failures and policy or contract
+problems terminate or escalate.
+
+The Experiment Design Agent review has started in its separate
+[Experiment Design design](../../plans/agent_designs/experiment_design.md). Prospective immutable protocols, explicit
+material assumptions, operator approval, and successor-protocol lineage remain foundational. Experiment Design owns
+the research claim, protected-evidence roles, stage gates, overall budgets, and the authority envelope for later work.
+Detailed attack and walk-forward plan design belongs to the Robustness & Walk-Forward Agent, which synthesizes
+coordinator-supplied canonical outputs from relevant specialists and records whether its plan is prospective, staged-
+prospective, or exploratory. The division between the coordinator's research-question authority and Experiment
+Design's hypothesis-formulation authority remains under review. A deterministically validated RWFO plan may advance
+inside the approved experiment envelope without another operator decision; material assumptions, scope, protected-data
+access, cost, or other out-of-envelope decisions interrupt through the coordinator for explicit authority. RWFO
+invokes plan-pinned deterministic attack/fold execution capabilities. There is no target Experiment Execution Agent:
+the coordinator invokes a specialized deterministic MCP capability for main-protocol baseline, comparison, and
+optimisation execution. Code owns protocol compilation, job scheduling, resource enforcement, retries, reconciliation,
+and canonical persistence because these operations carry no independent research judgment.
+
+The selected implementation focus is now the first Coordinator–Data–Strategy agentic slice. It will prove real-model
+agenda formation, specialist delegation, multi-asset Data tool use and bounded backfill, implementation-catalogue
+comparison, isolated reuse/adapt/author decisions, failed-admission revision, canonical evidence return, interrupts,
+restart, and fail-closed behavior. The provisional cutoff is an admitted strategy/risk candidate; Experiment Design and
+coordinator-invoked deterministic experiment execution follow only after this slice is qualified.
+
+The ML Signal Research Agent and active ML delivery are intentionally parked. Existing controlled ML runtime artifacts
+and behavior remain part of current product state. Roadmap `ready` labels on individual ML capabilities continue to
+describe dependency state, not selected priority; no new ML agent or ML capability work blocks the non-ML slice.
 
 ## Product Authority
 
@@ -92,7 +199,7 @@ orchestrated canonical write through a contextual artifact-store boundary.
 | Prediction monitoring and drift | absent | none | deferred | Prediction events exist, but summarisation, realized-target joining and drift reports do not. |
 | Walk-forward optimisation | absent | none | deferred | Provider-neutral optimisation can be reused inside folds, but fold planning, locked OOS execution, stitching and audit are not implemented. |
 | Attribution and broad performance critique | partial | focused | partially registered | Backtest and optimisation reports contain substantial measures; general attribution and skeptical evaluation tools remain open. |
-| Higher-level orchestration | implemented for the supplied-implementation/Data/design path | controlled | bounded composition library plus registered persistence tools | A resumable runner executes explicit Data and Experiment Design tasks through code-owned routes, persists an immutable proposal, pauses for operator approval, then enters the fixed workflow without replaying accepted work. The exact bounded surface is accepted under `controlled_orchestration_v1`; Methods, ML, general robustness and final review composition remain open. |
+| Higher-level orchestration | implemented for the supplied-implementation/Data/design path | controlled | frozen bounded composition library plus registered persistence tools | The exact deterministic surface is accepted under `controlled_orchestration_v1`, but it has no model-backed planning or tool use and is not the target agent architecture. The clean redesign is still planning-only. |
 | Live or paper runtime mutation by research agents | intentionally absent | not applicable | prohibited | Research agents cannot place orders, mutate brokers, clear halts or deploy into an active runtime. |
 
 ## Implemented Orchestration At A Glance
@@ -234,18 +341,27 @@ There is no registered MCP-only path producing the prerequisite model and featur
 
 ## Agent State
 
+The current operational column describes the frozen implementation. The target column describes the clean model-backed
+replacement, not an extension of the existing graphs.
+
 | Agent | Current operational state | Target state | Main gap |
 | --- | --- | --- | --- |
-| Data Agent | A deterministic resumable specialist graph validates explicit scope, optionally performs separately approved sample loading, captures an exact canonical snapshot, revalidates both refs and returns manifest/quality handoffs or typed issues. The default composition catalog executes it before protocol approval. | Reliable specialist subgraph composed into every workflow that requires new Data evidence. | Broader calendar-aware quality; arbitrary provider backfill is deliberately not a replay-safe specialist action. |
-| Experiment Design Agent | A deterministic resumable graph validates a complete design task, calls one registered proposal operation, revalidates the canonical proposal and returns a digest-pinned handoff. A pure helper applies exact operator decisions to produce the unchanged approved or blocked protocol. | Formulate an explicit, approval-aware experiment protocol from supplied strategy/risk implementations and Data requirements. | The explicit Data/design composition path has controlled fresh-process qualification. Free-form brief interpretation and dynamic binding from a new Data result remain intentionally absent. |
-| Quantitative Methods Agent | Allowlist, approved decision boundary and deterministic MCP tools exist. No complete specialist graph coordinates them. | Optional source/evidence/methodology and computational-method producer that returns canonical refs and blockers. | Bounded planning and handoff graph; composite-method representation remains deferred. It is not a prerequisite for supplied implementations. |
-| Research Coordinator | A deterministic policy selects the first unaccepted explicit specialist task, requests objective/protocol approvals or unresolved canonical inputs, uniquely selects the registered supplied-implementation template and reports matching terminal outcomes. Composition executes those decisions through the Data and Experiment Design routes. | Compose additional bounded specialist workflows while preserving the same narrow decision boundary. | Optional producer, general Robustness and final Evaluation graphs and routes; Data/design-to-fixed-workflow composition is implemented. |
-| ML Agent | Ownership and deployment MCP tools exist; no ML Agent graph exists. | Optional producer coordinating point-in-time features, training, evaluation, registry evidence, deployment validation and monitoring for model-backed strategies. | Deterministic ML lifecycle tools must be built before the graph can be useful. |
-| Evaluation Agent | Optimisation Evaluation service/tool exists; no Evaluation graph exists. | Determine what the complete data, baseline, selection, holdout, cost, risk and robustness evidence supports. | Broader evaluation tools and specialist graph. |
-| Adversarial Agent | Optimisation audit planning and judgment tools exist; no Adversarial graph exists. | Robustness specialist that identifies attacks and reports sensitivity findings without issuing the overall strategy-quality verdict. | General robustness tools and specialist graph. |
-| Hypothesis Agent | Legacy identity/allowlist metadata only. | Not required by the current supplied-strategy workflow; reconsider only when it has a decision not represented in the experiment protocol. | No active core-agent work. |
+| Data Agent | A deterministic resumable specialist graph validates explicit scope, optionally performs separately approved sample loading, captures an exact canonical snapshot, revalidates both refs and returns manifest/quality handoffs or typed issues. The default composition catalog executes it before protocol approval. | Model-backed Data Research Agent that chooses discovery, quality, ingestion, and remediation actions within a role-scoped MCP surface. | Model policy, context/tool program, broader calendar-aware quality, and safely gated provider acquisition. |
+| Experiment Design Agent | A deterministic resumable graph validates a complete design task, calls one registered proposal operation, revalidates the canonical proposal and returns a digest-pinned handoff. A pure helper applies exact operator decisions to produce the unchanged approved or blocked protocol. | Model-backed Experiment Design Agent that converts briefs, candidates, and Data slices into prospective experiment charters with protected-evidence roles, stage gates, specialist authority envelopes, and material approval requests. | Free-form interpretation, staged evidence contracts, scientific replanning, structured agent program, and behavioral evaluation. |
+| Knowledge Research Agent | No separate current identity. Full-document source ingestion, hybrid retrieval, bounded evidence dereferencing, exact claim spans, and method artifacts are currently assigned to the deterministic Quantitative Methods surface. | Model-backed source investigator that decomposes evidence obligations, navigates structure, iteratively retrieves and expands approved evidence, reconciles sources, and returns a validated research dossier. | Structure-preserving parsing, source maps/resources, dossier artifacts and validation, role-scoped MCP, model program, and textbook benchmark. |
+| Quantitative Methods Agent | Allowlist, approved decision boundary and deterministic MCP tools exist. No complete specialist graph coordinates them. | Pre-code, outcome-blind specialist that converts a passed dossier into a validated implementation brief with source-backed and engineering decisions separated. | Model policy, brief contract/validation, role-scoped MCP composition, and measured multi-source handoff quality. |
+| Research Coordinator | A deterministic policy selects the first unaccepted explicit specialist task, requests objective/protocol approvals or unresolved canonical inputs, uniquely selects the registered supplied-implementation template and reports matching terminal outcomes. Composition executes those decisions through the Data and Experiment Design routes. | User-facing model-backed supervisor that creates/revises agendas, delegates context-isolated work, requests approvals, reconciles findings, and synthesizes cited conclusions. | The entire existing control plane is replaced; framework spike, runtime foundation, specialist agents, and behavioral qualification are absent. |
+| Strategy Engineering Agent | No current agent. Implementation admission accepts externally supplied code. | Model-backed coding specialist that reuses, authors, tests, revises, and submits strategy/risk candidates from an isolated workspace. | Coding Workspace MCP, sandbox policy, model program, and independent admission loop. |
+| ML Agent | Ownership and deployment MCP tools exist; no ML Agent graph exists. | Parked future ML Signal Research Agent coordinating point-in-time features, training, evaluation, MLflow registry evidence, runtime parity, and drift. | Intentionally deferred until the first non-ML agentic slice is qualified; deterministic ML lifecycle tools and model-backed qualification remain future gaps. |
+| Evaluation Agent | Optimisation Evaluation service/tool exists; no Evaluation graph exists. | Independent model-backed critic of leakage, selection, costs, robustness, completeness, and alternative explanations. | Broader attribution/evaluation tools, isolated context, agent program, and evidence-grounding evaluations. |
+| Adversarial Agent | Optimisation audit planning and judgment tools exist; no Adversarial graph exists. | Robustness & Walk-Forward Agent that synthesizes multi-agent evidence into a staged plan, operates it after approval, inspects sensitivity, and requests successors without issuing the final verdict. | General robustness and WFO tools, canonical multi-agent input contract, staged-plan schema, model policy, and behavioral qualification. |
+| Hypothesis Agent | Legacy identity/allowlist metadata only. | No initial standalone agent; hypothesis formation belongs to Experiment Design with Strategy Engineering and Quantitative Methods support. | Reconsider only if isolated divergent ideation produces measured benefit. |
 
-## Target Decision Architecture
+## Frozen Decision Architecture
+
+The following decision map describes the controlled deterministic surface and its original intended extension. It is
+retained to explain current authority and artifacts, but it is superseded as a target by
+[Agentic Research Orchestration Redesign](../../plans/agentic_orchestration_redesign.md).
 
 Agent boundaries are defined by exclusive research decisions, not by Python package boundaries or by which tools an
 identity can call:
@@ -277,12 +393,11 @@ Canonical evidence follows bounded-context authority:
 Artifact provenance must distinguish `domain_owner`, `producer_tool`, `requested_by` and `actor`. An agent may request
 or route an artifact without becoming its domain owner.
 
-## Target Orchestration Position
+## Target Orchestration Position (Frozen)
 
-Orchestration is a cross-cutting capability, not a final delivery slice. It can begin over the deterministic tools that
-already exist while ML, robustness and review capabilities continue independently.
+This was the deterministic target used to construct the frozen surface. It is not the active multi-agent design.
 
-The target control flow is:
+The frozen intended control flow was:
 
 ```text
 operator research brief with supplied strategy/risk refs
@@ -300,7 +415,7 @@ operator research brief with supplied strategy/risk refs
   -> Research Coordinator returns refs, blockers and permitted next actions
 ```
 
-This diagram is the target decision architecture. The implemented composition runner can execute caller-built tasks
+This diagram explains the frozen decision architecture. The implemented composition runner can execute caller-built tasks
 through registered specialist routes, and the default catalog currently provides Data and Experiment Design. It
 resolves the canonical proposal, pauses for operator decisions, validates the unchanged approved protocol, selects the registered fixed template and returns its terminal outcome to the
 Coordinator. It does not infer a task from objective prose, and unavailable specialist routes remain explicit
@@ -406,8 +521,12 @@ trading and live trading.
 
 ## Known Product Limits
 
+- No current `trader_agents` component invokes an LLM or satisfies the active definition of a model-backed agent. The
+  replacement remains planning-only.
 - Research tools do not place live orders or mutate paper/live sessions.
-- Complex source-discovered composite methodologies are not represented faithfully.
+- Complex source-discovered composite methodologies are not represented faithfully. Current page-text extraction and
+  local deterministic span assembly do not provide structure-aware, iterative, multi-source dossier research or an
+  implementation-brief handoff; the active design is planning-only.
 - ML training, model evaluation, registry promotion and monitoring are not an end-to-end toolchain.
 - General robustness and walk-forward optimisation are not implemented.
 - The supplied-implementation composition path still requires a caller-built approved objective and explicit specialist
@@ -419,6 +538,7 @@ trading and live trading.
 
 ## Canonical References
 
+- Target agent control-plane design: [Agentic Research Orchestration Redesign](../../plans/agentic_orchestration_redesign.md)
 - Remaining work and dependency graph: [research_capability_roadmap.md](../../plans/research_capability_roadmap.md)
 - Package and authority architecture: [architecture.md](architecture.md)
 - Agent identities, decision boundaries and artifact authority: [agents.md](agents.md)

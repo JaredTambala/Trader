@@ -8,6 +8,11 @@ Ownership definitions do not imply that every named agent has an operational gra
 [product_state.md](product_state.md#agent-state) for current graph maturity and the
 [capability roadmap](../../plans/research_capability_roadmap.md#target-agent-capability-map) for remaining agent work.
 
+This document remains authoritative for the current frozen identities, allowlists, and artifact authority only. The
+planning-only model-backed supervisor and specialist responsibilities are defined in
+[Agent Designs](../../plans/agent_designs.md). They replace rather than
+extend the current agent control plane, and become current here only when implemented.
+
 ## Agent Map
 
 | Agent | Mission | Current tool-produced outputs | Current MCP/tool access |
