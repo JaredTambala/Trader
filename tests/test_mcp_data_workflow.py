@@ -26,6 +26,7 @@ from trader_mcp.constants import (
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
 from trader_research.data import DataEnsureLoadedPolicy, DataEnsureLoadedRequest
+from trader_research.foundation import InMemoryResearchArtifactStore
 
 
 SAMPLE_CSV = Path("examples/data/demo_stock_1min.csv")
@@ -105,7 +106,11 @@ def test_mcp_default_environment_rejects_sample_loading(tmp_path: Path) -> None:
     async def _run() -> None:
         result = await server.call_tool(
             DATA_ENSURE_LOADED_TOOL,
-            _data_args(mode="sample", dry_run=False),
+            _data_args(
+                mode="sample",
+                dry_run=False,
+                operation_id="sample-operation-1",
+            ),
         )
 
         assert result.isError is True
@@ -118,13 +123,24 @@ def test_mcp_default_environment_rejects_sample_loading(tmp_path: Path) -> None:
 
 def test_mcp_explicit_policy_allows_sample_loading(tmp_path: Path) -> None:
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
+    journal = InMemoryResearchArtifactStore()
     environment = replace(load_local_environment("env.template"), allow_data_loading=True)
-    server = create_server(environment, event_store_provider=lambda: store)
+    server = create_server(
+        environment,
+        event_store_provider=lambda: store,
+        research_artifact_store_provider=lambda: journal,
+    )
 
     async def _run() -> None:
         result = await server.call_tool(
             DATA_ENSURE_LOADED_TOOL,
-            _data_args(mode="sample", dry_run=False),
+            _data_args(
+                mode="sample",
+                dry_run=False,
+                operation_id="sample-operation-1",
+                requested_by="test-session",
+                actor="Data Research Agent",
+            ),
         )
 
         assert result.isError is False
@@ -162,6 +178,7 @@ def test_mcp_backfill_dry_run_plans_without_writing_rows(tmp_path: Path) -> None
 
 def test_mcp_backfill_non_dry_run_runs_through_injected_tool_policy(tmp_path: Path) -> None:
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
+    journal = InMemoryResearchArtifactStore()
     environment = replace(load_local_environment("env.template"), allow_data_loading=True)
     calls: list[DataEnsureLoadedRequest] = []
 
@@ -173,13 +190,29 @@ def test_mcp_backfill_non_dry_run_runs_through_injected_tool_policy(tmp_path: Pa
     server = create_server(
         environment,
         event_store_provider=lambda: store,
+        research_artifact_store_provider=lambda: journal,
         data_loading_policy=DataEnsureLoadedPolicy(allow_data_loading=True, backfill_runner=_runner),
     )
 
     async def _run() -> None:
+        planned = await server.call_tool(
+            DATA_ENSURE_LOADED_TOOL,
+            _data_args(mode="backfill", dry_run=True),
+        )
+        assert planned.structuredContent is not None
+        plan_id = planned.structuredContent["data"]["load_result"][
+            "backfill_plan"
+        ]["plan_id"]
         result = await server.call_tool(
             DATA_ENSURE_LOADED_TOOL,
-            _data_args(mode="backfill", dry_run=False),
+            _data_args(
+                mode="backfill",
+                dry_run=False,
+                acquisition_plan_id=plan_id,
+                operation_id="backfill-operation-1",
+                requested_by="test-session",
+                actor="Data Research Agent",
+            ),
         )
 
         assert result.isError is False
@@ -267,7 +300,13 @@ def test_stdio_mcp_complete_data_workflow_evidence() -> None:
                     await session.call_tool(DATA_SUMMARIZE_QUALITY_TOOL, _data_args()),
                     await session.call_tool(
                         DATA_ENSURE_LOADED_TOOL,
-                        _data_args(mode="sample", dry_run=False),
+                        _data_args(
+                            mode="sample",
+                            dry_run=False,
+                            operation_id="sample-operation-1",
+                            requested_by="test-session",
+                            actor="Data Research Agent",
+                        ),
                     ),
                     await session.call_tool(DATA_SUMMARIZE_QUALITY_TOOL, _data_args()),
                 ]

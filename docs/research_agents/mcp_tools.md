@@ -71,7 +71,7 @@ LangGraph checkpointer, not to MCP or the canonical research store.
 | `data_get_inventory` | `read_only` | `dataset_manifest` payload. | Reads bounded local/event-store inventory only. |
 | `data_summarize_quality` | `read_only` | `data_quality_report` payload. | Reports gaps, coverage, and completeness. |
 | `data_create_research_snapshot` | `local_mutating` | Canonical `dataset_manifest` and `data_quality_report` refs. | Runs the same exact inventory/quality scope and persists both Data-domain records for resumable workflows. |
-| `data_ensure_loaded` | `local_mutating` | Load/backfill evidence plus dataset/quality payloads. | Actual sample/backfill mutation requires `TRADER_MCP_ALLOW_DATA_LOADING=true`. |
+| `data_ensure_loaded` | `local_mutating` | Costed acquisition plan or canonical `data_load_evidence` plus dataset/quality payloads. | Provider backfill requires a matching prior dry-run `acquisition_plan_id`, an estimate within the session `max_loading_cost`, and runtime-bound operation/requester/actor lineage. Actual sample/backfill mutation also requires `TRADER_MCP_ALLOW_DATA_LOADING=true` and a canonical artifact store. Prepared operations never automatically repeat a provider call: complete post-load evidence recovers a missing terminal receipt, while ambiguous state fails closed for reconciliation. |
 
 ## Quantitative Methods Tools
 
@@ -176,11 +176,11 @@ assumption, register the approved protocol, execute an experiment or overwrite c
 | `coding_read_candidate_file` | `read_only` | Bounded candidate text. | Reads only supported files inside the exact workspace. |
 | `coding_resolve_dependencies` | `read_only` | Dependency-policy verdict. | Validates against the pinned image allowlist and never installs packages. |
 | `coding_run_check` | `local_mutating` | Bounded check receipt. | Runs only named compile, Ruff, or pytest commands in a networkless, resource-bounded container; no host fallback exists. |
-| `coding_package_candidate` | `read_only` | Inert candidate package. | Returns exact source and file hashes without importing or executing the candidate. |
+| `coding_package_candidate` | `read_only` | Inert candidate package identity, lineage, source hash, and file manifest. | Retains complete source in the immutable service-owned package without returning it through the model-facing envelope or importing/executing it. |
 | `coding_destroy_workspace` | `local_mutating` | Destruction receipt and replay status. | Removes only the exact disposable workspace and retains a source-free tombstone so exact cleanup replay is safe. |
-| `research_register_strategy_implementation` | `local_mutating` | `implementation_version`. | Content-addressed source; methodology provenance is optional. |
+| `research_register_strategy_implementation` | `local_mutating` | `implementation_version`. | General callers provide direct source or a candidate package ID. Strategy Engineering may provide only the exact package ID; MCP resolves source internally and returns a source-free result. |
 | `research_validate_strategy_implementation` | `local_mutating` | `implementation_validation_report`. | Static safety, interface, parameters, and deterministic fixture. |
-| `research_register_risk_manager_implementation` | `local_mutating` | `implementation_version`. | Same intake for supplied or produced risk code. |
+| `research_register_risk_manager_implementation` | `local_mutating` | `implementation_version`. | Same direct-source or deterministic package-resolution intake for supplied or produced risk code. |
 | `research_validate_risk_manager_implementation` | `local_mutating` | `implementation_validation_report`. | Backtest-only deterministic risk fixture. |
 
 Maintained-template rows are discovery hints and are never directly reusable. Canonical versions become direct-reuse

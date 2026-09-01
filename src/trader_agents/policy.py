@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from hashlib import sha256
 from typing import Any
 
 from trader_mcp.contracts import SideEffect
@@ -255,6 +254,8 @@ class ToolPolicy:
                 "data_loading_not_approved",
                 "composite Data scope does not approve loading",
             )
+        if proposal.tool_name == "data_ensure_loaded":
+            _validate_data_acquisition(proposal, context, scope)
         if proposal.tool_name == "data_create_research_snapshot":
             _require_argument(
                 proposal.arguments,
@@ -393,19 +394,16 @@ class ToolPolicy:
                 "implementation registration requires an exact candidate package",
             )
         if name.startswith("research_register_"):
-            source_code = proposal.arguments.get("source_code")
-            if not isinstance(source_code, str):
+            if proposal.arguments.get("source_code") is not None:
                 raise PolicyViolation(
-                    "packaged_source_required",
-                    "implementation registration requires packaged source text",
+                    "direct_registration_source_forbidden",
+                    "Strategy Engineering must register the immutable package identity, not relay source text",
                 )
-            if sha256(source_code.encode("utf-8")).hexdigest() != state.get(
-                "package_source_hash"
-            ):
-                raise PolicyViolation(
-                    "package_source_mismatch",
-                    "registration source does not match the accepted package",
-                )
+            _require_argument(
+                proposal.arguments,
+                "candidate_package_id",
+                str(state.get("package_id") or ""),
+            )
             _require_argument(proposal.arguments, "name", contract.name)
             dependencies = set(
                 _string_sequence(
@@ -513,6 +511,76 @@ class ToolPolicy:
                     "model_identity_mismatch",
                     "decision receipt model does not match the session",
                 )
+
+
+def _validate_data_acquisition(
+    proposal: ToolCallProposal,
+    context: PolicyContext,
+    scope: CompositeDataScope,
+) -> None:
+    """Require costed dry-run evidence before provider-backed mutation."""
+    arguments = proposal.arguments
+    mode = str(arguments.get("mode") or "").strip().lower()
+    dry_run = arguments.get("dry_run", True)
+    if not isinstance(dry_run, bool):
+        raise PolicyViolation(
+            "invalid_tool_arguments",
+            "data_ensure_loaded dry_run must be a boolean",
+        )
+    mutating = mode == "sample" or (mode == "backfill" and not dry_run)
+    if mutating:
+        _require_argument(
+            arguments,
+            "requested_by",
+            context.session.session_id,
+        )
+        _require_argument(arguments, "actor", "Data Research Agent")
+        if not str(arguments.get("operation_id") or "").strip():
+            raise PolicyViolation(
+                "data_operation_id_required",
+                "mutating Data loading requires a runtime-bound operation ID",
+            )
+    if mode != "backfill":
+        return
+    if dry_run:
+        if arguments.get("acquisition_plan_id") is not None:
+            raise PolicyViolation(
+                "unexpected_acquisition_plan",
+                "dry-run planning cannot claim a prior acquisition plan",
+            )
+        return
+    plan = context.runtime_state.get("acquisition_plan")
+    if not isinstance(plan, Mapping):
+        raise PolicyViolation(
+            "acquisition_plan_required",
+            "provider-backed loading requires a successful matching dry run",
+        )
+    plan_id = str(plan.get("plan_id") or "")
+    _require_argument(arguments, "acquisition_plan_id", plan_id)
+    estimated_cost = plan.get("estimated_cost")
+    if (
+        isinstance(estimated_cost, bool)
+        or not isinstance(estimated_cost, (int, float))
+        or estimated_cost < 0
+    ):
+        raise PolicyViolation(
+            "invalid_acquisition_estimate",
+            "accepted acquisition plan has no valid estimated cost",
+        )
+    if scope.max_loading_cost is None:
+        raise PolicyViolation(
+            "loading_cost_envelope_required",
+            "provider-backed loading requires max_loading_cost",
+        )
+    if float(estimated_cost) > scope.max_loading_cost:
+        raise PolicyViolation(
+            "loading_cost_exceeded",
+            "estimated acquisition cost exceeds the approved envelope",
+            details={
+                "estimated_cost": float(estimated_cost),
+                "max_loading_cost": scope.max_loading_cost,
+            },
+        )
 
 
 @dataclass

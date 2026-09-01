@@ -23,6 +23,7 @@ from trader_agents import (
     AgenticSliceResult,
     AgendaTaskProposal,
     BudgetLedger,
+    BudgetUsage,
     CompositeDataScope,
     CanonicalEvidenceRef,
     CoordinatorAgenda,
@@ -171,7 +172,7 @@ def test_role_catalogue_and_policy_fail_closed() -> None:
         session=session,
         role=AgentRole.DATA_RESEARCH,
         phase=AgentPhase.INVESTIGATE,
-        program_id="data-research-v1",
+        program_id="data-research-v2",
         tool_catalogue=catalogue,
         usage=BudgetLedger(session.budget).usage,
         runtime_state={},
@@ -195,6 +196,80 @@ def test_role_catalogue_and_policy_fail_closed() -> None:
     with pytest.raises(PolicyViolation) as raised:
         ToolPolicy().authorize(proposal, context)
     assert raised.value.code == "data_scope_expansion"
+
+
+def test_data_backfill_requires_costed_matching_dry_run_plan() -> None:
+    """Provider mutation cannot bypass the approved acquisition cost envelope."""
+    session = _session()
+    catalogue = first_slice_tool_catalogue()
+    scope = composite_data_scope_from_session(session)
+    delegation = build_delegation(
+        session_id=session.session_id,
+        branch_id="data-branch",
+        task=_task("data", "data_research", mutation_requested=True),
+        required_input_refs=[],
+        permitted_side_effects=["read_only", "local_mutating"],
+        reserved_model_calls=4,
+        reserved_tool_calls=8,
+        reserved_tokens=4_000,
+        attempt=1,
+    )
+    arguments = {
+        "symbols": ["BTC/USD", "ETH/USD"],
+        "asset_class": "crypto",
+        "timeframe": "1h",
+        "start": "2024-01-01T00:00:00Z",
+        "end": "2024-06-30T23:00:00Z",
+        "mode": "backfill",
+        "dry_run": False,
+        "acquisition_plan_id": "plan-1",
+        "operation_id": "runtime-bound-operation",
+        "requested_by": session.session_id,
+        "actor": "Data Research Agent",
+    }
+    proposal = ToolCallProposal(
+        call_id="backfill-1",
+        tool_name="data_ensure_loaded",
+        arguments=arguments,
+        purpose="Execute the approved matching acquisition plan.",
+        expected_evidence=["post-load inventory and quality"],
+        mutation_reason="Fill the approved Data gap.",
+    )
+
+    def _context(estimated_cost: float | None) -> PolicyContext:
+        lifecycle = (
+            {}
+            if estimated_cost is None
+            else {
+                "acquisition_plan": {
+                    "plan_id": "plan-1",
+                    "estimated_cost": estimated_cost,
+                }
+            }
+        )
+        return PolicyContext(
+            session=session,
+            role=AgentRole.DATA_RESEARCH,
+            phase=AgentPhase.REMEDIATE,
+            program_id="data-research-v2",
+            tool_catalogue=catalogue,
+            usage=BudgetUsage(),
+            runtime_state=lifecycle,
+            loop_fingerprints={},
+            delegation=delegation,
+            data_scope=scope,
+        )
+
+    with pytest.raises(PolicyViolation) as missing:
+        ToolPolicy().authorize(proposal, _context(None))
+    assert missing.value.code == "acquisition_plan_required"
+
+    with pytest.raises(PolicyViolation) as expensive:
+        ToolPolicy().authorize(proposal, _context(10.01))
+    assert expensive.value.code == "loading_cost_exceeded"
+
+    authorized = ToolPolicy().authorize(proposal, _context(10.0))
+    assert authorized.proposal.arguments["acquisition_plan_id"] == "plan-1"
 
 
 def test_scheduler_parallelizes_ready_work_and_honors_hard_joins() -> None:
@@ -396,7 +471,7 @@ def test_role_scoped_mcp_runtime_validates_transport_envelope() -> None:
         session=session,
         role=AgentRole.DATA_RESEARCH,
         phase=AgentPhase.INVESTIGATE,
-        program_id="data-research-v1",
+        program_id="data-research-v2",
         tool_catalogue=runtime.catalogue,
         usage=ledger.usage,
         runtime_state={},
@@ -422,7 +497,7 @@ def test_role_scoped_mcp_runtime_validates_transport_envelope() -> None:
         return await runtime.execute(
             proposal,
             context=context,
-            correlation=_correlation("data-research-v1"),
+            correlation=_correlation("data-research-v2"),
         )
 
     result = anyio.run(_run)
@@ -722,7 +797,7 @@ def test_strategy_loop_authors_checks_admits_and_cleans_workspace() -> None:
             {
                 "name": contract.name,
                 "version": "0.1.0",
-                "source_code": source,
+                "candidate_package_id": "package-author-1",
                 "factory_name": "build_strategy",
                 "dependencies": [],
                 "authoring_origin": "agent_authored",
@@ -992,7 +1067,7 @@ def test_coordinator_graph_parallel_joins_verifies_and_concludes() -> None:
         session_id=session.session_id,
         session_digest=session.session_digest,
         branch_id="root",
-        coordinator_program_id="research-coordinator-v1",
+        coordinator_program_id="research-coordinator-v2",
         model_profile_id=session.model_profile_id,
         tool_catalog_id=catalogue.catalogue_id,
     )
@@ -1091,7 +1166,7 @@ def test_coordinator_interrupt_resumes_with_a_fresh_graph_instance() -> None:
         session_id=session.session_id,
         session_digest=session.session_digest,
         branch_id="root",
-        coordinator_program_id="research-coordinator-v1",
+        coordinator_program_id="research-coordinator-v2",
         model_profile_id=session.model_profile_id,
         tool_catalog_id=catalogue.catalogue_id,
     )
@@ -1134,7 +1209,7 @@ def test_checkpoint_state_is_bounded_redacted_and_thread_isolated() -> None:
         session_id=session.session_id,
         session_digest=session.session_digest,
         branch_id="root",
-        coordinator_program_id="research-coordinator-v1",
+        coordinator_program_id="research-coordinator-v2",
         model_profile_id=session.model_profile_id,
         tool_catalog_id=session.tool_catalog_id,
     )
@@ -1195,7 +1270,7 @@ def test_specialist_checkpoint_redacts_source_and_raw_command_output() -> None:
         delegation=delegation,
         role=AgentRole.STRATEGY_ENGINEERING,
         phase=AgentPhase.ADMIT.value,
-        program_id="strategy-engineering-v1",
+        program_id="strategy-engineering-v2",
         model_profile_id=session.model_profile_id,
         tool_catalog_id=session.tool_catalog_id,
     )

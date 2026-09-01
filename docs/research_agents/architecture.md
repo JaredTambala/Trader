@@ -341,7 +341,7 @@ The implementation is split by responsibility and call direction:
 | --- | --- | --- | --- |
 | Research Coordinator (`coordinator.py`) | Immutable session, model program, role-scoped MCP client, specialist capabilities, checkpointer | Agenda, delegations, verified returns, public decision receipts, terminal result or operator interrupt | Specialist judgment, direct platform/SQL access, hidden-reasoning persistence, live trading |
 | Data Research (`data_research.py`) | Composite approved scope, Data program, Data-scoped MCP client | Complete readiness/snapshot evidence or typed blockers | Strategy design, unapproved loading, direct provider/service access |
-| Strategy Engineering (`strategy_engineering.py`) | Typed build contract, Strategy program, catalogue/Coding Workspace/admission MCP client | Exact reused or newly admitted implementation evidence | Backtesting, outcome-driven revision, host execution, self-admission |
+| Strategy Engineering (`strategy_engineering.py`) | Typed build contract, Strategy program, catalogue/Coding Workspace/admission MCP client | Exact reused or newly admitted implementation evidence; package-backed builds register by immutable package identity | Backtesting, outcome-driven revision, host execution, direct-source registration, self-admission |
 | Scheduler and policy (`scheduler.py`, `policy.py`) | Typed agenda/delegations, phase, approvals, usage, tool proposals | Ready set, reservations, authorized calls, fail-closed violations | Scientific judgment or MCP execution |
 | Runtime and checkpoints (`runtime.py`, `checkpointing/`) | Exact session pins, environment configuration, PostgreSQL saver | Start/resume/inspect lifecycle and bounded recoverable state | Canonical evidence authority or persistence fallback |
 | MCP adapters (`trader_mcp`) | Bounded tool arguments | `ToolEnvelope` values and canonical artifact refs | Agent policy, agenda construction, or checkpoint ownership |
@@ -359,6 +359,16 @@ Every model output is parsed into a strict public schema. Invalid structured out
 repair. Tool proposals are authorized against the exact program, role, phase, session scope, approval policy, mutation
 lifecycle, and remaining budget before MCP dispatch. Tool descriptions and observations are bounded, and raw prompts,
 messages, secrets, hidden reasoning, and complete tool responses are excluded from checkpoints and decision records.
+The current `strategy-engineering-v2` program and `first-slice-tool-policy-v2` require package-backed registration:
+complete candidate source remains in the coding service's immutable package, the model supplies only its exact ID, and
+the MCP adapter resolves source and injects candidate-attempt/build-contract/repository lineage before Experiments
+registration. Workspace destruction therefore does not make a packaged candidate unrecoverable.
+
+The `data-research-v2` mutation boundary similarly separates model judgment from replay control. The model may choose
+an approved load only after inspecting a deterministic costed plan. The runtime then binds operation, requester, and
+actor identity; the Data service persists a prepared journal record before calling the provider and terminal evidence
+afterward. An accepted operation replays from evidence, and an interrupted prepared operation never blindly repeats
+the provider call: conclusive post-load evidence permits recovery, while ambiguous state requires reconciliation.
 
 ### Frozen Deterministic Baseline (Removed)
 

@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 from tests.support.duckdb_store import DuckDBEventStore
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
+from trader_research.foundation import InMemoryResearchArtifactStore
 
 
 def main() -> None:
@@ -15,8 +16,13 @@ def main() -> None:
     local_env = load_local_environment()
     with TemporaryDirectory(prefix="trader-mcp-loading-evidence-") as tmp_dir:
         store = DuckDBEventStore(str(Path(tmp_dir) / "events.duckdb"))
+        journal = InMemoryResearchArtifactStore()
         try:
-            create_server(local_env, event_store_provider=lambda: store).run(transport=local_env.transport)
+            create_server(
+                local_env,
+                event_store_provider=lambda: store,
+                research_artifact_store_provider=lambda: journal,
+            ).run(transport=local_env.transport)
         finally:
             store.close()
 

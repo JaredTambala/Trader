@@ -488,6 +488,10 @@ def create_server(
         provider: str | None = None,
         instrument_type: str | None = None,
         bar_type: str | None = None,
+        acquisition_plan_id: str | None = None,
+        operation_id: str | None = None,
+        requested_by: str | None = None,
+        actor: str | None = None,
     ) -> CallToolResult:
         """Return a Data Agent data inspection/loading envelope.
 
@@ -500,6 +504,10 @@ def create_server(
             mode: Ensure mode: existing, sample, or backfill.
             source: Optional source filter.
             dry_run: Whether backfill mode should plan only.
+            acquisition_plan_id: Exact prior dry-run plan for execution.
+            operation_id: Trusted orchestration operation identity.
+            requested_by: Owning research-session identity.
+            actor: Public Data runtime actor.
 
         Returns:
             MCP call result containing a Data Agent ensure-loaded envelope.
@@ -518,7 +526,12 @@ def create_server(
             provider=provider,
             instrument_type=instrument_type,
             bar_type=bar_type,
+            acquisition_plan_id=acquisition_plan_id,
+            operation_id=operation_id,
+            requested_by=requested_by,
+            actor=actor,
             policy=resolved_data_loading_policy,
+            artifact_store_provider=resolved_research_artifact_store_provider,
         )
         return CallToolResult(**result_to_mcp_result(envelope))
 
@@ -556,6 +569,7 @@ def create_server(
         prediction_deployment_reader_provider=_prediction_deployment_reader,
         prediction_mapper_catalog=resolved_prediction_mapper_catalog,
         prediction_runtime_resolver_provider=_prediction_runtime_resolver,
+        coding_workspace_service_provider=resolved_coding_workspace_service_provider,
     )
     register_orchestration_tools(
         server,
@@ -1191,7 +1205,12 @@ def build_data_ensure_loaded_envelope(
     provider: str | None = None,
     instrument_type: str | None = None,
     bar_type: str | None = None,
+    acquisition_plan_id: str | None = None,
+    operation_id: str | None = None,
     policy: DataEnsureLoadedPolicy | None = None,
+    requested_by: str | None = None,
+    actor: str | None = None,
+    artifact_store_provider: ResearchArtifactStoreProvider | None = None,
 ) -> ToolEnvelope:
     """Build a Data Agent ensure-loaded envelope from MCP-native inputs.
 
@@ -1206,7 +1225,13 @@ def build_data_ensure_loaded_envelope(
         mode: Ensure mode: existing, sample, or backfill.
         source: Optional source filter.
         dry_run: Whether backfill mode should plan only.
+        acquisition_plan_id: Exact prior dry-run plan for execution.
+        operation_id: Trusted orchestration operation identity.
         policy: Optional explicit loading policy. Defaults to environment policy.
+        requested_by: Owning research-session identity for mutation evidence.
+        actor: Public runtime actor for mutation evidence.
+        artifact_store_provider: Canonical store provider for the mutation
+            journal.
 
     Returns:
         Data Agent ensure-loaded envelope.
@@ -1224,6 +1249,10 @@ def build_data_ensure_loaded_envelope(
             provider=provider,
             instrument_type=instrument_type,
             bar_type=bar_type,
+            acquisition_plan_id=acquisition_plan_id,
+            operation_id=operation_id,
+            requested_by=requested_by,
+            actor=actor,
             environment=environment,
         )
     except ToolRuntimeConfigurationError as exc:
@@ -1257,6 +1286,11 @@ def build_data_ensure_loaded_envelope(
             or DataEnsureLoadedPolicy(
                 allow_data_loading=environment.allow_data_loading,
                 backfill_config_path=environment.trader_config_path,
+            ),
+            artifact_store=(
+                artifact_store_provider()
+                if artifact_store_provider is not None
+                else None
             ),
         )
     )
@@ -1437,6 +1471,10 @@ def _data_ensure_loaded_request_from_inputs(
     provider: str | None,
     instrument_type: str | None,
     bar_type: str | None,
+    acquisition_plan_id: str | None,
+    operation_id: str | None,
+    requested_by: str | None,
+    actor: str | None,
     environment: McpEnvironment,
 ) -> DataEnsureLoadedRequest:
     """Build a Data Agent ensure-loaded request from MCP tool inputs.
@@ -1450,6 +1488,10 @@ def _data_ensure_loaded_request_from_inputs(
         mode: Ensure mode.
         source: Optional source filter.
         dry_run: Whether backfill mode should plan only.
+        acquisition_plan_id: Exact prior dry-run plan for execution.
+        operation_id: Trusted orchestration operation identity.
+        requested_by: Owning research-session identity.
+        actor: Public runtime actor.
 
     Returns:
         Data ensure-loaded request with parsed datetimes.
@@ -1472,6 +1514,10 @@ def _data_ensure_loaded_request_from_inputs(
         bar_type=_optional_str(bar_type),
         configured_provider=provider_context["configured_provider"],
         configured_asset_class=provider_context["configured_asset_class"],
+        acquisition_plan_id=_optional_str(acquisition_plan_id),
+        operation_id=_optional_str(operation_id),
+        requested_by=_optional_str(requested_by),
+        actor=_optional_str(actor),
     )
 
 

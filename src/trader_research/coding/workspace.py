@@ -47,6 +47,7 @@ CODING_DESTROY_WORKSPACE = "coding_destroy_workspace"
 _MANIFEST_NAME = "workspace.json"
 _CANDIDATE_DIRECTORY = "candidate"
 _OPERATION_DIRECTORY = ".operations"
+_PACKAGE_DIRECTORY = ".packages"
 _TOMBSTONE_DIRECTORY = ".destroyed"
 _SEARCHABLE_REPOSITORY_SUFFIXES = frozenset(
     {".py", ".md", ".toml", ".json", ".yaml", ".yml"}
@@ -621,14 +622,23 @@ class CodingWorkspaceService:
         *,
         implementation_path: str = "implementation.py",
     ) -> ApplicationResult:
-        """Build a content-addressed inert package from exact candidate files.
+        """Build and retain a content-addressed inert candidate package.
 
         Python syntax is parsed without importing or executing the candidate.
-        The package remains transport evidence until ordinary implementation
-        registration and independent admission persist canonical artifacts.
+        Complete source is retained in a service-owned immutable package, not
+        returned through the model-facing result. A later deterministic MCP
+        adapter can resolve the package for ordinary implementation
+        registration after the disposable workspace has been destroyed.
+
+        Args:
+            workspace_id: Exact active candidate workspace identity.
+            implementation_path: Candidate-relative Python implementation.
+
+        Returns:
+            Public package identity, source hash, file manifest, and lineage.
         """
         try:
-            self._require_active_workspace(workspace_id)
+            workspace = dict(self._require_active_workspace(workspace_id))
             candidate_root = self._candidate_root(workspace_id)
             implementation_file = _safe_relative_file(
                 candidate_root,
@@ -662,6 +672,26 @@ class CodingWorkspaceService:
                     "files": files,
                 },
             )
+            package = {
+                "package_id": package_id,
+                "workspace_id": workspace_id,
+                "attempt_id": workspace["attempt_id"],
+                "build_contract_id": workspace["build_contract_id"],
+                "repository_revision": self.policy.repository_revision,
+                "implementation_path": implementation_path,
+                "source_code": source_code,
+                "source_hash": sha256(source_code.encode("utf-8")).hexdigest(),
+                "files": files,
+                "status": "packaged_inert_candidate",
+            }
+            package_path = self._package_path(package_id)
+            if package_path.exists():
+                if self.resolve_candidate_package(package_id) != package:
+                    raise ValueError(
+                        "candidate package identity resolves to conflicting content"
+                    )
+            else:
+                self._write_json_atomic(package_path, package)
         except (OSError, SyntaxError, UnicodeError, ValueError) as exc:
             return error_result(
                 command=CODING_PACKAGE_CANDIDATE,
@@ -672,17 +702,62 @@ class CodingWorkspaceService:
             command=CODING_PACKAGE_CANDIDATE,
             data={
                 "candidate_package": {
-                    "package_id": package_id,
-                    "workspace_id": workspace_id,
-                    "repository_revision": self.policy.repository_revision,
-                    "implementation_path": implementation_path,
-                    "source_code": source_code,
-                    "source_hash": sha256(source_code.encode("utf-8")).hexdigest(),
-                    "files": files,
-                    "status": "packaged_inert_candidate",
+                    key: value
+                    for key, value in package.items()
+                    if key != "source_code"
                 }
             },
         )
+
+    def resolve_candidate_package(self, package_id: str) -> dict[str, Any]:
+        """Resolve one immutable package for trusted registration code.
+
+        This method deliberately returns complete source and is therefore not
+        registered as a model-facing MCP read tool. Callers must remain inside
+        the deterministic coding-to-registration adapter.
+
+        Args:
+            package_id: Exact content-addressed package identity.
+
+        Returns:
+            Validated package payload including complete source text.
+
+        Raises:
+            OSError: If the retained package cannot be read.
+            ValueError: If identity, source hash, or package structure is
+                inconsistent.
+        """
+        normalized_id = _required_identifier(package_id, "package_id")
+        payload = json.loads(
+            self._package_path(normalized_id).read_text(encoding="utf-8")
+        )
+        if not isinstance(payload, Mapping):
+            raise ValueError("candidate package must be an object")
+        package = dict(payload)
+        if package.get("package_id") != normalized_id:
+            raise ValueError("candidate package identity mismatch")
+        source_code = package.get("source_code")
+        if not isinstance(source_code, str) or not source_code:
+            raise ValueError("candidate package has no source code")
+        if sha256(source_code.encode("utf-8")).hexdigest() != package.get(
+            "source_hash"
+        ):
+            raise ValueError("candidate package source hash mismatch")
+        files = package.get("files")
+        if not isinstance(files, list) or not files:
+            raise ValueError("candidate package has no file manifest")
+        expected_id = stable_research_id(
+            "coding_candidate_package",
+            {
+                "workspace_id": package.get("workspace_id"),
+                "repository_revision": package.get("repository_revision"),
+                "implementation_path": package.get("implementation_path"),
+                "files": files,
+            },
+        )
+        if expected_id != normalized_id:
+            raise ValueError("candidate package content does not match its identity")
+        return package
 
     def destroy_workspace(self, workspace_id: str) -> ApplicationResult:
         """Idempotently remove one exact disposable workspace.
@@ -754,6 +829,14 @@ class CodingWorkspaceService:
         directory = (self.policy.workspace_root / _TOMBSTONE_DIRECTORY).resolve()
         if directory.parent != self.policy.workspace_root:
             raise ValueError("workspace tombstone directory escapes workspace_root")
+        return directory / f"{normalized}.json"
+
+    def _package_path(self, package_id: str) -> Path:
+        """Return the exact service-owned immutable package path."""
+        normalized = _required_identifier(package_id, "package_id")
+        directory = (self.policy.workspace_root / _PACKAGE_DIRECTORY).resolve()
+        if directory.parent != self.policy.workspace_root:
+            raise ValueError("candidate package directory escapes workspace_root")
         return directory / f"{normalized}.json"
 
     def _load_tombstone(self, workspace_id: str) -> dict[str, Any]:

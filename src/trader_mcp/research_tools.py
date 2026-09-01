@@ -45,6 +45,7 @@ from trader_mcp.constants import (
     RESEARCH_VALIDATE_STRATEGY_SPECIFICATION_TOOL,
 )
 from trader_mcp.environment import McpEnvironment
+from trader_research.coding import CodingWorkspaceService
 from trader_research.experiments import (
     ExperimentTrackingSinkRegistry,
     ImplementationComparisonRequest,
@@ -93,6 +94,7 @@ from trader_research.infrastructure.execution import (
 EventStoreProvider = Callable[[], EventStore]
 ToolConfigProvider = Callable[[], Config]
 ResearchArtifactStoreProvider = Callable[[], ResearchArtifactStore]
+CodingWorkspaceServiceProvider = Callable[[], CodingWorkspaceService]
 PredictionDeploymentReaderProvider = Callable[[], PredictionDeploymentReader]
 PredictionRuntimeResolverProvider = Callable[[], PredictionRuntimeResolver]
 ServiceResult = ApplicationResult | ToolEnvelope
@@ -110,8 +112,25 @@ def register_research_tools(
     prediction_deployment_reader_provider: PredictionDeploymentReaderProvider | None = None,
     prediction_mapper_catalog: PredictionMapperCatalog | None = None,
     prediction_runtime_resolver_provider: PredictionRuntimeResolverProvider | None = None,
+    coding_workspace_service_provider: CodingWorkspaceServiceProvider | None = None,
 ) -> None:
-    """Register implementation, specification, backtest, and optimisation tools."""
+    """Register implementation, specification, backtest, and optimisation tools.
+
+    Args:
+        server: MCP server receiving the tool registrations.
+        environment: Resolved transport and mutation policy.
+        event_store_provider: Optional lazy event-store provider.
+        backtest_config_provider: Optional lazy Trader configuration provider.
+        artifact_store_provider: Optional canonical research store provider.
+        optimizer_registry: Optional admitted optimizer implementations.
+        tracking_sink_registry: Optional analytical tracking projections.
+        prediction_deployment_reader_provider: Optional prediction resolver.
+        prediction_mapper_catalog: Optional prediction-to-signal mappings.
+        prediction_runtime_resolver_provider: Optional prediction runtime.
+        coding_workspace_service_provider: Optional trusted resolver for
+            immutable candidate packages. Complete package source is consumed
+            inside this adapter and is never returned to the model.
+    """
     engines = optimizer_registry or OptimizationEngineRegistry()
     sinks = tracking_sink_registry or ExperimentTrackingSinkRegistry()
 
@@ -153,11 +172,6 @@ def register_research_tools(
                 command=command, side_effect=side_effect, code=code, message=message
             )
         )
-
-    def _implementation_registration(
-        service: Callable[..., ApplicationResult], **kwargs: Any
-    ) -> CallToolResult:
-        return _result(service(**kwargs, artifact_store=_store()))
 
     def _runtime_error(
         command: str, *, optimization: bool = False
@@ -309,9 +323,11 @@ def register_research_tools(
     def _register(
         service: Callable[..., ApplicationResult],
         *,
+        command: str,
         name: str,
         version: str,
-        source_code: str,
+        source_code: str | None,
+        candidate_package_id: str | None,
         factory_name: str,
         class_name: str | None,
         parameter_schema: dict[str, Any] | None,
@@ -323,11 +339,58 @@ def register_research_tools(
         provenance_refs: list[dict[str, Any]] | None,
         metadata: dict[str, Any] | None,
     ) -> CallToolResult:
-        return _implementation_registration(
-            service,
+        package_id = str(candidate_package_id or "").strip()
+        direct_source = source_code if isinstance(source_code, str) else None
+        if bool(package_id) == bool(direct_source):
+            return _blocked(
+                command,
+                "implementation_source_selector_invalid",
+                "Supply exactly one of source_code or candidate_package_id.",
+                SideEffect.LOCAL_MUTATING,
+            )
+        resolved_metadata = dict(metadata or {})
+        if package_id:
+            if coding_workspace_service_provider is None:
+                return _blocked(
+                    command,
+                    "coding_package_resolver_required",
+                    "Candidate registration requires the configured Coding Workspace resolver.",
+                    SideEffect.LOCAL_MUTATING,
+                )
+            try:
+                package = coding_workspace_service_provider().resolve_candidate_package(
+                    package_id
+                )
+            except (OSError, ValueError) as exc:
+                return _blocked(
+                    command,
+                    "candidate_package_resolution_failed",
+                    str(exc),
+                    SideEffect.LOCAL_MUTATING,
+                )
+            declared_package = resolved_metadata.get("candidate_package_id")
+            if declared_package not in {None, package_id}:
+                return _blocked(
+                    command,
+                    "candidate_package_identity_conflict",
+                    "Registration metadata conflicts with candidate_package_id.",
+                    SideEffect.LOCAL_MUTATING,
+                )
+            direct_source = str(package["source_code"])
+            resolved_metadata.update(
+                {
+                    "candidate_package_id": package_id,
+                    "candidate_package_source_hash": package["source_hash"],
+                    "candidate_attempt_id": package["attempt_id"],
+                    "build_contract_id": package["build_contract_id"],
+                    "repository_revision": package["repository_revision"],
+                }
+            )
+        assert direct_source is not None
+        registration = service(
             name=name,
             version=version,
-            source_code=source_code,
+            source_code=direct_source,
             factory_name=factory_name,
             class_name=class_name,
             parameter_schema=parameter_schema,
@@ -337,8 +400,23 @@ def register_research_tools(
             runtime_requirements=runtime_requirements,
             resource_bounds=resource_bounds,
             provenance_refs=provenance_refs,
-            metadata=metadata,
+            metadata=resolved_metadata,
+            artifact_store=_store(),
         )
+        if package_id and registration.ok:
+            implementation = dict(
+                registration.data.get("implementation_version", {})
+            )
+            implementation.pop("source_code", None)
+            registration = ApplicationResult(
+                ok=True,
+                operation=registration.operation,
+                data={"implementation_version": implementation},
+                artifacts=registration.artifacts,
+                warnings=registration.warnings,
+                schema_version=registration.schema_version,
+            )
+        return _result(registration)
 
     @server.tool(
         name=RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL,
@@ -349,8 +427,9 @@ def register_research_tools(
     def research_register_strategy_implementation(
         name: str,
         version: str,
-        source_code: str,
         factory_name: str,
+        source_code: str | None = None,
+        candidate_package_id: str | None = None,
         class_name: str | None = None,
         parameter_schema: dict[str, Any] | None = None,
         dependencies: list[str] | None = None,
@@ -363,9 +442,11 @@ def register_research_tools(
     ) -> CallToolResult:
         return _register(
             register_strategy_implementation,
+            command=RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL,
             name=name,
             version=version,
             source_code=source_code,
+            candidate_package_id=candidate_package_id,
             factory_name=factory_name,
             class_name=class_name,
             parameter_schema=parameter_schema,
@@ -387,8 +468,9 @@ def register_research_tools(
     def research_register_risk_manager_implementation(
         name: str,
         version: str,
-        source_code: str,
         factory_name: str,
+        source_code: str | None = None,
+        candidate_package_id: str | None = None,
         class_name: str | None = None,
         parameter_schema: dict[str, Any] | None = None,
         dependencies: list[str] | None = None,
@@ -401,9 +483,11 @@ def register_research_tools(
     ) -> CallToolResult:
         return _register(
             register_risk_manager_implementation,
+            command=RESEARCH_REGISTER_RISK_MANAGER_IMPLEMENTATION_TOOL,
             name=name,
             version=version,
             source_code=source_code,
+            candidate_package_id=candidate_package_id,
             factory_name=factory_name,
             class_name=class_name,
             parameter_schema=parameter_schema,
@@ -439,9 +523,11 @@ def register_research_tools(
     ) -> CallToolResult:
         return _register(
             register_optimization_objective,
+            command=RESEARCH_REGISTER_OPTIMIZATION_OBJECTIVE_TOOL,
             name=name,
             version=version,
             source_code=source_code,
+            candidate_package_id=None,
             factory_name=factory_name,
             class_name=class_name,
             parameter_schema=parameter_schema,

@@ -175,20 +175,21 @@ def _bind_runtime_operation(
     proposal: ToolCallProposal,
     context: PolicyContext,
 ) -> ToolCallProposal:
-    """Bind model-proposed coding writes to one deterministic transition.
+    """Bind model-proposed mutations to one deterministic transition.
 
-    The model chooses whether and what to write. Runtime code supplies the
-    operation identity, so retrying the same checkpoint step cannot silently
-    turn a lost response into a second or different accepted mutation.
+    The model chooses whether and what to mutate. Runtime code supplies the
+    operation identity for candidate writes and actual Data loading, so the
+    model cannot select replay identity and every accepted attempt has stable
+    lineage across checkpoint recovery.
     """
-    if proposal.tool_name != "coding_write_candidate_file":
+    if not _requires_runtime_operation(proposal):
         return proposal
     delegation = context.delegation
     if delegation is None:
-        raise ValueError("coding write operation requires a delegation")
+        raise ValueError("runtime-bound operation requires a delegation")
     sequence = context.runtime_state.get("step_sequence")
     if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence <= 0:
-        raise ValueError("coding write operation requires a positive step sequence")
+        raise ValueError("runtime-bound operation requires a positive step sequence")
     operation_id = stable_research_id(
         "agent_tool_operation",
         {
@@ -199,14 +200,31 @@ def _bind_runtime_operation(
             "tool_name": proposal.tool_name,
         },
     )
-    return proposal.model_copy(
-        update={
-            "arguments": {
-                **proposal.arguments,
-                "operation_id": operation_id,
+    bound_arguments = {
+        **proposal.arguments,
+        "operation_id": operation_id,
+    }
+    if proposal.tool_name == "data_ensure_loaded":
+        bound_arguments.update(
+            {
+                "requested_by": context.session.session_id,
+                "actor": "Data Research Agent",
             }
-        }
+        )
+    return proposal.model_copy(
+        update={"arguments": bound_arguments}
     )
+
+
+def _requires_runtime_operation(proposal: ToolCallProposal) -> bool:
+    """Return whether one proposal performs a runtime-bound local mutation."""
+    if proposal.tool_name == "coding_write_candidate_file":
+        return True
+    if proposal.tool_name != "data_ensure_loaded":
+        return False
+    mode = str(proposal.arguments.get("mode") or "").strip().lower()
+    dry_run = proposal.arguments.get("dry_run", True)
+    return mode == "sample" or (mode == "backfill" and dry_run is False)
 
 
 def _normalize_response(

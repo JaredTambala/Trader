@@ -73,6 +73,7 @@ def test_workspace_is_idempotent_and_packages_inert_source(tmp_path: Path) -> No
     package = packaged.data["candidate_package"]
     assert package["status"] == "packaged_inert_candidate"
     assert package["source_hash"] == written.data["content_sha256"]
+    assert "source_code" not in package
     assert package["files"] == [
         {
             "relative_path": "implementation.py",
@@ -80,6 +81,10 @@ def test_workspace_is_idempotent_and_packages_inert_source(tmp_path: Path) -> No
             "content_bytes": written.data["content_bytes"],
         }
     ]
+    retained = service.resolve_candidate_package(package["package_id"])
+    assert retained["source_code"] == (
+        "def build_strategy(**kwargs):\n    return kwargs\n"
+    )
 
 
 def test_workspace_rejects_path_escape_and_unsupported_files(tmp_path: Path) -> None:

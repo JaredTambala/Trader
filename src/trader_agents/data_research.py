@@ -33,6 +33,7 @@ from .contracts import (
     SpecialistDelegation,
     SpecialistReturn,
     SpecialistStatus,
+    ToolCallProposal,
     ToolObservation,
     build_specialist_return,
 )
@@ -101,6 +102,7 @@ class DataResearchAgent:
             program_id=program.program_id,
             model_profile_id=profile.profile_id,
             tool_catalog_id=self.tool_catalogue.catalogue_id,
+            lifecycle={"acquisition_plan": None},
         )
         if checkpointer is None:
             output = await graph.ainvoke(initial)
@@ -185,6 +187,7 @@ class DataResearchAgent:
                 )
             }
             loop_fingerprints = dict(state.get("loop_fingerprints", {}))
+            lifecycle = dict(state.get("lifecycle", {}))
             successful_step_records = list(state.get("successful_steps", []))
             successful_steps: list[tuple[str, Mapping[str, Any]]] = [
                 (str(item["tool_name"]), dict(item["arguments"]))
@@ -213,6 +216,8 @@ class DataResearchAgent:
                     usage=ledger.usage,
                     loop_fingerprints=loop_fingerprints,
                     successful_steps=successful_steps,
+                    lifecycle=lifecycle,
+                    step_sequence=int(state["step_sequence"]),
                 )
                 tools = await runtime.available_tools(context)
                 invocation = await self.model_runner.invoke(
@@ -306,6 +311,11 @@ class DataResearchAgent:
                 observations = observations[-24:]
                 for reference in execution.observation.evidence_refs:
                     observed_refs[reference.uri] = reference
+                _update_data_lifecycle(
+                    lifecycle,
+                    proposal=proposal,
+                    observation=execution.observation,
+                )
                 if execution.observation.ok:
                     successful_step_records.append(
                         checkpoint_step(
@@ -325,6 +335,7 @@ class DataResearchAgent:
                             for item in observed_refs.values()
                         ],
                         "loop_fingerprints": loop_fingerprints,
+                        "lifecycle": lifecycle,
                         "budget_usage": ledger.usage.model_dump(mode="json"),
                         "step_sequence": int(state["step_sequence"]) + 1,
                     },
@@ -419,6 +430,8 @@ def _policy_context(
     usage: BudgetUsage,
     loop_fingerprints: Mapping[str, int],
     successful_steps: Sequence[tuple[str, Mapping[str, Any]]],
+    lifecycle: Mapping[str, Any],
+    step_sequence: int,
 ) -> PolicyContext:
     """Build fresh trusted policy context after every accepted transition."""
     return PolicyContext(
@@ -430,11 +443,54 @@ def _policy_context(
         usage=usage,
         runtime_state={
             "successful_tool_sequence": [name for name, _ in successful_steps],
+            **dict(lifecycle),
+            "step_sequence": step_sequence,
         },
         loop_fingerprints=loop_fingerprints,
         delegation=delegation,
         data_scope=scope,
     )
+
+
+def _update_data_lifecycle(
+    state: dict[str, Any],
+    *,
+    proposal: ToolCallProposal,
+    observation: ToolObservation,
+) -> None:
+    """Retain bounded acquisition-plan and execution lineage."""
+    if proposal.tool_name != "data_ensure_loaded" or not observation.ok:
+        return
+    load_result = observation.summary.get("load_result")
+    if not isinstance(load_result, Mapping):
+        return
+    plan = load_result.get("backfill_plan")
+    if not isinstance(plan, Mapping):
+        return
+    plan_id = str(plan.get("plan_id") or "")
+    request_hash = str(plan.get("request_hash") or "")
+    estimated_cost = plan.get("estimated_cost")
+    if (
+        not plan_id
+        or not request_hash
+        or isinstance(estimated_cost, bool)
+        or not isinstance(estimated_cost, (int, float))
+    ):
+        return
+    bounded_plan = {
+        "plan_id": plan_id,
+        "request_hash": request_hash,
+        "estimated_cost": float(estimated_cost),
+        "cost_currency": str(plan.get("cost_currency") or ""),
+        "estimated_network_calls": int(
+            plan.get("estimated_network_calls") or 0
+        ),
+    }
+    if load_result.get("dry_run") is True:
+        state["acquisition_plan"] = bounded_plan
+    elif load_result.get("dry_run") is False:
+        state["executed_acquisition_plan"] = bounded_plan
+        state["data_operation_id"] = str(load_result.get("operation_id") or "")
 
 
 def _validate_checkpoint_identity(

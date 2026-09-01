@@ -50,9 +50,17 @@ The former deterministic `trader_agents` coordinator, specialist shell, composit
 been removed without compatibility imports. Their controlled acceptance remains valid only for the frozen Git tag; it
 does not qualify the replacement. Data and Strategy specialist loops now persist bounded source-free checkpoints, and
 a focused Data test proves resume through a new PostgreSQL connection without repeating an accepted inventory call.
-Coding Workspace writes and destruction now have source-free replay records. Full coordinator recovery, real isolated
-Coding Workspace, MLflow trace, security/prompt-injection, repeated real-model, scale, and final operational acceptance
-evidence remain outstanding.
+Coding Workspace writes and destruction now have source-free replay records. Data mutation records also bind one
+runtime operation to its requester, actor, exact scope, and acquisition plan; an accepted result replays without a
+second provider call, while a prepared record either recovers from conclusive post-load evidence or fails closed for
+reconciliation. Full coordinator recovery, real isolated Coding Workspace, MLflow trace, security/prompt-injection,
+repeated real-model, scale, and final operational acceptance evidence remain outstanding.
+
+Strategy authorship now uses `strategy-engineering-v2` with `first-slice-tool-policy-v2`. Packaging retains complete
+source in an immutable, content-addressed coding package while returning only identity, lineage, source hash, and file
+manifest to the model. Registration accepts that exact package ID; the MCP adapter resolves source internally and
+injects attempt/build/repository lineage. Agent-proposed direct source registration fails closed, and a package remains
+resolvable after its disposable workspace is destroyed.
 
 ## Active Agentic Redesign
 
@@ -108,6 +116,14 @@ The Data Research Agent architecture is accepted for the first slice. Its requir
 composite scope, model-selected use of an evolving role-scoped MCP data catalogue, readiness assessment, and bounded
 backfill inside a pre-approved acquisition envelope. Work outside that envelope returns through the coordinator for
 operator authority.
+
+Provider-backed Data loading now requires a deterministic dry-run acquisition plan before mutation. The plan records
+request identity, estimated bars/network calls, configured monetary cost and currency; agent policy compares that cost
+with the immutable session ceiling and actual execution must cite the exact plan ID. Runtime supplies a stable
+operation identity plus exact requester/actor lineage. The Data service writes `data_load_operation` before mutation
+and canonical `data_load_evidence` afterward. Terminal replay never repeats the provider; a missing terminal receipt
+is recovered only when the unchanged scope proves an incomplete-to-complete transition, otherwise the service fails
+closed for explicit reconciliation.
 
 The Knowledge Research Agent review is now active in the separate
 [Knowledge Research design](../../plans/agent_designs/knowledge_research.md). The existing iterative retrieval,

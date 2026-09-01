@@ -240,6 +240,13 @@ class DataEnsureLoadedRequest:
         mode: Ensure mode: `existing`, `sample`, or `backfill`.
         source: Optional source filter.
         dry_run: Whether backfill mode should plan only.
+        acquisition_plan_id: Exact dry-run plan accepted for a mutating
+            backfill. It is absent for inspection and planning calls.
+        operation_id: Trusted idempotency lineage supplied by an orchestration
+            runtime for a mutating load attempt.
+        requested_by: Owning research-session identity for canonical operation
+            evidence.
+        actor: Public runtime actor responsible for the request.
     """
 
     symbols: tuple[str, ...]
@@ -255,6 +262,10 @@ class DataEnsureLoadedRequest:
     bar_type: str | None = None
     configured_provider: str | None = None
     configured_asset_class: str | None = None
+    acquisition_plan_id: str | None = None
+    operation_id: str | None = None
+    requested_by: str | None = None
+    actor: str | None = None
 
 
 @dataclass(frozen=True)
@@ -297,9 +308,26 @@ class DataEnsureLoadedPolicy:
         sample_csv_path: Checked-in sample CSV path used by sample mode.
         backfill_config_path: Optional bounded config path for non-dry-run backfill.
         backfill_runner: Optional injected runner for non-dry-run backfill.
+        backfill_request_bar_limit: Conservative provider bars per estimated
+            request used by dry-run planning.
+        backfill_cost_per_request: Configured estimated monetary cost per
+            provider request.
+        loading_cost_currency: Unit for the estimated loading cost.
     """
 
     allow_data_loading: bool = False
     sample_csv_path: Path = _SAMPLE_CSV
     backfill_config_path: Path | None = None
     backfill_runner: BackfillRunner | None = None
+    backfill_request_bar_limit: int = 10_000
+    backfill_cost_per_request: float = 0.0
+    loading_cost_currency: str = "USD"
+
+    def __post_init__(self) -> None:
+        """Validate deterministic acquisition-estimation inputs."""
+        if self.backfill_request_bar_limit <= 0:
+            raise ValueError("backfill_request_bar_limit must be positive")
+        if self.backfill_cost_per_request < 0:
+            raise ValueError("backfill_cost_per_request cannot be negative")
+        if not self.loading_cost_currency.strip():
+            raise ValueError("loading_cost_currency is required")

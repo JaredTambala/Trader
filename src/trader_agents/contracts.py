@@ -551,10 +551,14 @@ class CompositeDataScope(StrictPublicModel):
 
     @model_validator(mode="after")
     def validate_items(self) -> "CompositeDataScope":
-        """Reject duplicate item identities."""
+        """Reject duplicate items or an unbounded approved acquisition."""
         item_ids = [item.item_id for item in self.items]
         if len(set(item_ids)) != len(item_ids):
             raise ValueError("composite Data scope item IDs must be unique")
+        if self.loading_approved and self.max_loading_cost is None:
+            raise ValueError(
+                "an approved Data loading scope requires max_loading_cost"
+            )
         return self
 
 

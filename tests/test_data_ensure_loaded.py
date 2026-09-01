@@ -14,9 +14,33 @@ from trader_research.data import (
     data_ensure_loaded,
     get_data_inventory,
 )
+from trader_research.foundation import InMemoryResearchArtifactStore
+from trader_research.foundation.artifacts import (
+    ResearchArtifactRecord,
+    ResearchArtifactStoreError,
+)
+from trader_research.governance import DATA_LOAD_EVIDENCE
 
 
 SAMPLE_CSV = Path("examples/data/demo_stock_1min.csv")
+
+
+class _FailTerminalEvidenceOnceStore(InMemoryResearchArtifactStore):
+    """Simulate a lost response after provider mutation has completed."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._fail_terminal_once = True
+
+    def save_artifact(self, **kwargs: Any) -> ResearchArtifactRecord:
+        """Fail the first terminal receipt write and retain prepared state."""
+        if (
+            kwargs.get("artifact_type") == DATA_LOAD_EVIDENCE
+            and self._fail_terminal_once
+        ):
+            self._fail_terminal_once = False
+            raise ResearchArtifactStoreError("simulated terminal write failure")
+        return super().save_artifact(**kwargs)
 
 
 def _request(
@@ -28,6 +52,10 @@ def _request(
     end: datetime = datetime(2026, 1, 20, 12, 11, tzinfo=timezone.utc),
     mode: str = "existing",
     dry_run: bool = True,
+    acquisition_plan_id: str | None = None,
+    operation_id: str | None = None,
+    requested_by: str = "test-session",
+    actor: str = "Data Research Agent",
 ) -> DataEnsureLoadedRequest:
     return DataEnsureLoadedRequest(
         symbols=symbols,
@@ -37,6 +65,10 @@ def _request(
         end=end,
         mode=mode,
         dry_run=dry_run,
+        acquisition_plan_id=acquisition_plan_id,
+        operation_id=operation_id,
+        requested_by=requested_by,
+        actor=actor,
     )
 
 
@@ -72,7 +104,11 @@ def test_data_ensure_sample_refuses_when_loading_not_allowed(tmp_path: Path) -> 
 
     envelope = data_ensure_loaded(
         store,
-        _request(mode="sample", dry_run=False),
+        _request(
+            mode="sample",
+            dry_run=False,
+            operation_id="sample-operation-1",
+        ),
         policy=DataEnsureLoadedPolicy(allow_data_loading=False),
     )
 
@@ -82,11 +118,17 @@ def test_data_ensure_sample_refuses_when_loading_not_allowed(tmp_path: Path) -> 
 
 def test_data_ensure_sample_loads_checked_in_csv_when_allowed(tmp_path: Path) -> None:
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
+    journal = InMemoryResearchArtifactStore()
 
     envelope = data_ensure_loaded(
         store,
-        _request(mode="sample", dry_run=False),
+        _request(
+            mode="sample",
+            dry_run=False,
+            operation_id="sample-operation-1",
+        ),
         policy=DataEnsureLoadedPolicy(allow_data_loading=True, sample_csv_path=SAMPLE_CSV),
+        artifact_store=journal,
     )
     result = envelope.to_dict()["data"]["load_result"]
 
@@ -126,6 +168,7 @@ def test_data_ensure_backfill_dry_run_returns_bounded_plan_without_writes(tmp_pa
 
 def test_data_ensure_backfill_non_dry_run_uses_injected_runner(tmp_path: Path) -> None:
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
+    journal = InMemoryResearchArtifactStore()
     calls: list[DataEnsureLoadedRequest] = []
 
     def _runner(request: DataEnsureLoadedRequest, event_store: EventStore) -> Mapping[str, Any]:
@@ -133,12 +176,40 @@ def test_data_ensure_backfill_non_dry_run_uses_injected_runner(tmp_path: Path) -
         rows_loaded = load_sample_market_data_csv(event_store, SAMPLE_CSV)
         return {"rows_written": rows_loaded, "rows_loaded": rows_loaded, "source": "test_runner"}
 
+    policy = DataEnsureLoadedPolicy(
+        allow_data_loading=True,
+        backfill_runner=_runner,
+    )
+    planned = data_ensure_loaded(
+        store,
+        _request(mode="backfill", dry_run=True),
+        policy=policy,
+    )
+    plan_id = planned.data["load_result"]["backfill_plan"]["plan_id"]
     envelope = data_ensure_loaded(
         store,
-        _request(mode="backfill", dry_run=False),
-        policy=DataEnsureLoadedPolicy(allow_data_loading=True, backfill_runner=_runner),
+        _request(
+            mode="backfill",
+            dry_run=False,
+            acquisition_plan_id=plan_id,
+            operation_id="backfill-operation-1",
+        ),
+        policy=policy,
+        artifact_store=journal,
     )
     result = envelope.to_dict()["data"]["load_result"]
+
+    replay = data_ensure_loaded(
+        store,
+        _request(
+            mode="backfill",
+            dry_run=False,
+            acquisition_plan_id=plan_id,
+            operation_id="backfill-operation-1",
+        ),
+        policy=policy,
+        artifact_store=journal,
+    )
 
     assert envelope.ok is True
     assert calls[0].symbols == ("DEMO",)
@@ -149,15 +220,84 @@ def test_data_ensure_backfill_non_dry_run_uses_injected_runner(tmp_path: Path) -
     assert result["pre_load_manifest"]["total_rows"] == 0
     assert result["post_load_manifest"]["total_rows"] == 12
     assert result["post_load_quality_report"]["complete"] is True
+    assert replay.data["load_result"]["idempotent_replay"] is True
+    assert len(calls) == 1
+
+
+def test_data_load_recovers_prepared_operation_without_repeating_provider(
+    tmp_path: Path,
+) -> None:
+    store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
+    journal = _FailTerminalEvidenceOnceStore()
+    calls: list[DataEnsureLoadedRequest] = []
+
+    def _runner(
+        request: DataEnsureLoadedRequest,
+        event_store: EventStore,
+    ) -> Mapping[str, Any]:
+        calls.append(request)
+        rows_loaded = load_sample_market_data_csv(event_store, SAMPLE_CSV)
+        return {"rows_loaded": rows_loaded}
+
+    policy = DataEnsureLoadedPolicy(
+        allow_data_loading=True,
+        backfill_runner=_runner,
+    )
+    planned = data_ensure_loaded(
+        store,
+        _request(mode="backfill", dry_run=True),
+        policy=policy,
+    )
+    plan_id = planned.data["load_result"]["backfill_plan"]["plan_id"]
+    request = _request(
+        mode="backfill",
+        dry_run=False,
+        acquisition_plan_id=plan_id,
+        operation_id="interrupted-backfill-operation",
+    )
+
+    interrupted = data_ensure_loaded(
+        store,
+        request,
+        policy=policy,
+        artifact_store=journal,
+    )
+    recovered = data_ensure_loaded(
+        store,
+        request,
+        policy=policy,
+        artifact_store=journal,
+    )
+
+    assert interrupted.ok is False
+    assert interrupted.errors[0]["code"] == "data_load_evidence_persistence_failed"
+    assert recovered.ok is True
+    assert recovered.data["load_result"]["status"] == "recovered_after_interruption"
+    assert recovered.data["load_result"]["idempotent_replay"] is False
+    assert len(calls) == 1
 
 
 def test_data_ensure_backfill_non_dry_run_requires_runner_or_config_path(tmp_path: Path) -> None:
     store = DuckDBEventStore(str(tmp_path / "events.duckdb"))
+    journal = InMemoryResearchArtifactStore()
 
+    policy = DataEnsureLoadedPolicy(allow_data_loading=True)
+    planned = data_ensure_loaded(
+        store,
+        _request(mode="backfill", dry_run=True),
+        policy=policy,
+    )
+    plan_id = planned.data["load_result"]["backfill_plan"]["plan_id"]
     envelope = data_ensure_loaded(
         store,
-        _request(mode="backfill", dry_run=False),
-        policy=DataEnsureLoadedPolicy(allow_data_loading=True),
+        _request(
+            mode="backfill",
+            dry_run=False,
+            acquisition_plan_id=plan_id,
+            operation_id="backfill-operation-1",
+        ),
+        policy=policy,
+        artifact_store=journal,
     )
 
     assert envelope.ok is False

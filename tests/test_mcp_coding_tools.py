@@ -13,6 +13,7 @@ from trader_mcp.constants import (
     CODING_RUN_CHECK_TOOL,
     CODING_SEARCH_REPOSITORY_TOOL,
     CODING_WRITE_CANDIDATE_FILE_TOOL,
+    RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL,
     RESEARCH_SEARCH_IMPLEMENTATIONS_TOOL,
 )
 from trader_mcp.environment import load_local_environment
@@ -125,5 +126,87 @@ def test_implementation_search_tool_requires_canonical_store() -> None:
         rows = result.structuredContent["data"]["implementations"]
         assert rows
         assert all(row["direct_reuse_eligible"] is False for row in rows)
+
+    anyio.run(_run)
+
+
+def test_candidate_package_registers_without_model_relaying_source(
+    tmp_path: Path,
+) -> None:
+    """The MCP adapter resolves retained source from an exact package ID."""
+    repository_root = tmp_path / "repository"
+    repository_root.mkdir()
+    service = CodingWorkspaceService(
+        CodingWorkspacePolicy(
+            workspace_root=tmp_path / "workspaces",
+            repository_root=repository_root,
+            repository_revision="revision-1",
+            container_image="trader-agent-coding@sha256:demo",
+        )
+    )
+    source = "def build_strategy(**kwargs):\n    return kwargs\n"
+    created = service.create_workspace(
+        attempt_id="attempt-1",
+        build_contract_id="contract-1",
+    )
+    workspace_id = created.data["workspace"]["workspace_id"]
+    assert service.write_candidate_file(
+        workspace_id,
+        "implementation.py",
+        source,
+    ).ok
+    packaged = service.package_candidate(workspace_id)
+    package_id = packaged.data["candidate_package"]["package_id"]
+    assert service.destroy_workspace(workspace_id).ok
+
+    artifact_store = InMemoryResearchArtifactStore()
+    environment = replace(
+        load_local_environment("env.template"),
+        allow_coding_workspace=True,
+    )
+    server = create_server(
+        environment,
+        coding_workspace_service_provider=lambda: service,
+        research_artifact_store_provider=lambda: artifact_store,
+    )
+
+    async def _run() -> None:
+        registered = await server.call_tool(
+            RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL,
+            {
+                "name": "PackageBackedStrategy",
+                "version": "1.0.0",
+                "factory_name": "build_strategy",
+                "candidate_package_id": package_id,
+                "authoring_origin": "agent_authored",
+                "metadata": {"candidate_package_id": package_id},
+            },
+        )
+        assert registered.isError is False
+        assert registered.structuredContent is not None
+        implementation = registered.structuredContent["data"][
+            "implementation_version"
+        ]
+        assert "source_code" not in implementation
+        assert implementation["source_hash"] == packaged.data[
+            "candidate_package"
+        ]["source_hash"]
+        assert implementation["metadata"]["candidate_package_id"] == package_id
+
+        conflicted = await server.call_tool(
+            RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL,
+            {
+                "name": "PackageBackedStrategy",
+                "version": "1.0.0",
+                "factory_name": "build_strategy",
+                "source_code": source,
+                "candidate_package_id": package_id,
+            },
+        )
+        assert conflicted.isError is True
+        assert conflicted.structuredContent is not None
+        assert conflicted.structuredContent["errors"][0]["code"] == (
+            "implementation_source_selector_invalid"
+        )
 
     anyio.run(_run)
