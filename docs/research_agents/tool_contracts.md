@@ -183,7 +183,8 @@ Existing MCP `ToolEnvelope` remains the transport result. The workflow executor 
 
 ### Model-Backed Session Evidence
 
-The replacement slice adds two canonical public artifact contracts without making the model runtime operational:
+The replacement slice uses two canonical public artifact contracts. The model runtime is implemented, while these
+MCP contracts remain deterministic evidence boundaries rather than model execution operations:
 
 | Contract | Purpose | Fail-closed checks |
 | --- | --- | --- |
@@ -246,7 +247,26 @@ the final column. The inventory intentionally exposes judgment-sized operations:
 mutation and admission, while the models retain the meaningful choices about investigation, comparison, authorship,
 revision, and evidence sufficiency.
 
-### Research Coordination Decision Contract
+### Model-Backed Coordination And Specialist Contracts
+
+`CoordinatorAgenda` is the strict model-proposed task DAG. `AgendaTaskProposal` fixes task identity, specialist role,
+objective, dependencies, bounded input, mutation key, and resource estimates; construction rejects duplicate tasks and
+cycles. A deterministic scheduler selects only dependency-ready tasks, reserves budget before dispatch, and prevents
+conflicting mutation keys from running concurrently.
+
+`SpecialistDelegation` fixes session, task, branch, attempt, program, model, tool-catalogue, scope, approval, input,
+context refs, and per-invocation limits. `DataAgentTurn` and `StrategyAgentTurn` contain exactly one proposed MCP call or
+one terminal conclusion. Policy validates role, phase, tool schema, scope, requester/actor identity, mutation lifecycle,
+loading/coding approvals, candidate package/admission lineage, loops, and remaining budget before dispatch.
+
+`SpecialistReturn` contains status, findings, issues, exact canonical evidence refs, bounded usage, lineage, and a
+content digest. Every return rejoins the Coordinator. `CoordinatorDecision` then selects `advance`, `revise`,
+`revisit`, `fork`, `ask_operator`, `conclude`, or `stop`, with action-specific fields and cited evidence. Code verifies
+those refs through `research_read_artifact` and appends an `AgentDecisionReceipt` before applying the decision.
+Unknown fields, contradictory action payloads, unverified evidence, exhausted budget, duplicate low-information work,
+and out-of-authority mutations fail closed.
+
+### Frozen Research Coordination Decision Contract (Removed)
 
 `CoordinationDecision` is the complete public output of one Research Coordinator policy pass. Its action is one of
 `execute_registered_specialist_task`, `execute_registered_workflow`, `request_prerequisite`, `request_approval`,
@@ -261,7 +281,7 @@ protocol payload. Unknown fields are rejected during parsing. Template identity 
 protocol and canonical inputs to the same plan ID before the executor may consume it. Coordination decisions and graph
 state are operational values, not new canonical artifacts or hidden planner transcripts.
 
-### Specialist Task And Result Contracts
+### Frozen Specialist Task And Result Contracts (Removed)
 
 The shared specialist graph boundary adds no MCP tool and does not change `ToolEnvelope`. Its public values are:
 

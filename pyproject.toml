@@ -24,6 +24,9 @@ dependencies = [
     "uvicorn>=0.40.0",
 ]
 
+[project.scripts]
+trader-agent = "trader_agents.cli:main"
+
 [project.optional-dependencies]
 test = ["pytest>=7.4"]
 ui = ["reflex", "plotly>=5.20.0"]

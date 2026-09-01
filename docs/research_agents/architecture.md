@@ -3,10 +3,10 @@
 Trader separates core trading runtime code from research tooling, MCP transport, and LangGraph agent orchestration.
 Research agents produce deterministic artifacts for inspection and backtesting; they do not control live trading.
 
-This document describes the current frozen implementation. It is not the target control-plane design. The planning-only
-model-backed coordinator and specialist replacement is defined in
-[Agentic Research Orchestration Redesign](../../plans/agentic_orchestration_redesign.md); no compatibility with the
-current `trader_agents` architecture is required.
+This document describes the current bounded-context platform and the first implemented model-backed orchestration
+slice. The former deterministic `trader_agents` control plane is frozen in Git history and has been removed without a
+compatibility layer. The new runtime is implemented but remains unqualified; the active roadmap is authoritative for
+the remaining recovery, security, observability, real-model, and operational acceptance gates.
 
 ## Layer Model
 
@@ -119,28 +119,21 @@ src/trader_research/
 This tree is directional architecture, not a requirement to create one file for every label. Module creation is justified
 by a cohesive responsibility and an enforceable import rule, not by line-count targets alone.
 
-The reusable specialist boundary is grouped by responsibility under the agent package:
+The model-backed orchestration boundary is grouped by responsibility under the agent package:
 
 ```text
-src/trader_agents/specialists/
-  domain.py                     # Strict task, decision, action-outcome and result values
-  policy.py                     # Provider-neutral policy and registered-handler protocols
-  catalog.py                    # Authority-scoped, code-owned action registration
-  routing.py                    # Code-owned specialist graph route registration
-  graph.py                      # Bounded resumable policy/action loop and public projection
-src/trader_agents/data_agent/
-  domain.py                     # Normalized Data request and stable task construction
-  policy.py                     # Deterministic Data action sequencing and prerequisites
-  actions.py                    # MCP handlers and canonical evidence verification
-  catalog.py                    # Production Data action registrations
-  graph.py                      # Data specialist graph assembly
-  route.py                      # Production route adapter for composition
-src/trader_agents/research_composition/
-  domain.py                     # Strict request and bounded checkpoint values
-  catalog.py                    # Default production specialist-route assembly
-  validation.py                 # Task/result/handoff and protocol-consumption checks
-  graph.py                      # One-transition specialist-to-workflow control loop
-  runner.py                     # Run/resume boundary and replay conflict detection
+src/trader_agents/
+  contracts.py                  # Strict agendas, delegations, turns, returns, decisions, and interrupts
+  inputs.py                     # Boundary normalization from immutable ResearchSession values
+  catalogue.py                  # Code-owned, phase- and role-scoped MCP capabilities
+  policy.py                     # Tool, mutation, scope, lifecycle, loop, and budget enforcement
+  scheduler.py                  # Dependency-ready parallel scheduling and resource reservations
+  data_research.py              # Data Research model/tool loop
+  strategy_engineering.py       # Catalogue-first isolated strategy implementation loop
+  coordinator.py                # Single-writer LangGraph coordinator and evidence review
+  checkpointing/                # Bounded/redacted PostgreSQL operational state
+  runtime.py                    # Start, resume, inspect, and environment composition boundary
+  cli.py                        # Non-interactive operator entry point
 ```
 
 | Context | Owns | May depend on | Must not depend on |
@@ -324,7 +317,53 @@ Orchestration is a cross-cutting control capability over deterministic tools, no
 plan. It can coordinate capabilities that are already implemented while additional ML, robustness, review and
 methodology tools develop independently.
 
-The current operational baseline is deliberately bounded:
+The current implemented slice is deliberately bounded:
+
+- The Research Coordinator is the only user-facing model. It creates a typed agenda, schedules dependency-ready work,
+  invokes specialists, validates every returned canonical ref through MCP, and records an append-only public decision
+  receipt before continuing or terminating.
+- Data Research and Strategy Engineering are context-isolated specialist model/tool loops. Each receives only its
+  typed delegation and role-scoped MCP catalogue and returns bounded findings, issues, usage, and exact evidence refs.
+- Data Research covers the full approved multi-asset scope, including discovery, inventory, quality inspection,
+  bounded loading, revalidation, and exact snapshot evidence.
+- Strategy Engineering searches and compares the existing catalogue first, then either reuses an exact admitted
+  implementation or authors in an isolated Coding Workspace and submits the package through independent admission.
+- A deterministic scheduler admits only dependency-ready, budget-reserved work and permits parallel execution only
+  when mutation domains do not conflict. The Coordinator remains the single writer of shared graph state.
+- PostgreSQL checkpoints contain bounded operational state only. Tool-produced artifacts and decision receipts remain
+  canonical in Trader research persistence; checkpoints never become research evidence.
+- The runtime can return a grounded terminal result or a bounded operator interrupt and exposes start, resume, and
+  redacted inspect operations. Production qualification is still pending.
+
+The implementation is split by responsibility and call direction:
+
+| Component | Reads or receives | Produces | Explicitly does not do |
+| --- | --- | --- | --- |
+| Research Coordinator (`coordinator.py`) | Immutable session, model program, role-scoped MCP client, specialist capabilities, checkpointer | Agenda, delegations, verified returns, public decision receipts, terminal result or operator interrupt | Specialist judgment, direct platform/SQL access, hidden-reasoning persistence, live trading |
+| Data Research (`data_research.py`) | Composite approved scope, Data program, Data-scoped MCP client | Complete readiness/snapshot evidence or typed blockers | Strategy design, unapproved loading, direct provider/service access |
+| Strategy Engineering (`strategy_engineering.py`) | Typed build contract, Strategy program, catalogue/Coding Workspace/admission MCP client | Exact reused or newly admitted implementation evidence | Backtesting, outcome-driven revision, host execution, self-admission |
+| Scheduler and policy (`scheduler.py`, `policy.py`) | Typed agenda/delegations, phase, approvals, usage, tool proposals | Ready set, reservations, authorized calls, fail-closed violations | Scientific judgment or MCP execution |
+| Runtime and checkpoints (`runtime.py`, `checkpointing/`) | Exact session pins, environment configuration, PostgreSQL saver | Start/resume/inspect lifecycle and bounded recoverable state | Canonical evidence authority or persistence fallback |
+| MCP adapters (`trader_mcp`) | Bounded tool arguments | `ToolEnvelope` values and canonical artifact refs | Agent policy, agenda construction, or checkpoint ownership |
+
+```text
+operator -> immutable ResearchSession -> Research Coordinator
+  -> typed agenda -> dependency/budget scheduler
+  -> [Data Research || Strategy Engineering] -> role-scoped MCP
+  -> structured returns -> coordinator canonical-read verification
+  -> append-only decision receipt
+  -> revise/revisit/fork/ask/stop/conclude
+```
+
+Every model output is parsed into a strict public schema. Invalid structured output gets at most one bounded schema
+repair. Tool proposals are authorized against the exact program, role, phase, session scope, approval policy, mutation
+lifecycle, and remaining budget before MCP dispatch. Tool descriptions and observations are bounded, and raw prompts,
+messages, secrets, hidden reasoning, and complete tool responses are excluded from checkpoints and decision records.
+
+### Frozen Deterministic Baseline (Removed)
+
+The following baseline is retained only to explain the frozen acceptance history; the referenced `trader_agents`
+packages and their tests no longer exist on this branch:
 
 - The Data Agent has one deterministic resumable specialist graph over three registered MCP-backed actions. The
   Experiment Design Agent has one deterministic resumable specialist graph over a single proposal operation. The
@@ -344,7 +383,8 @@ The current operational baseline is deliberately bounded:
 - Quantitative Methods, ML, Evaluation, Adversarial and Hypothesis identity/allowlist definitions exist without
   complete specialist execution graphs.
 
-The implementation is split by responsibility and call direction rather than collected into one universal graph:
+The removed implementation was split by responsibility and call direction rather than collected into one universal
+graph:
 
 | Component | Reads or receives | Produces | Explicitly does not do |
 | --- | --- | --- | --- |

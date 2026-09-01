@@ -392,7 +392,7 @@ def test_product_state_separates_implementation_qualification_and_availability()
         "`none`, `focused`, `integration`, `controlled`",
         "`unregistered`, `registered`, `gated`, `operator_only`, `deferred`",
         "`Implemented` does not mean autonomously orchestrated",
-        "A bounded composition runner now connects explicit Data tasks",
+        "implemented but unqualified first model-backed orchestration slice",
         "commit `577c774`",
         "but they are not part of the",
     ):
@@ -709,38 +709,34 @@ def test_docs_explain_current_orchestration_call_and_storage_boundaries() -> Non
     architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
     catalog = (DOC_ROOT / "mcp_tools.md").read_text(encoding="utf-8")
     contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
-    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
-    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
     roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
 
     for phrase in (
-        "The coordinator policy, composition runner, declaration contracts",
-        "non-executing resume shell, and closed compiler/executor",
-        "closed compiler/executor are separate architectural responsibilities",
+        "model-backed Coordinator agenda",
+        "structured specialist returns",
+        "canonical artifact reads and digest checks",
     ):
         assert phrase in normalized_readme
 
     for phrase in (
         "## Implemented Orchestration At A Glance",
-        "returns a ready WorkflowPlan; writes nothing",
-        "The artifact store holds research evidence",
-        "A deliberate pause creates no outcome",
+        "The current first slice is a real model/tool control loop",
+        "append-only decision receipts",
+        "Checkpoints are operational and redacted",
     ):
         assert phrase in product_state
 
     for phrase in (
-        "There is no `research_execute_workflow` MCP tool",
-        "The executor consumes the `McpToolClient` protocol",
-        "There are two related identity layers",
+        "The Research Coordinator is the only user-facing model",
+        "The Coordinator remains the single writer of shared graph state",
+        "PostgreSQL checkpoints contain bounded operational state only",
     ):
         assert phrase in architecture
 
-    assert "There is no registered high-level workflow-execution tool" in catalog
+    assert "Research Coordinator Evidence Tools" in catalog
     assert "`ToolEnvelope` | MCP adapter" in contracts
-    assert "Compilation itself writes nothing" in workflows
-    assert "`max_tool_calls` counts compiled plan-step calls" in operations
-    for revision in ("`e3f7d85`", "`6cbc886`", "`28c1d33`"):
-        assert revision in roadmap
+    assert "`AgentDecisionReceipt`" in contracts
+    assert "| First agentic implementation slice | in_progress |" in roadmap
 
 
 def test_docs_define_bounded_research_coordinator_policy() -> None:
@@ -755,17 +751,17 @@ def test_docs_define_bounded_research_coordinator_policy() -> None:
     )
 
     for phrase in (
-        "`CoordinationDecision`",
-        "`WorkflowTemplateCatalog`",
-        "`compile_coordination_decision`",
-        "request a prerequisite",
-        "unknown templates",
-        "selects the first unaccepted",
+        "`CoordinatorAgenda`",
+        "`SpecialistDelegation`",
+        "role-scoped MCP",
+        "append-only",
+        "single-writer",
+        "fail closed",
     ):
         assert phrase in combined
 
-    assert "trader_agents.research_coordinator" in architecture
-    assert "calls no MCP tool" in agents
+    assert "`coordinator.py`" in architecture
+    assert "Every return rejoins the single-writer Coordinator" in agents
 
 
 def test_active_product_docs_do_not_name_architecture_with_roadmap_ids() -> None:

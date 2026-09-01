@@ -4,10 +4,11 @@ This is the starting point for understanding Trader's research system. The resea
 supplied executable code into deterministic, inspectable evidence. It sits above the core trading runtime and outside
 the live trading hot path.
 
-The currently qualified orchestration layer is a frozen deterministic baseline, not the target agent system. The clean
-model-backed supervisor and specialist redesign is planning-only and is defined in
-[Agentic Research Orchestration Redesign](../../plans/agentic_orchestration_redesign.md). No compatibility with the
-existing `trader_agents` control plane is required.
+The frozen deterministic orchestration baseline remains an acceptance reference in Git history, but its Python
+control plane has been removed on the agentic-build branch. A clean model-backed Research Coordinator, Data Research
+specialist, and Strategy Engineering specialist is now implemented as an unqualified first slice. The accepted design
+constraints live in [Agent Designs](../../plans/agent_designs.md), and delivery/qualification state lives in the
+[active capability roadmap](../../plans/research_capability_roadmap.md).
 
 ## What Trader Research Does
 
@@ -38,44 +39,35 @@ A method card is provenance, not an execution identity. Handwritten, AI-produced
 code receives the same implementation validation. Data Agent artifacts remain the only source of symbols, timeframe,
 date bounds, provider scope, and market-data quality.
 
-The supplied-implementation path now has bounded composition. The Research Coordinator accepts a typed objective,
-explicit specialist tasks and accepted-result receipts, optional protocol and optional terminal outcome, then emits
-exactly one bounded action: execute a registered specialist task, request a prerequisite, request approval, select a
-registered workflow, report terminal state or stop with a blocker. The composition runner executes that decision and,
-when approved inputs are complete, enters the fixed `supplied_implementation_to_evidence` template through MCP with
-resumable checkpoints:
+The first model-backed slice begins with one immutable, operator-approved research session. The Research Coordinator
+creates a typed agenda, schedules dependency-ready work, and invokes Data Research and Strategy Engineering as
+context-isolated specialist model/tool loops. Disjoint tasks can run concurrently. Every return rejoins the
+Coordinator, which independently resolves the exact canonical evidence refs before it may revise, revisit, fork, ask
+the operator, stop, or conclude:
 
 ```text
-approved objective + explicit Data and Experiment Design tasks
-  -> Research Coordinator selects each registered specialist route in order
-  -> composition validates canonical Data and protocol-proposal handoffs
-  -> pause for explicit operator decisions over every material assumption
-  -> unchanged approved protocol
-  -> Research Coordinator selects one bounded workflow action
-  -> approved objective + protocol + pinned implementation/Data refs
-  -> deterministic compiler creates one ready, immutable workflow plan
-  -> workflow executor registers the plan and asks the resume shell for the next step
-  -> executor calls the registered MCP tool and validates its ToolEnvelope
-  -> resume shell accepts a bounded WorkflowStepResult and checkpoints progress
-  -> repeat until the executor records a canonical terminal WorkflowOutcome
+operator-approved ResearchSession
+  -> model-backed Coordinator agenda
+  -> dependency and budget scheduler
+  -> Data Research model/tool loop ───────────────┐
+  -> Strategy Engineering model/tool loop ───────┤ may run in parallel
+  -> structured specialist returns <─────────────┘
+  -> canonical artifact reads and digest checks
+  -> append-only public decision receipt
+  -> grounded result, bounded operator interrupt, or fail-closed stop
 ```
 
-The coordinator policy, composition runner, declaration contracts, non-executing resume shell, and closed
-compiler/executor are separate architectural responsibilities. The coordinator does not author protocols, call MCP,
-change approved scope, or invent tools; composition invokes only its selected code-owned route or workflow. Missing
-state becomes a typed request for its owning domain. The checkpoint database is replaceable operational state;
-canonical data, experiment, review, and workflow artifacts remain in the research
-artifact store.
+The Data Research loop covers a complete multi-asset Data Agent scope and quality evidence, bounded approved loading,
+revalidation, and exact snapshot return. The Strategy Engineering loop searches and compares admitted implementations
+before choosing exact reuse or isolated authoring; authored code must pass workspace checks, packaging, registration,
+and independent admission before return. Agent code uses role-scoped MCP clients and never calls Trader services or
+SQL directly. PostgreSQL checkpoints hold bounded operational state only; canonical evidence remains in the research
+artifact store. Experiment Design, execution, Robustness/WFO, Evaluation, Knowledge Research, Quantitative Methods,
+and ML model-backed loops are outside this slice.
 
-A shared specialist policy shell defines how owning-domain graphs are called. It accepts a typed task, validates one
-authority-scoped registered action at a time, and returns canonical handoffs, prerequisites or blockers without
-retaining raw tool responses or hidden reasoning. The Data Agent is a production specialist on this boundary:
-it validates explicit symbol scope, optionally performs separately approved replay-safe sample loading, and returns a
-verified canonical manifest/quality pair through a resumable checkpoint thread. The Experiment Design specialist is
-also operational: it validates one complete structured design over existing canonical inputs, persists an immutable
-proposal with requested approvals, and returns a digest-pinned handoff. The Research Coordinator executes neither
-specialist itself; composition invokes selected routes and carries only accepted refs and digests into the next
-decision. Quantitative Methods, ML, general Robustness and final Evaluation routes remain absent.
+The implementation is not yet a controlled product capability. Fresh-process PostgreSQL recovery, real Coding
+Workspace qualification, MLflow trace qualification, prompt-security cases, and repeated real-model evaluation must
+pass before the roadmap can mark the slice complete.
 
 Trader Postgres is canonical for implementations, specifications, runs, trial ledgers, Evaluation, and Adversarial
 evidence. MCP is the control-plane API over deterministic services. LangGraph agents constrain tool access and preserve
@@ -143,13 +135,11 @@ training, model evaluation/registration, and drift remain the 39A-G/J roadmap.
 
 ### Higher-Level Orchestration
 
-1. [Agentic Research Orchestration Redesign](../../plans/agentic_orchestration_redesign.md) for the planning-only target
-2. [Agent Designs](../../plans/agent_designs.md) for accepted and pending per-agent architecture decisions
-3. [product_state.md: Active Agentic Redesign](product_state.md#active-agentic-redesign) for the current/target boundary
-4. [product_state.md: Implemented Orchestration At A Glance](product_state.md#implemented-orchestration-at-a-glance) for the frozen implementation
-5. [architecture.md: Higher-Level Orchestration Architecture](architecture.md#higher-level-orchestration-architecture) for current code
-6. [operations.md: Deterministic Workflow Execution](operations.md#deterministic-workflow-execution) for current operation
-7. [Active capability roadmap: Active Work Graph](../../plans/research_capability_roadmap.md#active-work-graph)
+1. [Agent Designs](../../plans/agent_designs.md) for accepted and pending per-agent architecture decisions
+2. [First Agentic Slice Implementation Plan](../../plans/agent_designs/first_agentic_slice_implementation_plan.md) for the temporary build and qualification checklist
+3. [product_state.md: Active Agentic Redesign](product_state.md#active-agentic-redesign) for the implemented/unqualified boundary
+4. [architecture.md: Higher-Level Orchestration Architecture](architecture.md#higher-level-orchestration-architecture) for current code
+5. [Active capability roadmap: Active Work Graph](../../plans/research_capability_roadmap.md#active-work-graph) for remaining gates
 
 ## Document Roles
 
@@ -181,12 +171,12 @@ When documentation and implementation disagree, inspect these current sources an
 - Public research application surfaces: the `__init__.py` facade in each `trader_research` bounded context.
 - Canonical Postgres persistence and projection registration: `src/trader_research/infrastructure/postgres/`.
 - Orchestration declarations and persistence services: `src/trader_research/governance/orchestration/`.
-- Shared specialist contracts, catalogs, policy loop and resume helpers: `src/trader_agents/specialists/`.
-- Production Data specialist request, policy and MCP handlers: `src/trader_agents/data_agent/`.
-- Experiment Design request, policy, proposal action and route: `src/trader_agents/experiment_design_agent/`.
-- Bounded specialist-to-workflow composition and replay validation: `src/trader_agents/research_composition/`.
-- Resumable workflow state: `src/trader_agents/checkpointing/`.
-- Fixed workflow compilation and MCP execution: `src/trader_agents/orchestration/`.
+- Agent contracts, policy, scheduler, and normalized session inputs: `src/trader_agents/contracts.py`,
+  `policy.py`, `scheduler.py`, and `inputs.py`.
+- Model-backed Coordinator, Data, and Strategy loops: `src/trader_agents/coordinator.py`,
+  `data_research.py`, and `strategy_engineering.py`.
+- User-facing run/resume/inspect lifecycle and CLI: `src/trader_agents/runtime.py` and `cli.py`.
+- Bounded operational checkpoint state: `src/trader_agents/checkpointing/`.
 - Current capability and qualification baseline: `docs/research_agents/product_state.md`.
-- Target model-backed coordinator and specialist design: `plans/agentic_orchestration_redesign.md`.
+- Target model-backed coordinator and specialist designs: `plans/agent_designs.md` and its owning subdocuments.
 - Remaining work and dependencies: `plans/research_capability_roadmap.md`.

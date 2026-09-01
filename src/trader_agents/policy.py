@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from hashlib import sha256
 from typing import Any
 
 from trader_mcp.contracts import SideEffect
@@ -117,6 +118,14 @@ class ToolPolicy:
                 "tool_not_available",
                 f"{proposal.tool_name} is unavailable in phase {context.phase.value}",
             )
+        if (
+            definition.side_effect is not SideEffect.READ_ONLY
+            and not proposal.mutation_reason
+        ):
+            raise PolicyViolation(
+                "mutation_reason_required",
+                "mutating MCP calls require a public mutation reason",
+            )
         self._validate_budget(definition, context)
         self._validate_delegation(definition, context)
         self._validate_role_scope(proposal, definition, context)
@@ -129,7 +138,7 @@ class ToolPolicy:
             }
         )
         prior_count = int(context.loop_fingerprints.get(fingerprint, 0))
-        if prior_count > context.session.budget.max_revisions:
+        if prior_count >= context.session.budget.max_revisions:
             raise PolicyViolation(
                 "low_information_loop",
                 "materially equivalent action exceeded the revision limit",
@@ -246,6 +255,17 @@ class ToolPolicy:
                 "data_loading_not_approved",
                 "composite Data scope does not approve loading",
             )
+        if proposal.tool_name == "data_create_research_snapshot":
+            _require_argument(
+                proposal.arguments,
+                "requested_by",
+                context.session.session_id,
+            )
+            _require_argument(
+                proposal.arguments,
+                "actor",
+                "Data Research Agent",
+            )
         arguments = proposal.arguments
         requested_symbols = _string_sequence(arguments.get("symbols"), "symbols")
         if requested_symbols:
@@ -309,6 +329,13 @@ class ToolPolicy:
         state = context.runtime_state
         if name in {MCP_HEALTH, MCP_CONFIG}:
             return
+        definition = context.tool_catalogue.resolve(context.role, name)
+        if definition.side_effect is not SideEffect.READ_ONLY:
+            if not proposal.mutation_reason:
+                raise PolicyViolation(
+                    "mutation_reason_required",
+                    "mutating Strategy call requires a public mutation reason",
+                )
         if name in {
             "research_get_implementation",
             "research_compare_implementation",
@@ -331,7 +358,7 @@ class ToolPolicy:
             _require_argument(
                 proposal.arguments,
                 "attempt_id",
-                context.delegation.attempt_id if context.delegation else "",
+                str(state.get("candidate_attempt_id") or ""),
             )
         workspace_operations = {
             "coding_get_workspace",
@@ -355,16 +382,84 @@ class ToolPolicy:
                     f"{name} requires an active workspace",
                 )
             _require_argument(proposal.arguments, "workspace_id", workspace_id)
+        if name == "coding_package_candidate" and not state.get("checks_passed"):
+            raise PolicyViolation(
+                "candidate_checks_required",
+                "candidate packaging requires at least one passed isolated check",
+            )
         if name.startswith("research_register_") and not state.get("package_id"):
             raise PolicyViolation(
                 "candidate_package_required",
                 "implementation registration requires an exact candidate package",
             )
-        if name.startswith("research_validate_") and not state.get("implementation_ref"):
-            raise PolicyViolation(
-                "implementation_ref_required",
-                "independent admission requires an exact implementation ref",
+        if name.startswith("research_register_"):
+            source_code = proposal.arguments.get("source_code")
+            if not isinstance(source_code, str):
+                raise PolicyViolation(
+                    "packaged_source_required",
+                    "implementation registration requires packaged source text",
+                )
+            if sha256(source_code.encode("utf-8")).hexdigest() != state.get(
+                "package_source_hash"
+            ):
+                raise PolicyViolation(
+                    "package_source_mismatch",
+                    "registration source does not match the accepted package",
+                )
+            _require_argument(proposal.arguments, "name", contract.name)
+            dependencies = set(
+                _string_sequence(
+                    proposal.arguments.get("dependencies"),
+                    "dependencies",
+                )
             )
+            outside_dependencies = dependencies - set(contract.permitted_dependencies)
+            if outside_dependencies:
+                raise PolicyViolation(
+                    "dependency_scope_expansion",
+                    "registration includes dependencies outside the build contract",
+                    details={"dependencies": sorted(outside_dependencies)},
+                )
+            metadata = proposal.arguments.get("metadata")
+            if not isinstance(metadata, Mapping):
+                raise PolicyViolation(
+                    "package_metadata_required",
+                    "registration metadata must identify the candidate package",
+                )
+            if metadata.get("candidate_package_id") != state.get("package_id"):
+                raise PolicyViolation(
+                    "package_identity_mismatch",
+                    "registration metadata does not match the accepted package",
+                )
+        if name.startswith("research_validate_"):
+            implementation_ref = str(state.get("implementation_ref") or "")
+            if not implementation_ref:
+                raise PolicyViolation(
+                    "implementation_ref_required",
+                    "independent admission requires an exact implementation ref",
+                )
+            supplied = {
+                str(proposal.arguments.get("implementation_version_id") or ""),
+                str(proposal.arguments.get("implementation_version_uri") or ""),
+            }
+            supplied.discard("")
+            if supplied != {implementation_ref}:
+                raise PolicyViolation(
+                    "implementation_ref_mismatch",
+                    "admission input does not match the registered implementation",
+                )
+            requested_by = proposal.arguments.get("requested_by")
+            actor = proposal.arguments.get("actor")
+            if requested_by not in {None, context.session.session_id}:
+                raise PolicyViolation(
+                    "session_identity_mismatch",
+                    "admission requested_by belongs to another session",
+                )
+            if actor not in {None, "Strategy Engineering Agent"}:
+                raise PolicyViolation(
+                    "actor_identity_mismatch",
+                    "admission actor does not match Strategy Engineering",
+                )
 
     @staticmethod
     def _validate_coordinator_call(
@@ -396,6 +491,28 @@ class ToolPolicy:
                     "session_identity_mismatch",
                     "coordinator can resolve only its owning research session",
                 )
+        if proposal.tool_name == "research_record_agent_decision":
+            receipt = arguments.get("receipt")
+            if not isinstance(receipt, Mapping):
+                raise PolicyViolation(
+                    "decision_receipt_required",
+                    "decision recording requires a structured receipt",
+                )
+            if receipt.get("session_id") != context.session.session_id:
+                raise PolicyViolation(
+                    "session_identity_mismatch",
+                    "coordinator cannot record a decision for another session",
+                )
+            if receipt.get("program_id") != context.program_id:
+                raise PolicyViolation(
+                    "program_identity_mismatch",
+                    "decision receipt program does not match the coordinator",
+                )
+            if receipt.get("model_profile_id") != context.session.model_profile_id:
+                raise PolicyViolation(
+                    "model_identity_mismatch",
+                    "decision receipt model does not match the session",
+                )
 
 
 @dataclass
@@ -404,6 +521,24 @@ class BudgetLedger:
 
     budget: AgentBudget
     usage: BudgetUsage = field(default_factory=BudgetUsage)
+
+    def ensure_model_call_available(self) -> None:
+        """Reject a provider call before it crosses a hard call ceiling."""
+        if self.usage.model_calls + 1 > self.budget.max_model_calls:
+            raise PolicyViolation(
+                "model_budget_exhausted",
+                "model-call budget is exhausted",
+            )
+        if self.usage.total_tokens >= self.budget.max_tokens:
+            raise PolicyViolation(
+                "token_budget_exhausted",
+                "token budget is exhausted",
+            )
+        if self.usage.duration_ms >= self.budget.max_duration_seconds * 1_000:
+            raise PolicyViolation(
+                "duration_budget_exhausted",
+                "duration budget is exhausted",
+            )
 
     def record_model_call(
         self,
@@ -448,6 +583,21 @@ class BudgetLedger:
         """Record one material model/tool loop revision."""
         candidate = self.usage.model_copy(
             update={"revisions": self.usage.revisions + 1}
+        )
+        self._validate(candidate)
+        self.usage = candidate
+        return candidate
+
+    def merge(self, usage: BudgetUsage) -> BudgetUsage:
+        """Merge one completed invocation into cumulative session usage."""
+        candidate = BudgetUsage(
+            model_calls=self.usage.model_calls + usage.model_calls,
+            tool_calls=self.usage.tool_calls + usage.tool_calls,
+            input_tokens=self.usage.input_tokens + usage.input_tokens,
+            output_tokens=self.usage.output_tokens + usage.output_tokens,
+            duration_ms=self.usage.duration_ms + usage.duration_ms,
+            mutations=self.usage.mutations + usage.mutations,
+            revisions=self.usage.revisions + usage.revisions,
         )
         self._validate(candidate)
         self.usage = candidate

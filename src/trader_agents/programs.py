@@ -96,7 +96,7 @@ def first_slice_programs() -> AgentProgramRegistry:
                 version="1.0.0",
                 model_profile_id=DEVELOPMENT_MODEL_PROFILE_ID,
                 system_instruction=DATA_RESEARCH_SYSTEM_INSTRUCTION,
-                output_contracts=("ToolCallProposal", "SpecialistReturn"),
+                output_contracts=("DataAgentTurn",),
                 tool_policy_version=TOOL_POLICY_VERSION,
             ),
             AgentProgram(
@@ -105,7 +105,7 @@ def first_slice_programs() -> AgentProgramRegistry:
                 version="1.0.0",
                 model_profile_id=DEVELOPMENT_MODEL_PROFILE_ID,
                 system_instruction=STRATEGY_ENGINEERING_SYSTEM_INSTRUCTION,
-                output_contracts=("ToolCallProposal", "SpecialistReturn"),
+                output_contracts=("StrategyAgentTurn",),
                 tool_policy_version=TOOL_POLICY_VERSION,
             ),
         )

@@ -19,6 +19,7 @@ from trader_research.foundation import (
     ResearchArtifactStoreError,
     error_result,
     load_artifact_ref,
+    parse_research_artifact_uri,
     stable_research_id,
     success_result,
 )
@@ -211,10 +212,28 @@ def get_implementation(
     row = _canonical_catalogue_row(implementation, admitted.get(implementation.implementation_version_id))
     if include_source:
         row["source_code"] = implementation.source_code
+    artifacts = {
+        "implementation_version": _implementation_reference(
+            artifact_store,
+            implementation,
+        )
+    }
+    validation_uri = row.get("validation_ref")
+    if validation_uri:
+        validation_type, validation_id = parse_research_artifact_uri(
+            str(validation_uri)
+        )
+        validation_record = artifact_store.load_artifact_record(
+            validation_type,
+            validation_id,
+        )
+        artifacts["implementation_validation_report"] = (
+            validation_record.reference().to_dict()
+        )
     return success_result(
         command=RESEARCH_GET_IMPLEMENTATION,
         data={"implementation": row},
-        artifacts={"implementation_version": _implementation_reference(artifact_store, implementation)},
+        artifacts=artifacts,
     )
 
 
@@ -274,6 +293,7 @@ def compare_implementation(
                 "This deterministic comparison does not establish semantic equivalence or efficacy."
             ],
         },
+        artifacts=resolved.artifacts,
     )
 
 

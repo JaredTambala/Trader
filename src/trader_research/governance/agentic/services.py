@@ -202,6 +202,7 @@ def read_canonical_artifact(
     *,
     artifact_store: ResearchArtifactStore | None,
     max_payload_bytes: int = 64_000,
+    include_payload: bool = True,
 ) -> ApplicationResult:
     """Read one exact bounded canonical artifact with governance metadata.
 
@@ -210,6 +211,8 @@ def read_canonical_artifact(
         expected_artifact_type: Required registered artifact type.
         artifact_store: Canonical evidence store.
         max_payload_bytes: Maximum compact JSON payload bytes returned.
+        include_payload: Whether to return the complete bounded payload. Set
+            false when exact identity, lineage, and hashes are sufficient.
 
     Returns:
         Exact record metadata, payload hash, and bounded payload.
@@ -251,25 +254,25 @@ def read_canonical_artifact(
             code="canonical_artifact_read_failed",
             message=str(exc),
         )
+    public_record = {
+        "artifact_type": record.artifact_type,
+        "artifact_id": record.artifact_id,
+        "domain_owner": record.domain_owner,
+        "producer_tool": record.producer_tool,
+        "requested_by": record.requested_by,
+        "actor": record.actor,
+        "status": record.status,
+        "schema_version": record.schema_version,
+        "source_hash": record.source_hash,
+        "payload_hash": json_payload_hash(record.payload),
+        "payload_bytes": len(encoded),
+        "metadata": dict(record.metadata),
+    }
+    if include_payload:
+        public_record["payload"] = dict(record.payload)
     return success_result(
         command=command,
-        data={
-            "record": {
-                "artifact_type": record.artifact_type,
-                "artifact_id": record.artifact_id,
-                "domain_owner": record.domain_owner,
-                "producer_tool": record.producer_tool,
-                "requested_by": record.requested_by,
-                "actor": record.actor,
-                "status": record.status,
-                "schema_version": record.schema_version,
-                "source_hash": record.source_hash,
-                "payload_hash": json_payload_hash(record.payload),
-                "payload_bytes": len(encoded),
-                "metadata": dict(record.metadata),
-                "payload": dict(record.payload),
-            }
-        },
+        data={"record": public_record},
         artifacts={"artifact": record.reference().to_dict()},
     )
 

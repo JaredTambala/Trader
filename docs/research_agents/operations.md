@@ -53,6 +53,19 @@ configuration. Runtime failures belong inside the affected tool envelope.
 | `MLFLOW_TRACKING_URI` | empty | Configured optional MLflow sink/training tracking authority; never request-supplied. |
 | `TRADER_MLFLOW_OPTIMIZATION_EXPERIMENT` | `trader-backtest-optimization` | Disposable analytical projection namespace. |
 | `TRADER_MCP_ALLOW_ML_RUNTIME` | `false` | Enables deployment parity model loading and model-backed backtest inference. |
+| `TRADER_MCP_ALLOW_CODING_WORKSPACE` | `false` | Enables isolated Strategy Engineering workspace creation, candidate writes, checks, packaging, and cleanup. |
+| `TRADER_MCP_CODING_WORKSPACE_ROOT` | empty | Dedicated writable root for ephemeral candidate workspaces. Must not be the repository root. |
+| `TRADER_MCP_CODING_REPOSITORY_ROOT` | empty | Read-only Trader repository snapshot exposed to the coding service. |
+| `TRADER_MCP_CODING_REPOSITORY_REVISION` | empty | Exact pinned repository revision used by every workspace. |
+| `TRADER_MCP_CODING_CONTAINER_IMAGE` | empty | Exact admitted image used for isolated checks. |
+| `TRADER_AGENTS_CHECKPOINT_DSN` | empty | Dedicated PostgreSQL DSN for replaceable LangGraph operational checkpoints. |
+| `TRADER_AGENTS_MODEL_PROFILE_ID` | `ollama-qwen35-9b-json-v1` | Exact admitted model profile. The first slice currently registers only its development Ollama profile. |
+| `TRADER_AGENTS_MCP_COMMAND` | current Python executable | Command used to start each isolated MCP stdio server. |
+| `TRADER_AGENTS_MCP_ARGS` | `-m trader_mcp.server` | Arguments for each MCP stdio server. |
+| `TRADER_AGENTS_MCP_CWD` | current directory | Working directory for MCP server processes. |
+| `TRADER_AGENTS_MCP_TIMEOUT_SECONDS` | `180` | Per-call MCP transport timeout. |
+| `TRADER_AGENTS_MLFLOW_TRACKING_URI` | empty | Optional MLflow tracking URI for redacted agent traces; no trace sink is used when empty. |
+| `TRADER_AGENTS_MLFLOW_EXPERIMENT` | `trader-agentic-research` | MLflow experiment for agent trace correlation. |
 | `TRADER_MLFLOW_INFERENCE_PROFILE` | `mlflow_local_pyfunc` | Names the configured immutable local-pyfunc adapter profile. |
 | `TRADER_MCP_ALLOW_BROKER_MUTATION` | `false` | Must remain false for research MCP tools. |
 | `TRADER_MCP_ALLOW_RAW_SQL` | `false` | Must remain false for research MCP tools. |
@@ -61,6 +74,61 @@ Provision the Optuna role/schema outside MCP with least privilege, set that role
 the dedicated schema. Trader's normal application role should not use that schema. `mcp_get_config` reports only whether
 the profile is configured; `research_get_optimizer_runtime` reports package/config availability without connecting or
 creating a study. Built-in grid/random remain available when the URL or Optuna package is absent.
+
+## Agentic Runtime Operations (Unqualified)
+
+The `trader-agent` command operates the implemented Coordinator–Data–Strategy slice. It is available for development
+and qualification; it is not yet a controlled production capability.
+
+First inspect the exact credential-free runtime identities:
+
+```bash
+uv run trader-agent manifest
+```
+
+Create a JSON serialization of one immutable `ResearchSession` using the exact model-profile, agent-program, and
+tool-catalogue identities from that manifest. The session must also contain a complete composite Data scope, Strategy
+build-contract inputs, approvals, budgets, operator identity, and success definition. Validate it without opening
+Postgres, a model, or MCP subprocesses:
+
+```bash
+uv run trader-agent validate-session --session /absolute/path/to/session.json
+```
+
+For execution, configure the canonical research store/MCP environment, a dedicated checkpoint database, and the
+admitted Ollama model. The first run may apply the idempotent LangGraph checkpoint schema explicitly:
+
+```bash
+export TRADER_AGENTS_CHECKPOINT_DSN='postgresql://checkpoint_role:...@localhost:5432/trader_checkpoints'
+uv run trader-agent run --session /absolute/path/to/session.json --setup-checkpoint-schema
+```
+
+`run` starts three persistent stdio MCP sessions so Coordinator, Data, and Strategy transport state is isolated. It
+either prints a grounded `AgenticSliceResult` or an `OperatorInterrupt`. A later invocation with the exact same session
+identity recovers the existing checkpoint instead of creating a second research lineage. Inspect only the redacted
+public projection with:
+
+```bash
+uv run trader-agent inspect --session /absolute/path/to/session.json
+```
+
+Resume an interrupt using the same session and exact operator identity:
+
+```bash
+uv run trader-agent resume \
+  --session /absolute/path/to/session.json \
+  --approved true \
+  --answer 'Bounded public operator response' \
+  --operator-id operator-name
+```
+
+Use `--setup-checkpoint-schema` on `resume` or `inspect` only when an operator is deliberately provisioning a fresh
+checkpoint database. Do not use the research artifact-store DSN as an implicit fallback. Checkpoints can be expired
+after terminal evidence is confirmed because they are operational state, not research authority.
+
+Exact reuse can operate with read-only implementation-catalogue and admission evidence. New authorship additionally
+requires the default-off Coding Workspace gate and every pinned workspace variable above. Data loading likewise
+requires its separate gate plus approval inside the immutable session. The Coordinator cannot widen either envelope.
 
 ### MLflow Runtime Boundary
 
@@ -148,7 +216,11 @@ then creates only canonical implementation, specification, backtest, optimisatio
 Adversarial projections. Do not translate old rows, synthesize new refs from candidate IDs, or selectively preserve
 candidate-era research data.
 
-## Controlled Verification Procedure
+## Frozen Deterministic Verification Procedure
+
+This section documents the accepted deterministic orchestration freeze. The control-plane code and named tests below
+exist at `verification-orchestration-v1-freeze`, not on the clean agentic-build branch. Its acceptance evidence must not
+be cited as qualification for the model-backed runtime.
 
 The 57I-57S baseline summarized in [product_state.md](product_state.md) is the release-qualification procedure
 for the implementation/specification/backtest/optimisation cutover. Run them in order. Use one frozen Git
@@ -844,7 +916,7 @@ product or fixture defect is fixed before creating a new freeze tag; it is never
 Use focused checks after changing docs, MCP registrations, agent identities, or artifact contracts:
 
 ```bash
-uv run pytest tests/test_agent_identities.py tests/test_mcp_server.py tests/test_research_domain.py -q
+uv run pytest tests/test_agent_runtime_foundation.py tests/test_mcp_server.py tests/test_research_domain.py -q
 uv run pytest tests/test_parameter_optimization.py tests/test_mcp_optimization_tools.py -q
 uv run pytest tests/test_research_agent_docs.py -q
 uv run pytest tests/test_package_boundaries.py -q

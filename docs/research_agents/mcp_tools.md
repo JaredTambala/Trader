@@ -42,20 +42,16 @@ MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded 
 
 ## Orchestration Surface
 
-There is no registered high-level workflow-execution tool. The fixed compiler/executor is a Python library in
-`trader_agents.orchestration` and uses the ordinary registered tools listed below through `McpToolClient`. This keeps
-each Data, Experiment and Review contract, side-effect declaration, policy gate and artifact authority visible.
+There is no registered high-level agent or workflow-execution tool. The model-backed runtime is a Python boundary in
+`trader_agents.runtime`; its Coordinator, Data Research, and Strategy Engineering loops each receive an isolated MCP
+client dynamically narrowed by role, phase, immutable session scope, approval policy, mutation lifecycle, and budget.
+This keeps every deterministic Data, implementation, Coding Workspace, admission, and evidence contract visible.
 
-The catalog contains only the bridges needed by that library: Data can materialize an exact inventory/quality pair,
-Experiment Design can persist an immutable proposed protocol, and the Supervisor table includes two operations that
-persist the initial approved governance records and terminal outcome. Those operations do not compile a plan, decide
-approvals, advance a checkpoint or execute a plan step. Resume state belongs to the separately configured LangGraph
-checkpointer, not to MCP.
-
-The replacement agentic slice also has a narrow Research Coordinator evidence surface. These operations create and
+The agentic slice has a narrow Research Coordinator evidence surface. These operations create and
 resolve the immutable operator-approved session boundary, append public coordinator decisions, and dereference exact
-canonical evidence. They do not run a model, dispatch a specialist, approve mutations, or persist prompts, hidden
-reasoning, raw messages, or complete tool transcripts.
+canonical evidence. They do not themselves run a model, dispatch a specialist, approve mutations, or persist prompts,
+hidden reasoning, raw messages, or complete tool transcripts. Resume state belongs to the separately configured
+LangGraph checkpointer, not to MCP or the canonical research store.
 
 ## Research Coordinator Evidence Tools
 

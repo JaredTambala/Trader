@@ -24,7 +24,7 @@ def checkpoint_dsn_from_env(
     dsn = str(values.get(CHECKPOINT_DSN_ENV) or "").strip()
     if not dsn:
         raise CheckpointConfigurationError(
-            f"{CHECKPOINT_DSN_ENV} is required for Postgres workflow checkpoints"
+            f"{CHECKPOINT_DSN_ENV} is required for Postgres agent checkpoints"
         )
     return dsn
 

@@ -8,18 +8,18 @@ Ownership definitions do not imply that every named agent has an operational gra
 [product_state.md](product_state.md#agent-state) for current graph maturity and the
 [capability roadmap](../../plans/research_capability_roadmap.md#target-agent-capability-map) for remaining agent work.
 
-This document remains authoritative for the current frozen identities, allowlists, and artifact authority only. The
-planning-only model-backed supervisor and specialist responsibilities are defined in
-[Agent Designs](../../plans/agent_designs.md). They replace rather than
-extend the current agent control plane, and become current here only when implemented.
+This document is authoritative for current identities, allowlists, decision boundaries, and artifact authority. The
+accepted model-backed responsibilities are defined in [Agent Designs](../../plans/agent_designs.md). The first
+Research Coordinator, Data Research, and Strategy Engineering loops are implemented on the agentic-build branch, but
+they remain an unqualified capability until the active roadmap's production gates pass.
 
 ## Agent Map
 
 | Agent | Mission | Current tool-produced outputs | Current MCP/tool access |
 | --- | --- | --- | --- |
-| Research Coordinator | Preserve an operator-approved model-backed session boundary and append public evidence-constrained coordination decisions. | Immutable research-session and agent-decision-receipt records; bounded exact reads of canonical specialist evidence. | Support tools plus the registered session, public-decision, and canonical-evidence-read family. The model-backed coordinator loop is not implemented yet. |
+| Research Coordinator | Preserve an operator-approved session, create and revise an evidence-led agenda, delegate bounded work, review every return, and choose the next permitted action. | Immutable research-session and append-only agent-decision-receipt records; bounded exact reads of canonical specialist evidence. | Support tools plus the registered session, public-decision, and canonical-evidence-read family through a role-scoped MCP client. The model-backed loop is implemented but not yet qualified. |
 | Quant Research Supervisor Agent | Coordinate the frozen deterministic workflows and synthesize specialist-owned evidence. | Immutable strategy/risk/backtest specifications, canonical backtest runs, optimisation plans/runs/trials, tracking projection reports, comparisons, and planned walk-forward runs. Orchestration-domain objective/plan/outcome records are separately produced through its workflow persistence allowlist. | Registered specification/backtest/optimisation/projection `research_*` tools plus `research_register_experiment_workflow` and `research_record_workflow_outcome`. |
-| Data Agent | Produce trustworthy bounded market-data manifests and quality evidence. | Symbol discovery reports, dataset manifests, data-quality reports, load result envelopes. | `mcp_health`, `mcp_get_config`, `data_discover_symbols`, `data_get_inventory`, `data_summarize_quality`, `data_create_research_snapshot`, `data_ensure_loaded`. |
+| Data Research Agent | Determine whether the complete approved multi-asset data scope is available and suitable, and remediate only within the approved loading envelope. | Symbol discovery reports, dataset manifests, data-quality reports, load result envelopes, and exact research snapshots. | `mcp_health`, `mcp_get_config`, `data_discover_symbols`, `data_get_inventory`, `data_summarize_quality`, `data_create_research_snapshot`, `data_ensure_loaded` through a dynamic role/phase policy. The model-backed loop is implemented but not yet qualified. |
 | Strategy Engineering Agent | Compare, construct, check, package, and submit inert strategy or risk candidates without efficacy authority. | Compatibility evidence, candidate packages, implementation versions, and independent admission reports. | Read-only implementation catalogue and repository tools; isolated Coding Workspace tools; strategy/risk registration and validation. |
 | Experiment Design Agent | Formulate a fair reproducible test over supplied implementations and canonical Data evidence. | Immutable Experiments-owned protocol proposals carrying requested approvals. | `mcp_health`, `mcp_get_config`, `research_create_experiment_protocol_proposal`. |
 | Quantitative Methods Agent | Produce auditable deterministic methods, method evidence, diagnostics, and statistical inference artifacts. | Knowledge manifests, methodology candidates, methodology evidence packets, methodology extraction/validation reports, canonical method cards and derived summaries, implementation manifests, validation reports, diagnostics, multiple-testing reports, method packages, optional kernel manifests. | `mcp_health`, `mcp_get_config`, `knowledge_*`, and current `math_*` tools. |
@@ -43,7 +43,7 @@ The governance registry approves the smallest set of target roles with distinct 
 | Target role | Owns this decision | Produces | Must not own or decide |
 | --- | --- | --- | --- |
 | Research Coordinator | Which approved workflow and prerequisites should happen next? | Research objectives, workflow plans, approval requests, handoff summaries and workflow outcomes. | Implementations, specifications, runs, trials, robustness findings, Evaluation reports or research-quality verdicts. |
-| Data Agent | Is the explicit market-data scope available and fit for the proposed protocol? | Dataset manifests, quality reports and load evidence through Data tools. | Strategy logic, optimisation design or performance conclusions. |
+| Data Research Agent | Is the complete approved market-data scope available and fit for the requested research, and can an identified gap be repaired inside the loading envelope? | Dataset manifests, quality reports, load evidence, exact snapshots, and explicit unresolved-scope findings through Data tools. | Strategy logic, optimisation design, performance conclusions, or unapproved scope expansion. |
 | Strategy Engineering Agent | Should an accepted build contract use an exact admitted implementation, a bounded adaptation, or new inert source? | Compatibility evidence, candidate packages, and submitted implementation/admission refs. | Quantitative semantics, admission verdicts, experiment design, performance conclusions, deployment or trading. |
 | Experiment Design Agent | What fair reproducible protocol should test the supplied strategy/risk set? | Approval-aware experiment-protocol proposals. | Executing experiments, approving assumptions, changing the protocol after results or judging strategy quality. |
 | Robustness Agent | Which claims and assumptions should be attacked, and what sensitivity did executed variants reveal? | Immutable attack plans and per-attack robustness findings. | Executing variants, mutating the baseline or issuing the overall strategy-quality verdict. |
@@ -92,7 +92,35 @@ artifact authority.
 - Robustness findings feed Evaluation; the Robustness Agent does not issue the final strategy-quality assessment.
 - Promotion to paper trading remains a human-reviewed proposal, not an autonomous action.
 
-## Orchestration Contract Boundary
+## Model-Backed Orchestration Boundary
+
+The current first-slice connection contract is explicit and evidence-led:
+
+- `ResearchSession` fixes the operator, objective, scope, approvals, model profile, agent programs, tool catalogue,
+  budgets, and implementation inputs before a graph starts.
+- `CoordinatorAgenda` is model-proposed but schema-validated. Its task DAG is rejected when dependencies cycle.
+- `SpecialistDelegation` carries only the task objective, typed input, approved scope, program/catalog identities,
+  branch/attempt identity, limits, and context refs needed by one specialist.
+- Data and Strategy model outputs are strict turn values containing either one proposed tool call or one public
+  conclusion. Code policy authorizes every call before role-scoped MCP dispatch.
+- `SpecialistReturn` carries bounded findings, issues, canonical evidence refs, usage, lineage, and status. It contains
+  no raw messages, prompts, hidden reasoning, secrets, or full tool responses.
+- Every return rejoins the single-writer Coordinator. The Coordinator resolves each exact ref through
+  `research_read_artifact`, then records an append-only `AgentDecisionReceipt` before revising, revisiting, forking,
+  asking, stopping, or concluding.
+- The deterministic scheduler admits only dependency-ready tasks with reserved budgets and non-conflicting mutation
+  keys. Disjoint Data and catalogue investigation may execute concurrently.
+- Bounded PostgreSQL checkpoint state supports resume and public inspection but is never canonical research evidence.
+
+Strategy Engineering remains catalogue-first and outcome-blind. It may reuse an exact admitted implementation or use
+the isolated Coding Workspace to author, check, package, register, and submit a candidate for independent admission.
+Failed checks or admission can create a bounded new attempt; the agent cannot admit itself or execute generated code
+on the host. Data Research may load only within the immutable session scope and approval/cost envelope.
+
+### Frozen Deterministic Contract Boundary (Removed)
+
+The remainder of this subsection documents the frozen deterministic baseline for historical interpretation only. Its
+coordinator, specialist shell, composition runner, and workflow executor packages have been removed from this branch.
 
 The implemented orchestration contracts are declarative governance values, not new agents:
 
@@ -122,7 +150,7 @@ contains no tool-name, argument or experiment-configuration fields, rejects unkn
 the code-owned route or template catalog before execution. The graph itself calls no MCP tool. The separate composition
 runner executes the selected route or workflow and returns its bounded result for the next decision.
 
-## Specialist Graph Boundary
+### Frozen Specialist Graph Boundary (Removed)
 
 `trader_agents.specialists` defines the shared contract for operational specialist graphs:
 
@@ -156,7 +184,7 @@ Experiments-owned proposal, verifies task/objective/design/provenance identity a
 missing local-mutation permission becomes a typed prerequisite. The graph cannot decide approvals, execute the
 protocol, write the store directly or retain the protocol payload in checkpoint state.
 
-## Research Composition Boundary
+### Frozen Research Composition Boundary (Removed)
 
 `trader_agents.research_composition` is the operational connector, not a new decision authority. Its immutable request
 contains an approved objective and ordered caller-built specialist tasks. It may execute only the exact route and
@@ -245,10 +273,10 @@ Optuna optimisation, result lookup, immutable variant execution, tracking projec
 and parameter-optimisation Adversarial planning/judgment. Candidate/stack and loose baseline/portfolio backtest tools are
 not registered after the cutover.
 
-ML feature engineering, training, evaluation, registry management, and drift; Hypothesis; broader
-Adversarial/Evaluation critique; attribution; recommendation synthesis; and supervisor autonomy remain planned unless
-the MCP tool catalog marks them registered. Task 40 remains deferred until the full deterministic ML lifecycle is
-proven.
+The model-backed Coordinator, Data Research, and Strategy Engineering loops are implemented but not controlled. Their
+fresh-process recovery, real sandbox, trace, security, and repeated real-model qualification remains active work.
+Experiment Design, Knowledge Research, Quantitative Methods, Robustness/WFO, Evaluation, recommendation synthesis, and
+ML model-backed loops remain planned or parked unless the active roadmap says otherwise.
 
 ## Identity Checks
 

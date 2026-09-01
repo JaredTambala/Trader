@@ -120,6 +120,7 @@ class StructuredModelRunner:
         last_errors: list[dict[str, Any]] = []
 
         for repair in range(program.max_schema_repairs + 1):
+            ledger.ensure_model_call_available()
             messages: tuple[LlmMessage, ...] = base_messages
             if repair:
                 messages = (

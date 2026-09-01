@@ -95,6 +95,7 @@ def register_agentic_tools(
         artifact_ref: str,
         expected_artifact_type: str,
         max_payload_bytes: int = 64_000,
+        include_payload: bool = True,
     ) -> CallToolResult:
         """Read one exact size-bounded canonical artifact."""
         return _result(
@@ -103,5 +104,6 @@ def register_agentic_tools(
                 expected_artifact_type,
                 artifact_store=_store(),
                 max_payload_bytes=max_payload_bytes,
+                include_payload=include_payload,
             )
         )
