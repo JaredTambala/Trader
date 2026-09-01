@@ -397,10 +397,13 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | `ml_summarize_predictions`, `ml_compute_drift_report` | ML Agent | planned prediction and drift artifacts |
 | `hypothesis_create_card` | Hypothesis Agent | `hypothesis_card.json` |
 | `research_create_plan` | Quant Research Supervisor Agent | experiment plan |
-| `research_list_strategy_templates` | Quant Research Supervisor Agent | strategy template catalog |
-| `research_list_risk_manager_templates` | Quant Research Supervisor Agent | risk-manager template catalog |
-| `research_register_strategy_implementation`, `research_validate_strategy_implementation` | Quant Research Supervisor Agent | strategy implementation version and validation report |
-| `research_register_risk_manager_implementation`, `research_validate_risk_manager_implementation` | Quant Research Supervisor Agent | risk implementation version and validation report |
+| `research_list_strategy_templates`, `research_list_risk_manager_templates` | Strategy Engineering Agent | maintained discovery metadata |
+| `research_search_implementations`, `research_get_implementation`, `research_compare_implementation` | Strategy Engineering Agent | bounded catalogue results, exact-version evidence, and field-level compatibility evidence |
+| `coding_create_workspace`, `coding_get_workspace`, `coding_destroy_workspace` | Strategy Engineering Agent | exact disposable-workspace lifecycle receipts |
+| `coding_search_repository`, `coding_read_repository_file` | Strategy Engineering Agent | bounded read-only repository evidence from the pinned revision |
+| `coding_write_candidate_file`, `coding_read_candidate_file`, `coding_resolve_dependencies`, `coding_run_check`, `coding_package_candidate` | Strategy Engineering Agent | bounded candidate files, dependency verdicts, isolated check receipts, and inert candidate packages |
+| `research_register_strategy_implementation`, `research_validate_strategy_implementation` | Strategy Engineering Agent | strategy implementation version and independent validation report |
+| `research_register_risk_manager_implementation`, `research_validate_risk_manager_implementation` | Strategy Engineering Agent | risk implementation version and independent validation report |
 | `research_register_optimization_objective`, `research_validate_optimization_objective` | Quantitative Methods Agent | objective implementation version and validation report |
 | `research_create_strategy_specification`, `research_validate_strategy_specification` | Quant Research Supervisor Agent | immutable strategy spec and validation |
 | `research_create_risk_stack_specification`, `research_validate_risk_stack_specification` | Quant Research Supervisor Agent | immutable ordered risk spec and validation |
@@ -576,7 +579,22 @@ package.
 
 ## Maintained Implementation Template Catalog
 
-`research_list_strategy_templates` and `research_list_risk_manager_templates` are read-only discovery tools over the maintained implementation catalog exposed by `trader_research.experiments`. Each row exposes a stable template ID, implementation kind, runtime contract, real `trader_standard` entrypoint, typed parameter metadata, required runtime context, and concise behavior metadata. Strategy rows also declare portfolio mode.
+`research_list_strategy_templates` and `research_list_risk_manager_templates` are read-only discovery tools over the maintained implementation catalog exposed by `trader_research.experiments`. Each row exposes a stable template ID, implementation kind, runtime contract, real `trader_standard` entrypoint, typed parameter metadata, required runtime context, and concise behavior metadata. Strategy rows also declare portfolio mode. Maintained entries are never direct-reuse evidence.
+
+The implementation catalogue search accepts a bounded query, implementation kinds, capabilities, runtime contract,
+portfolio mode, and optional visibility of unadmitted canonical versions. It returns metadata without source. Exact
+resolution accepts an implementation ID or canonical URI and returns admission evidence; source requires an explicit
+bounded request. Comparison accepts one exact implementation plus typed build-contract fields and returns match,
+difference, and unknown rows. It does not make the Strategy Engineering reuse/adapt/author decision or claim efficacy.
+
+The Coding Workspace contract separates a pinned read-only repository snapshot from candidate writes. Workspace
+identity is derived from the attempt and build-contract identities. Repository and candidate paths are normalized and
+bounded by suffix and size policy. Dependency resolution is an allowlist verdict and performs no installation.
+Candidate checks accept only the registered compile, Ruff, and pytest identities and run through a pinned,
+networkless, read-only, resource-bounded container with the workspace mounted read-only; an unavailable runtime fails
+closed without host execution. Packaging returns inert source, file hashes, revision, and check evidence. It does not
+import, admit, execute in Trader, backtest, deploy, or trade the candidate. The entire surface remains unavailable
+unless the Coding Workspace policy gate and exact runtime configuration are enabled.
 
 Catalog rows are informational producer metadata. They are not implementation versions, executable specifications, validation evidence, or permission to run code. They do not contain method-card requirements, candidate validation requirements, source generators, dataset scope, filesystem paths, or mutable provider identity. To execute a maintained implementation, a producer submits its source through the same content-addressed implementation registration and validation contract used by handwritten and externally produced code.
 
@@ -920,7 +938,8 @@ Minimal allowlists:
 | Agent | Allowed initial tools |
 | --- | --- |
 | Data Agent | `data_get_inventory`, `data_summarize_quality`, `data_create_research_snapshot`, `data_ensure_loaded`, read-only health/config |
-| Quant Research Supervisor Agent | Specialist artifact reads, supervisor handoff tools, `research_*` tools |
+| Strategy Engineering Agent | Implementation discovery/comparison, bounded Coding Workspace, and strategy/risk admission tools |
+| Quant Research Supervisor Agent | Specialist artifact reads, supervisor handoff tools, specification/backtest/optimisation `research_*` tools |
 | Quantitative Methods Agent | `knowledge_*` retrieval/ingestion/citation tools, `math_list_method_contracts`, `math_validate_method_contract`, fixture, diagnostic, multiple-testing, method-packaging, and optional kernel tools |
 | ML Agent | Registered `ml_create_deployment_manifest` and `ml_validate_deployment`; remaining 39A-G/J lifecycle tools are planned. |
 | Hypothesis Agent | Ingredient artifact reads, `hypothesis_create_card` |

@@ -17,11 +17,13 @@ from trader_mcp.contracts import SideEffect, ToolEnvelope, error_envelope
 from trader_mcp.constants import (
     MATH_TOOL_DESCRIPTIONS,
     RESEARCH_COMPARE_BACKTEST_RESULTS_TOOL,
+    RESEARCH_COMPARE_IMPLEMENTATION_TOOL,
     RESEARCH_CREATE_BACKTEST_SPECIFICATION_TOOL,
     RESEARCH_CREATE_PARAMETER_OPTIMIZATION_PLAN_TOOL,
     RESEARCH_CREATE_RISK_STACK_SPECIFICATION_TOOL,
     RESEARCH_CREATE_STRATEGY_SPECIFICATION_TOOL,
     RESEARCH_GET_BACKTEST_RESULTS_TOOL,
+    RESEARCH_GET_IMPLEMENTATION_TOOL,
     RESEARCH_GET_OPTIMIZER_RUNTIME_TOOL,
     RESEARCH_GET_PARAMETER_OPTIMIZATION_RESULTS_TOOL,
     RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL,
@@ -33,6 +35,7 @@ from trader_mcp.constants import (
     RESEARCH_RUN_BACKTEST_SPECIFICATION_TOOL,
     RESEARCH_RUN_PARAMETER_OPTIMIZATION_TOOL,
     RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS_TOOL,
+    RESEARCH_SEARCH_IMPLEMENTATIONS_TOOL,
     RESEARCH_TOOL_DESCRIPTIONS,
     RESEARCH_VALIDATE_BACKTEST_SPECIFICATION_TOOL,
     RESEARCH_VALIDATE_OPTIMIZATION_OBJECTIVE_TOOL,
@@ -44,13 +47,17 @@ from trader_mcp.constants import (
 from trader_mcp.environment import McpEnvironment
 from trader_research.experiments import (
     ExperimentTrackingSinkRegistry,
+    ImplementationComparisonRequest,
+    ImplementationSearchRequest,
     OptimizationEngineRegistry,
     compare_backtest_results,
+    compare_implementation,
     create_backtest_specification,
     create_parameter_optimization_plan,
     create_risk_stack_specification,
     create_strategy_specification,
     get_backtest_results,
+    get_implementation,
     get_optimizer_runtime,
     get_parameter_optimization_results,
     list_risk_manager_templates,
@@ -63,6 +70,7 @@ from trader_research.experiments import (
     run_backtest_specification,
     run_parameter_optimization,
     run_parameter_optimization_variants,
+    search_implementations,
     validate_backtest_specification,
     validate_optimization_objective,
     validate_risk_manager_implementation,
@@ -196,6 +204,107 @@ def register_research_tools(
         families: list[str] | None = None,
     ) -> CallToolResult:
         return _result(list_risk_manager_templates(families=families))
+
+    @server.tool(
+        name=RESEARCH_SEARCH_IMPLEMENTATIONS_TOOL,
+        description=RESEARCH_TOOL_DESCRIPTIONS[
+            RESEARCH_SEARCH_IMPLEMENTATIONS_TOOL
+        ],
+    )
+    def research_search_implementations(
+        query: str = "",
+        implementation_kinds: list[str] | None = None,
+        capabilities: list[str] | None = None,
+        runtime_contract: str | None = None,
+        include_unadmitted: bool = False,
+        limit: int = 20,
+    ) -> CallToolResult:
+        """Search maintained and canonical implementation catalogue tiers."""
+        store = _store()
+        if store is None:
+            return _blocked(
+                RESEARCH_SEARCH_IMPLEMENTATIONS_TOOL,
+                "research_artifact_store_required",
+                "Implementation search requires a configured ResearchArtifactStore.",
+                SideEffect.READ_ONLY,
+            )
+        try:
+            search_request = ImplementationSearchRequest(
+                query=query,
+                implementation_kinds=tuple(
+                    implementation_kinds or ("strategy", "risk_manager")
+                ),
+                capabilities=tuple(capabilities or ()),
+                runtime_contract=runtime_contract,
+                include_unadmitted=include_unadmitted,
+                limit=limit,
+            )
+        except ValueError as exc:
+            return _blocked(
+                RESEARCH_SEARCH_IMPLEMENTATIONS_TOOL,
+                "invalid_implementation_search",
+                str(exc),
+                SideEffect.READ_ONLY,
+            )
+        return _result(search_implementations(store, search_request))
+
+    @server.tool(
+        name=RESEARCH_GET_IMPLEMENTATION_TOOL,
+        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_GET_IMPLEMENTATION_TOOL],
+    )
+    def research_get_implementation(
+        implementation_ref: str,
+        include_source: bool = False,
+    ) -> CallToolResult:
+        """Resolve one exact implementation and its reuse eligibility."""
+        store = _store()
+        if store is None:
+            return _blocked(
+                RESEARCH_GET_IMPLEMENTATION_TOOL,
+                "research_artifact_store_required",
+                "Implementation resolution requires a configured ResearchArtifactStore.",
+                SideEffect.READ_ONLY,
+            )
+        return _result(
+            get_implementation(
+                store,
+                implementation_ref,
+                include_source=include_source,
+            )
+        )
+
+    @server.tool(
+        name=RESEARCH_COMPARE_IMPLEMENTATION_TOOL,
+        description=RESEARCH_TOOL_DESCRIPTIONS[
+            RESEARCH_COMPARE_IMPLEMENTATION_TOOL
+        ],
+    )
+    def research_compare_implementation(
+        implementation_ref: str,
+        build_contract: dict[str, Any],
+    ) -> CallToolResult:
+        """Compare one exact version with a normalized build contract."""
+        store = _store()
+        if store is None:
+            return _blocked(
+                RESEARCH_COMPARE_IMPLEMENTATION_TOOL,
+                "research_artifact_store_required",
+                "Implementation comparison requires a configured ResearchArtifactStore.",
+                SideEffect.READ_ONLY,
+            )
+        try:
+            comparison_request = ImplementationComparisonRequest(
+                implementation_ref=implementation_ref,
+                build_contract=build_contract,
+            )
+        except ValueError as exc:
+            return _blocked(
+                RESEARCH_COMPARE_IMPLEMENTATION_TOOL,
+                "invalid_implementation_comparison",
+                str(exc),
+                SideEffect.READ_ONLY,
+            )
+        return _result(compare_implementation(store, comparison_request))
 
     def _register(
         service: Callable[..., ApplicationResult],

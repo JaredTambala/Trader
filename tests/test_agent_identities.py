@@ -64,11 +64,12 @@ def test_agent_registry_keys_and_display_names_are_unique() -> None:
     keys = [agent.key for agent in AGENT_DEFINITIONS]
     display_names = [agent.display_name for agent in AGENT_DEFINITIONS]
 
-    assert len(keys) == len(set(keys)) == 8
-    assert len(display_names) == len(set(display_names)) == 8
+    assert len(keys) == len(set(keys)) == 9
+    assert len(display_names) == len(set(display_names)) == 9
     assert set(display_names) == {
         "Quant Research Supervisor Agent",
         "Data Agent",
+        "Strategy Engineering Agent",
         "Experiment Design Agent",
         "Quantitative Methods Agent",
         "ML Agent",
@@ -100,6 +101,7 @@ def test_target_decision_authorities_are_explicit_and_non_executing() -> None:
     assert set(authorities) == {
         "Research Coordinator",
         "Data Agent",
+        "Strategy Engineering Agent",
         "Experiment Design Agent",
         "Robustness Agent",
         "Evaluation Agent",
@@ -108,6 +110,9 @@ def test_target_decision_authorities_are_explicit_and_non_executing() -> None:
     }
     assert authorities["Research Coordinator"].artifact_domains == ("Orchestration",)
     assert authorities["Data Agent"].artifact_domains == ("Data",)
+    assert authorities["Strategy Engineering Agent"].artifact_domains == (
+        "Experiments",
+    )
     assert authorities["Experiment Design Agent"].artifact_domains == ("Experiments",)
     assert authorities["Robustness Agent"].artifact_domains == ("Review",)
     assert authorities["Evaluation Agent"].artifact_domains == ("Review",)
@@ -165,12 +170,44 @@ def test_quantitative_methods_tool_owner_and_identity_use_method_contract_tools(
     assert agent_owner_for_tool("math_list_indicator_contracts") == "Quantitative Methods Agent"
 
 
+def test_strategy_engineering_owns_implementation_catalogue_and_admission() -> None:
+    identity = build_agent_identity("Strategy Engineering Agent")
+
+    required_tools = {
+        "research_list_strategy_templates",
+        "research_search_implementations",
+        "research_get_implementation",
+        "research_compare_implementation",
+        "coding_create_workspace",
+        "coding_search_repository",
+        "coding_write_candidate_file",
+        "coding_run_check",
+        "coding_package_candidate",
+        "research_register_strategy_implementation",
+        "research_validate_strategy_implementation",
+    }
+    assert required_tools.issubset(identity.tool_allowlist)
+    assert "implementation_version.json" in identity.output_artifacts
+    assert "implementation_validation_report.json" in identity.output_artifacts
+    assert {
+        "research_create_strategy_specification",
+        "research_run_backtest_specification",
+        "research_run_parameter_optimization",
+        "place_order",
+    }.isdisjoint(identity.tool_allowlist)
+    assert (
+        agent_owner_for_tool("research_register_strategy_implementation")
+        == "Strategy Engineering Agent"
+    )
+    assert agent_owner_for_tool("coding_run_check") == "Strategy Engineering Agent"
+
+
 def test_quant_research_supervisor_owns_canonical_experiment_tools() -> None:
     identity = build_agent_identity("Quant Research Supervisor Agent")
 
-    assert "research_list_strategy_templates" in identity.tool_allowlist
-    assert "research_register_strategy_implementation" in identity.tool_allowlist
-    assert "research_validate_strategy_implementation" in identity.tool_allowlist
+    assert "research_list_strategy_templates" not in identity.tool_allowlist
+    assert "research_register_strategy_implementation" not in identity.tool_allowlist
+    assert "implementation_version.json" not in identity.output_artifacts
     assert "research_create_strategy_specification" in identity.tool_allowlist
     assert "research_validate_strategy_specification" in identity.tool_allowlist
     assert "research_create_risk_stack_specification" in identity.tool_allowlist
@@ -183,20 +220,11 @@ def test_quant_research_supervisor_owns_canonical_experiment_tools() -> None:
     assert "research_create_parameter_optimization_plan" in identity.tool_allowlist
     assert "research_run_parameter_optimization" in identity.tool_allowlist
     assert "research_project_experiment_tracking" in identity.tool_allowlist
-    assert "implementation_version.json" in identity.output_artifacts
     assert "strategy_specification.json" in identity.output_artifacts
     assert "risk_stack_specification.json" in identity.output_artifacts
     assert "backtest_specification.json" in identity.output_artifacts
     assert "backtest_run.json" in identity.output_artifacts
     assert "parameter_optimization_run.json" in identity.output_artifacts
-    assert {
-        "research_create_strategy_candidate",
-        "research_validate_strategy_candidate",
-        "research_create_risk_manager_candidate",
-        "research_create_strategy_risk_stack",
-        "research_run_backtest",
-    }.isdisjoint(identity.tool_allowlist)
-    assert agent_owner_for_tool("research_register_strategy_implementation") == "Quant Research Supervisor Agent"
     assert agent_owner_for_tool("research_create_strategy_specification") == "Quant Research Supervisor Agent"
     assert agent_owner_for_tool("research_run_backtest_specification") == "Quant Research Supervisor Agent"
     assert agent_owner_for_tool("research_get_backtest_results") == "Quant Research Supervisor Agent"

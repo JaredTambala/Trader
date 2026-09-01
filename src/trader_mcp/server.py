@@ -14,10 +14,16 @@ from trader.config import Config, build_config, load_yaml_config
 from trader.event_store import EventStore, NoOpEventStore, build_event_store
 from trader_mcp.adapters import result_to_mcp_result
 from trader_mcp.adversarial_tools import register_adversarial_tools
+from trader_mcp.coding_tools import (
+    CodingWorkspaceServiceProvider,
+    register_coding_tools,
+)
 from trader_mcp.constants import (
     ADVERSARIAL_TOOL_DESCRIPTIONS,
     ADVERSARIAL_TOOL_NAMES,
     CAPABILITY_REGISTRATION_FLAGS,
+    CODING_TOOL_DESCRIPTIONS,
+    CODING_TOOL_NAMES,
     DATA_DISCOVER_SYMBOLS_TOOL,
     DATA_CREATE_RESEARCH_SNAPSHOT_TOOL,
     DATA_ENSURE_LOADED_TOOL,
@@ -56,12 +62,6 @@ from trader_mcp.constants import (
     ML_TOOL_DESCRIPTIONS,
     ML_TOOL_NAMES,
     REGISTERED_TOOL_NAMES,
-    RESEARCH_GET_BACKTEST_RESULTS_TOOL,
-    RESEARCH_GET_OPTIMIZER_RUNTIME_TOOL,
-    RESEARCH_GET_PARAMETER_OPTIMIZATION_RESULTS_TOOL,
-    RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL,
-    RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL,
-    RESEARCH_PROJECT_EXPERIMENT_TRACKING_TOOL,
     RESEARCH_REGISTER_OPTIMIZATION_OBJECTIVE_TOOL,
     RESEARCH_VALIDATE_OPTIMIZATION_OBJECTIVE_TOOL,
     RESEARCH_TOOL_DESCRIPTIONS,
@@ -87,7 +87,13 @@ from trader_mcp.contracts import (
     ToolEnvelope,
     error_envelope,
     result_to_envelope,
+    side_effect_for_operation,
     success_envelope,
+)
+from trader_research.coding import (
+    CodingWorkspacePolicy,
+    CodingWorkspaceService,
+    DockerContainerRunner,
 )
 from trader_research.data import (
     DataEnsureLoadedPolicy,
@@ -166,6 +172,7 @@ def create_server(
     tracking_sink_registry: ExperimentTrackingSinkRegistry | None = None,
     inference_adapter_registry: InferenceAdapterRegistry | None = None,
     prediction_mapper_catalog: MaintainedPredictionMapperCatalog | None = None,
+    coding_workspace_service_provider: CodingWorkspaceServiceProvider | None = None,
 ) -> FastMCP:
     """Create the MCP server and register the configured bounded tool catalog.
 
@@ -174,6 +181,8 @@ def create_server(
         event_store_provider: Optional provider for read-only event-store queries.
         data_loading_policy: Optional explicit data-loading policy for tests or
             controlled embedding.
+        coding_workspace_service_provider: Optional isolated Coding Workspace
+            service provider for Strategy Engineering tools.
 
     Returns:
         Configured FastMCP server instance.
@@ -215,6 +224,11 @@ def create_server(
     )
     resolved_prediction_mapper_catalog = (
         prediction_mapper_catalog or MaintainedPredictionMapperCatalog()
+    )
+    resolved_coding_workspace_service_provider = (
+        coding_workspace_service_provider
+        if coding_workspace_service_provider is not None
+        else build_coding_workspace_service_provider(local_env)
     )
 
     def _prediction_deployment_reader() -> ArtifactPredictionDeploymentReader:
@@ -519,6 +533,11 @@ def create_server(
         artifact_store_provider=resolved_research_artifact_store_provider,
         adapter_registry=resolved_inference_adapter_registry,
     )
+    register_coding_tools(
+        server,
+        local_env,
+        service_provider=resolved_coding_workspace_service_provider,
+    )
     register_research_tools(
         server,
         local_env,
@@ -627,6 +646,54 @@ def build_research_artifact_store_provider(
                 password=getattr(config, "pg_password", None) or None,
             )
         return store
+
+    return _provider
+
+
+def build_coding_workspace_service_provider(
+    environment: McpEnvironment | None = None,
+) -> CodingWorkspaceServiceProvider | None:
+    """Build the lazy isolated Coding Workspace service provider.
+
+    The provider is unavailable unless the environment explicitly enables the
+    capability and pins dedicated workspace, repository, revision, and image
+    values. Generated code is never executed by the host process.
+
+    Args:
+        environment: Optional resolved local MCP environment.
+
+    Returns:
+        Lazy workspace-service provider, or ``None`` when disabled or incomplete.
+    """
+    local_env = environment or load_local_environment()
+    if not local_env.allow_coding_workspace:
+        return None
+    workspace_root = local_env.coding_workspace_root
+    repository_root = local_env.coding_repository_root
+    if (
+        workspace_root is None
+        or repository_root is None
+        or not local_env.coding_repository_revision
+        or not local_env.coding_container_image
+    ):
+        return None
+    service: CodingWorkspaceService | None = None
+
+    def _provider() -> CodingWorkspaceService:
+        nonlocal service
+        if service is None:
+            policy = CodingWorkspacePolicy(
+                workspace_root=workspace_root,
+                repository_root=repository_root,
+                repository_revision=local_env.coding_repository_revision,
+                container_image=local_env.coding_container_image,
+                allowed_dependencies=("trader",),
+            )
+            service = CodingWorkspaceService(
+                policy,
+                runner=DockerContainerRunner(policy.container_image),
+            )
+        return service
 
     return _provider
 
@@ -758,6 +825,15 @@ def build_config_envelope(
         {
             "name": tool_name,
             "agent_owner": agent_owner_for_tool(tool_name),
+            "side_effect": side_effect_for_operation(tool_name).value,
+            "description": CODING_TOOL_DESCRIPTIONS[tool_name],
+        }
+        for tool_name in CODING_TOOL_NAMES
+    )
+    tool_metadata.extend(
+        {
+            "name": tool_name,
+            "agent_owner": agent_owner_for_tool(tool_name),
             "side_effect": SideEffect.LOCAL_MUTATING.value,
             "description": EXPERIMENT_DESIGN_TOOL_DESCRIPTIONS[tool_name],
         }
@@ -822,20 +898,7 @@ def build_config_envelope(
         {
             "name": tool_name,
             "agent_owner": agent_owner_for_tool(tool_name),
-            "side_effect": (
-                SideEffect.EXTERNAL_RESEARCH_MUTATING.value
-                if tool_name == RESEARCH_PROJECT_EXPERIMENT_TRACKING_TOOL
-                else SideEffect.READ_ONLY.value
-                if tool_name
-                in {
-                    RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL,
-                    RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL,
-                    RESEARCH_GET_BACKTEST_RESULTS_TOOL,
-                    RESEARCH_GET_OPTIMIZER_RUNTIME_TOOL,
-                    RESEARCH_GET_PARAMETER_OPTIMIZATION_RESULTS_TOOL,
-                }
-                else SideEffect.LOCAL_MUTATING.value
-            ),
+            "side_effect": side_effect_for_operation(tool_name).value,
             "description": RESEARCH_TOOL_DESCRIPTIONS[tool_name],
         }
         for tool_name in RESEARCH_TOOL_NAMES
@@ -868,6 +931,7 @@ def build_config_envelope(
         "external_research_writes_allowed": local_env.allow_external_research_writes,
         "experiment_tracking_writes_allowed": local_env.allow_experiment_tracking_writes,
         "ml_runtime_allowed": local_env.allow_ml_runtime,
+        "coding_workspace_allowed": local_env.allow_coding_workspace,
     }
     return success_envelope(
         command=MCP_CONFIG_TOOL,
@@ -911,6 +975,15 @@ def build_config_envelope(
                 "mlflow_tracking_uri_configured": bool(local_env.mlflow_tracking_uri),
                 "runtime_allowed": local_env.allow_ml_runtime,
                 "resolution": "session_start_only",
+            },
+            "coding_workspace_runtime": {
+                "allowed": local_env.allow_coding_workspace,
+                "workspace_root_configured": local_env.coding_workspace_root is not None,
+                "repository_root_configured": local_env.coding_repository_root is not None,
+                "repository_revision": local_env.coding_repository_revision or None,
+                "container_image": local_env.coding_container_image or None,
+                "network_enabled": False,
+                "host_execution_allowed": False,
             },
             "tool_count": len(tool_metadata),
             "tools": tool_metadata,

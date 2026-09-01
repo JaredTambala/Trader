@@ -22,6 +22,7 @@ MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded 
 | Knowledge tools | `trader_research.knowledge` |
 | Quantitative Methods math tools | `trader_research.methodology` |
 | Implementation registry | `trader_research.experiments` |
+| Coding Workspace | `trader_research.coding` |
 | Immutable specifications | `trader_research.experiments` |
 | Backtest/result/comparison tools | `trader_research.experiments` |
 | Optimisation engines and ledger | `trader_research.experiments` |
@@ -146,16 +147,44 @@ The operation validates canonical types, ownership, producer metadata, status, p
 Data scope/quality agreement and optional optimisation validation before saving. It cannot approve a material
 assumption, register the approved protocol, execute an experiment or overwrite conflicting proposal evidence.
 
-## Quant Research Supervisor Tools
+## Strategy Engineering Tools
 
 | Tool | Side effect | Primary output | Notes |
 | --- | --- | --- | --- |
 | `research_list_strategy_templates` | `read_only` | Strategy template catalog. | Maintained template metadata only. |
 | `research_list_risk_manager_templates` | `read_only` | Risk-manager template catalog. | Real maintained entrypoints and parameter metadata; not an execution identity. |
+| `research_search_implementations` | `read_only` | Bounded implementation summaries. | Searches maintained metadata plus canonical admitted versions; source is never returned. |
+| `research_get_implementation` | `read_only` | Exact implementation metadata and admission evidence. | Source is returned only when the request explicitly enables the bounded coding context. |
+| `research_compare_implementation` | `read_only` | Field-level compatibility evidence. | Reports matches, differences, and unknowns; Strategy Engineering retains the reuse/adapt/author decision. |
+| `coding_create_workspace` | `local_mutating` | Exact workspace identity and policy. | Creates or reopens the content-addressed workspace for one attempt and build contract. |
+| `coding_get_workspace` | `read_only` | Bounded workspace status. | Returns policy, files, checks, and lifecycle state without exposing host paths. |
+| `coding_search_repository` | `read_only` | Bounded text matches. | Searches only approved roots in the pinned repository snapshot. |
+| `coding_read_repository_file` | `read_only` | Bounded repository text. | Rejects path escape, unsupported file types, and oversized reads. |
+| `coding_write_candidate_file` | `local_mutating` | Candidate file hash and size. | Replaces one complete bounded file inside the candidate directory. |
+| `coding_read_candidate_file` | `read_only` | Bounded candidate text. | Reads only supported files inside the exact workspace. |
+| `coding_resolve_dependencies` | `read_only` | Dependency-policy verdict. | Validates against the pinned image allowlist and never installs packages. |
+| `coding_run_check` | `local_mutating` | Bounded check receipt. | Runs only named compile, Ruff, or pytest commands in a networkless, resource-bounded container; no host fallback exists. |
+| `coding_package_candidate` | `read_only` | Inert candidate package. | Returns exact source and file hashes without importing or executing the candidate. |
+| `coding_destroy_workspace` | `local_mutating` | Destruction receipt. | Removes only the exact disposable workspace. |
 | `research_register_strategy_implementation` | `local_mutating` | `implementation_version`. | Content-addressed source; methodology provenance is optional. |
 | `research_validate_strategy_implementation` | `local_mutating` | `implementation_validation_report`. | Static safety, interface, parameters, and deterministic fixture. |
 | `research_register_risk_manager_implementation` | `local_mutating` | `implementation_version`. | Same intake for supplied or produced risk code. |
 | `research_validate_risk_manager_implementation` | `local_mutating` | `implementation_validation_report`. | Backtest-only deterministic risk fixture. |
+
+Maintained-template rows are discovery hints and are never directly reusable. Canonical versions become direct-reuse
+candidates only when exact implementation evidence has a matching passed validation report. Compatibility comparison
+is deterministic evidence for the model-backed specialist; it does not decide semantic equivalence or efficacy.
+
+Coding Workspace tools are registered but fail closed until `TRADER_MCP_ALLOW_CODING_WORKSPACE=true` and the dedicated
+workspace root, pinned repository revision, and pinned container image are configured. Repository reads are
+read-only. Candidate writes are separate. Checks use no network, capabilities, privilege escalation, secrets, or
+arbitrary shell, and candidate packaging is inert. Registration and validation remain the independent admission
+boundary after packaging.
+
+## Quant Research Supervisor Tools
+
+| Tool | Side effect | Primary output | Notes |
+| --- | --- | --- | --- |
 | `research_create_strategy_specification` | `local_mutating` | `strategy_specification`. | Binds validated code and tunable parameters; forbids data scope. |
 | `research_validate_strategy_specification` | `local_mutating` | Strategy-spec validation report. | Rechecks version and source hash. |
 | `research_create_risk_stack_specification` | `local_mutating` | Ordered `risk_stack_specification`. | Pins explicit validated managers and thresholds. |
@@ -174,10 +203,9 @@ assumption, register the approved protocol, execute an experiment or overwrite c
 | `research_register_experiment_workflow` | `local_mutating` | Canonical `research_objective`, `experiment_protocol` and `workflow_plan` refs. | Requires an approved objective/protocol, a ready matching plan and explicit workflow requester/actor. |
 | `research_record_workflow_outcome` | `local_mutating` | Canonical terminal `workflow_outcome` ref. | Requires a resolvable registered plan, matching objective/protocol lineage, resolving pinned evidence refs and explicit workflow requester/actor. |
 
-The catalog tools expose neutral metadata through `trader_research.experiments`; they do not expose method-card gates,
-candidate validators, source generators, or filesystem identities. Candidate/stack creation and loose
+The specification and execution tools consume independently admitted implementation versions; they do not provide a
+coding identity or transfer the reuse/adapt/author decision to the Supervisor. Candidate/stack creation and loose
 `research_run_backtest` / `research_run_portfolio_backtest` request forms are not registered or implemented.
-Maintained or externally produced source enters the same implementation registry.
 
 ## Evaluation Tools
 
@@ -197,8 +225,8 @@ Maintained or externally produced source enters the same implementation registry
 The config envelope reports static registration flags plus runtime policy:
 
 - Broker-mutating and raw SQL tools are not registered.
-- Data, knowledge, math, implementation, specification, canonical backtest, optimisation, Experiment Design,
-  Evaluation, Adversarial and orchestration-record tool families are registered.
+- Data, knowledge, math, implementation-catalogue, Coding Workspace, admission, specification, canonical backtest,
+  optimisation, Experiment Design, Evaluation, Adversarial and orchestration-record tool families are registered.
 - Backtest execution is separately gated by `TRADER_MCP_ALLOW_BACKTESTS`.
 - Optimisation execution additionally requires `TRADER_MCP_ALLOW_OPTIMIZATION`.
 - Optuna writes require `TRADER_MCP_ALLOW_EXTERNAL_RESEARCH_WRITES` and `TRADER_MCP_ALLOW_OPTUNA_WRITES`.
@@ -207,6 +235,8 @@ The config envelope reports static registration flags plus runtime policy:
 - Deployment parity and model-backed backtest inference require `TRADER_MCP_ALLOW_ML_RUNTIME`; manifest creation is a
   DB-only operation and remains callable with that gate false.
 - Data loading mutation is separately gated by `TRADER_MCP_ALLOW_DATA_LOADING`.
+- Coding Workspace mutation and isolated checks are separately gated by `TRADER_MCP_ALLOW_CODING_WORKSPACE`; the
+  configured container runtime must also be available for checks.
 - Provider-catalog symbol discovery is separately gated by symbol-provider discovery policy.
 - Mutating method/strategy/risk/portfolio/evaluation MCP flows require a configured or injected research artifact store.
   Production refs use `research://postgres/{artifact_type}/{artifact_id}`.

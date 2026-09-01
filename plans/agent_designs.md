@@ -26,11 +26,11 @@ plan should then be deleted or reduced to unresolved implementation notes.
 
 | Agent | Responsibility boundary | Complete architecture record | Pattern review | Current review state |
 | --- | --- | --- | --- | --- |
-| [Research Coordinator](agent_designs/research_coordinator.md) | accepted | accepted | pending shared pattern review | Charter accepted; coordinator-invoked deterministic main-protocol execution was added on 2026-08-28 without granting granular experiment mutation. |
-| [Data Research Agent](agent_designs/data_research.md) | accepted | pending | pending | Multi-asset responsibility and bounded acquisition authority accepted; the remaining standard record is still under review. |
+| [Research Coordinator](agent_designs/research_coordinator.md) | accepted | accepted | accepted for first slice | Charter accepted; first-slice supervisor, policy, concurrency, recovery, and specialist-handoff patterns accepted on 2026-09-01. |
+| [Data Research Agent](agent_designs/data_research.md) | accepted | accepted | accepted for first slice | Multi-asset scope, bounded acquisition, model/tool loop, evidence return, recovery, evaluation, and reconciliation boundaries accepted. |
 | [Knowledge Research Agent](agent_designs/knowledge_research.md) | accepted | pending | pending | Role-scoped MCP ingestion and session-approved source-envelope authority accepted; the remaining standard record is still under review. |
 | [Quantitative Methods Agent](agent_designs/quantitative_methods.md) | accepted | pending | pending | Single pre-code, outcome-blind responsibility and quantitative/software design boundary accepted; the remaining standard record is pending. |
-| [Strategy Engineering Agent](agent_designs/strategy_engineering.md) | accepted | pending | pending | Build, catalogue, sandbox, admission, outcome-isolation, and repair-loop boundaries are accepted; the remaining standard record is pending. |
+| [Strategy Engineering Agent](agent_designs/strategy_engineering.md) | accepted | accepted | accepted for first slice | Build contract, catalogue, sandbox, admission, outcome isolation, repair, recovery, evaluation, and concurrency boundaries accepted. |
 | [Experiment Design Agent](agent_designs/experiment_design.md) | in review | pending | pending | Prospective experiment-charter, protected-evidence, and specialist-envelope authority is established; research-question and hypothesis latitude remain under review. |
 | [Robustness & Walk-Forward Agent](agent_designs/robustness_walk_forward.md) | accepted | pending | pending | Multi-agent plan design, pre-approved-envelope authority, and direct plan-pinned specialist execution are accepted; the remaining standard record is pending. |
 | ML Signal Research Agent | parked | pending | pending | Intentionally deferred on 2026-08-28; it does not block the first Coordinator–Data–Strategy implementation slice. |
@@ -119,3 +119,37 @@ begins, and link it from the register. For each implementation slice, perform a 
 
 The pattern review selects mechanisms that implement the accepted boundaries. It must not silently change authority,
 artifact ownership, context isolation, or the requirement that every specialist return rejoins the coordinator.
+
+## Accepted first-slice pattern review
+
+The user authorized implementation of the reviewed Coordinator–Data–Strategy slice on 2026-09-01. The following shared
+patterns are accepted for that slice; framework APIs remain subject to the measured spike:
+
+- **Supervisor with specialist capabilities:** the Coordinator is the only user-facing model. Data Research and
+  Strategy Engineering are versioned specialist model programs exposed to the coordinator runtime as bounded
+  delegation capabilities, not as peer-to-peer actors or all-powerful MCP endpoints.
+- **Custom model/tool loops:** each specialist has its own context, state schema, role catalogue, structured outputs,
+  checkpoint namespace and loop budget. It selects MCP operations, observes results and revises inside its accepted
+  mission.
+- **Deterministic policy middleware:** model output proposes agendas, delegations, tool calls and decisions. Typed
+  validation plus code-owned policy enforce authority, scope, side effects, approvals, budgets, readiness, lineage,
+  concurrency, idempotency and termination before state changes.
+- **Single-writer coordination:** only one coordinator transition writes shared session, agenda and branch state.
+  Specialist invocations and safe deterministic operations may run concurrently, but every return is incorporated
+  atomically by the coordinator.
+- **Specialist-owned reconciliation:** repeated Data or Strategy invocations may investigate disjoint work. Their
+  returns first rejoin the coordinator, which delegates any required domain synthesis back to the owning specialist.
+- **Coding workspace plus independent admission:** Strategy Engineering receives a model/tool coding loop over one
+  isolated workspace per candidate attempt. Packaging and admission are deterministic services; the coding agent
+  cannot approve its own output.
+- **Soft and hard joins:** unrelated returns may be reviewed as they arrive, while dependent work waits for its declared
+  complete evidence set. There is no first-result-wins path that drops negative, failed, or slower evidence.
+- **Interrupt and recovery boundary:** approvals and unavailable authority interrupt before mutation. Accepted receipts
+  and canonical refs are revalidated after restart; hidden reasoning and raw tool payloads are not persisted.
+- **Context isolation and untrusted observations:** each agent receives only bounded role-relevant context. Brief text,
+  provider metadata, tool output, repository content and generated code are data, never authority or instructions.
+- **No standalone executor agent:** deterministic Data mutations, workspace commands, admission and future experiment
+  execution remain services because they have no exclusive model judgment.
+
+The slice does not use an independent Evaluation agent because it stops before experimental evidence. Evaluation of
+agent behavior is an offline qualification concern and cannot be replaced by the Coordinator's product judgment.

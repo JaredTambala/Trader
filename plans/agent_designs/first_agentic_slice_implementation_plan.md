@@ -1,9 +1,14 @@
 # First Agentic Implementation Slice — Review Plan
 
-Status: temporary review draft; no implementation is authorized until this plan and its prerequisite architecture
-records are accepted.
+Status: approved temporary implementation record; delete after its accepted decisions and achieved state are reflected
+in canonical agent, product, MCP, user, and roadmap documentation.
 
 Last reviewed: 2026-09-01.
+
+Implementation note: the accepted Coordinator/Data/Strategy records and shared patterns are canonical. The first MCP
+tranche now registers implementation catalogue/comparison and fail-closed Coding Workspace capabilities, while
+Research Session, general canonical reads, runtime selection, model-backed loops, recovery, and qualification remain
+open. This record must not be read as a completion claim.
 
 This is a temporary sub-document of the [Agent Designs](../agent_designs.md) workbook. It converts the selected
 Coordinator–Data–Strategy direction into a reviewable implementation sequence. It does not replace the owning
@@ -16,9 +21,9 @@ After review, accepted architectural decisions belong in those canonical records
 belong in the roadmap. This temporary document should then be deleted or reduced to unresolved implementation notes so
 it does not become a competing tracker.
 
-## Decision requested
+## Accepted implementation decision
 
-Approve or amend:
+The user authorized implementation on 2026-09-01 with the following reviewed scope:
 
 1. the functional cutoff at a coordinator-accepted Data readiness return plus an independently admitted strategy or
    risk candidate;
@@ -28,7 +33,7 @@ Approve or amend:
 4. the proposed MCP capability changes, isolated coding boundary, and clean replacement of `trader_agents`; and
 5. the behavioral, security, recovery, cost, and latency evidence required before the slice is called implemented.
 
-Reviewing this plan does not reopen the accepted agent authority boundaries. Any proposed implementation that would
+Implementation does not reopen the accepted agent authority boundaries. Any proposed implementation that would
 change those boundaries returns to the owning agent record before code is written.
 
 ## Intended product outcome
@@ -112,10 +117,9 @@ dependency table permits it.
 | Framework and observability decision | Run equivalent disposable LangChain/LangGraph and PydanticAI paths with a real model, MCP, Postgres resume, structured returns, an interrupt, parallel work and traces. | Recorded decision against the same scenarios; losing spike removed; dependency and model profiles pinned. | Production agent runtime foundation. |
 | Implementation authorization | User accepts this plan as amended and the roadmap records the selected work. | Explicit review decision with any remaining spike-owned choices named. | Production code changes. |
 
-Current state on 2026-09-01: the Coordinator architecture is accepted, while the Data Research and Strategy
-Engineering records and the first-slice shared pattern review remain incomplete. The capability inventory, evaluation
-charter and framework comparison have not yet been performed. Production implementation is therefore not ready to
-start immediately after review of this document alone.
+Current state on 2026-09-01: the Coordinator, Data Research, and Strategy Engineering architecture records plus the
+first-slice shared pattern review are accepted. The capability inventory and evaluation charter are active. The
+framework comparison, deterministic capability gaps, production runtime, and qualification remain incomplete.
 
 ## Entry and handoff contract for the first slice
 

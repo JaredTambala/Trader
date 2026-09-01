@@ -487,6 +487,30 @@ match the proposal and consume accepted Data refs, and isolates composition, spe
 threads. Exact replay returns saved terminal state, while changed requests, proposals or protocols fail as identity
 drift. Composition itself adds no generic MCP command.
 
+### Agentic redesign capability plane in progress
+
+The first replacement-slice capability tranche is registered, but it is not yet an operational model-backed agent
+runtime. Strategy Engineering now has its own governance identity and owns implementation discovery, exact-version
+comparison, isolated candidate authoring, and strategy/risk admission tools. The frozen deterministic Supervisor
+retains specification, backtest, optimisation, and workflow-record tooling; this ownership split does not retrofit an
+LLM into the frozen graph.
+
+The implementation catalogue distinguishes maintained discovery metadata, unadmitted canonical versions, and exact
+versions with matching passed admission evidence. Bounded search excludes source, exact retrieval exposes source only
+when explicitly requested, and deterministic field comparison supports—but cannot make—the future model's
+reuse/adapt/author decision.
+
+The Coding Workspace surface separates a pinned read-only Trader snapshot from candidate writes. It provides bounded
+repository search/read, complete-file candidate writes, dependency-policy validation without installation,
+allowlisted container checks, inert packaging, and exact cleanup. It is disabled by default and fails closed unless
+the workspace gate, dedicated root, pinned revision, pinned image, and container runtime are available. Generated code
+is never executed on the host, granted network or credentials, admitted by the coding service, backtested, deployed,
+or traded.
+
+Research Session receipts, general canonical evidence reads, composite Data-agent contracts, model programs, dynamic
+role catalogues, coordinator/specialist loops, Postgres recovery, MLflow trace correlation, and real-model evaluation
+remain outstanding. The active status and gates are recorded in the capability roadmap.
+
 ## Qualification Baselines
 
 The strongest controlled baseline is the 56/57 implementation, specification, backtest and optimisation release:
@@ -522,7 +546,7 @@ trading and live trading.
 ## Known Product Limits
 
 - No current `trader_agents` component invokes an LLM or satisfies the active definition of a model-backed agent. The
-  replacement remains planning-only.
+  replacement capability plane has begun, but the model-backed runtime and qualification remain outstanding.
 - Research tools do not place live orders or mutate paper/live sessions.
 - Complex source-discovered composite methodologies are not represented faithfully. Current page-text extraction and
   local deterministic span assembly do not provide structure-aware, iterative, multi-source dossier research or an

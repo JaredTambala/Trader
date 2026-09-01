@@ -133,6 +133,45 @@ MATH_PACKAGE_METHOD_ARTIFACT_TOOL: Final = "math_package_method_artifact"
 RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL: Final = "research_list_strategy_templates"
 """Tool name for listing maintained strategy templates."""
 
+RESEARCH_SEARCH_IMPLEMENTATIONS_TOOL: Final = "research_search_implementations"
+"""Tool name for searching maintained and admitted implementations."""
+
+RESEARCH_GET_IMPLEMENTATION_TOOL: Final = "research_get_implementation"
+"""Tool name for resolving one exact implementation version."""
+
+RESEARCH_COMPARE_IMPLEMENTATION_TOOL: Final = "research_compare_implementation"
+"""Tool name for field-level build-contract compatibility evidence."""
+
+CODING_CREATE_WORKSPACE_TOOL: Final = "coding_create_workspace"
+"""Tool name for provisioning one isolated candidate-attempt workspace."""
+
+CODING_GET_WORKSPACE_TOOL: Final = "coding_get_workspace"
+"""Tool name for reading bounded workspace status."""
+
+CODING_SEARCH_REPOSITORY_TOOL: Final = "coding_search_repository"
+"""Tool name for bounded search of the pinned Trader snapshot."""
+
+CODING_READ_REPOSITORY_FILE_TOOL: Final = "coding_read_repository_file"
+"""Tool name for bounded reads from the pinned Trader snapshot."""
+
+CODING_WRITE_CANDIDATE_FILE_TOOL: Final = "coding_write_candidate_file"
+"""Tool name for writing one bounded candidate-workspace file."""
+
+CODING_READ_CANDIDATE_FILE_TOOL: Final = "coding_read_candidate_file"
+"""Tool name for reading one bounded candidate-workspace file."""
+
+CODING_RESOLVE_DEPENDENCIES_TOOL: Final = "coding_resolve_dependencies"
+"""Tool name for validating dependencies against the pinned image policy."""
+
+CODING_RUN_CHECK_TOOL: Final = "coding_run_check"
+"""Tool name for running one allowlisted isolated candidate check."""
+
+CODING_PACKAGE_CANDIDATE_TOOL: Final = "coding_package_candidate"
+"""Tool name for packaging exact inert candidate source and tests."""
+
+CODING_DESTROY_WORKSPACE_TOOL: Final = "coding_destroy_workspace"
+"""Tool name for removing one exact disposable coding workspace."""
+
 RESEARCH_GET_BACKTEST_RESULTS_TOOL: Final = "research_get_backtest_results"
 """Tool name for reading a canonical persisted backtest run."""
 
@@ -226,6 +265,20 @@ DATA_TOOL_NAMES: Final = (
 )
 """Data Agent tool names exposed by the MCP server."""
 
+CODING_TOOL_NAMES: Final = (
+    CODING_CREATE_WORKSPACE_TOOL,
+    CODING_GET_WORKSPACE_TOOL,
+    CODING_SEARCH_REPOSITORY_TOOL,
+    CODING_READ_REPOSITORY_FILE_TOOL,
+    CODING_WRITE_CANDIDATE_FILE_TOOL,
+    CODING_READ_CANDIDATE_FILE_TOOL,
+    CODING_RESOLVE_DEPENDENCIES_TOOL,
+    CODING_RUN_CHECK_TOOL,
+    CODING_PACKAGE_CANDIDATE_TOOL,
+    CODING_DESTROY_WORKSPACE_TOOL,
+)
+"""Strategy Engineering Coding Workspace tool names."""
+
 EXPERIMENT_DESIGN_TOOL_NAMES: Final = (
     RESEARCH_CREATE_EXPERIMENT_PROTOCOL_PROPOSAL_TOOL,
 )
@@ -278,6 +331,9 @@ MATH_TOOL_NAMES: Final = (
 RESEARCH_TOOL_NAMES: Final = (
     RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL,
     RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL,
+    RESEARCH_SEARCH_IMPLEMENTATIONS_TOOL,
+    RESEARCH_GET_IMPLEMENTATION_TOOL,
+    RESEARCH_COMPARE_IMPLEMENTATION_TOOL,
     RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL,
     RESEARCH_VALIDATE_STRATEGY_IMPLEMENTATION_TOOL,
     RESEARCH_REGISTER_RISK_MANAGER_IMPLEMENTATION_TOOL,
@@ -314,6 +370,7 @@ ADVERSARIAL_TOOL_NAMES: Final = (
 REGISTERED_TOOL_NAMES: Final = (
     *SUPPORT_TOOL_NAMES,
     *DATA_TOOL_NAMES,
+    *CODING_TOOL_NAMES,
     *EXPERIMENT_DESIGN_TOOL_NAMES,
     *ML_TOOL_NAMES,
     *KNOWLEDGE_TOOL_NAMES,
@@ -340,6 +397,36 @@ DATA_TOOL_DESCRIPTIONS: Final = {
     ),
 }
 """Descriptions for Data Agent tools exposed by the MCP server."""
+
+CODING_TOOL_DESCRIPTIONS: Final = {
+    CODING_CREATE_WORKSPACE_TOOL: (
+        "Create or idempotently reopen one isolated candidate-attempt workspace."
+    ),
+    CODING_GET_WORKSPACE_TOOL: "Return bounded status for one exact coding workspace.",
+    CODING_SEARCH_REPOSITORY_TOOL: (
+        "Search bounded text in the pinned read-only Trader repository snapshot."
+    ),
+    CODING_READ_REPOSITORY_FILE_TOOL: (
+        "Read one bounded text file from the pinned Trader repository snapshot."
+    ),
+    CODING_WRITE_CANDIDATE_FILE_TOOL: (
+        "Write one complete bounded file inside an active candidate workspace."
+    ),
+    CODING_READ_CANDIDATE_FILE_TOOL: (
+        "Read one bounded file from an active candidate workspace."
+    ),
+    CODING_RESOLVE_DEPENDENCIES_TOOL: (
+        "Validate requested dependencies against the pinned container policy without installing them."
+    ),
+    CODING_RUN_CHECK_TOOL: (
+        "Run one allowlisted check in the configured networkless isolated container."
+    ),
+    CODING_PACKAGE_CANDIDATE_TOOL: (
+        "Package exact inert candidate source and file hashes without executing code."
+    ),
+    CODING_DESTROY_WORKSPACE_TOOL: "Destroy one exact disposable candidate workspace.",
+}
+"""Descriptions for Strategy Engineering Coding Workspace tools."""
 
 EXPERIMENT_DESIGN_TOOL_DESCRIPTIONS: Final = {
     RESEARCH_CREATE_EXPERIMENT_PROTOCOL_PROPOSAL_TOOL: (
@@ -416,6 +503,15 @@ MATH_TOOL_DESCRIPTIONS: Final = {
 RESEARCH_TOOL_DESCRIPTIONS: Final = {
     RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL: "List neutral metadata for maintained strategy implementations.",
     RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL: "List neutral metadata for maintained risk implementations.",
+    RESEARCH_SEARCH_IMPLEMENTATIONS_TOOL: (
+        "Search maintained metadata and exact admitted implementation versions using typed and lexical constraints."
+    ),
+    RESEARCH_GET_IMPLEMENTATION_TOOL: (
+        "Resolve one exact implementation version and matching admission evidence."
+    ),
+    RESEARCH_COMPARE_IMPLEMENTATION_TOOL: (
+        "Produce deterministic field-level compatibility evidence for one build contract and version."
+    ),
     RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL: "Register a content-addressed strategy implementation version.",
     RESEARCH_VALIDATE_STRATEGY_IMPLEMENTATION_TOOL: "Validate strategy source and deterministic runtime behavior.",
     RESEARCH_REGISTER_RISK_MANAGER_IMPLEMENTATION_TOOL: (
@@ -469,6 +565,7 @@ CAPABILITY_REGISTRATION_FLAGS: Final = {
     "raw_sql_tools_registered": False,
     "symbol_discovery_tools_registered": True,
     "data_loading_tools_registered": True,
+    "coding_workspace_tools_registered": True,
     "knowledge_tools_registered": True,
     "methodology_candidate_tools_registered": True,
     "math_method_tools_registered": True,

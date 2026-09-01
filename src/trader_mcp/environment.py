@@ -30,6 +30,11 @@ class McpEnvironment:
         allow_optuna_writes: Whether configured Optuna sampler state may be mutated.
         allow_experiment_tracking_writes: Whether tracking sinks may be mutated.
         allow_ml_runtime: Whether configured model adapters may load models for parity or inference.
+        allow_coding_workspace: Whether isolated Coding Workspace mutations and checks are enabled.
+        coding_workspace_root: Dedicated root for disposable candidate workspaces.
+        coding_repository_root: Pinned Trader repository snapshot exposed read-only.
+        coding_repository_revision: Exact revision represented by that snapshot.
+        coding_container_image: Pinned image used for candidate checks.
     """
 
     environment: str
@@ -60,6 +65,11 @@ class McpEnvironment:
     mlflow_tracking_uri: str = ""
     mlflow_optimization_experiment: str = "trader-backtest-optimization"
     mlflow_inference_profile: str = "mlflow_local_pyfunc"
+    allow_coding_workspace: bool = False
+    coding_workspace_root: Path | None = None
+    coding_repository_root: Path | None = None
+    coding_repository_revision: str = ""
+    coding_container_image: str = ""
 
     def policy_flags(self) -> dict[str, bool]:
         """Return environment policy flags.
@@ -78,6 +88,7 @@ class McpEnvironment:
             "allow_optuna_writes": self.allow_optuna_writes,
             "allow_experiment_tracking_writes": self.allow_experiment_tracking_writes,
             "allow_ml_runtime": self.allow_ml_runtime,
+            "allow_coding_workspace": self.allow_coding_workspace,
         }
 
     def embeddings_env(self) -> dict[str, str]:
@@ -158,6 +169,26 @@ def load_local_environment(env_path: str | Path | None = None) -> McpEnvironment
         mlflow_inference_profile=(
             _optional_env("TRADER_MLFLOW_INFERENCE_PROFILE", file_values)
             or "mlflow_local_pyfunc"
+        ),
+        allow_coding_workspace=_optional_bool_env(
+            "TRADER_MCP_ALLOW_CODING_WORKSPACE",
+            file_values,
+        ),
+        coding_workspace_root=_optional_path_env(
+            "TRADER_MCP_CODING_WORKSPACE_ROOT",
+            file_values,
+        ),
+        coding_repository_root=_optional_path_env(
+            "TRADER_MCP_CODING_REPOSITORY_ROOT",
+            file_values,
+        ),
+        coding_repository_revision=_optional_env(
+            "TRADER_MCP_CODING_REPOSITORY_REVISION",
+            file_values,
+        ),
+        coding_container_image=_optional_env(
+            "TRADER_MCP_CODING_CONTAINER_IMAGE",
+            file_values,
         ),
     )
 

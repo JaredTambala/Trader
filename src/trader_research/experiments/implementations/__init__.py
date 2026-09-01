@@ -11,6 +11,13 @@ from .domain import (
     parameter_defaults,
     validate_parameters,
 )
+from .catalog import (
+    ImplementationComparisonRequest,
+    ImplementationSearchRequest,
+    compare_implementation,
+    get_implementation,
+    search_implementations,
+)
 from .runtime import evaluate_objective, instantiate_risk_manager, instantiate_strategy
 from .services import (
     load_passed_implementation,
@@ -33,8 +40,12 @@ from .templates import (
 
 __all__ = [
     "ImplementationVersion",
+    "ImplementationComparisonRequest",
+    "ImplementationSearchRequest",
     "build_implementation_version",
     "evaluate_objective",
+    "compare_implementation",
+    "get_implementation",
     "instantiate_risk_manager",
     "instantiate_strategy",
     "load_passed_implementation",
@@ -44,6 +55,7 @@ __all__ = [
     "register_optimization_objective",
     "register_risk_manager_implementation",
     "register_strategy_implementation",
+    "search_implementations",
     "SUPPORTED_RISK_MANAGER_FAMILIES",
     "SUPPORTED_STRATEGY_FAMILIES",
     "validate_optimization_objective",

@@ -34,6 +34,10 @@ _ROLE_POLICIES = {
     "data_agent": (
         "Produce bounded dataset manifests, data-quality reports, and explicit load evidence without strategy verdicts."
     ),
+    "strategy_engineering_agent": (
+        "Compare, construct, check, package, and submit inert strategy or risk candidates without deciding quantitative "
+        "semantics, admission, experimental efficacy, deployment, or trading."
+    ),
     "experiment_design_agent": (
         "Propose explicit reproducible experiment protocols and expose every "
         "material assumption for operator approval without executing, approving, "

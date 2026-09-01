@@ -101,6 +101,7 @@ def test_local_env_loads_portable_configuration() -> None:
         "allow_optuna_writes": False,
         "allow_experiment_tracking_writes": False,
         "allow_ml_runtime": False,
+        "allow_coding_workspace": False,
     }
 
 
@@ -260,7 +261,7 @@ def test_config_tool_excludes_broker_raw_sql_and_gates_backtest_execution() -> N
         assert ensure_tool["side_effect"] == "local_mutating"
         assert snapshot_tool["agent_owner"] == "Data Agent"
         assert snapshot_tool["side_effect"] == "local_mutating"
-        assert template_tool["agent_owner"] == "Quant Research Supervisor Agent"
+        assert template_tool["agent_owner"] == "Strategy Engineering Agent"
         assert template_tool["side_effect"] == "read_only"
         assert implementation_tool["side_effect"] == "local_mutating"
         assert run_backtest_tool["agent_owner"] == "Quant Research Supervisor Agent"
@@ -268,7 +269,7 @@ def test_config_tool_excludes_broker_raw_sql_and_gates_backtest_execution() -> N
         assert get_backtest_tool["side_effect"] == "read_only"
         assert compare_tool["agent_owner"] == "Quant Research Supervisor Agent"
         assert compare_tool["side_effect"] == "local_mutating"
-        assert risk_template_tool["agent_owner"] == "Quant Research Supervisor Agent"
+        assert risk_template_tool["agent_owner"] == "Strategy Engineering Agent"
         assert risk_template_tool["side_effect"] == "read_only"
         assert optimization_tool["agent_owner"] == "Quant Research Supervisor Agent"
         assert optimization_tool["side_effect"] == "local_mutating"
@@ -292,6 +293,7 @@ def test_config_tool_excludes_broker_raw_sql_and_gates_backtest_execution() -> N
             "optuna_writes_allowed": local_env.allow_optuna_writes,
             "experiment_tracking_writes_allowed": local_env.allow_experiment_tracking_writes,
             "ml_runtime_allowed": local_env.allow_ml_runtime,
+            "coding_workspace_allowed": local_env.allow_coding_workspace,
         }
 
     anyio.run(_run)

@@ -61,6 +61,28 @@ DATA_AGENT_TOOLS = (
     "data_create_research_snapshot",
 )
 
+STRATEGY_ENGINEERING_TOOLS = (
+    "research_list_strategy_templates",
+    "research_list_risk_manager_templates",
+    "research_search_implementations",
+    "research_get_implementation",
+    "research_compare_implementation",
+    "coding_create_workspace",
+    "coding_get_workspace",
+    "coding_search_repository",
+    "coding_read_repository_file",
+    "coding_write_candidate_file",
+    "coding_read_candidate_file",
+    "coding_resolve_dependencies",
+    "coding_run_check",
+    "coding_package_candidate",
+    "coding_destroy_workspace",
+    "research_register_strategy_implementation",
+    "research_validate_strategy_implementation",
+    "research_register_risk_manager_implementation",
+    "research_validate_risk_manager_implementation",
+)
+
 EXPERIMENT_DESIGN_AGENT_TOOLS = (
     "research_create_experiment_protocol_proposal",
 )
@@ -134,19 +156,13 @@ HYPOTHESIS_AGENT_TOOLS = ("hypothesis_create_card",)
 
 QUANT_RESEARCH_SUPERVISOR_TOOLS = (
     "research_create_plan",
-    "research_list_strategy_templates",
     "research_get_backtest_results",
     "research_compare_backtest_results",
-    "research_list_risk_manager_templates",
     "research_analyze_return_attribution",
     "research_generate_recommendation",
     "research_create_walk_forward_plan",
     "research_run_walk_forward_optimization",
     "research_get_walk_forward_results",
-    "research_register_strategy_implementation",
-    "research_validate_strategy_implementation",
-    "research_register_risk_manager_implementation",
-    "research_validate_risk_manager_implementation",
     "research_create_strategy_specification",
     "research_validate_strategy_specification",
     "research_create_risk_stack_specification",
@@ -190,8 +206,6 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
             "recommendation_report.json",
             "walk_forward_optimization_plan.json",
             "walk_forward_optimization_run.json",
-            "implementation_version.json",
-            "implementation_validation_report.json",
             "strategy_specification.json",
             "strategy_specification_validation_report.json",
             "risk_stack_specification.json",
@@ -217,6 +231,21 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
             "load_result_result.json",
         ),
         initial_tools=(*READ_ONLY_SUPPORT_TOOLS, *DATA_AGENT_TOOLS),
+    ),
+    AgentDefinition(
+        key="strategy_engineering_agent",
+        display_name="Strategy Engineering Agent",
+        mission=(
+            "Compare, construct, test, package, and submit inert strategy or "
+            "risk candidates without efficacy or trading authority."
+        ),
+        produced_artifacts=(
+            "implementation_compatibility_report.json",
+            "coding_candidate_package.json",
+            "implementation_version.json",
+            "implementation_validation_report.json",
+        ),
+        initial_tools=(*READ_ONLY_SUPPORT_TOOLS, *STRATEGY_ENGINEERING_TOOLS),
     ),
     AgentDefinition(
         key="experiment_design_agent",
@@ -351,6 +380,22 @@ DECISION_AUTHORITIES: tuple[DecisionAuthority, ...] = (
         ),
     ),
     DecisionAuthority(
+        key="strategy_engineering_agent",
+        display_name="Strategy Engineering Agent",
+        decision=(
+            "Choose exact reuse, bounded adaptation, or new authorship and "
+            "construct an inert candidate from an accepted build contract."
+        ),
+        artifact_domains=(EXPERIMENTS_DOMAIN_OWNER,),
+        prohibited_authority=(
+            "quantitative method semantics",
+            "implementation admission",
+            "experiment design",
+            "performance conclusions",
+            "deployment and trading",
+        ),
+    ),
+    DecisionAuthority(
         key="experiment_design_agent",
         display_name="Experiment Design Agent",
         decision="Propose a fair, reproducible, approval-aware experiment protocol.",
@@ -438,6 +483,7 @@ _AGENT_ALIASES: Mapping[str, str] = {
 
 TOOL_STEWARD_BY_NAME: Mapping[str, str] = {
     **{tool: "Data Agent" for tool in DATA_AGENT_TOOLS},
+    **{tool: "Strategy Engineering Agent" for tool in STRATEGY_ENGINEERING_TOOLS},
     **{
         tool: "Experiment Design Agent"
         for tool in EXPERIMENT_DESIGN_AGENT_TOOLS
