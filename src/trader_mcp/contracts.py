@@ -47,6 +47,9 @@ _READ_ONLY_OPERATIONS = frozenset(
         "coding_package_candidate",
         "research_get_optimizer_runtime",
         "research_get_parameter_optimization_results",
+        "research_get_agent_session",
+        "research_get_agent_decision",
+        "research_read_artifact",
     }
 )
 _EXTERNAL_RESEARCH_MUTATING_OPERATIONS = frozenset(

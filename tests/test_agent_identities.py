@@ -64,9 +64,10 @@ def test_agent_registry_keys_and_display_names_are_unique() -> None:
     keys = [agent.key for agent in AGENT_DEFINITIONS]
     display_names = [agent.display_name for agent in AGENT_DEFINITIONS]
 
-    assert len(keys) == len(set(keys)) == 9
-    assert len(display_names) == len(set(display_names)) == 9
+    assert len(keys) == len(set(keys)) == 10
+    assert len(display_names) == len(set(display_names)) == 10
     assert set(display_names) == {
+        "Research Coordinator",
         "Quant Research Supervisor Agent",
         "Data Agent",
         "Strategy Engineering Agent",

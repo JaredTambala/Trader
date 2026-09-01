@@ -118,8 +118,10 @@ dependency table permits it.
 | Implementation authorization | User accepts this plan as amended and the roadmap records the selected work. | Explicit review decision with any remaining spike-owned choices named. | Production code changes. |
 
 Current state on 2026-09-01: the Coordinator, Data Research, and Strategy Engineering architecture records plus the
-first-slice shared pattern review are accepted. The capability inventory and evaluation charter are active. The
-framework comparison, deterministic capability gaps, production runtime, and qualification remain incomplete.
+first-slice shared pattern review are accepted. Implementation-catalogue, isolated Coding Workspace, immutable Research
+Session/public-decision evidence, and bounded canonical-read operations are registered. The formal capability inventory
+and evaluation charter remain active; the framework decision, remaining deterministic gaps, production runtime, and
+qualification remain incomplete.
 
 ## Entry and handoff contract for the first slice
 
@@ -202,14 +204,14 @@ These are starting hypotheses to test in the formal MCP inventory, not approved 
 | Data inventory and quality | Registered for bounded scopes. | Retain underlying services; verify one composite role-labelled scope, coverage semantics and model-usable errors. |
 | Data loading/backfill | Registered and gated. | Retain deterministic mutation; add an explicit acquisition envelope, estimate/approval surface, cancellation and exact post-mutation evidence where missing. |
 | Data research snapshot | Registered canonical mutation. | Retain; require exact composite-scope identity and matching revalidated inventory/quality generations. |
-| Canonical artifact reads | Available through internal stores and selected tools, but not yet a complete role-scoped model resource surface. | Add bounded immutable MCP resources/read operations with type, owner, hash, lineage and pagination validation. |
+| Canonical artifact reads | A registered exact-ref operation now validates artifact type and owner and returns hash, lineage metadata, and a bounded payload. | Retain; add pagination or projection-specific reads only when representative model context proves the exact bounded read insufficient. |
 | Maintained template lists | Registered metadata-only lists. | Retain as one catalogue tier; do not mistake them for a complete implementation search surface. |
 | Previous implementation search and resolution | Incomplete. | Add versioned typed/lexical/semantic search, exact manifest/admission/provenance resolution, bounded eligible source retrieval and reproducible catalogue identity. |
 | Brief-to-implementation comparison | Incomplete. | Add deterministic field-alignment support and a canonical or validated compatibility record; the model still judges reuse/adapt/author. |
-| Workspace creation, read/search, edit, checks, packaging and cleanup | Absent as a target MCP family. | Add role-scoped capabilities over a disposable resource-bounded container with a pinned read-only repository and separate candidate writes. |
-| Dependency resolution | No target coding capability. | Add a deterministic, policy-gated operation over approved mirrors, pinned versions/hashes and licence/security policy; no model network access. |
+| Workspace creation, read/search, edit, checks, packaging and cleanup | Registered as a default-off Coding Workspace family with a pinned read-only repository, separate candidate writes, bounded operations, container-only checks, inert packaging, and exact cleanup. | Retain and qualify against a real OCI runtime; no host execution fallback. |
+| Dependency resolution | Registered policy validation accepts only approved pinned dependencies and installs nothing. | Retain for the slice; future approved mirrors remain a separate capability when dependency installation is required. |
 | Strategy/risk registration and validation | Registered content-addressed admission path. | Retain independent services; reshape ownership/inputs only where required to accept exact workspace packages and immutable attempt lineage. |
-| Research session, approvals, budgets, interrupts and branch receipts | Current deterministic orchestration state is not the target. | Define new bounded operational capabilities and canonical public receipts without persisting hidden reasoning or raw tool payloads. |
+| Research session, approvals, budgets, interrupts and branch receipts | Immutable session and append-only public decision receipts are registered with model/program/tool pins, scope and approval envelopes, cumulative budgets, branch sequence, canonical evidence validation, and typed Postgres projections. Interrupt/checkpoint state remains absent. | Retain the public evidence contracts; add separate operational checkpoint/interrupt capabilities without persisting hidden reasoning or raw tool payloads. |
 
 The formal inventory must prefer task-level operations that return enough evidence for another model decision. It must
 avoid both microscopic CRUD sequences that consume context without adding judgment and opaque end-to-end tools that

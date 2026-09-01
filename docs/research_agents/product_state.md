@@ -7,7 +7,7 @@ capabilities remain open.
 It does not define request schemas, repeat historical implementation narratives, or prescribe one linear delivery
 sequence. Use the [capability roadmap](../../plans/research_capability_roadmap.md) for remaining work and dependencies.
 
-Last reviewed: 2026-08-28.
+Last reviewed: 2026-09-01.
 
 ## How To Read Capability State
 
@@ -58,7 +58,8 @@ not the target agent system.
 ## Active Agentic Redesign
 
 The target agent control plane is being redesigned from first principles in
-[Agentic Research Orchestration Redesign](../../plans/agentic_orchestration_redesign.md). Implementation has not begun.
+[Agentic Research Orchestration Redesign](../../plans/agentic_orchestration_redesign.md). Deterministic replacement
+capabilities are now in progress, but the model-backed runtime has not been implemented.
 No compatibility is required with existing `trader_agents` imports, graphs, checkpoints, tasks, policies, catalogs, or
 fixed workflow state.
 
@@ -507,9 +508,16 @@ the workspace gate, dedicated root, pinned revision, pinned image, and container
 is never executed on the host, granted network or credentials, admitted by the coding service, backtested, deployed,
 or traded.
 
-Research Session receipts, general canonical evidence reads, composite Data-agent contracts, model programs, dynamic
-role catalogues, coordinator/specialist loops, Postgres recovery, MLflow trace correlation, and real-model evaluation
-remain outstanding. The active status and gates are recorded in the capability roadmap.
+The Research Coordinator now has deterministic MCP operations for immutable operator-approved sessions,
+content-addressed append-only public decision receipts, exact session/decision resolution, and bounded canonical
+artifact reads. Session and receipt records have typed Postgres projections. The contracts pin model, agent-program,
+tool-catalog, scope, approval, Python-quality, implementation-input, and budget boundaries; receipts revalidate
+canonical evidence and enforce per-branch sequence, cumulative budget, and terminal-stop invariants. They deliberately
+exclude prompts, hidden reasoning, credentials, raw messages, and complete tool transcripts.
+
+Composite Data-agent contracts, production model programs, dynamic role catalogues, coordinator/specialist loops,
+fresh-process Postgres recovery qualification, MLflow trace correlation, and real-model evaluation remain outstanding.
+The active status and gates are recorded in the capability roadmap.
 
 ## Qualification Baselines
 

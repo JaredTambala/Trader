@@ -18,6 +18,7 @@ MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded 
 
 | MCP family | Backing service package |
 | --- | --- |
+| Research Coordinator session and decision evidence | `trader_research.governance.agentic` |
 | Data Agent tools | `trader_research.data` |
 | Knowledge tools | `trader_research.knowledge` |
 | Quantitative Methods math tools | `trader_research.methodology` |
@@ -50,6 +51,21 @@ Experiment Design can persist an immutable proposed protocol, and the Supervisor
 persist the initial approved governance records and terminal outcome. Those operations do not compile a plan, decide
 approvals, advance a checkpoint or execute a plan step. Resume state belongs to the separately configured LangGraph
 checkpointer, not to MCP.
+
+The replacement agentic slice also has a narrow Research Coordinator evidence surface. These operations create and
+resolve the immutable operator-approved session boundary, append public coordinator decisions, and dereference exact
+canonical evidence. They do not run a model, dispatch a specialist, approve mutations, or persist prompts, hidden
+reasoning, raw messages, or complete tool transcripts.
+
+## Research Coordinator Evidence Tools
+
+| Tool | Side effect | Primary output | Notes |
+| --- | --- | --- | --- |
+| `research_create_agent_session` | `local_mutating` | Canonical `research_session` ref. | Exact replay is idempotent; conflicting content under the same session ID fails closed. |
+| `research_get_agent_session` | `read_only` | Validated session payload and canonical ref. | Resolves an exact ID or canonical URI. |
+| `research_record_agent_decision` | `local_mutating` | Canonical `agent_decision_receipt` ref. | Enforces admitted program/model identities, cumulative budgets, canonical evidence, append-only branch sequence, and terminal-stop rules. |
+| `research_get_agent_decision` | `read_only` | Validated public decision receipt and canonical ref. | Returns public evidence only, never private model state. |
+| `research_read_artifact` | `read_only` | Governed record metadata, payload hash, bounded payload, and canonical ref. | Requires an exact registered artifact type and rejects owner drift or payloads above the requested bound. |
 
 ## Data Agent Tools
 

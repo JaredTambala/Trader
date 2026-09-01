@@ -181,6 +181,25 @@ These contracts do not load artifacts, call services, write Postgres, invoke MCP
 Existing MCP `ToolEnvelope` remains the transport result. The workflow executor adapts a validated envelope into a
 `WorkflowStepResult`; it does not persist arbitrary raw payloads or hidden model reasoning.
 
+### Model-Backed Session Evidence
+
+The replacement slice adds two canonical public artifact contracts without making the model runtime operational:
+
+| Contract | Purpose | Fail-closed checks |
+| --- | --- | --- |
+| `ResearchSession` | Freeze the operator-approved objective, success definition, approval and scope envelopes, one implementation specification or exact ref, Python quality guide, model/program/tool-catalog identities, and hard budget. | Rejects incomplete identities, duplicate programs, invalid JSON boundaries, invalid budgets, and missing or competing implementation inputs. Exact replay is idempotent; changed content under the same ID is a conflict. |
+| `AgentDecisionReceipt` | Preserve one content-addressed public coordinator decision at an accepted branch boundary. | Requires the owning session, an admitted program and pinned model, exact next sequence, non-decreasing cumulative usage within budget, resolvable canonical evidence, and no append after a terminal receipt. |
+
+`research_create_agent_session` and `research_record_agent_decision` are canonical local mutations. Their corresponding
+get operations resolve and revalidate exact records. `research_read_artifact` is a read-only, type-pinned,
+domain-owner-checked dereference with a caller-selected payload byte bound capped at 256,000 bytes. These tools do not
+authorize a requested side effect, dispatch work, expose raw SQL, or turn prose into authority.
+
+Session and receipt projections live in `research_agent_sessions` and `research_agent_decision_receipts` alongside the
+canonical `research_artifacts` rows. Receipts retain public summaries, blockers, next actions, evidence refs, branch and
+attempt identity, program/model pins, and cumulative budget use. Prompts, hidden reasoning, credentials, raw messages,
+and complete tool transcripts are deliberately excluded.
+
 ### Research Coordination Decision Contract
 
 `CoordinationDecision` is the complete public output of one Research Coordinator policy pass. Its action is one of

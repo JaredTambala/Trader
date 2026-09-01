@@ -11,11 +11,88 @@ from typing import Any
 
 from trader_research.foundation.artifacts import ResearchArtifactRecord
 from trader_research.governance.artifacts import (
+    AGENT_DECISION_RECEIPT,
     EXPERIMENT_PROTOCOL,
     RESEARCH_OBJECTIVE,
+    RESEARCH_SESSION,
     WORKFLOW_OUTCOME,
     WORKFLOW_PLAN,
 )
+
+
+def write_research_session(
+    connection: Any,
+    record: ResearchArtifactRecord,
+    json_value: Any,
+) -> None:
+    """Upsert query fields for one immutable model-backed research session."""
+    payload = dict(record.payload)
+    connection.execute(
+        """
+        INSERT INTO research_agent_sessions (
+            session_id, operator_id, model_profile_id, tool_catalog_id, status,
+            payload
+        ) VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (session_id) DO UPDATE SET
+            operator_id = EXCLUDED.operator_id,
+            model_profile_id = EXCLUDED.model_profile_id,
+            tool_catalog_id = EXCLUDED.tool_catalog_id,
+            status = EXCLUDED.status,
+            payload = EXCLUDED.payload
+        """,
+        [
+            record.artifact_id,
+            payload.get("operator_id"),
+            payload.get("model_profile_id"),
+            payload.get("tool_catalog_id"),
+            record.status,
+            json_value(payload),
+        ],
+    )
+
+
+def write_agent_decision_receipt(
+    connection: Any,
+    record: ResearchArtifactRecord,
+    json_value: Any,
+) -> None:
+    """Upsert bounded query fields for one public agent decision receipt."""
+    payload = dict(record.payload)
+    connection.execute(
+        """
+        INSERT INTO research_agent_decision_receipts (
+            receipt_id, session_id, branch_id, sequence, actor, program_id,
+            model_profile_id, action, status, decision_digest,
+            evidence_ref_count, payload
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (receipt_id) DO UPDATE SET
+            session_id = EXCLUDED.session_id,
+            branch_id = EXCLUDED.branch_id,
+            sequence = EXCLUDED.sequence,
+            actor = EXCLUDED.actor,
+            program_id = EXCLUDED.program_id,
+            model_profile_id = EXCLUDED.model_profile_id,
+            action = EXCLUDED.action,
+            status = EXCLUDED.status,
+            decision_digest = EXCLUDED.decision_digest,
+            evidence_ref_count = EXCLUDED.evidence_ref_count,
+            payload = EXCLUDED.payload
+        """,
+        [
+            record.artifact_id,
+            payload.get("session_id"),
+            payload.get("branch_id"),
+            payload.get("sequence"),
+            payload.get("actor"),
+            payload.get("program_id"),
+            payload.get("model_profile_id"),
+            payload.get("action"),
+            payload.get("status") or record.status,
+            payload.get("decision_digest"),
+            len(payload.get("evidence_refs") or ()),
+            json_value(payload),
+        ],
+    )
 
 
 def write_research_objective(
@@ -171,6 +248,8 @@ def write_workflow_outcome(
 
 
 PROJECTION_WRITERS = {
+    RESEARCH_SESSION: write_research_session,
+    AGENT_DECISION_RECEIPT: write_agent_decision_receipt,
     RESEARCH_OBJECTIVE: write_research_objective,
     EXPERIMENT_PROTOCOL: write_experiment_protocol,
     WORKFLOW_PLAN: write_workflow_plan,

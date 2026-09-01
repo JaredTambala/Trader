@@ -74,6 +74,33 @@ RESEARCH_ARTIFACT_SCHEMA_STATEMENTS: tuple[str, ...] = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS research_agent_sessions (
+        session_id TEXT PRIMARY KEY,
+        operator_id TEXT NOT NULL,
+        model_profile_id TEXT NOT NULL,
+        tool_catalog_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        payload JSONB NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS research_agent_decision_receipts (
+        receipt_id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        branch_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL,
+        actor TEXT NOT NULL,
+        program_id TEXT NOT NULL,
+        model_profile_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        status TEXT NOT NULL,
+        decision_digest TEXT NOT NULL,
+        evidence_ref_count INTEGER NOT NULL DEFAULT 0,
+        payload JSONB NOT NULL,
+        UNIQUE (session_id, branch_id, sequence)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS research_experiment_protocol_proposals (
         proposal_id TEXT PRIMARY KEY,
         protocol_id TEXT NOT NULL,
@@ -368,6 +395,10 @@ RESEARCH_ARTIFACT_SCHEMA_STATEMENTS: tuple[str, ...] = (
     (
         "CREATE INDEX IF NOT EXISTS research_workflow_outcomes_plan_status_idx "
         "ON research_workflow_outcomes(plan_id, status)"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS research_agent_decisions_session_branch_idx "
+        "ON research_agent_decision_receipts(session_id, branch_id, sequence)"
     ),
     (
         "CREATE INDEX IF NOT EXISTS research_methodology_candidates_status_idx "

@@ -27,6 +27,10 @@ class AgentIdentity:
 
 
 _ROLE_POLICIES = {
+    "research_coordinator": (
+        "Interpret operator-approved briefs, coordinate bounded specialists, review canonical evidence, and record "
+        "public decisions without replacing specialist judgment, approving scope expansion, or reaching trading."
+    ),
     "quant_research_supervisor": (
         "Coordinate specialist handoffs, reproducible experiments, and deferred walk-forward optimization runs without "
         "forging specialist artifacts or issuing evaluation verdicts."

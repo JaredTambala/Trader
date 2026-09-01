@@ -14,11 +14,14 @@ from trader.config import Config, build_config, load_yaml_config
 from trader.event_store import EventStore, NoOpEventStore, build_event_store
 from trader_mcp.adapters import result_to_mcp_result
 from trader_mcp.adversarial_tools import register_adversarial_tools
+from trader_mcp.agentic_tools import register_agentic_tools
 from trader_mcp.coding_tools import (
     CodingWorkspaceServiceProvider,
     register_coding_tools,
 )
 from trader_mcp.constants import (
+    AGENTIC_TOOL_DESCRIPTIONS,
+    AGENTIC_TOOL_NAMES,
     ADVERSARIAL_TOOL_DESCRIPTIONS,
     ADVERSARIAL_TOOL_NAMES,
     CAPABILITY_REGISTRATION_FLAGS,
@@ -538,6 +541,10 @@ def create_server(
         local_env,
         service_provider=resolved_coding_workspace_service_provider,
     )
+    register_agentic_tools(
+        server,
+        artifact_store_provider=resolved_research_artifact_store_provider,
+    )
     register_research_tools(
         server,
         local_env,
@@ -821,6 +828,15 @@ def build_config_envelope(
             ],
         },
     ]
+    tool_metadata.extend(
+        {
+            "name": tool_name,
+            "agent_owner": agent_owner_for_tool(tool_name),
+            "side_effect": side_effect_for_operation(tool_name).value,
+            "description": AGENTIC_TOOL_DESCRIPTIONS[tool_name],
+        }
+        for tool_name in AGENTIC_TOOL_NAMES
+    )
     tool_metadata.extend(
         {
             "name": tool_name,

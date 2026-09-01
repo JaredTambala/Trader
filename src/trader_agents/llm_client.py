@@ -33,13 +33,24 @@ class LlmMessage:
 
 @dataclass(frozen=True)
 class LlmJsonRequest:
-    """A provider-neutral JSON-response LLM request."""
+    """A provider-neutral JSON-response LLM request.
+
+    Attributes:
+        messages: Ordered system and public-context messages.
+        response_schema: JSON Schema the returned object must satisfy.
+        model: Optional request-specific model override.
+        temperature: Provider-neutral sampling temperature.
+        max_tokens: Maximum generated output tokens.
+        thinking: Whether a provider may emit an internal thinking phase. The
+            default is false for bounded structured control decisions.
+    """
 
     messages: tuple[LlmMessage, ...]
     response_schema: Mapping[str, Any]
     model: str | None = None
     temperature: float = 0.0
     max_tokens: int = 800
+    thinking: bool = False
 
     def messages_payload(self) -> list[dict[str, str]]:
         """Return provider-neutral message payloads."""
@@ -190,6 +201,7 @@ class OllamaJsonLlmClient:
             "messages": llm_request.messages_payload(),
             "stream": False,
             "format": "json",
+            "think": llm_request.thinking,
             "options": {"temperature": llm_request.temperature},
         }
         response = await self.transport.post_json(

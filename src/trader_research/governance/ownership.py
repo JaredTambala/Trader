@@ -53,6 +53,14 @@ class DecisionAuthority:
 
 READ_ONLY_SUPPORT_TOOLS = ("mcp_health", "mcp_get_config")
 
+RESEARCH_COORDINATOR_TOOLS = (
+    "research_create_agent_session",
+    "research_get_agent_session",
+    "research_record_agent_decision",
+    "research_get_agent_decision",
+    "research_read_artifact",
+)
+
 DATA_AGENT_TOOLS = (
     "data_discover_symbols",
     "data_get_inventory",
@@ -195,6 +203,19 @@ ADVERSARIAL_AGENT_TOOLS = (
 
 
 AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
+    AgentDefinition(
+        key="research_coordinator",
+        display_name="Research Coordinator",
+        mission=(
+            "Interpret an approved research brief, coordinate bounded specialist "
+            "work, review canonical evidence, and record public next-step decisions."
+        ),
+        produced_artifacts=(
+            "research_session.json",
+            "agent_decision_receipt.json",
+        ),
+        initial_tools=(*READ_ONLY_SUPPORT_TOOLS, *RESEARCH_COORDINATOR_TOOLS),
+    ),
     AgentDefinition(
         key="quant_research_supervisor",
         display_name="Quant Research Supervisor Agent",
@@ -482,6 +503,7 @@ _AGENT_ALIASES: Mapping[str, str] = {
 }
 
 TOOL_STEWARD_BY_NAME: Mapping[str, str] = {
+    **{tool: "Research Coordinator" for tool in RESEARCH_COORDINATOR_TOOLS},
     **{tool: "Data Agent" for tool in DATA_AGENT_TOOLS},
     **{tool: "Strategy Engineering Agent" for tool in STRATEGY_ENGINEERING_TOOLS},
     **{

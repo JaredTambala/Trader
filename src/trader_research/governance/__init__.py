@@ -6,6 +6,7 @@ it grants no execution, persistence, or live-trading authority by itself.
 """
 
 from .artifacts import (
+    AGENT_DECISION_RECEIPT,
     APPROVAL_REQUEST,
     BACKTEST_RUN,
     BACKTEST_SPECIFICATION,
@@ -29,6 +30,7 @@ from .artifacts import (
     PARAMETER_OPTIMIZATION_ROBUSTNESS_REPORT,
     PARAMETER_OPTIMIZATION_RUN,
     RESEARCH_OBJECTIVE,
+    RESEARCH_SESSION,
     RISK_STACK_SPECIFICATION,
     RISK_STACK_SPECIFICATION_VALIDATION_REPORT,
     STRATEGY_SPECIFICATION,
@@ -36,6 +38,24 @@ from .artifacts import (
     SUPPORTED_ARTIFACT_TYPES,
     WORKFLOW_OUTCOME,
     WORKFLOW_PLAN,
+)
+from .agentic import (
+    AgentBudget,
+    AgentBudgetUsage,
+    AgentDecisionReceipt,
+    AgentDecisionStatus,
+    RESEARCH_CREATE_AGENT_SESSION,
+    RESEARCH_GET_AGENT_DECISION,
+    RESEARCH_GET_AGENT_SESSION,
+    RESEARCH_READ_ARTIFACT,
+    RESEARCH_RECORD_AGENT_DECISION,
+    ResearchSession,
+    build_agent_decision_receipt,
+    create_agent_session,
+    get_agent_decision,
+    get_agent_session,
+    read_canonical_artifact,
+    record_agent_decision,
 )
 from .handoffs import (
     ArtifactReportRef,
@@ -105,6 +125,11 @@ from .ownership import (
 )
 
 __all__ = [
+    "AGENT_DECISION_RECEIPT",
+    "AgentBudget",
+    "AgentBudgetUsage",
+    "AgentDecisionReceipt",
+    "AgentDecisionStatus",
     "APPROVAL_REQUEST",
     "BACKTEST_RUN",
     "BACKTEST_SPECIFICATION",
@@ -160,6 +185,13 @@ __all__ = [
     "ProtocolRiskManager",
     "ProtocolStrategy",
     "RESEARCH_OBJECTIVE",
+    "RESEARCH_SESSION",
+    "RESEARCH_CREATE_AGENT_SESSION",
+    "RESEARCH_GET_AGENT_DECISION",
+    "RESEARCH_GET_AGENT_SESSION",
+    "RESEARCH_READ_ARTIFACT",
+    "RESEARCH_RECORD_AGENT_DECISION",
+    "ResearchSession",
     "ResearchIssue",
     "ResearchObjective",
     "ResearchObjectiveStatus",
@@ -182,6 +214,12 @@ __all__ = [
     "WorkflowPlanStatus",
     "WorkflowStep",
     "WorkflowStepResult",
+    "build_agent_decision_receipt",
+    "create_agent_session",
+    "get_agent_decision",
+    "get_agent_session",
+    "read_canonical_artifact",
+    "record_agent_decision",
     "WorkflowStepStatus",
     "apply_experiment_protocol_approvals",
     "record_workflow_outcome",

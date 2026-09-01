@@ -142,6 +142,7 @@ def test_ollama_client_uses_local_chat_endpoint() -> None:
         assert transport.calls[0]["url"] == "http://localhost:11434/api/chat"
         assert transport.calls[0]["payload"]["model"] == "llama3.1"
         assert transport.calls[0]["payload"]["format"] == "json"
+        assert transport.calls[0]["payload"]["think"] is False
         assert transport.calls[0]["payload"]["stream"] is False
 
     anyio.run(_run)

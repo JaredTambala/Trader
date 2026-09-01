@@ -17,6 +17,7 @@ extend the current agent control plane, and become current here only when implem
 
 | Agent | Mission | Current tool-produced outputs | Current MCP/tool access |
 | --- | --- | --- | --- |
+| Research Coordinator | Preserve an operator-approved model-backed session boundary and append public evidence-constrained coordination decisions. | Immutable research-session and agent-decision-receipt records; bounded exact reads of canonical specialist evidence. | Support tools plus the registered session, public-decision, and canonical-evidence-read family. The model-backed coordinator loop is not implemented yet. |
 | Quant Research Supervisor Agent | Coordinate the frozen deterministic workflows and synthesize specialist-owned evidence. | Immutable strategy/risk/backtest specifications, canonical backtest runs, optimisation plans/runs/trials, tracking projection reports, comparisons, and planned walk-forward runs. Orchestration-domain objective/plan/outcome records are separately produced through its workflow persistence allowlist. | Registered specification/backtest/optimisation/projection `research_*` tools plus `research_register_experiment_workflow` and `research_record_workflow_outcome`. |
 | Data Agent | Produce trustworthy bounded market-data manifests and quality evidence. | Symbol discovery reports, dataset manifests, data-quality reports, load result envelopes. | `mcp_health`, `mcp_get_config`, `data_discover_symbols`, `data_get_inventory`, `data_summarize_quality`, `data_create_research_snapshot`, `data_ensure_loaded`. |
 | Strategy Engineering Agent | Compare, construct, check, package, and submit inert strategy or risk candidates without efficacy authority. | Compatibility evidence, candidate packages, implementation versions, and independent admission reports. | Read-only implementation catalogue and repository tools; isolated Coding Workspace tools; strategy/risk registration and validation. |
@@ -27,7 +28,8 @@ extend the current agent control plane, and become current here only when implem
 | Evaluation Agent | Produce skeptical critique and performance evidence from research artifacts. | Untouched-holdout optimisation reports and planned stitched out-of-sample walk-forward reports. | `evaluation_generate_parameter_optimization_report` plus planned broader critique/walk-forward tooling. |
 | Adversarial Agent | Produce robustness and stress-test evidence for strategies and research procedures. | Parameter-optimisation audit plans/reports and planned walk-forward audits. | Registered parameter-optimisation audit tools; broader robustness remains planned. |
 
-The table above describes executable identities and their current tool allowlists. It does not assign canonical
+The table above describes executable identities and their current tool allowlists. An identity may expose only
+deterministic evidence capabilities while its target model loop remains absent. The table does not assign canonical
 artifact ownership. For example, Strategy-Engineering-allowlisted tools currently produce Experiment-domain records, while
 Quantitative-Methods-allowlisted tools can produce either Knowledge/Methodology records or Experiment-domain objective
 implementations. The MCP `agent_owner` label records intended tool stewardship, not artifact authority or actual caller

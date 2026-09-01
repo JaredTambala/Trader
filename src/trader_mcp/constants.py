@@ -17,6 +17,21 @@ MCP_HEALTH_TOOL: Final = "mcp_health"
 MCP_CONFIG_TOOL: Final = "mcp_get_config"
 """Tool name for MCP server configuration."""
 
+RESEARCH_CREATE_AGENT_SESSION_TOOL: Final = "research_create_agent_session"
+"""Tool name for persisting one immutable model-backed research session."""
+
+RESEARCH_GET_AGENT_SESSION_TOOL: Final = "research_get_agent_session"
+"""Tool name for resolving one exact model-backed research session."""
+
+RESEARCH_RECORD_AGENT_DECISION_TOOL: Final = "research_record_agent_decision"
+"""Tool name for persisting one public coordinator decision receipt."""
+
+RESEARCH_GET_AGENT_DECISION_TOOL: Final = "research_get_agent_decision"
+"""Tool name for resolving one exact coordinator decision receipt."""
+
+RESEARCH_READ_ARTIFACT_TOOL: Final = "research_read_artifact"
+"""Tool name for bounded exact canonical evidence reads."""
+
 ML_CREATE_DEPLOYMENT_MANIFEST_TOOL: Final = "ml_create_deployment_manifest"
 """Tool name for creating one immutable raw-inference deployment manifest."""
 
@@ -256,6 +271,15 @@ ADVERSARIAL_GENERATE_PARAMETER_OPTIMIZATION_AUDIT_TOOL: Final = (
 SUPPORT_TOOL_NAMES: Final = (MCP_HEALTH_TOOL, MCP_CONFIG_TOOL)
 """Read-only support tool names exposed by the MCP server."""
 
+AGENTIC_TOOL_NAMES: Final = (
+    RESEARCH_CREATE_AGENT_SESSION_TOOL,
+    RESEARCH_GET_AGENT_SESSION_TOOL,
+    RESEARCH_RECORD_AGENT_DECISION_TOOL,
+    RESEARCH_GET_AGENT_DECISION_TOOL,
+    RESEARCH_READ_ARTIFACT_TOOL,
+)
+"""Research Coordinator session, receipt, and canonical-read tools."""
+
 DATA_TOOL_NAMES: Final = (
     DATA_DISCOVER_SYMBOLS_TOOL,
     DATA_GET_INVENTORY_TOOL,
@@ -369,6 +393,7 @@ ADVERSARIAL_TOOL_NAMES: Final = (
 
 REGISTERED_TOOL_NAMES: Final = (
     *SUPPORT_TOOL_NAMES,
+    *AGENTIC_TOOL_NAMES,
     *DATA_TOOL_NAMES,
     *CODING_TOOL_NAMES,
     *EXPERIMENT_DESIGN_TOOL_NAMES,
@@ -386,6 +411,25 @@ SUPPORT_TOOL_DESCRIPTIONS: Final = {
     MCP_CONFIG_TOOL: "Return current MCP server safety and tool configuration.",
 }
 """Descriptions for read-only support tools exposed by the MCP server."""
+
+AGENTIC_TOOL_DESCRIPTIONS: Final = {
+    RESEARCH_CREATE_AGENT_SESSION_TOOL: (
+        "Persist one immutable operator-approved model-backed research session."
+    ),
+    RESEARCH_GET_AGENT_SESSION_TOOL: (
+        "Resolve one exact research session and its pinned authority boundaries."
+    ),
+    RESEARCH_RECORD_AGENT_DECISION_TOOL: (
+        "Persist one append-only public coordinator decision receipt over canonical evidence."
+    ),
+    RESEARCH_GET_AGENT_DECISION_TOOL: (
+        "Resolve one exact public coordinator decision receipt."
+    ),
+    RESEARCH_READ_ARTIFACT_TOOL: (
+        "Read one exact size-bounded canonical artifact with governance metadata."
+    ),
+}
+"""Descriptions for first-slice Research Coordinator control-plane tools."""
 
 DATA_TOOL_DESCRIPTIONS: Final = {
     DATA_DISCOVER_SYMBOLS_TOOL: "Discover or validate provider-scoped market-data symbols before data queries.",
@@ -566,6 +610,8 @@ CAPABILITY_REGISTRATION_FLAGS: Final = {
     "symbol_discovery_tools_registered": True,
     "data_loading_tools_registered": True,
     "coding_workspace_tools_registered": True,
+    "agentic_session_tools_registered": True,
+    "canonical_artifact_read_tools_registered": True,
     "knowledge_tools_registered": True,
     "methodology_candidate_tools_registered": True,
     "math_method_tools_registered": True,
