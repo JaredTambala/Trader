@@ -10,7 +10,7 @@ from .profiles import (
 )
 
 
-TOOL_POLICY_VERSION = "first-slice-tool-policy-v2"
+TOOL_POLICY_VERSION = "first-slice-tool-policy-v3"
 """Deterministic role and lifecycle policy version used by all programs."""
 
 
@@ -85,27 +85,27 @@ def first_slice_programs() -> AgentProgramRegistry:
     return AgentProgramRegistry(
         (
             AgentProgram(
-                program_id="research-coordinator-v2",
+                program_id="research-coordinator-v3",
                 role=AgentRole.RESEARCH_COORDINATOR,
-                version="2.0.0",
+                version="3.0.0",
                 model_profile_id=DEVELOPMENT_MODEL_PROFILE_ID,
                 system_instruction=COORDINATOR_SYSTEM_INSTRUCTION,
                 output_contracts=("CoordinatorAgenda", "CoordinatorDecision"),
                 tool_policy_version=TOOL_POLICY_VERSION,
             ),
             AgentProgram(
-                program_id="data-research-v2",
+                program_id="data-research-v3",
                 role=AgentRole.DATA_RESEARCH,
-                version="2.0.0",
+                version="3.0.0",
                 model_profile_id=DEVELOPMENT_MODEL_PROFILE_ID,
                 system_instruction=DATA_RESEARCH_SYSTEM_INSTRUCTION,
                 output_contracts=("DataAgentTurn",),
                 tool_policy_version=TOOL_POLICY_VERSION,
             ),
             AgentProgram(
-                program_id="strategy-engineering-v2",
+                program_id="strategy-engineering-v3",
                 role=AgentRole.STRATEGY_ENGINEERING,
-                version="2.0.0",
+                version="3.0.0",
                 model_profile_id=DEVELOPMENT_MODEL_PROFILE_ID,
                 system_instruction=STRATEGY_ENGINEERING_SYSTEM_INSTRUCTION,
                 output_contracts=("StrategyAgentTurn",),

@@ -12,9 +12,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
+import selectors
 import shutil
 import subprocess
+import time
 from typing import Any, Protocol
 
 from trader_research.foundation import (
@@ -30,6 +33,7 @@ from .domain import (
     SUPPORTED_CODING_CHECKS,
     CodingWorkspacePolicy,
     ContainerExecution,
+    validate_pinned_container_image,
 )
 
 
@@ -78,6 +82,8 @@ class DockerContainerRunner:
         memory_limit: Container memory ceiling.
         cpu_limit: Container CPU ceiling.
         pids_limit: Container process-count ceiling.
+        container_user: Numeric unprivileged user and group inside the image.
+        nofile_limit: Maximum open files inside the container.
     """
 
     container_image: str
@@ -85,6 +91,28 @@ class DockerContainerRunner:
     memory_limit: str = "512m"
     cpu_limit: str = "1.0"
     pids_limit: int = 128
+    container_user: str = "65534:65534"
+    nofile_limit: int = 256
+
+    def __post_init__(self) -> None:
+        """Normalize immutable identity and reject invalid resource bounds."""
+        object.__setattr__(
+            self,
+            "container_image",
+            validate_pinned_container_image(self.container_image),
+        )
+        if not str(self.executable or "").strip():
+            raise ValueError("container executable is required")
+        if not str(self.memory_limit or "").strip():
+            raise ValueError("container memory_limit is required")
+        if not str(self.cpu_limit or "").strip():
+            raise ValueError("container cpu_limit is required")
+        if not 1 <= self.pids_limit <= 4096:
+            raise ValueError("pids_limit must be between 1 and 4096")
+        if not 16 <= self.nofile_limit <= 4096:
+            raise ValueError("nofile_limit must be between 16 and 4096")
+        if not _is_numeric_user(self.container_user):
+            raise ValueError("container_user must be numeric uid:gid")
 
     def run(
         self,
@@ -123,13 +151,21 @@ class DockerContainerRunner:
             "--rm",
             "--network",
             "none",
+            "--ipc",
+            "none",
             "--read-only",
             "--cap-drop",
             "ALL",
             "--security-opt",
             "no-new-privileges",
+            "--user",
+            self.container_user,
             "--pids-limit",
             str(self.pids_limit),
+            "--ulimit",
+            f"nofile={self.nofile_limit}:{self.nofile_limit}",
+            "--ulimit",
+            f"nproc={self.pids_limit}:{self.pids_limit}",
             "--memory",
             self.memory_limit,
             "--cpus",
@@ -144,29 +180,32 @@ class DockerContainerRunner:
             "PYTHONDONTWRITEBYTECODE=1",
             "--env",
             "PYTHONPYCACHEPREFIX=/tmp/pycache",
+            "--env",
+            "HOME=/tmp",
+            "--env",
+            "TMPDIR=/tmp",
             self.container_image,
             *command,
         ]
-        try:
-            completed = subprocess.run(
-                invocation,
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=timeout_seconds,
-            )
-        except subprocess.TimeoutExpired as exc:
-            return ContainerExecution(
-                exit_code=None,
-                stdout=_bounded_text(exc.stdout, max_output_bytes),
-                stderr=_bounded_text(exc.stderr, max_output_bytes),
-                timed_out=True,
-                metadata=_runner_metadata(self, check_name),
-            )
+        capture = _run_bounded_process(
+            invocation,
+            timeout_seconds=timeout_seconds,
+            max_output_bytes=max_output_bytes,
+        )
         return ContainerExecution(
-            exit_code=completed.returncode,
-            stdout=_bounded_text(completed.stdout, max_output_bytes),
-            stderr=_bounded_text(completed.stderr, max_output_bytes),
+            exit_code=capture.exit_code,
+            stdout=_bounded_text(
+                capture.stdout,
+                max_output_bytes,
+                truncated="stdout" in capture.truncated_streams,
+            ),
+            stderr=_bounded_text(
+                capture.stderr,
+                max_output_bytes,
+                truncated="stderr" in capture.truncated_streams,
+            ),
+            timed_out=capture.timed_out,
+            output_limit_exceeded=capture.output_limit_exceeded,
             metadata=_runner_metadata(self, check_name),
         )
 
@@ -611,6 +650,8 @@ class CodingWorkspaceService:
             message=(
                 "coding check timed out"
                 if execution.timed_out
+                else "coding check exceeded its output limit"
+                if execution.output_limit_exceeded
                 else "coding check returned non-zero"
             ),
             data={"check": payload},
@@ -702,9 +743,7 @@ class CodingWorkspaceService:
             command=CODING_PACKAGE_CANDIDATE,
             data={
                 "candidate_package": {
-                    key: value
-                    for key, value in package.items()
-                    if key != "source_code"
+                    key: value for key, value in package.items() if key != "source_code"
                 }
             },
         )
@@ -994,6 +1033,119 @@ def _container_check_command(check_name: str) -> list[str]:
         raise ValueError(f"unsupported coding check: {check_name}") from exc
 
 
+@dataclass(frozen=True)
+class _BoundedProcessCapture:
+    """Bounded byte capture from one container-client process."""
+
+    exit_code: int | None
+    stdout: bytes
+    stderr: bytes
+    timed_out: bool
+    output_limit_exceeded: bool
+    truncated_streams: frozenset[str]
+
+
+def _run_bounded_process(
+    invocation: Sequence[str],
+    *,
+    timeout_seconds: int,
+    max_output_bytes: int,
+) -> _BoundedProcessCapture:
+    """Run a process while enforcing per-stream memory and time ceilings.
+
+    The process is terminated as soon as either stream would exceed its byte
+    ceiling. Unlike ``subprocess.run(capture_output=True)``, this function
+    never accumulates unbounded child output before truncating it.
+
+    Args:
+        invocation: Exact argument-vector invocation without a shell.
+        timeout_seconds: Positive wall-clock deadline.
+        max_output_bytes: Positive byte ceiling for each output stream.
+
+    Returns:
+        Bounded process result and the stream identities that were truncated.
+
+    Raises:
+        ValueError: If a resource ceiling is not positive.
+        OSError: If the process cannot be started or its pipes cannot be read.
+    """
+    if timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must be positive")
+    if max_output_bytes <= 0:
+        raise ValueError("max_output_bytes must be positive")
+    process = subprocess.Popen(
+        list(invocation),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        shell=False,
+        start_new_session=True,
+    )
+    if process.stdout is None or process.stderr is None:
+        _terminate_process(process)
+        raise RuntimeError("container process output pipes are unavailable")
+    buffers = {"stdout": bytearray(), "stderr": bytearray()}
+    truncated_streams: set[str] = set()
+    timed_out = False
+    deadline = time.monotonic() + timeout_seconds
+    with selectors.DefaultSelector() as selector:
+        selector.register(process.stdout, selectors.EVENT_READ, "stdout")
+        selector.register(process.stderr, selectors.EVENT_READ, "stderr")
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                break
+            events = selector.select(timeout=min(remaining, 0.1))
+            for key, _ in events:
+                chunk = os.read(key.fd, 8192)
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                stream_name = str(key.data)
+                buffer = buffers[stream_name]
+                remaining_bytes = max_output_bytes - len(buffer)
+                if len(chunk) > remaining_bytes:
+                    buffer.extend(chunk[:remaining_bytes])
+                    truncated_streams.add(stream_name)
+                    break
+                buffer.extend(chunk)
+            if truncated_streams:
+                break
+    if timed_out or truncated_streams:
+        _terminate_process(process)
+    else:
+        remaining = max(0.01, deadline - time.monotonic())
+        try:
+            process.wait(timeout=remaining)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            _terminate_process(process)
+    for stream in (process.stdout, process.stderr):
+        if not stream.closed:
+            stream.close()
+    return _BoundedProcessCapture(
+        exit_code=None if timed_out else process.returncode,
+        stdout=bytes(buffers["stdout"]),
+        stderr=bytes(buffers["stderr"]),
+        timed_out=timed_out,
+        output_limit_exceeded=bool(truncated_streams),
+        truncated_streams=frozenset(truncated_streams),
+    )
+
+
+def _terminate_process(process: subprocess.Popen[bytes]) -> None:
+    """Terminate and reap one bounded container-client process."""
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=2)
+
+
 def _runner_metadata(runner: DockerContainerRunner, check_name: str) -> dict[str, Any]:
     return {
         "runner": "docker",
@@ -1003,22 +1155,45 @@ def _runner_metadata(runner: DockerContainerRunner, check_name: str) -> dict[str
         "root_filesystem_read_only": True,
         "workspace_mount_read_only": True,
         "capabilities_dropped": True,
+        "no_new_privileges": True,
+        "ipc_mode": "none",
+        "container_user": runner.container_user,
+        "output_limit_enforced_during_execution": True,
         "memory_limit": runner.memory_limit,
         "cpu_limit": runner.cpu_limit,
         "pids_limit": runner.pids_limit,
+        "nofile_limit": runner.nofile_limit,
     }
 
 
-def _bounded_text(value: object, max_bytes: int) -> str:
+def _bounded_text(
+    value: object,
+    max_bytes: int,
+    *,
+    truncated: bool = False,
+) -> str:
+    """Decode text within an exact byte ceiling and optional truncation mark."""
     if value is None:
         return ""
-    encoded = str(value).encode("utf-8", errors="replace")
-    if len(encoded) <= max_bytes:
+    encoded = (
+        value
+        if isinstance(value, bytes)
+        else str(value).encode("utf-8", errors="replace")
+    )
+    if len(encoded) <= max_bytes and not truncated:
         return encoded.decode("utf-8", errors="replace")
     marker = b"\n...[output truncated]"
+    if max_bytes <= len(marker):
+        return marker[:max_bytes].decode("utf-8", errors="replace")
     return (encoded[: max_bytes - len(marker)] + marker).decode(
         "utf-8", errors="replace"
     )
+
+
+def _is_numeric_user(value: str) -> bool:
+    """Return whether a container identity is a numeric ``uid:gid`` pair."""
+    parts = str(value or "").split(":")
+    return len(parts) == 2 and all(part.isdigit() for part in parts)
 
 
 def _required_identifier(value: str, label: str) -> str:

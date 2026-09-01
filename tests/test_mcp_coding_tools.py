@@ -22,6 +22,9 @@ from trader_research.coding import CodingWorkspacePolicy, CodingWorkspaceService
 from trader_research.foundation import InMemoryResearchArtifactStore
 
 
+_PINNED_IMAGE = f"trader-agent-coding@sha256:{'a' * 64}"
+
+
 def test_coding_tools_are_registered_but_fail_closed_when_disabled() -> None:
     server = create_server(load_local_environment("env.template"))
 
@@ -55,7 +58,7 @@ def test_coding_tools_expose_bounded_workspace_without_host_check_fallback(
             workspace_root=tmp_path / "workspaces",
             repository_root=repository_root,
             repository_revision="revision-1",
-            container_image="trader-agent-coding@sha256:demo",
+            container_image=_PINNED_IMAGE,
         )
     )
     environment = replace(
@@ -101,7 +104,9 @@ def test_coding_tools_expose_bounded_workspace_without_host_check_fallback(
         assert packaged.isError is False
         assert check.isError is True
         assert check.structuredContent is not None
-        assert check.structuredContent["errors"][0]["code"] == "coding_check_unavailable"
+        assert (
+            check.structuredContent["errors"][0]["code"] == "coding_check_unavailable"
+        )
 
     anyio.run(_run)
 
@@ -141,7 +146,7 @@ def test_candidate_package_registers_without_model_relaying_source(
             workspace_root=tmp_path / "workspaces",
             repository_root=repository_root,
             repository_revision="revision-1",
-            container_image="trader-agent-coding@sha256:demo",
+            container_image=_PINNED_IMAGE,
         )
     )
     source = "def build_strategy(**kwargs):\n    return kwargs\n"
@@ -184,13 +189,12 @@ def test_candidate_package_registers_without_model_relaying_source(
         )
         assert registered.isError is False
         assert registered.structuredContent is not None
-        implementation = registered.structuredContent["data"][
-            "implementation_version"
-        ]
+        implementation = registered.structuredContent["data"]["implementation_version"]
         assert "source_code" not in implementation
-        assert implementation["source_hash"] == packaged.data[
-            "candidate_package"
-        ]["source_hash"]
+        assert (
+            implementation["source_hash"]
+            == packaged.data["candidate_package"]["source_hash"]
+        )
         assert implementation["metadata"]["candidate_package_id"] == package_id
 
         conflicted = await server.call_tool(

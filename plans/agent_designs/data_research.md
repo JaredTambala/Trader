@@ -1,6 +1,6 @@
 # Data Research Agent Design
 
-Status: architecture record accepted; implementation and qualification remain pending.
+Status: architecture record accepted; first-slice implementation in progress and qualification pending.
 
 Last reviewed: 2026-09-01.
 

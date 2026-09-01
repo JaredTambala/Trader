@@ -174,3 +174,6 @@ mutation, then commits the exact checkpointed decision. A fresh-process resume c
 response without another model call. Owning-operator cancellation is a separate canonical terminal transition, and
 semantic loop fingerprints ignore model paraphrase and disposable attempt/artifact identities. These controls are
 implemented but remain subject to the roadmap's full security, trace, scale, and repeated real-model qualification.
+The Coding Workspace implementation also requires full digest pinning and enforces non-root, networkless, read-only,
+resource-, deadline-, and output-bounded checks. Controlled tests map all 12 canonical scenarios to executable scripted
+evidence; this traceability does not replace real-container or repeated real-model qualification.

@@ -5,11 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
 from trader_research.coding import (
     CodingWorkspacePolicy,
     CodingWorkspaceService,
     ContainerExecution,
+    DockerContainerRunner,
 )
+
+
+_PINNED_IMAGE = f"trader-agent-coding@sha256:{'a' * 64}"
 
 
 @dataclass
@@ -47,19 +53,20 @@ def test_workspace_is_idempotent_and_packages_inert_source(tmp_path: Path) -> No
         "def build_strategy(**kwargs):\n    return kwargs\n",
         operation_id="write-step-1",
     )
-    replayed = service.write_candidate_file(
+    restarted_service = _service(tmp_path)
+    replayed = restarted_service.write_candidate_file(
         workspace_id,
         "implementation.py",
         "def build_strategy(**kwargs):\n    return kwargs\n",
         operation_id="write-step-1",
     )
-    conflicted = service.write_candidate_file(
+    conflicted = restarted_service.write_candidate_file(
         workspace_id,
         "implementation.py",
         "raise RuntimeError('different write')\n",
         operation_id="write-step-1",
     )
-    packaged = service.package_candidate(workspace_id)
+    packaged = restarted_service.package_candidate(workspace_id)
 
     assert first.ok is True
     assert second.data["workspace"]["workspace_id"] == workspace_id
@@ -154,6 +161,127 @@ def test_checks_fail_closed_without_runner_and_preserve_bounded_evidence(
     assert passing.data["check"]["status"] == "passed"
 
 
+def test_workspace_policy_requires_content_pinned_container_image(
+    tmp_path: Path,
+) -> None:
+    """Mutable tags and incomplete digests cannot identify the sandbox."""
+    repository_root = tmp_path / "repository"
+    repository_root.mkdir()
+
+    for image in (
+        "trader-agent-coding:latest",
+        "trader-agent-coding@sha256:demo",
+        "trader-agent-coding@sha256:" + "g" * 64,
+    ):
+        with pytest.raises(ValueError, match="pinned"):
+            CodingWorkspacePolicy(
+                workspace_root=tmp_path / "workspaces",
+                repository_root=repository_root,
+                repository_revision="revision-1",
+                container_image=image,
+            )
+
+
+def test_container_runner_builds_locked_down_non_root_invocation(
+    tmp_path: Path,
+) -> None:
+    """The OCI client receives every accepted isolation control explicitly."""
+    executable = _fake_container_executable(
+        tmp_path,
+        "import sys\nprint('\\n'.join(sys.argv[1:]))\n",
+    )
+    workspace = tmp_path / "workspace"
+    (workspace / "candidate").mkdir(parents=True)
+    runner = DockerContainerRunner(
+        _PINNED_IMAGE,
+        executable=str(executable),
+    )
+
+    execution = runner.run(
+        workspace_path=workspace,
+        check_name="compile",
+        timeout_seconds=5,
+        max_output_bytes=16_000,
+    )
+
+    arguments = execution.stdout.splitlines()
+    assert execution.exit_code == 0
+    assert execution.timed_out is False
+    assert execution.output_limit_exceeded is False
+    assert _argument_value(arguments, "--network") == "none"
+    assert _argument_value(arguments, "--ipc") == "none"
+    assert _argument_value(arguments, "--user") == "65534:65534"
+    assert _argument_value(arguments, "--pids-limit") == "128"
+    assert _argument_value(arguments, "--memory") == "512m"
+    assert _argument_value(arguments, "--cpus") == "1.0"
+    assert "--read-only" in arguments
+    assert "ALL" in arguments
+    assert "no-new-privileges" in arguments
+    assert f"nofile={runner.nofile_limit}:{runner.nofile_limit}" in arguments
+    assert f"nproc={runner.pids_limit}:{runner.pids_limit}" in arguments
+    assert any(
+        item.startswith("type=bind,") and item.endswith(",readonly")
+        for item in arguments
+    )
+    assert _PINNED_IMAGE in arguments
+    assert execution.metadata["output_limit_enforced_during_execution"] is True
+
+
+def test_container_runner_terminates_on_output_limit(tmp_path: Path) -> None:
+    """Host memory remains bounded when a container client floods output."""
+    executable = _fake_container_executable(
+        tmp_path,
+        "import os\nos.write(1, b'x' * 4096)\nos.write(2, b'y' * 4096)\n",
+    )
+    workspace = tmp_path / "workspace"
+    (workspace / "candidate").mkdir(parents=True)
+    runner = DockerContainerRunner(
+        _PINNED_IMAGE,
+        executable=str(executable),
+    )
+
+    execution = runner.run(
+        workspace_path=workspace,
+        check_name="compile",
+        timeout_seconds=5,
+        max_output_bytes=128,
+    )
+
+    assert execution.timed_out is False
+    assert execution.output_limit_exceeded is True
+    assert len(execution.stdout.encode("utf-8")) <= 128
+    assert len(execution.stderr.encode("utf-8")) <= 128
+    assert (
+        "output truncated" in execution.stdout or "output truncated" in execution.stderr
+    )
+
+
+def test_container_runner_terminates_on_deadline(tmp_path: Path) -> None:
+    """The host-enforced deadline returns bounded timeout evidence."""
+    executable = _fake_container_executable(
+        tmp_path,
+        "import time\nprint('started', flush=True)\ntime.sleep(5)\n",
+    )
+    workspace = tmp_path / "workspace"
+    (workspace / "candidate").mkdir(parents=True)
+    runner = DockerContainerRunner(
+        _PINNED_IMAGE,
+        executable=str(executable),
+    )
+
+    execution = runner.run(
+        workspace_path=workspace,
+        check_name="compile",
+        timeout_seconds=1,
+        max_output_bytes=128,
+    )
+
+    assert execution.exit_code is None
+    assert execution.timed_out is True
+    assert execution.output_limit_exceeded is False
+    assert execution.stdout == "started\n"
+
+
 def test_cleanup_removes_only_exact_workspace(tmp_path: Path) -> None:
     service = _service(tmp_path)
     first = service.create_workspace(
@@ -164,8 +292,11 @@ def test_cleanup_removes_only_exact_workspace(tmp_path: Path) -> None:
     )
 
     destroyed = service.destroy_workspace(first.data["workspace"]["workspace_id"])
-    replayed = service.destroy_workspace(first.data["workspace"]["workspace_id"])
-    resolved = service.get_workspace(first.data["workspace"]["workspace_id"])
+    restarted_service = _service(tmp_path)
+    replayed = restarted_service.destroy_workspace(
+        first.data["workspace"]["workspace_id"]
+    )
+    resolved = restarted_service.get_workspace(first.data["workspace"]["workspace_id"])
     still_present = service.get_workspace(second.data["workspace"]["workspace_id"])
 
     assert destroyed.ok is True
@@ -194,7 +325,20 @@ def _service(
         workspace_root=tmp_path / "workspaces",
         repository_root=repository_root,
         repository_revision="revision-1",
-        container_image="trader-agent-coding@sha256:demo",
+        container_image=_PINNED_IMAGE,
         allowed_dependencies=("trader",),
     )
     return CodingWorkspaceService(policy, runner=runner)
+
+
+def _fake_container_executable(tmp_path: Path, body: str) -> Path:
+    """Create an executable test double for a Docker-compatible CLI."""
+    executable = tmp_path / f"fake-container-{abs(hash(body))}"
+    executable.write_text(f"#!/usr/bin/env python3\n{body}", encoding="utf-8")
+    executable.chmod(0o755)
+    return executable
+
+
+def _argument_value(arguments: list[str], option: str) -> str:
+    """Return the value immediately following one invocation option."""
+    return arguments[arguments.index(option) + 1]

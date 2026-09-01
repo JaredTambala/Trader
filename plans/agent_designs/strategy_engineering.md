@@ -299,8 +299,10 @@ or a behaviorally material change escalates immediately instead of consuming rep
 
 The first-slice implementation destroys a failed candidate workspace before admitting a repair transition, increments
 the revision budget, derives a new immutable candidate-attempt identity, and requires independent admission again.
-Focused tests cover one actionable failure followed by one admitted replacement; real-container, recovery, malicious-
-content, and repeated real-model qualification remain open.
+Focused tests cover one actionable failure followed by one admitted replacement, irreparable equivalent failures,
+repository prompt injection, and replay-safe workspace cleanup. The container command is also fail-closed, digest-
+pinned, non-root, networkless, read-only, resource-, deadline-, and output-bounded. Real-container, fresh-process repair
+recovery, and repeated real-model qualification remain open.
 
 Passing admission completes the mission; the agent cannot continue polishing or optimizing admitted code. Budget
 exhaustion returns complete attempt lineage, the strongest available candidate and admission evidence, unresolved

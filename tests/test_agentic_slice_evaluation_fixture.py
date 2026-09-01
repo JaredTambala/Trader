@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "agentic_slice_scenarios.json"
+REPOSITORY_ROOT = FIXTURE_PATH.parents[2]
 
 
 def test_agentic_slice_fixture_covers_all_approved_scenarios() -> None:
@@ -40,7 +41,22 @@ def test_agentic_slice_fixture_separates_trajectory_and_final_outcome() -> None:
         assert scenario["required_evidence"]
         assert scenario["expected_terminal_actions"]
         assert len(scenario["trajectory_assertions"]) >= 3
+        assert scenario["scripted_tests"]
         assert "broker_mutation" not in scenario["permitted_mutations"]
+
+
+def test_every_scenario_links_to_existing_scripted_trajectory_tests() -> None:
+    """Keep the evaluation charter traceable to executable test nodes."""
+    for scenario in _fixture()["scenarios"]:
+        for test_id in scenario["scripted_tests"]:
+            relative_path, separator, node_id = str(test_id).partition("::")
+            assert separator == "::"
+            assert node_id.startswith("test_")
+            path = (REPOSITORY_ROOT / relative_path).resolve()
+            assert path.is_relative_to(REPOSITORY_ROOT)
+            assert path.is_file()
+            source = path.read_text(encoding="utf-8")
+            assert f"def {node_id}(" in source
 
 
 def test_agentic_slice_thresholds_preserve_hard_safety_invariants() -> None:

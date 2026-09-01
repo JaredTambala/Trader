@@ -53,10 +53,12 @@ a focused Data test proves resume through a new PostgreSQL connection without re
 Coding Workspace writes and destruction now have source-free replay records. Data mutation records also bind one
 runtime operation to its requester, actor, exact scope, and acquisition plan; an accepted result replays without a
 second provider call, while a prepared record either recovers from conclusive post-load evidence or fails closed for
-reconciliation. Full coordinator recovery, real isolated Coding Workspace, MLflow trace, security/prompt-injection,
+reconciliation. Focused fresh-connection tests cover Data post-load recovery and coordinator decision-commit recovery.
+Controlled tests cover prompt injection, denied trading paths, out-of-envelope and unfit Data, adaptation, bounded
+repair, and queryable redacted MLflow correlation. Cross-process cancellation, real isolated Coding Workspace,
 repeated real-model, scale, and final operational acceptance evidence remain outstanding.
 
-Strategy authorship now uses `strategy-engineering-v2` with `first-slice-tool-policy-v2`. Packaging retains complete
+Strategy authorship now uses `strategy-engineering-v3` with `first-slice-tool-policy-v3`. Packaging retains complete
 source in an immutable, content-addressed coding package while returning only identity, lineage, source hash, and file
 manifest to the model. Registration accepts that exact package ID; the MCP adapter resolves source internally and
 injects attempt/build/repository lineage. Agent-proposed direct source registration fails closed, and a package remains
@@ -546,9 +548,11 @@ reuse/adapt/author decision.
 The Coding Workspace surface separates a pinned read-only Trader snapshot from candidate writes. It provides bounded
 repository search/read, complete-file candidate writes, dependency-policy validation without installation,
 allowlisted container checks, inert packaging, and exact cleanup. It is disabled by default and fails closed unless
-the workspace gate, dedicated root, pinned revision, pinned image, and container runtime are available. Generated code
-is never executed on the host, granted network or credentials, admitted by the coding service, backtested, deployed,
-or traded.
+the workspace gate, dedicated root, pinned revision, complete digest-pinned image, and container runtime are available.
+Checks use a non-root user, read-only filesystem and workspace mount, disabled network and IPC, dropped capabilities,
+no-new-privileges, bounded CPU, memory, process/file descriptors, deadline, and per-stream output. Generated code is
+never executed on the host, granted network or credentials, admitted by the coding service, backtested, deployed, or
+traded.
 
 The Research Coordinator now has deterministic MCP operations for immutable operator-approved sessions,
 content-addressed append-only public decision receipts, exact session/decision resolution, and bounded canonical
@@ -558,10 +562,11 @@ canonical evidence and enforce per-branch sequence, cumulative budget, and termi
 exclude prompts, hidden reasoning, credentials, raw messages, and complete tool transcripts.
 
 Production composite Data behavior, model programs, dynamic role catalogues, coordinator/specialist loops, bounded
-parallel scheduling, canonical evidence review, interrupts, and the runtime/CLI boundary are implemented. Fresh-process
-Postgres recovery qualification, real Coding Workspace qualification, production MLflow trace evidence, security
-cases, and repeated real-model evaluation remain outstanding. The operation inventory and versioned evaluation cases
-are complete; active status and gates are recorded in the capability roadmap.
+parallel scheduling, canonical evidence review, interrupts, and the runtime/CLI boundary are implemented. Scripted
+tests now trace every case in the 12-scenario fixture to executable evidence and include fresh-connection Postgres,
+redacted MLflow, and adversarial policy cases. Real Coding Workspace qualification, production trace and cancellation
+evidence, and repeated real-model evaluation remain outstanding. The operation inventory and versioned evaluation
+cases are complete; active status and gates are recorded in the capability roadmap.
 
 ## Qualification Baselines
 

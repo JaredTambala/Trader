@@ -8,11 +8,35 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+import re
 from typing import Any, Mapping
 
 
 SUPPORTED_CODING_CHECKS = frozenset({"compile", "ruff", "pytest"})
 SUPPORTED_CANDIDATE_SUFFIXES = frozenset({".py", ".json", ".toml", ".md"})
+_PINNED_IMAGE_PATTERN = re.compile(
+    r"^(?P<repository>[^\s@]+)@sha256:(?P<digest>[0-9a-fA-F]{64})$"
+)
+
+
+def validate_pinned_container_image(value: str) -> str:
+    """Normalize an immutable OCI image reference.
+
+    Args:
+        value: Candidate image reference.
+
+    Returns:
+        Reference with a lowercase SHA-256 digest.
+
+    Raises:
+        ValueError: If the reference is empty, tag-only, or not pinned to a
+            complete SHA-256 content digest.
+    """
+    normalized = str(value or "").strip()
+    match = _PINNED_IMAGE_PATTERN.fullmatch(normalized)
+    if match is None:
+        raise ValueError("container_image must be pinned as repository@sha256:<64 hex>")
+    return f"{match.group('repository')}@sha256:{match.group('digest').lower()}"
 
 
 @dataclass(frozen=True)
@@ -50,11 +74,9 @@ class CodingWorkspacePolicy:
         if not repository_root.is_dir():
             raise ValueError("repository_root must be an existing directory")
         revision = str(self.repository_revision or "").strip()
-        image = str(self.container_image or "").strip()
+        image = validate_pinned_container_image(self.container_image)
         if not revision:
             raise ValueError("repository_revision is required")
-        if not image:
-            raise ValueError("container_image is required")
         if self.max_file_bytes <= 0 or self.max_output_bytes <= 0:
             raise ValueError("file and output byte limits must be positive")
         if self.max_workspace_bytes < self.max_file_bytes:
@@ -100,6 +122,8 @@ class ContainerExecution:
         stdout: Bounded standard output.
         stderr: Bounded standard error.
         timed_out: Whether the configured deadline stopped the check.
+        output_limit_exceeded: Whether either output stream exceeded its
+            configured byte ceiling and caused fail-closed termination.
         metadata: Non-secret runner and resource metadata.
     """
 
@@ -107,6 +131,7 @@ class ContainerExecution:
     stdout: str
     stderr: str
     timed_out: bool = False
+    output_limit_exceeded: bool = False
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -116,5 +141,6 @@ class ContainerExecution:
             "stdout": self.stdout,
             "stderr": self.stderr,
             "timed_out": self.timed_out,
+            "output_limit_exceeded": self.output_limit_exceeded,
             "metadata": dict(self.metadata),
         }

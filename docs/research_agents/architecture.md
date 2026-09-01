@@ -365,12 +365,12 @@ messages, secrets, hidden reasoning, and complete tool responses are excluded fr
 MCP call/result and coordinator commit spans retain only correlation identities, allowlisted public operation or
 artifact identities, evidence types/URIs, and public error codes. Malformed envelopes fail inside the traced boundary
 and still consume the crossed tool-call budget.
-The current `strategy-engineering-v2` program and `first-slice-tool-policy-v2` require package-backed registration:
+The current `strategy-engineering-v3` program and `first-slice-tool-policy-v3` require package-backed registration:
 complete candidate source remains in the coding service's immutable package, the model supplies only its exact ID, and
 the MCP adapter resolves source and injects candidate-attempt/build-contract/repository lineage before Experiments
 registration. Workspace destruction therefore does not make a packaged candidate unrecoverable.
 
-The `data-research-v2` mutation boundary similarly separates model judgment from replay control. The model may choose
+The `data-research-v3` mutation boundary similarly separates model judgment from replay control. The model may choose
 an approved load only after inspecting a deterministic costed plan. The runtime then binds operation, requester, and
 actor identity; the Data service persists a prepared journal record before calling the provider and terminal evidence
 afterward. An accepted operation replays from evidence, and an interrupted prepared operation never blindly repeats

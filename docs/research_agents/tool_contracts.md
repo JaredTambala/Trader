@@ -678,9 +678,12 @@ difference, and unknown rows. It does not make the Strategy Engineering reuse/ad
 The Coding Workspace contract separates a pinned read-only repository snapshot from candidate writes. Workspace
 identity is derived from the attempt and build-contract identities. Repository and candidate paths are normalized and
 bounded by suffix and size policy. Dependency resolution is an allowlist verdict and performs no installation.
-Candidate checks accept only the registered compile, Ruff, and pytest identities and run through a pinned,
-networkless, read-only, resource-bounded container with the workspace mounted read-only; an unavailable runtime fails
-closed without host execution. Packaging returns inert source, file hashes, revision, and check evidence. It does not
+Candidate checks accept only the registered compile, Ruff, and pytest identities and run through a complete
+digest-pinned, networkless, non-root, read-only, resource-bounded container with the workspace mounted read-only.
+Capabilities are dropped, no-new-privileges is enabled, IPC is isolated, temporary storage is no-exec/no-suid, and
+CPU, memory, processes, file descriptors, deadline, and each output stream have explicit ceilings. Crossing a deadline
+or output ceiling terminates the check; an unavailable runtime fails closed without host execution. Packaging returns
+inert source, file hashes, revision, and check evidence. It does not
 import, admit, execute in Trader, backtest, deploy, or trade the candidate. The entire surface remains unavailable
 unless the Coding Workspace policy gate and exact runtime configuration are enabled.
 

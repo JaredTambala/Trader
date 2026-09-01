@@ -57,7 +57,7 @@ configuration. Runtime failures belong inside the affected tool envelope.
 | `TRADER_MCP_CODING_WORKSPACE_ROOT` | empty | Dedicated writable root for ephemeral candidate workspaces. Must not be the repository root. |
 | `TRADER_MCP_CODING_REPOSITORY_ROOT` | empty | Read-only Trader repository snapshot exposed to the coding service. |
 | `TRADER_MCP_CODING_REPOSITORY_REVISION` | empty | Exact pinned repository revision used by every workspace. |
-| `TRADER_MCP_CODING_CONTAINER_IMAGE` | empty | Exact admitted image used for isolated checks. |
+| `TRADER_MCP_CODING_CONTAINER_IMAGE` | empty | Exact admitted image used for isolated checks, required as `repository@sha256:<64 hex>`; tags and shortened digests fail closed. |
 | `TRADER_AGENTS_CHECKPOINT_DSN` | empty | Dedicated PostgreSQL DSN for replaceable LangGraph operational checkpoints. |
 | `TRADER_AGENTS_MODEL_PROFILE_ID` | `ollama-qwen35-9b-json-v1` | Exact admitted model profile. The first slice currently registers only its development Ollama profile. |
 | `TRADER_AGENTS_MCP_COMMAND` | current Python executable | Command used to start each isolated MCP stdio server. |
