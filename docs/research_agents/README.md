@@ -66,8 +66,11 @@ artifact store. Experiment Design, execution, Robustness/WFO, Evaluation, Knowle
 and ML model-backed loops are outside this slice.
 
 The implementation is not yet a controlled product capability. Fresh-process PostgreSQL recovery, real Coding
-Workspace qualification, MLflow trace qualification, prompt-security cases, and repeated real-model evaluation must
-pass before the roadmap can mark the slice complete.
+Workspace isolation, MLflow trace coverage, prompt-security cases, repeated real-model evaluation, and bounded-scale
+behavior now have production-shaped entry points, but all mandatory phases must pass against one exact freeze before
+the roadmap can mark the slice complete. See the
+[model-backed runtime user guide](operations.md#model-backed-research-runtime-user-guide-unqualified) to run and inspect
+the current development capability.
 
 Trader Postgres is canonical for implementations, specifications, runs, trial ledgers, Evaluation, and Adversarial
 evidence. MCP is the control-plane API over deterministic services. LangGraph agents constrain tool access and preserve

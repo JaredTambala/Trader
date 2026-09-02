@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+import re
 from typing import Any
 
 from trader_research.foundation import json_payload_hash
@@ -11,8 +12,15 @@ from trader_research.foundation import json_payload_hash
 from .contracts import AgentRole
 
 
-DEVELOPMENT_MODEL_PROFILE_ID = "ollama-qwen35-9b-json-v1"
+DEVELOPMENT_MODEL_PROFILE_ID = "ollama-qwen35-9b-json-v2"
 """Pinned development model profile selected by the framework spike."""
+
+OLLAMA_QWEN35_9B_DIGEST = (
+    "6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7"
+)
+"""Exact Ollama content digest admitted by the development profile."""
+
+_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 
 @dataclass(frozen=True)
@@ -23,6 +31,7 @@ class ModelProfile:
         profile_id: Stable identity stored in sessions and traces.
         provider: Supported provider adapter name.
         model: Provider model identifier.
+        model_revision: Immutable provider revision served for ``model``.
         base_url: Provider endpoint without credentials.
         temperature: Sampling temperature for control decisions.
         max_output_tokens: Maximum generated tokens per call.
@@ -33,6 +42,7 @@ class ModelProfile:
     profile_id: str
     provider: str
     model: str
+    model_revision: str
     base_url: str
     temperature: float = 0.0
     max_output_tokens: int = 900
@@ -45,10 +55,15 @@ class ModelProfile:
             (self.profile_id, "profile_id"),
             (self.provider, "provider"),
             (self.model, "model"),
+            (self.model_revision, "model_revision"),
             (self.base_url, "base_url"),
         ):
             if not str(value).strip():
                 raise ValueError(f"{label} is required")
+        if self.provider == "ollama" and not _SHA256_PATTERN.fullmatch(
+            self.model_revision
+        ):
+            raise ValueError("Ollama model_revision must be a lowercase SHA-256 digest")
         if not 0.0 <= self.temperature <= 2.0:
             raise ValueError("temperature must be between 0 and 2")
         if not 1 <= self.max_output_tokens <= 8_192:
@@ -62,6 +77,7 @@ class ModelProfile:
             "profile_id": self.profile_id,
             "provider": self.provider,
             "model": self.model,
+            "model_revision": self.model_revision,
             "base_url": self.base_url,
             "temperature": self.temperature,
             "max_output_tokens": self.max_output_tokens,
@@ -166,9 +182,7 @@ class ModelProfileRegistry:
 
     def public_manifest(self) -> dict[str, Any]:
         """Return sorted credential-free profiles and registry identity."""
-        profiles = [
-            self._profiles[key].to_dict() for key in sorted(self._profiles)
-        ]
+        profiles = [self._profiles[key].to_dict() for key in sorted(self._profiles)]
         return {
             "registry_id": json_payload_hash({"profiles": profiles}),
             "profiles": profiles,
@@ -209,9 +223,7 @@ class AgentProgramRegistry:
 
     def public_manifest(self) -> dict[str, Any]:
         """Return sorted program manifests and their catalogue identity."""
-        programs = [
-            self._by_id[key].to_dict() for key in sorted(self._by_id)
-        ]
+        programs = [self._by_id[key].to_dict() for key in sorted(self._by_id)]
         return {
             "registry_id": json_payload_hash({"programs": programs}),
             "programs": programs,
@@ -226,6 +238,7 @@ def development_model_profiles() -> ModelProfileRegistry:
                 profile_id=DEVELOPMENT_MODEL_PROFILE_ID,
                 provider="ollama",
                 model="qwen3.5:9b",
+                model_revision=OLLAMA_QWEN35_9B_DIGEST,
                 base_url="http://127.0.0.1:11434",
                 temperature=0.0,
                 max_output_tokens=900,
@@ -248,6 +261,7 @@ def profile_environment(profile: ModelProfile) -> Mapping[str, str]:
     return {
         "TRADER_AGENTS_LLM_PROVIDER": profile.provider,
         "TRADER_AGENTS_LLM_MODEL": profile.model,
+        "TRADER_AGENTS_LLM_MODEL_REVISION": profile.model_revision,
         "TRADER_AGENTS_LLM_BASE_URL": profile.base_url,
         "TRADER_AGENTS_LLM_TIMEOUT_SECONDS": str(profile.timeout_seconds),
     }

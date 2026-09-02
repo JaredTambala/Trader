@@ -128,9 +128,9 @@ def _reserve_budgets(
     remaining_tokens = budget.max_tokens - usage.total_tokens
     if min(remaining_models, remaining_tools, remaining_tokens) < count:
         raise SchedulingError("remaining session budget cannot fund the ready set")
-    per_models = min(12, remaining_models // count)
-    per_tools = min(12, remaining_tools // count)
-    per_tokens = min(6_000, remaining_tokens // count)
+    per_models = min(20, remaining_models // count)
+    per_tools = min(20, remaining_tools // count)
+    per_tokens = min(60_000, remaining_tokens // count)
     return tuple(
         BudgetReservation(
             model_calls=per_models,

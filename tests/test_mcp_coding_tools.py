@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import anyio
 
@@ -15,11 +16,17 @@ from trader_mcp.constants import (
     CODING_WRITE_CANDIDATE_FILE_TOOL,
     RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL,
     RESEARCH_SEARCH_IMPLEMENTATIONS_TOOL,
+    RESEARCH_VALIDATE_STRATEGY_IMPLEMENTATION_TOOL,
 )
 from trader_mcp.environment import load_local_environment
 from trader_mcp.server import create_server
 from trader_research.coding import CodingWorkspacePolicy, CodingWorkspaceService
-from trader_research.foundation import InMemoryResearchArtifactStore
+from trader_research.foundation import (
+    ApplicationResult,
+    ContextualResearchArtifactStore,
+    InMemoryResearchArtifactStore,
+    error_result,
+)
 
 
 _PINNED_IMAGE = f"trader-agent-coding@sha256:{'a' * 64}"
@@ -214,3 +221,46 @@ def test_candidate_package_registers_without_model_relaying_source(
         )
 
     anyio.run(_run)
+
+
+def test_strategy_validation_service_receives_mcp_request_context() -> None:
+    """Route an injected admission service through the attributed MCP boundary."""
+    captured: dict[str, Any] = {}
+
+    def _validation_service(**kwargs: Any) -> ApplicationResult:
+        captured.update(kwargs)
+        return error_result(
+            command=RESEARCH_VALIDATE_STRATEGY_IMPLEMENTATION_TOOL,
+            code="controlled_validation_result",
+            message="The injected service received the attributed request.",
+        )
+
+    artifact_store = InMemoryResearchArtifactStore()
+    server = create_server(
+        load_local_environment("env.template"),
+        research_artifact_store_provider=lambda: artifact_store,
+        strategy_validation_service=_validation_service,
+    )
+
+    async def _run() -> None:
+        result = await server.call_tool(
+            RESEARCH_VALIDATE_STRATEGY_IMPLEMENTATION_TOOL,
+            {
+                "implementation_version_id": "implementation-1",
+                "requested_by": "session-1",
+                "actor": "Strategy Engineering Agent",
+            },
+        )
+
+        assert result.isError is True
+        assert result.structuredContent is not None
+        assert result.structuredContent["errors"][0]["code"] == (
+            "controlled_validation_result"
+        )
+
+    anyio.run(_run)
+
+    contextual = captured["artifact_store"]
+    assert isinstance(contextual, ContextualResearchArtifactStore)
+    assert contextual.requested_by == "session-1"
+    assert contextual.actor == "Strategy Engineering Agent"

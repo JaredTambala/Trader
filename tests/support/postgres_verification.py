@@ -23,9 +23,11 @@ from psycopg.types.json import Jsonb
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LEGACY_VERIFICATION_PROFILE = "controlled_optimization_v6"
 ORCHESTRATION_VERIFICATION_PROFILE = "controlled_orchestration_v1"
+AGENTIC_VERIFICATION_PROFILE = "controlled_agentic_research_v1"
 VERIFICATION_PROFILE_ENV = "TRADER_VERIFICATION_PROFILE"
 FREEZE_TAG = "verification-57i-freeze-v6"
 ORCHESTRATION_FREEZE_TAG = "verification-orchestration-v1-freeze"
+AGENTIC_FREEZE_TAG = "verification-agentic-research-v1-freeze"
 VERIFICATION_MARKER_ID = "trader_verification"
 VERIFICATION_SCHEMA = "verification_control"
 DEFAULT_CHECKPOINT_SCHEMA = "orchestration_checkpoint"
@@ -38,6 +40,7 @@ MUTATION_GATE_NAMES = (
     "TRADER_MCP_ALLOW_DATA_LOADING",
     "TRADER_MCP_ALLOW_BACKTESTS",
     "TRADER_MCP_ALLOW_OPTIMIZATION",
+    "TRADER_MCP_ALLOW_CODING_WORKSPACE",
     "TRADER_MCP_ALLOW_EXTERNAL_RESEARCH_WRITES",
     "TRADER_MCP_ALLOW_OPTUNA_WRITES",
     "TRADER_MCP_ALLOW_EXPERIMENT_TRACKING_WRITES",
@@ -140,8 +143,50 @@ _ORCHESTRATION_PROFILE = QualificationProfile(
     ),
     requires_checkpoint_role=True,
 )
+_AGENTIC_PHASES = frozenset(
+    {
+        "AGENTIC_RUNTIME_ISOLATION",
+        "AGENTIC_CORE_CHECKS",
+        "AGENTIC_POSTGRES_E2E",
+        "AGENTIC_RECOVERY",
+        "AGENTIC_SECURITY",
+        "AGENTIC_SANDBOX",
+        "AGENTIC_REAL_MODEL",
+        "AGENTIC_BOUNDED_SCALE",
+        "AGENTIC_ACCEPTANCE",
+    }
+)
+_AGENTIC_DATA_AND_CODING_GATES = frozenset(
+    {
+        "TRADER_MCP_ALLOW_DATA_LOADING",
+        "TRADER_MCP_ALLOW_CODING_WORKSPACE",
+    }
+)
+_AGENTIC_PROFILE = QualificationProfile(
+    name=AGENTIC_VERIFICATION_PROFILE,
+    freeze_tag=AGENTIC_FREEZE_TAG,
+    phases=_AGENTIC_PHASES,
+    enabled_mutation_gates={
+        "AGENTIC_POSTGRES_E2E": _AGENTIC_DATA_AND_CODING_GATES,
+        "AGENTIC_RECOVERY": _AGENTIC_DATA_AND_CODING_GATES,
+        "AGENTIC_SANDBOX": frozenset({"TRADER_MCP_ALLOW_CODING_WORKSPACE"}),
+        "AGENTIC_REAL_MODEL": _AGENTIC_DATA_AND_CODING_GATES,
+        "AGENTIC_BOUNDED_SCALE": _AGENTIC_DATA_AND_CODING_GATES,
+    },
+    retainable_phases=frozenset(
+        {
+            "AGENTIC_POSTGRES_E2E",
+            "AGENTIC_RECOVERY",
+            "AGENTIC_SANDBOX",
+            "AGENTIC_REAL_MODEL",
+            "AGENTIC_BOUNDED_SCALE",
+        }
+    ),
+    requires_checkpoint_role=True,
+)
 _QUALIFICATION_PROFILES = {
-    profile.name: profile for profile in (_LEGACY_PROFILE, _ORCHESTRATION_PROFILE)
+    profile.name: profile
+    for profile in (_LEGACY_PROFILE, _ORCHESTRATION_PROFILE, _AGENTIC_PROFILE)
 }
 
 RUNTIME_TABLES = (
@@ -563,8 +608,7 @@ def assert_connection_targets_verification_database(
     if marker_freeze != expected_freeze:
         profile = load_qualification_profile()
         raise VerificationConfigurationError(
-            "Verification marker freeze revision does not match "
-            f"{profile.freeze_tag}."
+            f"Verification marker freeze revision does not match {profile.freeze_tag}."
         )
     if lc_collate != marker_locale or lc_ctype != marker_locale:
         raise VerificationConfigurationError(
@@ -667,6 +711,12 @@ def build_runtime_manifest(*, phase: str | None = None) -> Mapping[str, Any]:
         _validate_identifier(checkpoint_schema, "TRADER_CHECKPOINT_SCHEMA")
         manifest["checkpoint_database"] = checkpoint_settings.public_dict()
         manifest["checkpoint_schema"] = checkpoint_schema
+    if profile.name == AGENTIC_VERIFICATION_PROFILE:
+        from tests.support.agentic_qualification import (
+            build_agentic_identity_manifest,
+        )
+
+        manifest["agentic_identity"] = build_agentic_identity_manifest()
     manifest["configuration_digest"] = _stable_digest(manifest)
     return manifest
 
@@ -983,7 +1033,9 @@ def end_phase(
             phase_run["manifest"].get("configuration_digest")
             == current_manifest["configuration_digest"]
         )
-        isolation_passed = harness_matched and operator_matched and configuration_matched
+        isolation_passed = (
+            harness_matched and operator_matched and configuration_matched
+        )
         recorded_blockers = list(normalized_blockers)
         if not harness_matched:
             recorded_blockers.append(
@@ -1263,6 +1315,22 @@ def _ensure_control_schema(connection: psycopg.Connection[Any]) -> None:
         )
         """
     )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS verification_control.agentic_scenario_results (
+            qualification_profile TEXT NOT NULL,
+            freeze_revision TEXT NOT NULL,
+            scenario_id TEXT NOT NULL,
+            repetition INTEGER NOT NULL CHECK (repetition > 0),
+            status TEXT NOT NULL CHECK (status IN ('passed', 'blocked')),
+            result JSONB NOT NULL,
+            recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            PRIMARY KEY (
+                qualification_profile, freeze_revision, scenario_id, repetition
+            )
+        )
+        """
+    )
 
 
 def _save_fingerprint(
@@ -1350,8 +1418,7 @@ def _assert_role_targets_test_database(
         test.dbname,
     ):
         raise VerificationConfigurationError(
-            f"{role_prefix} settings must target "
-            "PG_TEST_HOST/PG_TEST_PORT/PG_TEST_DB."
+            f"{role_prefix} settings must target PG_TEST_HOST/PG_TEST_PORT/PG_TEST_DB."
         )
 
 

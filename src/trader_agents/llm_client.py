@@ -98,7 +98,16 @@ class LlmJsonCompletion:
 
 
 class JsonHttpTransport(Protocol):
-    """Small async JSON POST transport used by runtime LLM clients."""
+    """Small async JSON transport used by runtime LLM clients."""
+
+    async def get_json(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        timeout_seconds: float,
+    ) -> Mapping[str, Any]:
+        """GET a JSON resource and return the decoded JSON object."""
 
     async def post_json(
         self,
@@ -123,9 +132,7 @@ class StaticJsonLlmClient:
         self._responses = [dict(response) for response in self.responses]
         if self.usages and len(self.usages) != len(self._responses):
             raise ValueError("StaticJsonLlmClient usages must match responses")
-        self._usages = list(self.usages) or [
-            LlmTokenUsage() for _ in self._responses
-        ]
+        self._usages = list(self.usages) or [LlmTokenUsage() for _ in self._responses]
         self.requests: list[LlmJsonRequest] = []
 
     async def complete_json(self, llm_request: LlmJsonRequest) -> Mapping[str, Any]:
@@ -156,11 +163,22 @@ class StaticJsonLlmClient:
 
 @dataclass(frozen=True)
 class LlmConfiguration:
-    """Runtime LLM backend configuration."""
+    """Runtime LLM backend configuration.
+
+    Attributes:
+        provider: Normalized provider adapter name.
+        model: Provider model name used for requests.
+        base_url: Provider API root.
+        model_revision: Optional immutable provider revision. The admitted
+            Trader runtime always supplies this for Ollama.
+        api_key: Optional provider credential retained only in memory.
+        timeout_seconds: Positive request deadline.
+    """
 
     provider: str
     model: str
     base_url: str
+    model_revision: str = ""
     api_key: str = ""
     timeout_seconds: float = 30.0
 
@@ -168,6 +186,25 @@ class LlmConfiguration:
 @dataclass(frozen=True)
 class UrllibJsonTransport:
     """Stdlib JSON HTTP transport to avoid adding runtime dependencies."""
+
+    async def get_json(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        timeout_seconds: float,
+    ) -> Mapping[str, Any]:
+        """GET JSON using urllib in a worker thread."""
+
+        def _get() -> Mapping[str, Any]:
+            http_request = request.Request(
+                url=url,
+                headers=dict(headers),
+                method="GET",
+            )
+            return _read_json_response(http_request, timeout_seconds)
+
+        return await asyncio.to_thread(_get)
 
     async def post_json(
         self,
@@ -187,21 +224,7 @@ class UrllibJsonTransport:
                 headers={**dict(headers), "Content-Type": "application/json"},
                 method="POST",
             )
-            try:
-                with request.urlopen(http_request, timeout=timeout_seconds) as response:
-                    text = response.read().decode("utf-8")
-            except error.HTTPError as exc:
-                detail = exc.read().decode("utf-8", errors="replace")
-                raise LlmRequestError(f"LLM backend returned HTTP {exc.code}: {detail}") from exc
-            except error.URLError as exc:
-                raise LlmRequestError(f"LLM backend request failed: {exc.reason}") from exc
-            try:
-                decoded = json.loads(text)
-            except json.JSONDecodeError as exc:
-                raise LlmRequestError("LLM backend did not return valid JSON") from exc
-            if not isinstance(decoded, Mapping):
-                raise LlmRequestError("LLM backend returned a non-object JSON payload")
-            return decoded
+            return _read_json_response(http_request, timeout_seconds)
 
         return await asyncio.to_thread(_post)
 
@@ -254,9 +277,7 @@ class OpenAICompatibleJsonLlmClient:
         return LlmJsonCompletion(
             payload=_decode_json_content(content),
             usage=LlmTokenUsage(
-                input_tokens=_non_negative_integer(
-                    usage_mapping.get("prompt_tokens")
-                ),
+                input_tokens=_non_negative_integer(usage_mapping.get("prompt_tokens")),
                 output_tokens=_non_negative_integer(
                     usage_mapping.get("completion_tokens")
                 ),
@@ -283,8 +304,10 @@ class OllamaJsonLlmClient:
         llm_request: LlmJsonRequest,
     ) -> LlmJsonCompletion:
         """Call Ollama and retain public token counters."""
+        selected_model = llm_request.model or self.config.model
+        await self.verify_model_identity(selected_model)
         payload = {
-            "model": llm_request.model or self.config.model,
+            "model": selected_model,
             "messages": llm_request.messages_payload(),
             "stream": False,
             "format": "json",
@@ -303,13 +326,55 @@ class OllamaJsonLlmClient:
         return LlmJsonCompletion(
             payload=_decode_json_content(message.get("content")),
             usage=LlmTokenUsage(
-                input_tokens=_non_negative_integer(
-                    response.get("prompt_eval_count")
-                ),
+                input_tokens=_non_negative_integer(response.get("prompt_eval_count")),
                 output_tokens=_non_negative_integer(response.get("eval_count")),
             ),
             provider=self.config.provider,
-            model=llm_request.model or self.config.model,
+            model=selected_model,
+        )
+
+    async def verify_model_identity(self, selected_model: str) -> None:
+        """Require Ollama to serve the exact admitted model bytes.
+
+        Args:
+            selected_model: Model name about to receive a request.
+
+        Raises:
+            LlmConfigurationError: If a request override evades the pinned
+                profile, the model inventory is malformed, or the served model
+                name/digest does not match the admitted configuration.
+        """
+        expected = self.config.model_revision
+        if not expected:
+            return
+        if selected_model != self.config.model:
+            raise LlmConfigurationError(
+                "a request model override cannot bypass the admitted model revision"
+            )
+        response = await self.transport.get_json(
+            _join_url(self.config.base_url, "api/tags"),
+            headers={},
+            timeout_seconds=self.config.timeout_seconds,
+        )
+        models = response.get("models")
+        if not isinstance(models, Sequence) or isinstance(models, (str, bytes)):
+            raise LlmConfigurationError(
+                "Ollama model inventory did not contain a models list"
+            )
+        for model in models:
+            if not isinstance(model, Mapping):
+                continue
+            names = {str(model.get("name") or ""), str(model.get("model") or "")}
+            if selected_model not in names:
+                continue
+            actual = str(model.get("digest") or "").strip().lower()
+            if actual != expected:
+                raise LlmConfigurationError(
+                    f"Ollama model digest mismatch for {selected_model!r}"
+                )
+            return
+        raise LlmConfigurationError(
+            f"Ollama does not serve admitted model {selected_model!r}"
         )
 
 
@@ -362,12 +427,16 @@ def build_llm_client_from_env(
         raise LlmConfigurationError("TRADER_AGENTS_LLM_MODEL is required")
     timeout = _parse_timeout(source.get("TRADER_AGENTS_LLM_TIMEOUT_SECONDS", "30"))
     selected_transport = transport or UrllibJsonTransport()
+    model_revision = source.get("TRADER_AGENTS_LLM_MODEL_REVISION", "").strip()
 
     if provider == "ollama":
         config = LlmConfiguration(
             provider=provider,
             model=model,
-            base_url=source.get("TRADER_AGENTS_LLM_BASE_URL", "http://localhost:11434").strip(),
+            base_url=source.get(
+                "TRADER_AGENTS_LLM_BASE_URL", "http://localhost:11434"
+            ).strip(),
+            model_revision=model_revision,
             timeout_seconds=timeout,
         )
         return OllamaJsonLlmClient(config=config, transport=selected_transport)
@@ -375,20 +444,28 @@ def build_llm_client_from_env(
     if provider == "openrouter":
         api_key = source.get("TRADER_AGENTS_LLM_API_KEY", "").strip()
         if not api_key:
-            raise LlmConfigurationError("TRADER_AGENTS_LLM_API_KEY is required for openrouter")
+            raise LlmConfigurationError(
+                "TRADER_AGENTS_LLM_API_KEY is required for openrouter"
+            )
         config = LlmConfiguration(
             provider=provider,
             model=model,
-            base_url=source.get("TRADER_AGENTS_LLM_BASE_URL", "https://openrouter.ai/api/v1").strip(),
+            base_url=source.get(
+                "TRADER_AGENTS_LLM_BASE_URL", "https://openrouter.ai/api/v1"
+            ).strip(),
             api_key=api_key,
             timeout_seconds=timeout,
         )
-        return OpenAICompatibleJsonLlmClient(config=config, transport=selected_transport)
+        return OpenAICompatibleJsonLlmClient(
+            config=config, transport=selected_transport
+        )
 
     if provider == "openai_compatible":
         base_url = source.get("TRADER_AGENTS_LLM_BASE_URL", "").strip()
         if not base_url:
-            raise LlmConfigurationError("TRADER_AGENTS_LLM_BASE_URL is required for openai_compatible")
+            raise LlmConfigurationError(
+                "TRADER_AGENTS_LLM_BASE_URL is required for openai_compatible"
+            )
         config = LlmConfiguration(
             provider=provider,
             model=model,
@@ -396,7 +473,9 @@ def build_llm_client_from_env(
             api_key=source.get("TRADER_AGENTS_LLM_API_KEY", "").strip(),
             timeout_seconds=timeout,
         )
-        return OpenAICompatibleJsonLlmClient(config=config, transport=selected_transport)
+        return OpenAICompatibleJsonLlmClient(
+            config=config, transport=selected_transport
+        )
 
     raise LlmConfigurationError(f"Unsupported TRADER_AGENTS_LLM_PROVIDER: {provider}")
 
@@ -414,15 +493,43 @@ def _parse_timeout(value: str) -> float:
     try:
         timeout = float(value)
     except ValueError as exc:
-        raise LlmConfigurationError("TRADER_AGENTS_LLM_TIMEOUT_SECONDS must be numeric") from exc
+        raise LlmConfigurationError(
+            "TRADER_AGENTS_LLM_TIMEOUT_SECONDS must be numeric"
+        ) from exc
     if timeout <= 0:
-        raise LlmConfigurationError("TRADER_AGENTS_LLM_TIMEOUT_SECONDS must be positive")
+        raise LlmConfigurationError(
+            "TRADER_AGENTS_LLM_TIMEOUT_SECONDS must be positive"
+        )
     return timeout
 
 
 def _join_url(base_url: str, path: str) -> str:
     """Join a base URL and relative path without double slashes."""
     return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
+
+
+def _read_json_response(
+    http_request: request.Request,
+    timeout_seconds: float,
+) -> Mapping[str, Any]:
+    """Read one provider response and normalize transport failures."""
+    try:
+        with request.urlopen(http_request, timeout=timeout_seconds) as response:
+            text = response.read().decode("utf-8")
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise LlmRequestError(
+            f"LLM backend returned HTTP {exc.code}: {detail}"
+        ) from exc
+    except error.URLError as exc:
+        raise LlmRequestError(f"LLM backend request failed: {exc.reason}") from exc
+    try:
+        decoded = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise LlmRequestError("LLM backend did not return valid JSON") from exc
+    if not isinstance(decoded, Mapping):
+        raise LlmRequestError("LLM backend returned a non-object JSON payload")
+    return decoded
 
 
 def _decode_json_content(content: object) -> Mapping[str, Any]:

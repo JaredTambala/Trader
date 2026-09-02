@@ -28,6 +28,7 @@ from trader_agents import (
     BudgetUsage,
     CompositeDataScope,
     CanonicalEvidenceRef,
+    CoordinatorAction,
     CoordinatorAgenda,
     CoordinatorDecision,
     DataAgentTurn,
@@ -41,10 +42,12 @@ from trader_agents import (
     ParameterContract,
     PolicyContext,
     PolicyViolation,
+    PublicIssue,
     RecordingTraceSink,
     ResearchCoordinator,
     RoleScopedMcpRuntime,
     SpecialistReturn,
+    SpecialistStatus,
     StaticJsonLlmClient,
     StrategyEngineeringAgent,
     StructuredModelRunner,
@@ -76,7 +79,7 @@ from trader_agents.coordinator import (
     _data_scope_for_task,
     _validate_first_slice_agenda,
 )
-from trader_research.foundation import stable_research_id
+from trader_research.foundation import json_payload_hash, stable_research_id
 from trader_research.governance import AgentBudget, ResearchSession
 
 
@@ -178,7 +181,7 @@ def test_role_catalogue_and_policy_fail_closed() -> None:
         session=session,
         role=AgentRole.DATA_RESEARCH,
         phase=AgentPhase.INVESTIGATE,
-        program_id="data-research-v3",
+        program_id="data-research-v4",
         tool_catalogue=catalogue,
         usage=BudgetLedger(session.budget).usage,
         runtime_state={},
@@ -248,7 +251,7 @@ def test_denied_trading_path_has_no_agent_capability() -> None:
         session=session,
         role=AgentRole.STRATEGY_ENGINEERING,
         phase=AgentPhase.TERMINAL,
-        program_id="strategy-engineering-v3",
+        program_id="strategy-engineering-v4",
         tool_catalogue=catalogue,
         usage=BudgetUsage(),
         runtime_state={},
@@ -277,17 +280,17 @@ def test_denied_trading_path_has_no_agent_capability() -> None:
         assert raised.value.code == "tool_not_allowed"
 
     decision = CoordinatorDecision(
-        action="stop_fail_closed",
+        action=CoordinatorAction.STOP_FAIL_CLOSED,
         summary=(
             "Admission is research evidence and does not authorize deployment "
             "or paper/live trading."
         ),
         criteria_applied=["first-slice authority boundary"],
         blockers=[
-            {
-                "code": "trading_authority_denied",
-                "message": "Broker and deployment mutation require another workflow.",
-            }
+            PublicIssue(
+                code="trading_authority_denied",
+                message="Broker and deployment mutation require another workflow.",
+            )
         ],
         permitted_next_actions=["hand off to a future human-approved workflow"],
     )
@@ -348,7 +351,7 @@ def test_data_backfill_requires_costed_matching_dry_run_plan() -> None:
             session=session,
             role=AgentRole.DATA_RESEARCH,
             phase=AgentPhase.REMEDIATE,
-            program_id="data-research-v3",
+            program_id="data-research-v4",
             tool_catalogue=catalogue,
             usage=BudgetUsage(),
             runtime_state=lifecycle,
@@ -432,15 +435,15 @@ def test_coordinator_semantic_loop_guard_ignores_paraphrase_and_new_attempt_id()
             branch_id=delegation.branch_id,
             attempt_id=delegation.attempt_id,
             role="data_research",
-            program_id="data-research-v3",
+            program_id="data-research-v4",
             model_profile_id=session.model_profile_id,
             tool_catalog_id=session.tool_catalog_id,
-            status="blocked",
+            status=SpecialistStatus.BLOCKED,
             blockers=[
-                {
-                    "code": "data_missing",
-                    "message": "The approved scope remains incomplete.",
-                }
+                PublicIssue(
+                    code="data_missing",
+                    message="The approved scope remains incomplete.",
+                )
             ],
             budget_used=BudgetUsage(),
         )
@@ -449,7 +452,7 @@ def test_coordinator_semantic_loop_guard_ignores_paraphrase_and_new_attempt_id()
     first_delegation, first_return = _return(1)
     second_delegation, second_return = _return(2)
     first = CoordinatorDecision(
-        action="revise",
+        action=CoordinatorAction.REVISE,
         summary="Ask Data Research to inspect the unresolved gap again.",
         reviewed_delegation_ids=[first_delegation.delegation_id],
         criteria_applied=["complete approved coverage"],
@@ -701,7 +704,76 @@ def test_structured_model_repairs_once_and_records_redacted_spans() -> None:
     assert ledger.usage.model_calls == 2
     assert len(client.requests) == 2
     assert {span["status"] for span in traces.spans} == {"completed"}
+    result_spans = [
+        span
+        for span in traces.spans
+        if span["name"] == "agent.model_result.data_research"
+    ]
+    assert len(result_spans) == 2
+    assert (
+        sum(int(span["attributes"]["trader.input_tokens"]) for span in result_spans)
+        == 22
+    )
+    assert (
+        sum(int(span["attributes"]["trader.output_tokens"]) for span in result_spans)
+        == 10
+    )
+    assert all(span["attributes"]["trader.result_ok"] for span in result_spans)
+    validation_spans = [
+        span
+        for span in traces.spans
+        if span["name"] == "agent.model_validation.data_research"
+    ]
+    assert [span["attributes"]["trader.schema_valid"] for span in validation_spans] == [
+        False,
+        True,
+    ]
+    assert [
+        span["attributes"]["trader.schema_repair"] for span in validation_spans
+    ] == [0, 1]
+    assert (
+        len(
+            {
+                span["attributes"]["trader.model_invocation_id"]
+                for span in validation_spans
+            }
+        )
+        == 1
+    )
     assert all("prompt" not in str(span["attributes"]) for span in traces.spans)
+
+
+def test_interrupted_model_call_records_terminal_public_accounting() -> None:
+    """Account for a physical provider attempt that yields no model payload."""
+    traces = RecordingTraceSink()
+    program = first_slice_programs().for_role(AgentRole.DATA_RESEARCH)
+    profile = development_model_profiles().get(program.model_profile_id)
+    ledger = BudgetLedger(_budget())
+    runner = StructuredModelRunner(
+        client=_InterruptingJsonLlmClient(()),
+        trace_sink=traces,
+    )
+
+    async def _run() -> None:
+        await runner.invoke(
+            program=program,
+            profile=profile,
+            output_type=DataAgentTurn,
+            instruction="Choose the next evidence-producing action.",
+            public_context={"observations": []},
+            ledger=ledger,
+            correlation=_correlation(program.program_id),
+        )
+
+    with pytest.raises(asyncio.CancelledError):
+        anyio.run(_run)
+
+    assert ledger.usage.model_calls == 1
+    assert traces.spans[0]["status"] == "error"
+    assert traces.spans[1]["name"] == "agent.model_result.data_research"
+    assert traces.spans[1]["attributes"]["trader.result_ok"] is False
+    assert traces.spans[1]["attributes"]["trader.input_tokens"] == 0
+    assert traces.spans[1]["attributes"]["trader.output_tokens"] == 0
 
 
 def test_mlflow_trace_sink_persists_only_public_correlation(
@@ -721,18 +793,31 @@ def test_mlflow_trace_sink_persists_only_public_correlation(
     public_attributes = {
         "trader.session_id": "session-trace",
         "trader.branch_id": "branch-trace",
-        "trader.program_id": "data-research-v3",
+        "trader.program_id": "data-research-v4",
         "trader.tool_name": "data_get_inventory",
         "trader.result_ok": True,
+    }
+    root_attributes = {
+        "trader.session_id": "session-trace",
+        "trader.branch_id": "branch-trace",
+        "trader.program_id": "research-coordinator-v4",
+        "trader.model_profile_id": "ollama-qwen35-9b-json-v2",
+        "trader.tool_catalog_id": first_slice_tool_catalogue().catalogue_id,
+        "trader.lifecycle_operation": "start",
     }
     stored_traces: Sequence[Any] = ()
     try:
         with sink.span(
-            "agent.mcp_result.data_get_inventory",
+            "agent.session.start",
             span_type="CHAIN",
-            attributes=public_attributes,
+            attributes=root_attributes,
         ):
-            pass
+            with sink.span(
+                "agent.mcp_result.data_get_inventory",
+                span_type="CHAIN",
+                attributes=public_attributes,
+            ):
+                pass
         with pytest.raises(ValueError, match="not allowed"):
             with sink.span(
                 "agent.invalid",
@@ -753,8 +838,13 @@ def test_mlflow_trace_sink_persists_only_public_correlation(
 
     assert len(stored_traces) == 1
     spans = stored_traces[0].data.spans
-    assert len(spans) == 1
-    span = spans[0]
+    assert len(spans) == 2
+    by_name = {span.name: span for span in spans}
+    assert set(by_name) == {
+        "agent.session.start",
+        "agent.mcp_result.data_get_inventory",
+    }
+    span = by_name["agent.mcp_result.data_get_inventory"]
     assert span.name == "agent.mcp_result.data_get_inventory"
     assert {
         key: value
@@ -792,7 +882,7 @@ def test_role_scoped_mcp_runtime_validates_transport_envelope() -> None:
         session=session,
         role=AgentRole.DATA_RESEARCH,
         phase=AgentPhase.INVESTIGATE,
-        program_id="data-research-v3",
+        program_id="data-research-v4",
         tool_catalogue=runtime.catalogue,
         usage=ledger.usage,
         runtime_state={},
@@ -818,7 +908,7 @@ def test_role_scoped_mcp_runtime_validates_transport_envelope() -> None:
         return await runtime.execute(
             proposal,
             context=context,
-            correlation=_correlation("data-research-v3"),
+            correlation=_correlation("data-research-v4"),
         )
 
     result = anyio.run(_run)
@@ -830,7 +920,80 @@ def test_role_scoped_mcp_runtime_validates_transport_envelope() -> None:
         "agent.mcp_result.data_get_inventory",
     ]
     assert traces.spans[-1]["attributes"]["trader.result_ok"] is True
+    assert traces.spans[0]["attributes"]["trader.argument.scope_digest"] == (
+        json_payload_hash(proposal.arguments)
+    )
+    assert "BTC/USD" not in json.dumps(traces.spans[0]["attributes"])
     assert all("source_code" not in str(span) for span in traces.spans)
+
+
+def test_role_scoped_runtime_traces_interrupted_transport_terminally() -> None:
+    """Pair an authorized call with a redacted result when its response is lost."""
+    session = _session()
+    scope = composite_data_scope_from_session(session)
+    delegation = build_delegation(
+        session_id=session.session_id,
+        branch_id="data-transport-fault",
+        task=_task("data-fault", "data_research"),
+        required_input_refs=[],
+        permitted_side_effects=["read_only"],
+        reserved_model_calls=2,
+        reserved_tool_calls=2,
+        reserved_tokens=2_000,
+        attempt=1,
+    )
+    ledger = BudgetLedger(session.budget)
+    traces = RecordingTraceSink()
+    runtime = RoleScopedMcpRuntime(
+        client=_InterruptingMcpClient(),
+        catalogue=first_slice_tool_catalogue(),
+        ledger=ledger,
+        trace_sink=traces,
+    )
+    context = PolicyContext(
+        session=session,
+        role=AgentRole.DATA_RESEARCH,
+        phase=AgentPhase.INVESTIGATE,
+        program_id="data-research-v4",
+        tool_catalogue=runtime.catalogue,
+        usage=ledger.usage,
+        runtime_state={},
+        loop_fingerprints={},
+        delegation=delegation,
+        data_scope=scope,
+    )
+    proposal = ToolCallProposal(
+        call_id="lost-response",
+        tool_name="data_get_inventory",
+        arguments={
+            "symbols": ["BTC/USD", "ETH/USD"],
+            "asset_class": "crypto",
+            "timeframe": "1h",
+            "start": "2024-01-01T00:00:00Z",
+            "end": "2024-06-30T23:00:00Z",
+        },
+        purpose="Exercise a lost transport response.",
+        expected_evidence=["terminal transport trace"],
+    )
+
+    async def _run() -> None:
+        with pytest.raises(_TestProcessFault):
+            await runtime.execute(
+                proposal,
+                context=context,
+                correlation=_correlation("data-research-v4"),
+            )
+
+    anyio.run(_run)
+
+    assert ledger.usage.tool_calls == 1
+    assert [span["name"] for span in traces.spans] == [
+        "agent.mcp.data_get_inventory",
+        "agent.mcp_result.data_get_inventory",
+    ]
+    result = traces.spans[-1]["attributes"]
+    assert result["trader.result_ok"] is False
+    assert result["trader.error_codes"] == ["mcp_transport_interrupted"]
 
 
 def test_data_research_loop_uses_model_selected_tools_and_exact_snapshot() -> None:
@@ -2040,6 +2203,21 @@ def test_strategy_loop_repairs_actionable_failed_admission_in_new_attempt() -> N
         for name, call in mcp.calls
         if name == "coding_create_workspace"
     ] == candidate_attempts
+    attributed_calls = [
+        call
+        for name, call in mcp.calls
+        if name
+        in {
+            "research_register_strategy_implementation",
+            "research_validate_strategy_implementation",
+        }
+    ]
+    assert attributed_calls
+    assert all(
+        call["requested_by"] == session.session_id
+        and call["actor"] == "Strategy Engineering Agent"
+        for call in attributed_calls
+    )
 
 
 def test_strategy_loop_stops_after_irreparable_equivalent_admissions() -> None:
@@ -2441,7 +2619,7 @@ def test_coordinator_graph_parallel_joins_verifies_and_concludes() -> None:
         session_id=session.session_id,
         session_digest=session.session_digest,
         branch_id="root",
-        coordinator_program_id="research-coordinator-v3",
+        coordinator_program_id="research-coordinator-v4",
         model_profile_id=session.model_profile_id,
         tool_catalog_id=catalogue.catalogue_id,
     )
@@ -2561,7 +2739,7 @@ def test_coordinator_interrupt_resumes_with_a_fresh_graph_instance() -> None:
         session_id=session.session_id,
         session_digest=session.session_digest,
         branch_id="root",
-        coordinator_program_id="research-coordinator-v3",
+        coordinator_program_id="research-coordinator-v4",
         model_profile_id=session.model_profile_id,
         tool_catalog_id=catalogue.catalogue_id,
     )
@@ -2655,7 +2833,7 @@ def test_coordinator_replays_checkpointed_decision_after_lost_receipt_response()
         session_id=session.session_id,
         session_digest=session.session_digest,
         branch_id="root",
-        coordinator_program_id="research-coordinator-v3",
+        coordinator_program_id="research-coordinator-v4",
         model_profile_id=session.model_profile_id,
         tool_catalog_id=catalogue.catalogue_id,
     )
@@ -2713,9 +2891,10 @@ def test_runtime_cancellation_is_terminal_canonical_and_replay_safe() -> None:
     catalogue = first_slice_tool_catalogue()
     programs = first_slice_programs()
     profiles = development_model_profiles()
+    traces = RecordingTraceSink()
     mcp = _CoordinatorMcpClient(session_ref=session_ref, artifacts={})
     coordinator = ResearchCoordinator(
-        model_runner=StructuredModelRunner(model),
+        model_runner=StructuredModelRunner(model, trace_sink=traces),
         mcp_client=mcp,
         data_agent=DataResearchAgent(
             model_runner=StructuredModelRunner(StaticJsonLlmClient(())),
@@ -2730,6 +2909,7 @@ def test_runtime_cancellation_is_terminal_canonical_and_replay_safe() -> None:
         tool_catalogue=catalogue,
         programs=programs,
         model_profiles=profiles,
+        trace_sink=traces,
     )
     runtime = AgenticResearchRuntime(
         coordinator=coordinator,
@@ -2737,6 +2917,7 @@ def test_runtime_cancellation_is_terminal_canonical_and_replay_safe() -> None:
         tool_catalogue=catalogue,
         programs=programs,
         model_profiles=profiles,
+        trace_sink=traces,
     )
 
     async def _run() -> tuple[Any, Any, Any, Mapping[str, Any]]:
@@ -2763,6 +2944,24 @@ def test_runtime_cancellation_is_terminal_canonical_and_replay_safe() -> None:
     assert len(model.requests) == 2
     assert len(mcp.decision_payloads) == 2
     assert mcp.decision_payloads[-1]["status"] == "cancelled"
+    lifecycle_names = [
+        span["name"]
+        for span in traces.spans
+        if span["name"].startswith("agent.session.")
+    ]
+    assert lifecycle_names == [
+        "agent.session.start",
+        "agent.session.cancel",
+        "agent.session.start",
+        "agent.session.inspect",
+    ]
+    process_ids = {
+        span["attributes"]["trader.process_instance_id"]
+        for span in traces.spans
+        if span["name"].startswith("agent.session.")
+    }
+    assert len(process_ids) == 1
+    assert len(next(iter(process_ids))) == 32
 
 
 def test_checkpoint_state_is_bounded_redacted_and_thread_isolated() -> None:
@@ -2772,7 +2971,7 @@ def test_checkpoint_state_is_bounded_redacted_and_thread_isolated() -> None:
         session_id=session.session_id,
         session_digest=session.session_digest,
         branch_id="root",
-        coordinator_program_id="research-coordinator-v3",
+        coordinator_program_id="research-coordinator-v4",
         model_profile_id=session.model_profile_id,
         tool_catalog_id=session.tool_catalog_id,
     )
@@ -2833,7 +3032,7 @@ def test_specialist_checkpoint_redacts_source_and_raw_command_output() -> None:
         delegation=delegation,
         role=AgentRole.STRATEGY_ENGINEERING,
         phase=AgentPhase.ADMIT.value,
-        program_id="strategy-engineering-v3",
+        program_id="strategy-engineering-v4",
         model_profile_id=session.model_profile_id,
         tool_catalog_id=session.tool_catalog_id,
     )
@@ -3145,7 +3344,7 @@ def test_coordinator_recovers_checkpointed_decision_across_postgres_connections(
         session_id=session.session_id,
         session_digest=session.session_digest,
         branch_id="root",
-        coordinator_program_id="research-coordinator-v3",
+        coordinator_program_id="research-coordinator-v4",
         model_profile_id=session.model_profile_id,
         tool_catalog_id=catalogue.catalogue_id,
     )
@@ -3242,6 +3441,24 @@ class _FakeMcpClient:
             },
             "isError": False,
         }
+
+
+class _TestProcessFault(BaseException):
+    """Test-only process interruption outside agent exception handling."""
+
+
+@dataclass
+class _InterruptingMcpClient(_FakeMcpClient):
+    """Expose a valid schema then interrupt instead of returning a response."""
+
+    async def call_tool(
+        self,
+        tool_name: str,
+        arguments: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Raise a process-level fault after runtime authorization."""
+        del tool_name, arguments
+        raise _TestProcessFault
 
 
 @dataclass
@@ -4135,8 +4352,13 @@ def _session(*, session_id: str = "session-foundation") -> ResearchSession:
             "approval_id": "approval-1",
             "implementation_kind": "strategy",
             "name": "CrossAssetMomentum",
-            "runtime_interface": "Strategy",
+            "runtime_interface": "trader.strategies.Strategy",
             "portfolio_mode": "multi_asset",
+            "required_capabilities": [
+                "multi_asset",
+                "target_allocations",
+                "completed_bar_momentum",
+            ],
             "decision_rules": ["Rank trailing returns and hold the leader."],
             "state_transitions": ["Rebalance at each completed hourly bar."],
             "timing": "Use only completed hourly bars.",
@@ -4174,7 +4396,7 @@ def _session(*, session_id: str = "session-foundation") -> ResearchSession:
         },
         implementation_ref=None,
         python_quality_guide="docs/python_code_quality.md",
-        model_profile_id="ollama-qwen35-9b-json-v1",
+        model_profile_id="ollama-qwen35-9b-json-v2",
         agent_program_ids=tuple(
             programs.for_role(role).program_id for role in AgentRole
         ),
@@ -4227,7 +4449,7 @@ def _correlation(program_id: str) -> TraceCorrelation:
         session_id="session-foundation",
         branch_id="data-branch",
         program_id=program_id,
-        model_profile_id="ollama-qwen35-9b-json-v1",
+        model_profile_id="ollama-qwen35-9b-json-v2",
         tool_catalog_id=first_slice_tool_catalogue().catalogue_id,
     )
 

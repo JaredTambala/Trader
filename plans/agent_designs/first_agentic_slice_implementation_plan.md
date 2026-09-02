@@ -3,12 +3,14 @@
 Status: approved temporary implementation record; delete after its accepted decisions and achieved state are reflected
 in canonical agent, product, MCP, user, and roadmap documentation.
 
-Last reviewed: 2026-09-01.
+Last reviewed: 2026-09-02.
 
 Implementation note: the accepted Coordinator/Data/Strategy records and shared patterns are canonical. The reviewed
 first-slice MCP inventory, evaluation dataset, and measured LangGraph runtime selection are now complete. The
-production model-backed loops, clean runtime cutover, recovery/security qualification, and user workflow remain open.
-This record must not be read as a completion claim.
+production model-backed loops and clean runtime cutover are implemented, with focused recovery, policy, trace,
+scenario, real-container, and bounded-scale harness evidence. All controlled phases must still run against one exact
+candidate freeze, and the complete user workflow is being reconciled before that freeze. This record must not be read
+as a completion claim.
 
 This is a temporary sub-document of the [Agent Designs](../agent_designs.md) workbook. It converts the selected
 Coordinator–Data–Strategy direction into a reviewable implementation sequence. It does not replace the owning
@@ -117,11 +119,124 @@ dependency table permits it.
 | Framework and observability decision | Run equivalent disposable LangChain/LangGraph and PydanticAI paths with a real model, MCP, Postgres resume, structured returns, an interrupt, parallel work and traces. | Recorded decision against the same scenarios; losing spike removed; dependency and model profiles pinned. | Production agent runtime foundation. |
 | Implementation authorization | User accepts this plan as amended and the roadmap records the selected work. | Explicit review decision with any remaining spike-owned choices named. | Production code changes. |
 
-Current state on 2026-09-01: the Coordinator, Data Research, and Strategy Engineering architecture records plus the
+Current state on 2026-09-02: the Coordinator, Data Research, and Strategy Engineering architecture records plus the
 first-slice shared pattern review are accepted. The complete capability inventory is canonical in
 `docs/research_agents/tool_contracts.md`; the versioned 12-case evaluation dataset and provisional thresholds are in
-`tests/fixtures/agentic_slice_scenarios.json`. LangGraph is selected through the measured spike below. Remaining
-deterministic gaps, the production runtime and agent programs, and controlled qualification remain incomplete.
+`tests/fixtures/agentic_slice_scenarios.json`. LangGraph is selected through the measured spike below. The production
+runtime and all three model programs now exist, but controlled qualification remains incomplete.
+
+## Implementation register
+
+This register is the execution view of this temporary plan. It records implementation and qualification separately:
+`accepted` means an architecture decision is approved; `implemented and locally verified` means code exists and its
+focused/broad development checks pass; `partially qualified` means some required production-shaped evidence exists;
+`blocked on environment` names an external prerequisite; and `pending` means required work has not yet been built or
+run. Only the final frozen-acceptance row can establish that the slice is controlled.
+
+Prior committed implementation baseline: `2d747b0` (`feat: harden agent sandbox and qualification evidence`). The broad
+non-Postgres suite, focused agent/coding suites, Ruff, mypy, and three non-destructive fresh-connection Postgres tests
+passed at that checkpoint. The complete tranche described here becomes the candidate freeze only when this document,
+product code, qualification harness, and user guide are committed together and the
+`verification-agentic-research-v1-freeze` tag resolves to that clean revision.
+
+Progress snapshot across the 17 registered implementation areas:
+
+- 1 architecture area is accepted;
+- 14 implementation areas are code-complete with focused local evidence, including the campaign, recovery,
+  real-container, bounded-scale, and controlled-phase entry points;
+- 1 documentation area is complete and development-verified; and
+- 1 final controlled-release area remains pending.
+
+These counts measure implementation state, not release confidence. The slice remains uncontrolled until every pending
+qualification phase passes against one clean freeze and the canonical acceptance row is independently verified.
+
+Controlled-acceptance progress at candidate creation is **0 of 8 mandatory pre-acceptance phases executed against the
+freeze**. No canonical agentic acceptance row exists. Locally passing tests establish development confidence only;
+they are not counted as controlled phase verdicts.
+
+Execution resumed on 2026-09-02. The local Docker sandbox is available and has passed the development qualification
+cases, but no controlled phase has yet been retained against the candidate. Isolated qualification-database
+provisioning and the canonical agentic acceptance record occur only after the clean revision is tagged.
+
+| ID | Implementation area | Required outcome | Current status | Evidence now | Work still required |
+| --- | --- | --- | --- | --- | --- |
+| IMP-01 | Agent boundaries and shared patterns | Complete Coordinator, Data Research, and Strategy Engineering records with explicit authority, context, state, termination, concurrency, and handoff rules. | accepted | The three owning design records and `plans/agent_designs.md` record the reviewed first-slice pattern decisions. | Recheck the records against the final frozen behavior; reopen design only if implementation contradicts a boundary. |
+| IMP-02 | Capability and trust-boundary inventory | Every session, canonical-read, Data, catalogue, Coding Workspace, and admission operation has explicit ownership, side effects, approvals, recovery, and scenario coverage. | implemented and locally verified | The canonical inventory is in `docs/research_agents/tool_contracts.md`; MCP/catalogue contract and package-boundary tests pass. | Re-run the complete MCP contract layer against the frozen revision and record it as one qualification phase. |
+| IMP-03 | Runtime clean cutover | LangGraph runtime, strict structured outputs, model programs, role-aware MCP clients, scheduler, policy, checkpoints, interrupts, cancellation, trace correlation, and CLI replace the old deterministic control plane without compatibility. | implemented and locally verified | `trader_agents` contains the replacement runtime; retired-surface package tests pass; start/resume/inspect/cancel paths have focused tests. | Qualify runtime isolation, cross-process lifecycle behavior, and exact model identity on one freeze. |
+| IMP-04 | Immutable model/program/tool identity | A session and acceptance record pin the exact model bytes, profile, agent programs, tool catalogue, policy, evaluation inputs, and sandbox image. | implemented and locally verified in the current worktree | The runtime verifies the exact admitted Ollama digest before calls. The identity manifest now covers model, programs, tools, policy, both evaluation fixtures, dependency lock, database marker, and pinned image. Focused identity/client/runtime tests pass. | Carry one identity digest through every phase and acceptance; prove it against the eventual clean commit and image rather than the dirty worktree. |
+| IMP-05 | Research Coordinator loop | A real model interprets briefs, creates a visible agenda, delegates only legal work, verifies returns, checkpoints before receipt mutation, and concludes/asks/stops from evidence. | implemented and locally verified | Controlled-model tests cover parallel joins, hard/soft joins, interrupts, lost receipt recovery, semantic loop termination, distinct agendas, cancellation, and grounded conclusions. Fresh-process cancellation and scale entry points are implemented. | Run repeated real-model trajectories and retain recovery, scale, and production trace evidence against the freeze. |
+| IMP-06 | Data Research loop | A context-isolated model investigates complete composite scope, performs only approved costed backfill, revalidates, creates exact snapshots, and returns complete/partial/blocked evidence. | implemented and locally verified | Controlled-model tests cover ready, backfill/revalidation, out-of-envelope, unfit, and injection cases. Fresh Postgres connections and the four-process recovery harness prove specialist resume, post-load reconciliation, lost-response replay, and coordinator return recovery without provider replay. | Execute the retained recovery and end-to-end phases against the frozen controlled environment. |
+| IMP-07 | Strategy Engineering loop | A context-isolated model searches and compares first, then reuses, adapts, or authors in isolation; every new version receives independent admission and bounded repair. | implemented and locally verified | Controlled-model tests cover exact reuse, adaptation, new authorship, successful repair, irreparable repetition, prompt injection, cleanup, and immutable package registration. The retained fresh-process matrix covers package, registration, admission failure/success, and repair boundaries; the real OCI runner has passed development qualification. | Execute the Strategy matrix, real MCP path, and OCI phase against the frozen controlled environment. |
+| IMP-08 | Deterministic policy and security | Scope, approvals, side effects, budgets, concurrency, lineage, loops, untrusted observations, and prohibited trading paths fail closed outside model control. | implemented and locally verified | Policy tests deny broker/deployment paths, prompt-injection attempts, out-of-scope acquisition, invalid envelopes, duplicate mutations, and low-information loops. | Repeat adversarial cases with the admitted real model and production MCP catalogue; record zero forbidden dispatches and zero unapproved mutations. |
+| IMP-09 | Coding Workspace isolation | Generated code runs only in an ephemeral, non-root, networkless, read-only, resource/deadline/output-bounded OCI workspace with no host fallback. | implemented and development-qualified | The digest-pinned Docker image and real runner prove non-root UID/GID, no-new-privileges, dropped capabilities, network denial, read-only protected paths, bounded writable no-exec `/tmp`, process/memory/CPU limits, absent host secrets, deadline/output enforcement, exact container cleanup, and fail-closed runtime absence. | Rebuild the admitted image from the exact candidate freeze, pin the registry digest, and retain the same cases as the controlled sandbox phase. |
+| IMP-10 | PostgreSQL recovery and idempotency | Fresh processes survive faults before/after every mutation and specialist/coordinator return without losing receipts or duplicating accepted work. | implemented and locally verified | Fresh-connection tests cover Data specialist checkpoints, Data post-load reconciliation/replay, coordinator decide/commit recovery, and replay-safe workspace writes/destruction. The campaign runs the Data/return recovery scenario through four processes. A retained Strategy matrix covers package, registration, admission failure/success, and repair faults, while a three-process lifecycle case proves cancellation and terminal replay. Runtime-owned operation identity joins retries even when model call IDs differ, and interrupted dispatches receive terminal redacted trace spans. | Run the complete process harness in the controlled Postgres/MLflow environment and retain zero replay/lost-receipt evidence. |
+| IMP-11 | MLflow observability | Queryable traces cover model, MCP, result, evidence-read, checkpoint/decision, workspace, and admission correlations without prompts, source, secrets, hidden reasoning, or raw payloads. | implemented and locally verified | In-memory trace assertions and a local SQLite MLflow query prove allowlisted correlation and reject forbidden content. Lifecycle root spans now join nested model and MCP activity; process and safe scope identities are projected without raw scope data. | Run the frozen scenario campaign against the configured MLflow backend; verify every run's trace identity, required span coverage, cross-process lineage, and redaction. |
+| IMP-12 | Evaluation dataset and scripted trajectories | Twelve reviewed success, blocked, adversarial, recovery, loop, and authority scenarios have deterministic trajectory evidence. | implemented and locally verified | The charter, concrete session inputs, deterministic environment descriptions, semantic assessors, and ten code-owned trajectory invariants cover all 12 scenarios and 13 session variants. Focused fixture/assessment/observation tests pass. | Freeze both fixture digests with the accepted revision and rerun all mapped checks in the controlled core/security phases. |
+| IMP-13 | Repeated real-model evaluation | Every scenario runs the required repetitions with trajectory, evidence, safety, grounding, cost, latency, and resource measurements. | campaign composition implemented and locally verified; controlled campaign not run | The no-selection runner builds all 36 repetitions in charter order. The guarded controller rejects contaminated Data, implementation, checkpoint, workspace, and MLflow state; seeds deterministic real service evidence; executes production stdio MCP; applies restart-stable admission sequences through the real validator; runs the reviewed four-process recovery protocol; independently resolves refs and mutation journals; assesses traces; and persists each result immediately. Focused fixture, transport, recovery, observer, and scorer tests pass. | Enable and pin the real OCI workspace runtime, configure the guarded qualification environment, create the eventual candidate freeze, and execute all 36 runs without cherry-picking. |
+| IMP-14 | Bounded-scale qualification | The coordinator, specialists, checkpoints, MCP transport, traces, and evidence stores stay within frozen local operating ceilings. | implemented and locally verified | Four strict profiles cover one composite session, parallel specialist join, fresh-process recovery, and concurrent multi-session execution. Results retain scenario/model/tool/token/duration/revision/concurrency counts plus checkpoint, artifact, trace, span, and wall-time measurements and fail on any breached ceiling. | Run all four profiles against the frozen controlled environment and retain their strict public result rows. |
+| IMP-15 | Qualification profile and canonical acceptance | Closed phases share one exact Git/model/program/tool/fixture/database/image/config identity and yield one canonical reviewed verdict. | implemented and locally verified | The closed profile, identity manifest, strict scenario/scale result tables, campaign scorer, fail-closed acceptance verifier, and all eight named pre-acceptance phase entry points exist and pass focused contract/collection tests. | Create the clean freeze and guarded environment, run every phase with one identity, and execute acceptance. |
+| IMP-16 | Active documentation and user guide | Architecture, agents, MCP, contracts, operations, product state, roadmap, and a practical user guide match the accepted system and its limits. | implemented and locally verified | Active technical documents now describe the implemented recovery, physical-call accounting, OCI isolation/cleanup, bounded-scale and controlled-phase surfaces while correctly keeping roadmap/product state `in_progress`. The canonical operations guide covers configuration, session creation, start/recovery, resume/cancel/inspect, evidence, traces, sandbox operation, and qualification limits. | Recheck links and state wording in the frozen core phase; promote status only after canonical acceptance. |
+| IMP-17 | Final cutover and controlled release | Old incompatible state is explicitly disposable, the exact freeze is tagged, all layers pass, and the roadmap/product state become controlled only from the canonical record. | pending | Retired code/import surfaces are removed; no compatibility reader exists. | Document and exercise bounded checkpoint reset, produce the clean tagged revision, pass all eight phases, verify the canonical acceptance record, then update roadmap/product state and publish the branch/tag. |
+
+### Controlled phase register
+
+These are release gates, not development test groups. A phase is `passed` only when its evidence row is written against
+the same frozen identity as every other phase.
+
+| Phase | Purpose | Progress | Immediate prerequisite |
+| --- | --- | --- | --- |
+| `AGENTIC_RUNTIME_ISOLATION` | Prove retired surfaces are absent and runtime/config identities are exact. | entry point implemented; controlled run pending | Create candidate freeze. |
+| `AGENTIC_CORE_CHECKS` | Run lint, scoped typing, and the broad non-Postgres suite. | command set implemented; controlled run pending | Finish product code and active documentation. |
+| `AGENTIC_POSTGRES_E2E` | Exercise real agents through stdio MCP and guarded Postgres. | entry point implemented; controlled run pending | Configure the guarded environment and candidate freeze. |
+| `AGENTIC_RECOVERY` | Prove fresh-process recovery and idempotency across every mutation/return boundary. | Data/Strategy/cancellation entry point implemented; controlled run pending | Configure the guarded Postgres/MLflow environment. |
+| `AGENTIC_SECURITY` | Prove authority, scope, injection, redaction, and prohibited-path failures. | entry point implemented; controlled run pending | Configure the guarded environment. |
+| `AGENTIC_SANDBOX` | Prove real container isolation and resource ceilings. | passed in development; controlled run pending | Rebuild and pin the image digest from the candidate freeze. |
+| `AGENTIC_REAL_MODEL` | Run all 12 scenarios three times with the exact admitted model bytes. | no-selection campaign implemented; controlled run pending | Configure the guarded environment against the candidate freeze. |
+| `AGENTIC_BOUNDED_SCALE` | Prove the frozen local operating envelope. | four profiles implemented; controlled run pending | Configure the guarded environment and final image. |
+| `AGENTIC_ACCEPTANCE` | Independently verify the eight phase rows and 36 campaign results, then write the canonical verdict. | not run | Every preceding phase must pass with one identity. |
+
+### Execution register
+
+This is the ordered execution handoff. A later row must not start until its dependency and exit evidence are satisfied.
+In particular, a candidate
+freeze must not be created merely to make qualification runnable: product behavior, qualification code, active docs,
+and the user guide must first be coherent and development-clean.
+
+| ID | Next work package | Current status | Required output and exit evidence | Depends on |
+| --- | --- | --- | --- | --- |
+| NEXT-01 | Re-establish the worktree baseline | complete | Review the complete diff and untracked set, reconcile the register with the files actually present, and run Ruff, focused mypy, focused agent/MCP/qualification tests, and `git diff --check`. Record failures without discarding the current tranche. | Current saved worktree. |
+| NEXT-02 | Close campaign accounting and redaction gaps | complete | Count model calls, tokens, duration, and tool mutations across every fresh process, including work lost before a checkpoint, without double counting recovered state. Store only allowlisted trace attributes; diagnostics must not expose subprocess stderr, prompts, source, credentials, or raw payloads. Add focused crash/recovery and redaction tests. | NEXT-01. |
+| NEXT-03 | Complete retained phase entry points | complete | Add the missing runtime-isolation, guarded Postgres E2E, fresh-process recovery, real-sandbox, and bounded-scale test entry points expected by canonical acceptance. Compose the existing core, security, and real-model commands with the same phase begin/end and identity checks. Prove that a phase cannot retain evidence for a dirty or mismatched freeze. | NEXT-02. |
+| NEXT-04 | Complete recovery and cancellation coverage | complete | Extend the process-fault matrix across Strategy package creation, immutable registration, admission failure/success, repair, and coordinator receipt reconciliation. Add process-level cancellation evidence. Every accepted mutation must be journaled once by runtime operation identity after recovery. | NEXT-02 and the recovery entry point from NEXT-03. |
+| NEXT-05 | Qualify the real coding sandbox | implemented and development-qualified | With Docker/OCI available, resolve and pin the admitted image digest; prove non-root, network denial, read-only root, bounded writable workspace, no host credential leakage, deadline/output/resource enforcement, cleanup, and no host fallback. Retain the sandbox phase only when all escape and resource cases pass. | Final image rebuild from NEXT-08 candidate freeze. |
+| NEXT-06 | Define and prove the bounded operating envelope | implemented and locally verified | Freeze representative single-session, parallel-specialist, recovery, and multi-session profiles. Measure concurrency, model/tool calls, tokens, duration, checkpoint/artifact/trace growth, and resources; persist strict scale results and fail any breached ceiling. | Controlled environment from NEXT-09. |
+| NEXT-07 | Reconcile active documentation and finish the user guide | complete | Update architecture, agent ownership, MCP catalogue, tool contracts, operations, roadmap evidence, and product-state limitations. Add the practical guide for configuration, starting/resuming/cancelling/inspecting sessions, reading evidence and traces, recovery, sandbox operation, and qualification. Keep roadmap/product status `in_progress` until canonical acceptance. | Stable behavior from NEXT-02 through NEXT-06. |
+| NEXT-08 | Audit and create one candidate freeze | ready to commit and tag | Run the broad non-Postgres suite plus all available focused/Postgres checks; audit package boundaries, retired surfaces, docs, secrets, generated artifacts, and the full diff; commit only intended files. Create the candidate freeze/tag only from a clean revision whose Git, model, program, tool, fixture, database, configuration, and image identity can be reproduced. | NEXT-01 through NEXT-07 all green. |
+| NEXT-09 | Execute controlled qualification without moving the freeze | planned | Provision isolated guarded roles/database state, then run the eight mandatory pre-acceptance phases in order against the one candidate identity. Execute all 36 real-model repetitions without selection. A failed phase invalidates acceptance and must be diagnosed; any product-byte fix requires a new candidate freeze and a complete rerun. | NEXT-08 and all environmental prerequisites. |
+| NEXT-10 | Accept, promote, publish, or fail closed | planned | Independently query phase evidence and all campaign rows, write and re-read the canonical acceptance record only if every invariant passes, then update roadmap/product state to `complete`/`controlled` in a follow-up docs commit. Push the branch and exact freeze tag only after local verification and with configured GitHub credentials. Otherwise leave status unchanged and record blockers. | NEXT-09 fully passed. |
+
+Inputs that remain external to the implementation are deliberately small: GitHub authentication is required only for
+the final push in NEXT-10. Docker, the local registry, PostgreSQL, and the exact Ollama model are now available. The
+previously authorized isolated local Postgres provisioning can be performed during NEXT-09. Alpaca credentials are not
+required for this controlled qualification because its provider evidence is deterministic and network-independent;
+no broker mutation belongs in the agentic slice.
+
+### Remaining critical path
+
+The remaining work must proceed in this order so evidence cannot be attached to moving product bytes:
+
+1. finish active technical documentation and the practical user guide, then run the broad development checks;
+2. audit the complete tranche and create one clean candidate freeze revision;
+3. rebuild and pin the sandbox image from that exact freeze;
+4. provision isolated product, checkpoint, operator, and supporting qualification roles against that freeze;
+5. run runtime isolation, core, MCP/Postgres end-to-end, recovery, security, real-container, repeated-model, and scale
+   phases without changing product bytes or selecting favorable runs;
+6. write and independently query the canonical acceptance record only if every phase and threshold passes; and
+7. promote roadmap/product status from the accepted record, not from local test success, and publish the branch and
+   exact freeze tag.
+
+The local Docker sandbox has passed its development qualification and Ollama serves the exact admitted model digest.
+Both identities must be rebuilt or rechecked against the candidate freeze before any controlled phase is retained.
 
 ## Entry and handoff contract for the first slice
 
@@ -290,7 +405,7 @@ thread/checkpoint namespace, interrupts, multi-node joins, pending-write recover
 the accepted single-writer architecture with less custom lifecycle machinery. PydanticAI is not added as a production
 dependency. This is a runtime-fit decision, not a claim that one library's model abstraction is universally better.
 Production structured output uses provider-neutral JSON-schema requests, strict Pydantic validation, and at most one
-bounded validation-feedback repair. The primary development profile is `ollama-qwen35-9b-json-v1`; promotion still
+bounded validation-feedback repair. The primary development profile is `ollama-qwen35-9b-json-v2`; promotion still
 requires repeated qualification against a frozen model/profile identity.
 
 ### Build the agent runtime foundation

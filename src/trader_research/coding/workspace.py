@@ -14,9 +14,11 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import re
 import selectors
 import shutil
 import subprocess
+import tempfile
 import time
 from typing import Any, Protocol
 
@@ -145,53 +147,60 @@ class DockerContainerRunner:
             raise RuntimeError(
                 f"container executable is unavailable: {self.executable}"
             )
-        invocation = [
-            executable,
-            "run",
-            "--rm",
-            "--network",
-            "none",
-            "--ipc",
-            "none",
-            "--read-only",
-            "--cap-drop",
-            "ALL",
-            "--security-opt",
-            "no-new-privileges",
-            "--user",
-            self.container_user,
-            "--pids-limit",
-            str(self.pids_limit),
-            "--ulimit",
-            f"nofile={self.nofile_limit}:{self.nofile_limit}",
-            "--ulimit",
-            f"nproc={self.pids_limit}:{self.pids_limit}",
-            "--memory",
-            self.memory_limit,
-            "--cpus",
-            self.cpu_limit,
-            "--tmpfs",
-            "/tmp:rw,noexec,nosuid,size=64m",
-            "--mount",
-            f"type=bind,src={workspace_path},dst=/workspace,readonly",
-            "--workdir",
-            "/workspace/candidate",
-            "--env",
-            "PYTHONDONTWRITEBYTECODE=1",
-            "--env",
-            "PYTHONPYCACHEPREFIX=/tmp/pycache",
-            "--env",
-            "HOME=/tmp",
-            "--env",
-            "TMPDIR=/tmp",
-            self.container_image,
-            *command,
-        ]
-        capture = _run_bounded_process(
-            invocation,
-            timeout_seconds=timeout_seconds,
-            max_output_bytes=max_output_bytes,
-        )
+        with tempfile.TemporaryDirectory(prefix="trader-agent-sandbox-") as runtime:
+            cidfile = Path(runtime) / "container.cid"
+            invocation = [
+                executable,
+                "run",
+                "--rm",
+                "--cidfile",
+                str(cidfile),
+                "--network",
+                "none",
+                "--ipc",
+                "none",
+                "--read-only",
+                "--cap-drop",
+                "ALL",
+                "--security-opt",
+                "no-new-privileges",
+                "--user",
+                self.container_user,
+                "--pids-limit",
+                str(self.pids_limit),
+                "--ulimit",
+                f"nofile={self.nofile_limit}:{self.nofile_limit}",
+                "--ulimit",
+                f"nproc={self.pids_limit}:{self.pids_limit}",
+                "--memory",
+                self.memory_limit,
+                "--cpus",
+                self.cpu_limit,
+                "--tmpfs",
+                "/tmp:rw,noexec,nosuid,size=64m",
+                "--mount",
+                f"type=bind,src={workspace_path},dst=/workspace,readonly",
+                "--workdir",
+                "/workspace/candidate",
+                "--env",
+                "PYTHONDONTWRITEBYTECODE=1",
+                "--env",
+                "PYTHONPYCACHEPREFIX=/tmp/pycache",
+                "--env",
+                "HOME=/tmp",
+                "--env",
+                "TMPDIR=/tmp",
+                self.container_image,
+                *command,
+            ]
+            try:
+                capture = _run_bounded_process(
+                    invocation,
+                    timeout_seconds=timeout_seconds,
+                    max_output_bytes=max_output_bytes,
+                )
+            finally:
+                _remove_container_if_present(executable, cidfile)
         return ContainerExecution(
             exit_code=capture.exit_code,
             stdout=_bounded_text(
@@ -208,6 +217,36 @@ class DockerContainerRunner:
             output_limit_exceeded=capture.output_limit_exceeded,
             metadata=_runner_metadata(self, check_name),
         )
+
+
+def _remove_container_if_present(executable: str, cidfile: Path) -> None:
+    """Force-remove a timed-out container and prove no process survived."""
+    if not cidfile.exists():
+        return
+    container_id = cidfile.read_text(encoding="ascii").strip()
+    if re.fullmatch(r"[0-9a-f]{64}", container_id) is None:
+        raise RuntimeError("container runtime wrote an invalid container identity")
+    try:
+        subprocess.run(
+            [executable, "rm", "--force", container_id],
+            check=False,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+        )
+        remaining = subprocess.run(
+            [executable, "container", "inspect", container_id],
+            check=False,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("container cleanup exceeded its deadline") from exc
+    if remaining.returncode == 0:
+        raise RuntimeError("sandbox container survived enforced cleanup")
 
 
 class CodingWorkspaceService:

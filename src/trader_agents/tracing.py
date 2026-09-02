@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 import json
+from threading import Lock
 from typing import Any, Protocol
+import warnings
 
 
 _FORBIDDEN_ATTRIBUTE_PARTS = (
@@ -107,7 +110,7 @@ class RecordingTraceSink:
         self.spans.append(record)
         try:
             yield
-        except Exception:
+        except BaseException:
             record["status"] = "error"
             raise
         else:
@@ -125,6 +128,24 @@ class MlflowTraceSink:
 
     tracking_uri: str
     experiment_name: str
+    _span_depth: ContextVar[int] = field(
+        default_factory=lambda: ContextVar("trader_mlflow_span_depth", default=0),
+        init=False,
+        repr=False,
+        compare=False,
+    )
+    _initialization_lock: Lock = field(
+        default_factory=Lock,
+        init=False,
+        repr=False,
+        compare=False,
+    )
+    _trace_destination: Any = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         """Require explicit non-empty observability configuration."""
@@ -149,14 +170,54 @@ class MlflowTraceSink:
             raise RuntimeError(
                 "MLflow tracing requires the project ml optional dependency"
             ) from exc
-        mlflow.set_tracking_uri(self.tracking_uri)
-        mlflow.set_experiment(self.experiment_name)
-        with mlflow.start_span(
-            name=name,
-            span_type=span_type,
-            attributes=dict(attributes),
-        ):
-            yield
+        depth = self._span_depth.get()
+        trace_destination = self._destination(mlflow) if depth == 0 else None
+        token = self._span_depth.set(depth + 1)
+        try:
+            with warnings.catch_warnings():
+                # MLflow 3.14 emits this warning while lazily importing its
+                # generic Responses API schema. It is unrelated to our strict
+                # span attributes but otherwise becomes a swallowed NoOp span
+                # under the qualification suite's ``-W error`` policy.
+                warnings.filterwarnings(
+                    "ignore",
+                    message=".*Any type hint is inferred as AnyType.*",
+                    category=UserWarning,
+                )
+                with mlflow.start_span(
+                    name=name,
+                    span_type=span_type,
+                    attributes=dict(attributes),
+                    trace_destination=trace_destination,
+                ):
+                    yield
+        finally:
+            self._span_depth.reset(token)
+            if depth == 0:
+                mlflow.flush_trace_async_logging()
+
+    def _destination(self, mlflow: Any) -> Any:
+        """Initialize one process-local exporter and return its experiment."""
+        with self._initialization_lock:
+            if self._trace_destination is None:
+                from mlflow.entities.trace_location import MlflowExperimentLocation
+
+                # MLflow caches its OpenTelemetry exporter process-wide. Reset
+                # before the first root so a newly selected controlled backend
+                # cannot silently export to an earlier default tracking URI.
+                mlflow.tracing.reset()
+                mlflow.set_tracking_uri(self.tracking_uri)
+                experiment = mlflow.set_experiment(self.experiment_name)
+                object.__setattr__(
+                    self,
+                    "_trace_destination",
+                    MlflowExperimentLocation(experiment_id=experiment.experiment_id),
+                )
+            else:
+                mlflow.set_tracking_uri(self.tracking_uri)
+        if self._trace_destination is None:  # pragma: no cover - assigned above
+            raise RuntimeError("MLflow experiment initialization failed")
+        return self._trace_destination
 
 
 def correlated_attributes(

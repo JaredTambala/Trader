@@ -365,16 +365,27 @@ messages, secrets, hidden reasoning, and complete tool responses are excluded fr
 MCP call/result and coordinator commit spans retain only correlation identities, allowlisted public operation or
 artifact identities, evidence types/URIs, and public error codes. Malformed envelopes fail inside the traced boundary
 and still consume the crossed tool-call budget.
-The current `strategy-engineering-v3` program and `first-slice-tool-policy-v3` require package-backed registration:
+The current `strategy-engineering-v4` program and `first-slice-tool-policy-v4` require package-backed registration:
 complete candidate source remains in the coding service's immutable package, the model supplies only its exact ID, and
 the MCP adapter resolves source and injects candidate-attempt/build-contract/repository lineage before Experiments
 registration. Workspace destruction therefore does not make a packaged candidate unrecoverable.
 
-The `data-research-v3` mutation boundary similarly separates model judgment from replay control. The model may choose
+The `data-research-v4` mutation boundary similarly separates model judgment from replay control. The model may choose
 an approved load only after inspecting a deterministic costed plan. The runtime then binds operation, requester, and
 actor identity; the Data service persists a prepared journal record before calling the provider and terminal evidence
 afterward. An accepted operation replays from evidence, and an interrupted prepared operation never blindly repeats
 the provider call: conclusive post-load evidence permits recovery, while ambiguous state requires reconciliation.
+
+Model and MCP accounting crosses process boundaries. Every physical provider call has one redacted call span and one
+terminal result or validation span, even when a process exits before checkpointing its usage. Lifecycle root spans are
+flushed when an invocation closes so another process can resolve the trace. Recovery joins canonical operation and
+receipt identities instead of trusting a model call ID, preventing both lost work and double-counted accepted work.
+
+Coding checks run in a digest-pinned OCI image with a read-only root and repository mount, a separate candidate mount,
+a bounded writable `noexec` temporary filesystem, no network or IPC namespace sharing, a non-root user, dropped
+capabilities, no-new-privileges, and explicit CPU, memory, process, file-descriptor, deadline, and output ceilings. The
+runner owns an exact container ID, force-removes that container after every exit or cutoff, verifies its absence, and
+never falls back to host execution.
 
 ### Frozen Deterministic Baseline (Removed)
 

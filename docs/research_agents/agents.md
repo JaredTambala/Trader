@@ -274,10 +274,11 @@ and parameter-optimisation Adversarial planning/judgment. Candidate/stack and lo
 not registered after the cutover.
 
 The model-backed Coordinator, Data Research, and Strategy Engineering loops are implemented but not controlled.
-Focused recovery covers specialist reads, Data mutations, candidate mutation handoffs, and coordinator decision
-receipt reconciliation; explicit owning-operator cancellation and bounded failed-admission repair are implemented.
-Real sandbox, production trace/security/scale, cross-process cancellation, and repeated real-model qualification
-remain active work.
+Focused recovery covers specialist reads, Data mutations, candidate packaging/registration/admission/repair, and
+coordinator decision-receipt reconciliation. Explicit owning-operator cancellation is proven across fresh processes,
+and bounded failed-admission repair is implemented. A real digest-pinned Docker sandbox, redacted MLflow lifecycle
+traces, the no-selection real-model campaign, and four bounded-scale profiles now have executable qualification
+entry points. Their controlled runs against one candidate freeze remain active work.
 Experiment Design, Knowledge Research, Quantitative Methods, Robustness/WFO, Evaluation, recommendation synthesis, and
 ML model-backed loops remain planned or parked unless the active roadmap says otherwise.
 

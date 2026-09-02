@@ -59,7 +59,7 @@ configuration. Runtime failures belong inside the affected tool envelope.
 | `TRADER_MCP_CODING_REPOSITORY_REVISION` | empty | Exact pinned repository revision used by every workspace. |
 | `TRADER_MCP_CODING_CONTAINER_IMAGE` | empty | Exact admitted image used for isolated checks, required as `repository@sha256:<64 hex>`; tags and shortened digests fail closed. |
 | `TRADER_AGENTS_CHECKPOINT_DSN` | empty | Dedicated PostgreSQL DSN for replaceable LangGraph operational checkpoints. |
-| `TRADER_AGENTS_MODEL_PROFILE_ID` | `ollama-qwen35-9b-json-v1` | Exact admitted model profile. The first slice currently registers only its development Ollama profile. |
+| `TRADER_AGENTS_MODEL_PROFILE_ID` | `ollama-qwen35-9b-json-v2` | Exact admitted model profile. The first slice currently registers only its development Ollama profile and verifies its served content digest before use. |
 | `TRADER_AGENTS_MCP_COMMAND` | current Python executable | Command used to start each isolated MCP stdio server. |
 | `TRADER_AGENTS_MCP_ARGS` | `-m trader_mcp.server` | Arguments for each MCP stdio server. |
 | `TRADER_AGENTS_MCP_CWD` | current directory | Working directory for MCP server processes. |
@@ -75,10 +75,47 @@ the dedicated schema. Trader's normal application role should not use that schem
 the profile is configured; `research_get_optimizer_runtime` reports package/config availability without connecting or
 creating a study. Built-in grid/random remain available when the URL or Optuna package is absent.
 
-## Agentic Runtime Operations (Unqualified)
+## Model-Backed Research Runtime User Guide (Unqualified)
 
 The `trader-agent` command operates the implemented Coordinator–Data–Strategy slice. It is available for development
 and qualification; it is not yet a controlled production capability.
+
+### What The Command Does
+
+One invocation opens three independent MCP stdio clients and one PostgreSQL LangGraph checkpointer. The Research
+Coordinator model creates or resumes the shared agenda. Data Research and Strategy Engineering receive separate,
+bounded contexts and can run concurrently only when their declared dependencies and mutation keys permit it. Each
+specialist proposes one tool call at a time; code validates the proposal against the immutable session before MCP sees
+it. Their structured returns rejoin the Coordinator, which re-reads exact canonical evidence before recording a public
+decision receipt and choosing the next action.
+
+The slice ends with Data readiness plus an admitted strategy or risk implementation, a blocker, an operator question,
+or an explicit cancellation. It does not backtest the implementation, optimize it, perform robustness or walk-forward
+analysis, recommend paper trading, or touch a broker.
+
+### Prerequisites And Configuration
+
+Before starting a session:
+
+1. Install the locked project environment with `uv sync` and run PostgreSQL for both canonical research evidence and
+   replaceable LangGraph checkpoints.
+2. Configure `TRADER_MCP_TRADER_CONFIG_PATH` for the canonical research store and set
+   `TRADER_AGENTS_CHECKPOINT_DSN` to a dedicated checkpoint role/database or schema. Do not rely on the research-store
+   DSN as a checkpoint fallback.
+3. Serve the model named by the admitted profile. The current development profile requires Ollama `qwen3.5:9b` with
+   the exact content digest embedded in `trader_agents.profiles`; a matching name backed by different bytes fails
+   before its first model decision.
+4. Keep `TRADER_MCP_ALLOW_BROKER_MUTATION=false` and `TRADER_MCP_ALLOW_RAW_SQL=false`. Enable Data loading only when
+   the session also contains a matching pre-approved acquisition envelope.
+5. For adaptation or authorship, configure the Coding Workspace as described below. Exact reuse does not require the
+   sandbox.
+6. Set `TRADER_AGENTS_MLFLOW_TRACKING_URI` and, optionally, `TRADER_AGENTS_MLFLOW_EXPERIMENT` when queryable redacted
+   agent traces are required. Leaving the URI empty selects the no-op trace sink.
+
+Run `uv run trader-agent manifest` after any dependency, program, model-profile, or tool-catalogue change. The returned
+identities are inputs to the session, not informative labels that the runtime may silently replace.
+
+### Create An Immutable Session
 
 First inspect the exact credential-free runtime identities:
 
@@ -86,17 +123,36 @@ First inspect the exact credential-free runtime identities:
 uv run trader-agent manifest
 ```
 
-Create a JSON serialization of one immutable `ResearchSession` using the exact model-profile, agent-program, and
-tool-catalogue identities from that manifest. The session must also contain a complete composite Data scope, Strategy
-build-contract inputs, approvals, budgets, operator identity, and success definition. Validate it without opening
-Postgres, a model, or MCP subprocesses:
+Create a JSON serialization of one immutable `ResearchSession` using the exact model-profile, all three agent-program,
+and tool-catalogue identities from that manifest. The session is the authority boundary and must include:
+
+- a stable session and operator identity, natural-language objective, and observable success definition;
+- a complete multi-item Data scope with roles, symbols, fields, timeframe, bounds, provider envelope, warmup, and
+  quality requirements;
+- either one exact existing implementation ref or a complete operator-approved build specification;
+- explicit Data-loading and Coding Workspace approvals;
+- the Python quality-guide reference and exact repository revision used for authorship; and
+- finite call, token, time, mutation, revision, and concurrency budgets.
+
+The model may reason inside these bounds but cannot infer missing material strategy semantics or expand authority.
+`tests/fixtures/agentic_slice_session_inputs.json` is a comprehensive non-production example of the normalized input
+shape and edge cases. It is a qualification fixture, not a ready-to-run production session. Validate a completed
+session without opening Postgres, a model, or MCP subprocesses:
 
 ```bash
 uv run trader-agent validate-session --session /absolute/path/to/session.json
 ```
 
-For execution, configure the canonical research store/MCP environment, a dedicated checkpoint database, and the
-admitted Ollama model. The first run may apply the idempotent LangGraph checkpoint schema explicitly:
+Budget reservations are deliberately upper bounds, not predictions. The session must have enough remaining capacity
+for the worst valid specialist path it authorizes, including one structured-output repair and, when approved, one
+evidence-led candidate repair. Every physical provider call and every MCP dispatch consumes accounting even when the
+process exits before its next checkpoint.
+
+### Start And Recover A Session
+
+For execution, configure the canonical research store/MCP environment, dedicated checkpoint persistence, and the
+admitted model. Apply the idempotent LangGraph checkpoint schema explicitly when provisioning a fresh checkpoint
+namespace:
 
 ```bash
 export TRADER_AGENTS_CHECKPOINT_DSN='postgresql://checkpoint_role:...@localhost:5432/trader_checkpoints'
@@ -144,6 +200,81 @@ after terminal evidence is confirmed because they are operational state, not res
 Exact reuse can operate with read-only implementation-catalogue and admission evidence. New authorship additionally
 requires the default-off Coding Workspace gate and every pinned workspace variable above. Data loading likewise
 requires its separate gate plus approval inside the immutable session. The Coordinator cannot widen either envelope.
+
+Never edit a session file and reuse its `session_id`. The stored session digest, checkpoint identity, canonical
+receipts, and mutation journals make that drift fail closed. Create a new session or explicit research branch for a
+materially different objective, scope, build contract, program, model, tool catalogue, or budget.
+
+### Configure The Coding Workspace
+
+Build the sandbox from the repository revision that the session pins, publish it to a registry that the local Docker
+daemon can resolve, and use the immutable repository digest rather than a tag:
+
+```bash
+docker build -f containers/agent-sandbox/Dockerfile -t trader-agent-sandbox:candidate .
+docker tag trader-agent-sandbox:candidate localhost:5000/trader/agent-sandbox:candidate
+docker push localhost:5000/trader/agent-sandbox:candidate
+docker image inspect --format '{{index .RepoDigests 0}}' \
+  localhost:5000/trader/agent-sandbox:candidate
+```
+
+Then configure a dedicated workspace root outside the repository:
+
+```bash
+export TRADER_MCP_ALLOW_CODING_WORKSPACE=true
+export TRADER_MCP_CODING_WORKSPACE_ROOT=/absolute/dedicated/trader-agent-workspaces
+export TRADER_MCP_CODING_REPOSITORY_ROOT=/absolute/read-only/Trader
+export TRADER_MCP_CODING_REPOSITORY_REVISION="$(git rev-parse HEAD)"
+export TRADER_MCP_CODING_CONTAINER_IMAGE='registry/repository@sha256:<64-hex-digest>'
+```
+
+The runner mounts the repository read-only and candidate files separately, disables network and IPC, drops
+capabilities, prevents privilege escalation, runs as a non-root user, bounds CPU/memory/processes/file descriptors,
+and limits time and output. It owns and verifies cleanup of the exact container after success, failure, timeout, or
+output cutoff. Missing Docker, an invalid digest, or failed cleanup is an error; there is no host-execution fallback.
+The deterministic admission service remains a separate gate after any sandbox check passes.
+
+### Read Results, Evidence, And Traces
+
+An `AgenticSliceResult` reports the terminal status, public summary, Data and Strategy specialist returns, the exact
+Coordinator decision, its canonical receipt ref, aggregate budget use, and permitted next actions. Treat its refs—not
+the prose summary—as the audit trail:
+
+- Data refs resolve to the exact manifest and quality evidence for the complete or explicitly partial scope.
+- Strategy refs resolve to the exact implementation version and its own matching admission report.
+- Candidate-attempt, package, and admission lineage distinguish reuse, adaptation, authorship, and repair.
+- A `blocked`, `failed`, or `cancelled` result is terminal evidence, not permission to retry under changed inputs with
+  the same session identity.
+- An `OperatorInterrupt` contains a bounded question and resume schema; it does not itself grant the requested
+  authority.
+
+With agent MLflow tracing enabled, each start, resume, cancel, or inspect operation creates a lifecycle root joined to
+redacted model, MCP call/result, validation, checkpoint/decision, workspace, and admission spans. Roots are flushed
+before the invocation closes so a later process can query them. Traces retain public correlation identities,
+operation classes, evidence types/refs, counters, and bounded error codes. They intentionally omit prompts, model
+messages, hidden reasoning, source code, credentials, raw scope payloads, and full tool responses. MLflow is
+observability only; canonical Trader evidence and decision receipts remain authoritative.
+
+### Failure And Recovery Rules
+
+- Re-run `run` with the byte-identical session after a process failure. LangGraph resumes the latest bounded checkpoint;
+  canonical operation journals reconcile accepted side effects that occurred after it.
+- A terminal Data load, candidate write, package registration, or admission is replayed by stable runtime operation
+  identity rather than dispatched again. Ambiguous prepared Data mutations fail with an explicit reconciliation error.
+- A Coordinator decision is checkpointed before its receipt write. Recovery retries that exact decision and does not
+  ask the model to invent another one.
+- Physical provider calls and their terminal result/validation spans are counted even when their process dies before
+  saving normal checkpoint usage.
+- Equivalent repeated work, exhausted budgets, identity drift, unauthorized scope, or an unresolvable lost mutation
+  stops or interrupts; the runtime does not silently widen scope or loop indefinitely.
+
+### Qualification Status
+
+The runtime, phase entry points, fresh-process recovery matrix, Docker sandbox checks, no-selection 36-run campaign,
+and four bounded-scale profiles are implemented. This guide describes the current development capability, not a
+controlled release. Controlled status requires all mandatory phases to persist matching evidence against one clean
+freeze, followed by independent verification and a canonical acceptance record. The roadmap and product-state page
+remain authoritative for that verdict.
 
 ### MLflow Runtime Boundary
 

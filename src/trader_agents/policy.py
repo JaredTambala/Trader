@@ -171,16 +171,22 @@ class ToolPolicy:
         """Reject calls that would exceed session tool/mutation budgets."""
         budget = context.session.budget
         if context.usage.tool_calls + 1 > budget.max_tool_calls:
-            raise PolicyViolation("tool_budget_exhausted", "tool-call budget is exhausted")
+            raise PolicyViolation(
+                "tool_budget_exhausted", "tool-call budget is exhausted"
+            )
         if (
             definition.side_effect is not SideEffect.READ_ONLY
             and context.usage.mutations + 1 > budget.max_mutations
         ):
-            raise PolicyViolation("mutation_budget_exhausted", "mutation budget is exhausted")
+            raise PolicyViolation(
+                "mutation_budget_exhausted", "mutation budget is exhausted"
+            )
         if context.usage.total_tokens > budget.max_tokens:
             raise PolicyViolation("token_budget_exhausted", "token budget is exhausted")
         if context.usage.duration_ms > budget.max_duration_seconds * 1_000:
-            raise PolicyViolation("duration_budget_exhausted", "duration budget is exhausted")
+            raise PolicyViolation(
+                "duration_budget_exhausted", "duration budget is exhausted"
+            )
 
     @staticmethod
     def _validate_delegation(
@@ -205,7 +211,10 @@ class ToolPolicy:
                 "delegation_role_mismatch",
                 "delegation role does not match the active specialist",
             )
-        if definition.side_effect.value not in context.delegation.permitted_side_effects:
+        if (
+            definition.side_effect.value
+            not in context.delegation.permitted_side_effects
+        ):
             raise PolicyViolation(
                 "side_effect_not_delegated",
                 f"{definition.side_effect.value} is outside delegated authority",
@@ -244,9 +253,13 @@ class ToolPolicy:
         """Reject Data calls outside the exact composite scope."""
         scope = context.data_scope
         if scope is None:
-            raise PolicyViolation("data_scope_required", "Data Research requires a composite scope")
+            raise PolicyViolation(
+                "data_scope_required", "Data Research requires a composite scope"
+            )
         if scope.session_id != context.session.session_id:
-            raise PolicyViolation("data_scope_session_mismatch", "Data scope belongs to another session")
+            raise PolicyViolation(
+                "data_scope_session_mismatch", "Data scope belongs to another session"
+            )
         if proposal.tool_name in {MCP_HEALTH, MCP_CONFIG}:
             return
         if proposal.tool_name == "data_ensure_loaded" and not scope.loading_approved:
@@ -271,9 +284,7 @@ class ToolPolicy:
         requested_symbols = _string_sequence(arguments.get("symbols"), "symbols")
         if requested_symbols:
             allowed_symbols = {
-                symbol
-                for item in scope.items
-                for symbol in item.symbols
+                symbol for item in scope.items for symbol in item.symbols
             }
             outside = set(requested_symbols) - allowed_symbols
             if outside:
@@ -303,7 +314,10 @@ class ToolPolicy:
                     "data_scope_mismatch",
                     f"Data call {key} is outside approved scope",
                 )
-        if definition.side_effect is not SideEffect.READ_ONLY and not proposal.mutation_reason:
+        if (
+            definition.side_effect is not SideEffect.READ_ONLY
+            and not proposal.mutation_reason
+        ):
             raise PolicyViolation(
                 "mutation_reason_required",
                 "mutating Data call requires a public mutation reason",
@@ -429,6 +443,16 @@ class ToolPolicy:
                     "package_identity_mismatch",
                     "registration metadata does not match the accepted package",
                 )
+            _require_argument(
+                proposal.arguments,
+                "requested_by",
+                context.session.session_id,
+            )
+            _require_argument(
+                proposal.arguments,
+                "actor",
+                "Strategy Engineering Agent",
+            )
         if name.startswith("research_validate_"):
             implementation_ref = str(state.get("implementation_ref") or "")
             if not implementation_ref:
@@ -446,18 +470,16 @@ class ToolPolicy:
                     "implementation_ref_mismatch",
                     "admission input does not match the registered implementation",
                 )
-            requested_by = proposal.arguments.get("requested_by")
-            actor = proposal.arguments.get("actor")
-            if requested_by not in {None, context.session.session_id}:
-                raise PolicyViolation(
-                    "session_identity_mismatch",
-                    "admission requested_by belongs to another session",
-                )
-            if actor not in {None, "Strategy Engineering Agent"}:
-                raise PolicyViolation(
-                    "actor_identity_mismatch",
-                    "admission actor does not match Strategy Engineering",
-                )
+            _require_argument(
+                proposal.arguments,
+                "requested_by",
+                context.session.session_id,
+            )
+            _require_argument(
+                proposal.arguments,
+                "actor",
+                "Strategy Engineering Agent",
+            )
 
     @staticmethod
     def _validate_coordinator_call(
@@ -705,7 +727,9 @@ def _string_sequence(value: object, label: str) -> tuple[str, ...]:
         raise PolicyViolation("invalid_tool_arguments", f"{label} must be a list")
     normalized = tuple(str(item).strip() for item in value)
     if any(not item for item in normalized):
-        raise PolicyViolation("invalid_tool_arguments", f"{label} contains an empty value")
+        raise PolicyViolation(
+            "invalid_tool_arguments", f"{label} contains an empty value"
+        )
     return normalized
 
 

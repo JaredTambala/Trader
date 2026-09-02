@@ -77,7 +77,10 @@ from trader_mcp.evaluation_tools import register_evaluation_tools
 from trader_mcp.knowledge_tools import register_quant_methods_tools
 from trader_mcp.ml_tools import register_ml_tools
 from trader_mcp.orchestration_tools import register_orchestration_tools
-from trader_mcp.research_tools import register_research_tools
+from trader_mcp.research_tools import (
+    ImplementationValidationService,
+    register_research_tools,
+)
 from trader_research.governance import agent_owner_for_tool
 from trader_research.foundation import (
     ContextualResearchArtifactStore,
@@ -118,7 +121,10 @@ from trader_research.knowledge import (
     UnavailableKnowledgeStore,
     embedding_runtime_summary,
 )
-from trader_research.experiments import ExperimentTrackingSinkRegistry, OptimizationEngineRegistry
+from trader_research.experiments import (
+    ExperimentTrackingSinkRegistry,
+    OptimizationEngineRegistry,
+)
 from trader_research.ml import (
     ArtifactPredictionDeploymentReader,
     ArtifactPredictionRuntimeResolver,
@@ -176,6 +182,7 @@ def create_server(
     inference_adapter_registry: InferenceAdapterRegistry | None = None,
     prediction_mapper_catalog: MaintainedPredictionMapperCatalog | None = None,
     coding_workspace_service_provider: CodingWorkspaceServiceProvider | None = None,
+    strategy_validation_service: ImplementationValidationService | None = None,
 ) -> FastMCP:
     """Create the MCP server and register the configured bounded tool catalog.
 
@@ -186,16 +193,26 @@ def create_server(
             controlled embedding.
         coding_workspace_service_provider: Optional isolated Coding Workspace
             service provider for Strategy Engineering tools.
+        strategy_validation_service: Optional deterministic Strategy admission
+            service. Omit this outside controlled composition to use the
+            maintained production validator.
 
     Returns:
         Configured FastMCP server instance.
     """
     local_env = environment or load_local_environment()
-    data_event_store_provider = event_store_provider or build_event_store_provider(local_env)
-    resolved_backtest_config_provider = backtest_config_provider or (lambda: _load_tool_config(local_env))
-    resolved_knowledge_store_provider = knowledge_store_provider or build_knowledge_store_provider(local_env)
-    resolved_research_artifact_store_provider = research_artifact_store_provider or build_research_artifact_store_provider(
+    data_event_store_provider = event_store_provider or build_event_store_provider(
         local_env
+    )
+    resolved_backtest_config_provider = backtest_config_provider or (
+        lambda: _load_tool_config(local_env)
+    )
+    resolved_knowledge_store_provider = (
+        knowledge_store_provider or build_knowledge_store_provider(local_env)
+    )
+    resolved_research_artifact_store_provider = (
+        research_artifact_store_provider
+        or build_research_artifact_store_provider(local_env)
     )
     resolved_optimizer_registry = optimizer_registry or OptimizationEngineRegistry(
         engines=[
@@ -207,23 +224,29 @@ def create_server(
             )
         ]
     )
-    resolved_tracking_sink_registry = tracking_sink_registry or ExperimentTrackingSinkRegistry(
-        sinks=[
-            MLflowExperimentTrackingSink(
-                tracking_uri=local_env.mlflow_tracking_uri,
-                experiment_name=local_env.mlflow_optimization_experiment,
-            )
-        ]
-    )
-    resolved_inference_adapter_registry = inference_adapter_registry or InferenceAdapterRegistry(
-        adapters=(
-            MLflowLocalPyfuncAdapter(
-                profile_name=local_env.mlflow_inference_profile,
-                tracking_uri=local_env.mlflow_tracking_uri,
-            ),
+    resolved_tracking_sink_registry = (
+        tracking_sink_registry
+        or ExperimentTrackingSinkRegistry(
+            sinks=[
+                MLflowExperimentTrackingSink(
+                    tracking_uri=local_env.mlflow_tracking_uri,
+                    experiment_name=local_env.mlflow_optimization_experiment,
+                )
+            ]
         )
-        if local_env.mlflow_tracking_uri
-        else ()
+    )
+    resolved_inference_adapter_registry = (
+        inference_adapter_registry
+        or InferenceAdapterRegistry(
+            adapters=(
+                MLflowLocalPyfuncAdapter(
+                    profile_name=local_env.mlflow_inference_profile,
+                    tracking_uri=local_env.mlflow_tracking_uri,
+                ),
+            )
+            if local_env.mlflow_tracking_uri
+            else ()
+        )
     )
     resolved_prediction_mapper_catalog = (
         prediction_mapper_catalog or MaintainedPredictionMapperCatalog()
@@ -235,7 +258,9 @@ def create_server(
     )
 
     def _prediction_deployment_reader() -> ArtifactPredictionDeploymentReader:
-        return ArtifactPredictionDeploymentReader(resolved_research_artifact_store_provider())
+        return ArtifactPredictionDeploymentReader(
+            resolved_research_artifact_store_provider()
+        )
 
     def _prediction_runtime_resolver() -> ArtifactPredictionRuntimeResolver:
         return ArtifactPredictionRuntimeResolver(
@@ -243,6 +268,7 @@ def create_server(
             adapter_registry=resolved_inference_adapter_registry,
             mapper_catalog=resolved_prediction_mapper_catalog,
         )
+
     resolved_data_loading_policy = data_loading_policy or DataEnsureLoadedPolicy(
         allow_data_loading=local_env.allow_data_loading,
         backfill_config_path=local_env.trader_config_path,
@@ -254,7 +280,9 @@ def create_server(
     )
     server = FastMCP(SERVER_NAME)
 
-    @server.tool(name=MCP_HEALTH_TOOL, description=SUPPORT_TOOL_DESCRIPTIONS[MCP_HEALTH_TOOL])
+    @server.tool(
+        name=MCP_HEALTH_TOOL, description=SUPPORT_TOOL_DESCRIPTIONS[MCP_HEALTH_TOOL]
+    )
     def mcp_health() -> CallToolResult:
         """Return read-only MCP server health.
 
@@ -263,7 +291,9 @@ def create_server(
         """
         return CallToolResult(**result_to_mcp_result(build_health_envelope(local_env)))
 
-    @server.tool(name=MCP_CONFIG_TOOL, description=SUPPORT_TOOL_DESCRIPTIONS[MCP_CONFIG_TOOL])
+    @server.tool(
+        name=MCP_CONFIG_TOOL, description=SUPPORT_TOOL_DESCRIPTIONS[MCP_CONFIG_TOOL]
+    )
     def mcp_get_config() -> CallToolResult:
         """Return read-only MCP server configuration.
 
@@ -274,8 +304,10 @@ def create_server(
             **result_to_mcp_result(
                 build_config_envelope(
                     local_env,
-                    knowledge_store_provider_configured=knowledge_store_provider is not None,
-                    research_artifact_store_provider_configured=research_artifact_store_provider is not None,
+                    knowledge_store_provider_configured=knowledge_store_provider
+                    is not None,
+                    research_artifact_store_provider_configured=research_artifact_store_provider
+                    is not None,
                 )
             )
         )
@@ -570,18 +602,27 @@ def create_server(
         prediction_mapper_catalog=resolved_prediction_mapper_catalog,
         prediction_runtime_resolver_provider=_prediction_runtime_resolver,
         coding_workspace_service_provider=resolved_coding_workspace_service_provider,
+        strategy_validation_service=strategy_validation_service,
     )
     register_orchestration_tools(
         server,
         artifact_store_provider=resolved_research_artifact_store_provider,
     )
-    register_evaluation_tools(server, local_env, artifact_store_provider=resolved_research_artifact_store_provider)
-    register_adversarial_tools(server, artifact_store_provider=resolved_research_artifact_store_provider)
+    register_evaluation_tools(
+        server,
+        local_env,
+        artifact_store_provider=resolved_research_artifact_store_provider,
+    )
+    register_adversarial_tools(
+        server, artifact_store_provider=resolved_research_artifact_store_provider
+    )
 
     return server
 
 
-def build_event_store_provider(environment: McpEnvironment | None = None) -> EventStoreProvider:
+def build_event_store_provider(
+    environment: McpEnvironment | None = None,
+) -> EventStoreProvider:
     """Build the lazy event-store provider used by Data Agent tools.
 
     Args:
@@ -606,12 +647,16 @@ def build_event_store_provider(environment: McpEnvironment | None = None) -> Eve
     return _provider
 
 
-def build_knowledge_store_provider(environment: McpEnvironment | None = None) -> KnowledgeStoreProvider:
+def build_knowledge_store_provider(
+    environment: McpEnvironment | None = None,
+) -> KnowledgeStoreProvider:
     """Build the lazy knowledge-store provider used by Quant Methods tools."""
     local_env = environment or load_local_environment()
     backend = local_env.knowledge_store.strip().lower()
     if backend != "postgres":
-        return lambda: UnavailableKnowledgeStore(f"Unsupported knowledge store backend: {local_env.knowledge_store}")
+        return lambda: UnavailableKnowledgeStore(
+            f"Unsupported knowledge store backend: {local_env.knowledge_store}"
+        )
     if local_env.trader_config_path is None:
         return lambda: UnavailableKnowledgeStore(
             "Postgres knowledge store requires TRADER_MCP_TRADER_CONFIG_PATH"
@@ -719,7 +764,9 @@ def build_coding_workspace_service_provider(
     return _provider
 
 
-def build_symbol_discovery_policy_provider(environment: McpEnvironment | None = None) -> SymbolDiscoveryPolicyProvider:
+def build_symbol_discovery_policy_provider(
+    environment: McpEnvironment | None = None,
+) -> SymbolDiscoveryPolicyProvider:
     """Build the lazy symbol-discovery policy provider used by Data Agent tools."""
     local_env = environment or load_local_environment()
     policy: DataSymbolDiscoveryPolicy | None = None
@@ -733,10 +780,15 @@ def build_symbol_discovery_policy_provider(environment: McpEnvironment | None = 
     return _provider
 
 
-def build_symbol_discovery_policy(environment: McpEnvironment | None = None) -> DataSymbolDiscoveryPolicy:
+def build_symbol_discovery_policy(
+    environment: McpEnvironment | None = None,
+) -> DataSymbolDiscoveryPolicy:
     """Build the read-only symbol discovery policy for the MCP runtime."""
     local_env = environment or load_local_environment()
-    if not local_env.allow_symbol_provider_discovery or local_env.trader_config_path is None:
+    if (
+        not local_env.allow_symbol_provider_discovery
+        or local_env.trader_config_path is None
+    ):
         return DataSymbolDiscoveryPolicy(
             allow_provider_discovery=local_env.allow_symbol_provider_discovery,
         )
@@ -833,13 +885,9 @@ def build_config_envelope(
         },
         {
             "name": DATA_CREATE_RESEARCH_SNAPSHOT_TOOL,
-            "agent_owner": agent_owner_for_tool(
-                DATA_CREATE_RESEARCH_SNAPSHOT_TOOL
-            ),
+            "agent_owner": agent_owner_for_tool(DATA_CREATE_RESEARCH_SNAPSHOT_TOOL),
             "side_effect": SideEffect.LOCAL_MUTATING.value,
-            "description": DATA_TOOL_DESCRIPTIONS[
-                DATA_CREATE_RESEARCH_SNAPSHOT_TOOL
-            ],
+            "description": DATA_TOOL_DESCRIPTIONS[DATA_CREATE_RESEARCH_SNAPSHOT_TOOL],
         },
     ]
     tool_metadata.extend(
@@ -972,12 +1020,20 @@ def build_config_envelope(
             "server_name": SERVER_NAME,
             "transport": local_env.transport,
             "artifact_root": str(local_env.artifact_root),
-            "trader_config_path": str(local_env.trader_config_path) if local_env.trader_config_path else None,
+            "trader_config_path": str(local_env.trader_config_path)
+            if local_env.trader_config_path
+            else None,
             "tool_runtime": {
-                "trader_config_path": str(local_env.trader_config_path) if local_env.trader_config_path else None,
-                "env_path": str(local_env.tool_env_path) if local_env.tool_env_path else None,
+                "trader_config_path": str(local_env.trader_config_path)
+                if local_env.trader_config_path
+                else None,
+                "env_path": str(local_env.tool_env_path)
+                if local_env.tool_env_path
+                else None,
                 "config_loaded_at_startup": False,
-                "event_store_provider": "configured" if local_env.trader_config_path else "noop",
+                "event_store_provider": "configured"
+                if local_env.trader_config_path
+                else "noop",
             },
             "embedding_runtime": embedding_runtime_summary(local_env.embeddings_env()),
             "knowledge_store_runtime": knowledge_store_runtime_summary(
@@ -1008,8 +1064,10 @@ def build_config_envelope(
             },
             "coding_workspace_runtime": {
                 "allowed": local_env.allow_coding_workspace,
-                "workspace_root_configured": local_env.coding_workspace_root is not None,
-                "repository_root_configured": local_env.coding_repository_root is not None,
+                "workspace_root_configured": local_env.coding_workspace_root
+                is not None,
+                "repository_root_configured": local_env.coding_repository_root
+                is not None,
                 "repository_revision": local_env.coding_repository_revision or None,
                 "container_image": local_env.coding_container_image or None,
                 "network_enabled": False,
@@ -1030,12 +1088,20 @@ def knowledge_store_runtime_summary(
 ) -> Mapping[str, Any]:
     """Return non-secret knowledge-store runtime metadata without opening the DB."""
     backend = environment.knowledge_store.strip().lower() or "postgres"
-    configured = provider_injected or (backend == "postgres" and environment.trader_config_path is not None)
+    configured = provider_injected or (
+        backend == "postgres" and environment.trader_config_path is not None
+    )
     return {
         "backend": backend,
         "configured": configured,
-        "provider": "injected" if provider_injected else "trader_config_path" if configured else "unconfigured",
-        "trader_config_path": str(environment.trader_config_path) if environment.trader_config_path else None,
+        "provider": "injected"
+        if provider_injected
+        else "trader_config_path"
+        if configured
+        else "unconfigured",
+        "trader_config_path": str(environment.trader_config_path)
+        if environment.trader_config_path
+        else None,
         "pgvector_available": "not_checked" if backend == "postgres" else None,
     }
 
@@ -1050,8 +1116,14 @@ def research_artifact_store_runtime_summary(
     return {
         "backend": "postgres",
         "configured": configured,
-        "provider": "injected" if provider_injected else "trader_config_path" if configured else "unconfigured",
-        "trader_config_path": str(environment.trader_config_path) if environment.trader_config_path else None,
+        "provider": "injected"
+        if provider_injected
+        else "trader_config_path"
+        if configured
+        else "unconfigured",
+        "trader_config_path": str(environment.trader_config_path)
+        if environment.trader_config_path
+        else None,
         "canonical_uri_scheme": "research://postgres/{artifact_type}/{artifact_id}",
     }
 
@@ -1351,10 +1423,15 @@ def build_data_symbol_discovery_envelope(
     try:
         event_store = event_store_provider()
         runtime_policy = policy
-        if runtime_policy is None and policy_provider is not None and str(source).strip().lower() in {
-            "provider",
-            "merged",
-        }:
+        if (
+            runtime_policy is None
+            and policy_provider is not None
+            and str(source).strip().lower()
+            in {
+                "provider",
+                "merged",
+            }
+        ):
             runtime_policy = policy_provider()
     except Exception as exc:
         return _tool_runtime_configuration_error_envelope(
@@ -1556,8 +1633,12 @@ def _data_symbol_discovery_request_from_inputs(
         limit=int(limit),
         active_only=_parse_bool(active_only, field_name="active_only"),
         tradable_only=_parse_bool(tradable_only, field_name="tradable_only"),
-        include_local_coverage=_parse_bool(include_local_coverage, field_name="include_local_coverage"),
-        configured_universe_available=bool(provider_context["configured_universe_available"]),
+        include_local_coverage=_parse_bool(
+            include_local_coverage, field_name="include_local_coverage"
+        ),
+        configured_universe_available=bool(
+            provider_context["configured_universe_available"]
+        ),
     )
 
 
@@ -1592,7 +1673,9 @@ def _configured_market_data_context(
 def _load_tool_config(environment: McpEnvironment) -> Config:
     """Load trader config for tool execution without making MCP startup depend on it."""
     if environment.trader_config_path is None:
-        raise ToolRuntimeConfigurationError("Tool execution requires a trader config path.")
+        raise ToolRuntimeConfigurationError(
+            "Tool execution requires a trader config path."
+        )
     _load_tool_env(environment)
     try:
         return build_config(load_yaml_config(environment.trader_config_path))
@@ -1607,7 +1690,9 @@ def _load_tool_env(environment: McpEnvironment) -> None:
     if environment.tool_env_path is None:
         return
     if not environment.tool_env_path.exists():
-        raise ToolRuntimeConfigurationError(f"Tool runtime env file not found: {environment.tool_env_path}")
+        raise ToolRuntimeConfigurationError(
+            f"Tool runtime env file not found: {environment.tool_env_path}"
+        )
     load_dotenv(environment.tool_env_path, override=False)
 
 

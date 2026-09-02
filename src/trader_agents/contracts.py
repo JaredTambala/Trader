@@ -242,7 +242,7 @@ class SpecialistDelegation(StrictPublicModel):
     ] = Field(min_length=1, max_length=3)
     reserved_model_calls: int = Field(gt=0, le=24)
     reserved_tool_calls: int = Field(gt=0, le=24)
-    reserved_tokens: int = Field(gt=0, le=12_000)
+    reserved_tokens: int = Field(gt=0, le=60_000)
     expected_information_gain: str = Field(min_length=1, max_length=600)
 
 
@@ -565,9 +565,7 @@ class CompositeDataScope(StrictPublicModel):
         if len(set(item_ids)) != len(item_ids):
             raise ValueError("composite Data scope item IDs must be unique")
         if self.loading_approved and self.max_loading_cost is None:
-            raise ValueError(
-                "an approved Data loading scope requires max_loading_cost"
-            )
+            raise ValueError("an approved Data loading scope requires max_loading_cost")
         return self
 
 
@@ -634,6 +632,7 @@ class StrategyBuildContract(StrictPublicModel):
     name: str = Field(min_length=1, max_length=200)
     runtime_interface: str = Field(min_length=1, max_length=200)
     portfolio_mode: str = Field(min_length=1, max_length=100)
+    required_capabilities: list[str] = Field(min_length=1, max_length=32)
     decision_rules: list[str] = Field(min_length=1, max_length=32)
     state_transitions: list[str] = Field(min_length=1, max_length=32)
     timing: str = Field(min_length=1, max_length=600)
@@ -653,9 +652,15 @@ class StrategyBuildContract(StrictPublicModel):
 
     @model_validator(mode="after")
     def validate_unique_contract_fields(self) -> "StrategyBuildContract":
-        """Reject duplicate input roles and parameter names."""
+        """Reject duplicate capabilities, input roles, and parameter names."""
+        capabilities = [item.strip() for item in self.required_capabilities]
         roles = [item.role for item in self.input_roles]
         parameters = [item.name for item in self.parameters]
+        if any(not item for item in capabilities) or len(set(capabilities)) != len(
+            capabilities
+        ):
+            raise ValueError("build contract required_capabilities must be unique")
+        object.__setattr__(self, "required_capabilities", capabilities)
         if len(set(roles)) != len(roles):
             raise ValueError("build contract input roles must be unique")
         if len(set(parameters)) != len(parameters):

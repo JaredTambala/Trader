@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from trader_agents.contracts import CoordinatorAction
+
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "agentic_slice_scenarios.json"
 REPOSITORY_ROOT = FIXTURE_PATH.parents[2]
@@ -38,11 +40,36 @@ def test_agentic_slice_fixture_separates_trajectory_and_final_outcome() -> None:
     for scenario in _fixture()["scenarios"]:
         assert scenario["required_questions"]
         assert scenario["legal_delegations"]
+        assert set(scenario["required_delegations"]).issubset(
+            scenario["legal_delegations"]
+        )
         assert scenario["required_evidence"]
         assert scenario["expected_terminal_actions"]
         assert len(scenario["trajectory_assertions"]) >= 3
         assert scenario["scripted_tests"]
         assert "broker_mutation" not in scenario["permitted_mutations"]
+        assert set(scenario["expected_terminal_actions"]).issubset(
+            {action.value for action in CoordinatorAction}
+        )
+
+
+def test_role_coverage_distinguishes_permission_from_required_work() -> None:
+    """Allow safe optional parallel work without forcing needless delegation."""
+    scenarios = {
+        scenario["scenario_id"]: scenario for scenario in _fixture()["scenarios"]
+    }
+
+    assert scenarios["material_ambiguity"]["required_delegations"] == []
+    assert scenarios["out_of_envelope_acquisition"]["required_delegations"] == [
+        "data_research"
+    ]
+    assert scenarios["irreparable_admission"]["required_delegations"] == [
+        "strategy_engineering"
+    ]
+    assert scenarios["exact_reuse"]["required_delegations"] == [
+        "data_research",
+        "strategy_engineering",
+    ]
 
 
 def test_every_scenario_links_to_existing_scripted_trajectory_tests() -> None:

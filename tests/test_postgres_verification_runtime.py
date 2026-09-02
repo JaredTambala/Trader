@@ -11,6 +11,7 @@ import pytest
 
 from trader.event_store import PostgresEventStore
 from tests.support.postgres_verification import (
+    AGENTIC_VERIFICATION_PROFILE,
     LEGACY_VERIFICATION_PROFILE,
     MUTATION_GATE_NAMES,
     ORCHESTRATION_VERIFICATION_PROFILE,
@@ -167,6 +168,42 @@ def test_orchestration_profile_pins_exact_policy_and_retention(
                 RETAIN_EVIDENCE_PHASE_ENV: "ORCHESTRATION_POLICY",
             }
         )
+
+
+def test_agentic_profile_pins_exact_policy_and_retention(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep agentic qualification phases and mutation gates closed."""
+    monkeypatch.setenv(VERIFICATION_PROFILE_ENV, AGENTIC_VERIFICATION_PROFILE)
+    profile = load_qualification_profile()
+    assert profile.name == AGENTIC_VERIFICATION_PROFILE
+    assert profile.requires_checkpoint_role is True
+    disabled = {name: False for name in MUTATION_GATE_NAMES}
+    _validate_phase_policy_gates("AGENTIC_RUNTIME_ISOLATION", disabled)
+    _validate_phase_policy_gates("AGENTIC_SECURITY", disabled)
+    data_and_coding = {
+        **disabled,
+        "TRADER_MCP_ALLOW_DATA_LOADING": True,
+        "TRADER_MCP_ALLOW_CODING_WORKSPACE": True,
+    }
+    for phase in (
+        "AGENTIC_POSTGRES_E2E",
+        "AGENTIC_RECOVERY",
+        "AGENTIC_REAL_MODEL",
+        "AGENTIC_BOUNDED_SCALE",
+    ):
+        _validate_phase_policy_gates(phase, data_and_coding)
+    _validate_phase_policy_gates(
+        "AGENTIC_SANDBOX",
+        {**disabled, "TRADER_MCP_ALLOW_CODING_WORKSPACE": True},
+    )
+    with pytest.raises(VerificationConfigurationError, match="requires exactly"):
+        _validate_phase_policy_gates("AGENTIC_REAL_MODEL", disabled)
+    retained = {
+        VERIFICATION_PROFILE_ENV: AGENTIC_VERIFICATION_PROFILE,
+        RETAIN_EVIDENCE_PHASE_ENV: "agentic_real_model",
+    }
+    assert load_retained_evidence_phase(retained) == "AGENTIC_REAL_MODEL"
 
 
 def test_checkpoint_role_is_distinct_and_schema_pinned() -> None:

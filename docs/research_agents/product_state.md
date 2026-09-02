@@ -7,7 +7,7 @@ capabilities remain open.
 It does not define request schemas, repeat historical implementation narratives, or prescribe one linear delivery
 sequence. Use the [capability roadmap](../../plans/research_capability_roadmap.md) for remaining work and dependencies.
 
-Last reviewed: 2026-09-01.
+Last reviewed: 2026-09-02.
 
 ## How To Read Capability State
 
@@ -54,11 +54,13 @@ Coding Workspace writes and destruction now have source-free replay records. Dat
 runtime operation to its requester, actor, exact scope, and acquisition plan; an accepted result replays without a
 second provider call, while a prepared record either recovers from conclusive post-load evidence or fails closed for
 reconciliation. Focused fresh-connection tests cover Data post-load recovery and coordinator decision-commit recovery.
-Controlled tests cover prompt injection, denied trading paths, out-of-envelope and unfit Data, adaptation, bounded
-repair, and queryable redacted MLflow correlation. Cross-process cancellation, real isolated Coding Workspace,
-repeated real-model, scale, and final operational acceptance evidence remain outstanding.
+Controlled-model tests cover prompt injection, denied trading paths, out-of-envelope and unfit Data, adaptation, and
+bounded repair. Focused production-shaped tests cover fresh-process Data and Strategy recovery, process-level
+cancellation, queryable redacted MLflow correlation, and a real isolated Coding Workspace. Four bounded-scale profiles
+and all controlled phase entry points are implemented. Repeated real-model, frozen Postgres, retained scale, and final
+operational acceptance evidence remain outstanding.
 
-Strategy authorship now uses `strategy-engineering-v3` with `first-slice-tool-policy-v3`. Packaging retains complete
+Strategy authorship now uses `strategy-engineering-v4` with `first-slice-tool-policy-v4`. Packaging retains complete
 source in an immutable, content-addressed coding package while returning only identity, lineage, source hash, and file
 manifest to the model. Registration accepts that exact package ID; the MCP adapter resolves source internally and
 injects attempt/build/repository lineage. Agent-proposed direct source registration fails closed, and a package remains
@@ -392,12 +394,12 @@ the current first slice.
 
 | Agent | Current operational state | Target state | Main gap |
 | --- | --- | --- | --- |
-| Data Research Agent | A strict model/tool loop investigates complete composite scope through role- and phase-scoped MCP, performs only approved bounded loading, revalidates evidence, and returns exact snapshot refs or typed blockers. | Controlled Data specialist with broader calendar/provider coverage and measured behavioral reliability. | Fresh-process recovery, real-MCP/real-provider qualification, prompt security, and repeated real-model evidence. |
+| Data Research Agent | A strict model/tool loop investigates complete composite scope through role- and phase-scoped MCP, performs only approved bounded loading, revalidates evidence, and returns exact snapshot refs or typed blockers. | Controlled Data specialist with broader calendar/provider coverage and measured behavioral reliability. | Controlled real-MCP/Postgres recovery, prompt-security, and repeated real-model evidence. |
 | Experiment Design Agent | No model-backed graph in the clean runtime. Deterministic proposal services remain available through MCP. | Model-backed Experiment Design Agent that converts briefs, candidates, and Data slices into prospective experiment charters with protected-evidence roles, stage gates, specialist authority envelopes, and material approval requests. | Free-form interpretation, staged evidence contracts, scientific replanning, structured agent program, and behavioral evaluation. |
 | Knowledge Research Agent | No separate current identity. Full-document source ingestion, hybrid retrieval, bounded evidence dereferencing, exact claim spans, and method artifacts are currently assigned to the deterministic Quantitative Methods surface. | Model-backed source investigator that decomposes evidence obligations, navigates structure, iteratively retrieves and expands approved evidence, reconciles sources, and returns a validated research dossier. | Structure-preserving parsing, source maps/resources, dossier artifacts and validation, role-scoped MCP, model program, and textbook benchmark. |
 | Quantitative Methods Agent | Allowlist, approved decision boundary and deterministic MCP tools exist. No complete specialist graph coordinates them. | Pre-code, outcome-blind specialist that converts a passed dossier into a validated implementation brief with source-backed and engineering decisions separated. | Model policy, brief contract/validation, role-scoped MCP composition, and measured multi-source handoff quality. |
-| Research Coordinator | The user-facing model creates/revises typed agendas, delegates context-isolated Data/Strategy work, schedules disjoint work concurrently, verifies canonical refs, checkpoints decisions before receipt mutation, records decisions, interrupts for authority, supports owning-operator cancellation, and returns grounded terminal results. | Controlled supervisor extended to later accepted specialists and deterministic experiment execution tools. | Security/scale qualification, cross-process cancellation evidence, repeated real-model evaluation, and final acceptance. |
-| Strategy Engineering Agent | A catalogue-first model/tool loop compares prior implementations, reuses only exact admitted versions, or authors/checks/packages/submits code through isolated Coding Workspace and admission MCP tools. An actionable failed admission cleans up the workspace and may consume one bounded new candidate attempt. | Controlled coding specialist with qualified real sandbox execution and robust bounded admission repair. | Real container qualification, prompt security, fresh-process repair recovery, and repeated real-model evaluation. |
+| Research Coordinator | The user-facing model creates/revises typed agendas, delegates context-isolated Data/Strategy work, schedules disjoint work concurrently, verifies canonical refs, checkpoints decisions before receipt mutation, records decisions, interrupts for authority, supports owning-operator cancellation, and returns grounded terminal results. | Controlled supervisor extended to later accepted specialists and deterministic experiment execution tools. | Controlled security/scale/recovery evidence, repeated real-model evaluation, and final acceptance. |
+| Strategy Engineering Agent | A catalogue-first model/tool loop compares prior implementations, reuses only exact admitted versions, or authors/checks/packages/submits code through isolated Coding Workspace and admission MCP tools. An actionable failed admission cleans up the workspace and may consume one bounded new candidate attempt. | Controlled coding specialist with qualified real sandbox execution and robust bounded admission repair. | Frozen real-container, prompt-security, fresh-process repair, and repeated real-model qualification. |
 | ML Agent | Ownership and deployment MCP tools exist; no ML Agent graph exists. | Parked future ML Signal Research Agent coordinating point-in-time features, training, evaluation, MLflow registry evidence, runtime parity, and drift. | Intentionally deferred until the first non-ML agentic slice is qualified; deterministic ML lifecycle tools and model-backed qualification remain future gaps. |
 | Evaluation Agent | Optimisation Evaluation service/tool exists; no Evaluation graph exists. | Independent model-backed critic of leakage, selection, costs, robustness, completeness, and alternative explanations. | Broader attribution/evaluation tools, isolated context, agent program, and evidence-grounding evaluations. |
 | Adversarial Agent | Optimisation audit planning and judgment tools exist; no Adversarial graph exists. | Robustness & Walk-Forward Agent that synthesizes multi-agent evidence into a staged plan, operates it after approval, inspects sensitivity, and requests successors without issuing the final verdict. | General robustness and WFO tools, canonical multi-agent input contract, staged-plan schema, model policy, and behavioral qualification. |
@@ -563,10 +565,11 @@ exclude prompts, hidden reasoning, credentials, raw messages, and complete tool 
 
 Production composite Data behavior, model programs, dynamic role catalogues, coordinator/specialist loops, bounded
 parallel scheduling, canonical evidence review, interrupts, and the runtime/CLI boundary are implemented. Scripted
-tests now trace every case in the 12-scenario fixture to executable evidence and include fresh-connection Postgres,
-redacted MLflow, and adversarial policy cases. Real Coding Workspace qualification, production trace and cancellation
-evidence, and repeated real-model evaluation remain outstanding. The operation inventory and versioned evaluation
-cases are complete; active status and gates are recorded in the capability roadmap.
+tests trace every case in the 12-scenario fixture to executable evidence and include fresh-process Postgres recovery,
+redacted MLflow, process cancellation, adversarial policy cases, and real Docker isolation. The no-selection 36-run
+campaign and four bounded-scale profiles are composed, but neither has been retained against a candidate freeze. The
+operation inventory, versioned evaluation cases, phase entry points, and acceptance verifier are complete; active
+status and gates are recorded in the capability roadmap.
 
 ## Qualification Baselines
 
@@ -603,8 +606,8 @@ trading and live trading. This evidence does not apply to the model-backed repla
 ## Known Product Limits
 
 - The current Coordinator, Data Research, and Strategy Engineering components invoke a configured model, but focused
-  implementation tests do not establish controlled behavioral reliability. Production qualification remains
-  outstanding.
+  and production-shaped development tests do not establish controlled behavioral reliability. Frozen production
+  qualification remains outstanding.
 - Research tools do not place live orders or mutate paper/live sessions.
 - Complex source-discovered composite methodologies are not represented faithfully. Current page-text extraction and
   local deterministic span assembly do not provide structure-aware, iterative, multi-source dossier research or an
@@ -613,8 +616,9 @@ trading and live trading. This evidence does not apply to the model-backed repla
 - General robustness and walk-forward optimisation are not implemented.
 - The first agentic slice stops at exact Data readiness plus an admitted strategy/risk implementation. It does not yet
   design or execute an experiment, run a backtest, perform robustness/WFO, or recommend paper trading.
-- Coding Workspace defines an operating-system sandbox boundary, but its real container path is not yet qualified for
-  this slice; implementation admission remains a separate deterministic verdict.
+- Coding Workspace defines an operating-system sandbox boundary. Its real Docker path passes development isolation,
+  cleanup, deadline, output, and resource checks but is not controlled until rebuilt from and retained against the
+  exact slice freeze; implementation admission remains a separate deterministic verdict.
 - Backtest, holdout and audit evidence can support a research conclusion; none independently grants deployment
   permission.
 

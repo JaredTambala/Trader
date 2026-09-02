@@ -190,8 +190,9 @@ is deterministic evidence for the model-backed specialist; it does not decide se
 Coding Workspace tools are registered but fail closed until `TRADER_MCP_ALLOW_CODING_WORKSPACE=true` and the dedicated
 workspace root, pinned repository revision, and pinned container image are configured. Repository reads are
 read-only. Candidate writes are separate. Checks use no network, capabilities, privilege escalation, secrets, or
-arbitrary shell, and candidate packaging is inert. Registration and validation remain the independent admission
-boundary after packaging.
+arbitrary shell, and candidate packaging is inert. The runner uses an exact Docker container identity and verifies its
+removal after normal exit, failure, timeout, or output cutoff; unavailable or failed container execution never falls
+back to the host. Registration and validation remain the independent admission boundary after packaging.
 
 ## Quant Research Supervisor Tools
 

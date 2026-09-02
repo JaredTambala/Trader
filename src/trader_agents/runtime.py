@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import AsyncExitStack, asynccontextmanager, suppress
 from dataclasses import dataclass, field
 import os
@@ -11,6 +11,7 @@ from pathlib import Path
 import shlex
 import sys
 from typing import Any
+from uuid import uuid4
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.types import Command
@@ -37,6 +38,7 @@ from .data_research import DataResearchAgent
 from .inputs import validate_runtime_pins
 from .llm_client import RuntimeConfiguredLlmClient
 from .profiles import (
+    DEVELOPMENT_MODEL_PROFILE_ID,
     AgentProgramRegistry,
     ModelProfileRegistry,
     development_model_profiles,
@@ -45,12 +47,25 @@ from .profiles import (
 from .programs import first_slice_programs
 from .strategy_engineering import StrategyEngineeringAgent
 from .structured_model import StructuredModelRunner
-from .tool_client import PersistentStdioMcpToolClient
-from .tracing import MlflowTraceSink, NoOpTraceSink, TraceSink
+from .tool_client import McpToolClient, PersistentStdioMcpToolClient
+from .tracing import (
+    MlflowTraceSink,
+    NoOpTraceSink,
+    TraceCorrelation,
+    TraceSink,
+    correlated_attributes,
+)
+
+
+_PROCESS_INSTANCE_ID = uuid4().hex
+"""Public random process identity used only for recovery trace correlation."""
 
 
 AgentRunOutcome = AgenticSliceResult | OperatorInterrupt
 """Public result of starting or resuming an agentic research session."""
+
+McpClientDecorator = Callable[[AgentRole, McpToolClient], McpToolClient]
+"""Compose a role-labelled client without changing transport ownership."""
 
 
 @dataclass
@@ -63,6 +78,8 @@ class AgenticResearchRuntime:
         tool_catalogue: Exact code-owned MCP catalogue.
         programs: Exact versioned agent programs.
         model_profiles: Exact admitted model profiles.
+        trace_sink: Redacted lifecycle root-span sink shared with all runtime
+            components.
     """
 
     coordinator: ResearchCoordinator
@@ -70,6 +87,7 @@ class AgenticResearchRuntime:
     tool_catalogue: ToolCatalogue
     programs: AgentProgramRegistry
     model_profiles: ModelProfileRegistry
+    trace_sink: TraceSink = field(default_factory=NoOpTraceSink)
     _active_tasks: dict[str, asyncio.Task[Any]] = field(
         default_factory=dict,
         init=False,
@@ -86,8 +104,9 @@ class AgenticResearchRuntime:
             Terminal grounded result or bounded operator interrupt.
         """
         self._validate_session(session)
-        async with self._active_session(session.session_id):
-            return await self._start_unlocked(session)
+        with self._trace_operation(session, "start"):
+            async with self._active_session(session.session_id):
+                return await self._start_unlocked(session)
 
     async def _start_unlocked(
         self,
@@ -106,16 +125,11 @@ class AgenticResearchRuntime:
                 return current
             output = await graph.ainvoke(None, config)
             return _outcome(session.session_id, output)
-        coordinator_program = self.programs.for_role(
-            AgentRole.RESEARCH_COORDINATOR
-        )
+        coordinator_program = self.programs.for_role(AgentRole.RESEARCH_COORDINATOR)
         initial = build_agent_checkpoint_state(
             session_id=session.session_id,
             session_digest=session.session_digest,
-            branch_id=stable_research_id(
-                "agent_root_branch",
-                {"session_id": session.session_id},
-            ),
+            branch_id=_root_branch_id(session.session_id),
             coordinator_program_id=coordinator_program.program_id,
             model_profile_id=session.model_profile_id,
             tool_catalog_id=self.tool_catalogue.catalogue_id,
@@ -140,8 +154,9 @@ class AgenticResearchRuntime:
         self._validate_session(session)
         if response.operator_id != session.operator_id:
             raise ValueError("operator response identity does not match the session")
-        async with self._active_session(session.session_id):
-            return await self._resume_unlocked(session, response)
+        with self._trace_operation(session, "resume"):
+            async with self._active_session(session.session_id):
+                return await self._resume_unlocked(session, response)
 
     async def _resume_unlocked(
         self,
@@ -191,6 +206,15 @@ class AgenticResearchRuntime:
         self._validate_session(session)
         if cancellation.operator_id != session.operator_id:
             raise ValueError("operator cancellation identity does not match session")
+        with self._trace_operation(session, "cancel"):
+            return await self._cancel_unlocked(session, cancellation)
+
+    async def _cancel_unlocked(
+        self,
+        session: ResearchSession,
+        cancellation: OperatorCancellation,
+    ) -> AgenticSliceResult:
+        """Apply cancellation inside one correlated lifecycle trace."""
         current_task = asyncio.current_task()
         active_task = self._active_tasks.get(session.session_id)
         if (
@@ -232,16 +256,17 @@ class AgenticResearchRuntime:
     async def inspect(self, session: ResearchSession) -> dict[str, Any]:
         """Return the redacted operator-visible checkpoint projection."""
         self._validate_session(session)
-        graph = self.coordinator.build_graph(
-            session=session,
-            checkpointer=self.checkpointer,
-        )
-        snapshot = await graph.aget_state(
-            coordinator_thread_config(session.session_id)
-        )
-        if not snapshot.values:
-            raise ValueError("research session has no operational checkpoint")
-        return agent_public_state(snapshot.values)
+        with self._trace_operation(session, "inspect"):
+            graph = self.coordinator.build_graph(
+                session=session,
+                checkpointer=self.checkpointer,
+            )
+            snapshot = await graph.aget_state(
+                coordinator_thread_config(session.session_id)
+            )
+            if not snapshot.values:
+                raise ValueError("research session has no operational checkpoint")
+            return agent_public_state(snapshot.values)
 
     def _validate_session(self, session: ResearchSession) -> None:
         """Validate all immutable runtime pins before touching checkpoints."""
@@ -250,6 +275,28 @@ class AgenticResearchRuntime:
             model_profiles=self.model_profiles,
             agent_programs=self.programs,
             tool_catalogue=self.tool_catalogue,
+        )
+
+    def _trace_operation(self, session: ResearchSession, operation: str) -> Any:
+        """Return one root span joining a public lifecycle trajectory."""
+        program = self.programs.for_role(AgentRole.RESEARCH_COORDINATOR)
+        correlation = TraceCorrelation(
+            session_id=session.session_id,
+            branch_id=_root_branch_id(session.session_id),
+            program_id=program.program_id,
+            model_profile_id=session.model_profile_id,
+            tool_catalog_id=self.tool_catalogue.catalogue_id,
+        )
+        return self.trace_sink.span(
+            f"agent.session.{operation}",
+            span_type="CHAIN",
+            attributes=correlated_attributes(
+                correlation,
+                **{
+                    "trader.lifecycle_operation": operation,
+                    "trader.process_instance_id": _PROCESS_INSTANCE_ID,
+                },
+            ),
         )
 
     @asynccontextmanager
@@ -277,6 +324,7 @@ async def runtime_from_environment(
     environ: Mapping[str, str] | None = None,
     *,
     setup_checkpoint_schema: bool = False,
+    mcp_client_decorator: McpClientDecorator | None = None,
 ) -> AsyncIterator[AgenticResearchRuntime]:
     """Open the production model, MCP, trace, and Postgres runtime.
 
@@ -287,6 +335,10 @@ async def runtime_from_environment(
         environ: Environment overrides; defaults to the process environment.
         setup_checkpoint_schema: Whether to run idempotent LangGraph checkpoint
             schema setup. Use true during initial environment setup.
+        mcp_client_decorator: Optional trusted composition boundary applied to
+            each role-labelled client after its persistent transport opens.
+            Normal production callers omit it; controlled recovery tests may
+            use it to inject a process-ending transport fault.
 
     Yields:
         Ready user-facing runtime. Closing the context stops MCP subprocesses
@@ -300,7 +352,7 @@ async def runtime_from_environment(
     profiles = development_model_profiles()
     profile_id = values.get(
         "TRADER_AGENTS_MODEL_PROFILE_ID",
-        "ollama-qwen35-9b-json-v1",
+        DEVELOPMENT_MODEL_PROFILE_ID,
     )
     profile = profiles.get(profile_id)
     model_env = {**values, **profile_environment(profile)}
@@ -315,13 +367,11 @@ async def runtime_from_environment(
             )
         )
     )
-    server_cwd = Path(
-        values.get("TRADER_AGENTS_MCP_CWD", str(Path.cwd()))
-    ).resolve()
+    server_cwd = Path(values.get("TRADER_AGENTS_MCP_CWD", str(Path.cwd()))).resolve()
     read_timeout = int(values.get("TRADER_AGENTS_MCP_TIMEOUT_SECONDS", "180"))
 
     async with AsyncExitStack() as stack:
-        coordinator_client = await stack.enter_async_context(
+        coordinator_transport = await stack.enter_async_context(
             _mcp_client(
                 command=server_command,
                 args=server_args,
@@ -330,7 +380,7 @@ async def runtime_from_environment(
                 timeout_seconds=read_timeout,
             )
         )
-        data_client = await stack.enter_async_context(
+        data_transport = await stack.enter_async_context(
             _mcp_client(
                 command=server_command,
                 args=server_args,
@@ -339,7 +389,7 @@ async def runtime_from_environment(
                 timeout_seconds=read_timeout,
             )
         )
-        strategy_client = await stack.enter_async_context(
+        strategy_transport = await stack.enter_async_context(
             _mcp_client(
                 command=server_command,
                 args=server_args,
@@ -348,6 +398,22 @@ async def runtime_from_environment(
                 timeout_seconds=read_timeout,
             )
         )
+        coordinator_client: McpToolClient = coordinator_transport
+        data_client: McpToolClient = data_transport
+        strategy_client: McpToolClient = strategy_transport
+        if mcp_client_decorator is not None:
+            coordinator_client = mcp_client_decorator(
+                AgentRole.RESEARCH_COORDINATOR,
+                coordinator_transport,
+            )
+            data_client = mcp_client_decorator(
+                AgentRole.DATA_RESEARCH,
+                data_transport,
+            )
+            strategy_client = mcp_client_decorator(
+                AgentRole.STRATEGY_ENGINEERING,
+                strategy_transport,
+            )
         checkpointer = await stack.enter_async_context(
             open_postgres_checkpointer(
                 environ=values,
@@ -389,6 +455,7 @@ async def runtime_from_environment(
             tool_catalogue=catalogue,
             programs=programs,
             model_profiles=profiles,
+            trace_sink=trace_sink,
         )
 
 
@@ -459,16 +526,21 @@ def _outcome_if_available(
 
 def _trace_sink(environ: Mapping[str, str]) -> TraceSink:
     """Build optional MLflow tracing only from explicit configuration."""
-    tracking_uri = str(
-        environ.get("TRADER_AGENTS_MLFLOW_TRACKING_URI") or ""
-    ).strip()
+    tracking_uri = str(environ.get("TRADER_AGENTS_MLFLOW_TRACKING_URI") or "").strip()
     if not tracking_uri:
         return NoOpTraceSink()
     experiment = str(
-        environ.get("TRADER_AGENTS_MLFLOW_EXPERIMENT")
-        or "trader-agentic-research"
+        environ.get("TRADER_AGENTS_MLFLOW_EXPERIMENT") or "trader-agentic-research"
     ).strip()
     return MlflowTraceSink(
         tracking_uri=tracking_uri,
         experiment_name=experiment,
+    )
+
+
+def _root_branch_id(session_id: str) -> str:
+    """Return the deterministic coordinator root-branch identity."""
+    return stable_research_id(
+        "agent_root_branch",
+        {"session_id": session_id},
     )

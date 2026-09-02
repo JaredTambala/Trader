@@ -8,12 +8,13 @@ import json
 import time
 from typing import Any, Literal
 
-from trader_research.foundation import stable_research_id
+from trader_research.foundation import json_payload_hash, stable_research_id
 
 from .catalogue import ToolCatalogue, ToolDefinition
 from .contracts import (
     CanonicalEvidenceRef,
     PublicIssue,
+    StrategyBuildContract,
     ToolCallProposal,
     ToolObservation,
 )
@@ -24,6 +25,16 @@ from .tracing import (
     TraceCorrelation,
     TraceSink,
     correlated_attributes,
+)
+
+
+_STRATEGY_ATTRIBUTED_MUTATIONS = frozenset(
+    {
+        "research_register_strategy_implementation",
+        "research_validate_strategy_implementation",
+        "research_register_risk_manager_implementation",
+        "research_validate_risk_manager_implementation",
+    }
 )
 
 
@@ -133,9 +144,7 @@ class RoleScopedMcpRuntime:
                     **{
                         "trader.tool_name": proposal.tool_name,
                         "trader.call_id": proposal.call_id,
-                        "trader.side_effect": (
-                            authorized.definition.side_effect.value
-                        ),
+                        "trader.side_effect": (authorized.definition.side_effect.value),
                         **_trace_identity_attributes(proposal.arguments),
                     },
                 ),
@@ -150,6 +159,14 @@ class RoleScopedMcpRuntime:
                     definition=authorized.definition,
                     max_observation_bytes=self.max_observation_bytes,
                 )
+        except BaseException:
+            _trace_result(
+                self.trace_sink,
+                correlation=correlation,
+                proposal=proposal,
+                observation=None,
+            )
+            raise
         finally:
             duration_ms = max(
                 0,
@@ -159,30 +176,12 @@ class RoleScopedMcpRuntime:
                 side_effect=authorized.definition.side_effect,
                 duration_ms=duration_ms,
             )
-        with self.trace_sink.span(
-            f"agent.mcp_result.{proposal.tool_name}",
-            span_type="CHAIN",
-            attributes=correlated_attributes(
-                correlation,
-                **{
-                    "trader.tool_name": proposal.tool_name,
-                    "trader.call_id": proposal.call_id,
-                    "trader.result_ok": observation.ok,
-                    "trader.evidence_count": len(observation.evidence_refs),
-                    "trader.evidence_types": sorted(
-                        item.artifact_type
-                        for item in observation.evidence_refs
-                    ),
-                    "trader.evidence_refs": sorted(
-                        item.uri for item in observation.evidence_refs
-                    ),
-                    "trader.error_codes": sorted(
-                        item.code for item in observation.errors
-                    ),
-                },
-            ),
-        ):
-            pass
+        _trace_result(
+            self.trace_sink,
+            correlation=correlation,
+            proposal=proposal,
+            observation=observation,
+        )
         return McpExecutionResult(
             authorized_call=authorized,
             observation=observation,
@@ -207,45 +206,79 @@ def _bind_runtime_operation(
     proposal: ToolCallProposal,
     context: PolicyContext,
 ) -> ToolCallProposal:
-    """Bind model-proposed mutations to one deterministic transition.
+    """Bind trusted contract and mutation identities before authorization.
 
-    The model chooses whether and what to mutate. Runtime code supplies the
-    operation identity for candidate writes and actual Data loading, so the
-    model cannot select replay identity and every accepted attempt has stable
-    lineage across checkpoint recovery.
+    The model chooses which implementation to compare and whether and what to
+    mutate. Runtime code supplies the exact approved comparison requirements
+    and operation identity, so the model cannot weaken the build contract or
+    choose replay identity.
     """
-    if not _requires_runtime_operation(proposal):
-        return proposal
-    delegation = context.delegation
-    if delegation is None:
-        raise ValueError("runtime-bound operation requires a delegation")
-    sequence = context.runtime_state.get("step_sequence")
-    if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence <= 0:
-        raise ValueError("runtime-bound operation requires a positive step sequence")
-    operation_id = stable_research_id(
-        "agent_tool_operation",
-        {
-            "session_id": context.session.session_id,
-            "delegation_id": delegation.delegation_id,
-            "attempt_id": delegation.attempt_id,
-            "step_sequence": sequence,
-            "tool_name": proposal.tool_name,
-        },
-    )
-    bound_arguments = {
-        **proposal.arguments,
-        "operation_id": operation_id,
-    }
-    if proposal.tool_name == "data_ensure_loaded":
+    bound_arguments = dict(proposal.arguments)
+    changed = False
+    if proposal.tool_name == "research_compare_implementation":
+        contract = context.build_contract
+        if contract is None:
+            raise ValueError("implementation comparison requires a build contract")
+        bound_arguments["build_contract"] = _comparison_contract(contract)
+        changed = True
+    if proposal.tool_name in _STRATEGY_ATTRIBUTED_MUTATIONS:
         bound_arguments.update(
             {
                 "requested_by": context.session.session_id,
-                "actor": "Data Research Agent",
+                "actor": "Strategy Engineering Agent",
             }
         )
-    return proposal.model_copy(
-        update={"arguments": bound_arguments}
-    )
+        changed = True
+    if _requires_runtime_operation(proposal):
+        delegation = context.delegation
+        if delegation is None:
+            raise ValueError("runtime-bound operation requires a delegation")
+        sequence = context.runtime_state.get("step_sequence")
+        if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence <= 0:
+            raise ValueError(
+                "runtime-bound operation requires a positive step sequence"
+            )
+        bound_arguments["operation_id"] = stable_research_id(
+            "agent_tool_operation",
+            {
+                "session_id": context.session.session_id,
+                "delegation_id": delegation.delegation_id,
+                "attempt_id": delegation.attempt_id,
+                "step_sequence": sequence,
+                "tool_name": proposal.tool_name,
+            },
+        )
+        if proposal.tool_name == "data_ensure_loaded":
+            bound_arguments.update(
+                {
+                    "requested_by": context.session.session_id,
+                    "actor": "Data Research Agent",
+                }
+            )
+        changed = True
+    if not changed:
+        return proposal
+    return proposal.model_copy(update={"arguments": bound_arguments})
+
+
+def _comparison_contract(contract: StrategyBuildContract) -> dict[str, Any]:
+    """Project exact approved requirements into the catalogue comparison shape."""
+    parameters = {
+        item.name: {
+            "type": item.value_type,
+            "default": item.default,
+            **({"minimum": item.minimum} if item.minimum is not None else {}),
+            **({"maximum": item.maximum} if item.maximum is not None else {}),
+        }
+        for item in contract.parameters
+    }
+    return {
+        "implementation_kind": contract.implementation_kind,
+        "runtime_contract": contract.runtime_interface,
+        "portfolio_mode": contract.portfolio_mode,
+        "required_capabilities": list(contract.required_capabilities),
+        "parameters": parameters,
+    }
 
 
 def _requires_runtime_operation(proposal: ToolCallProposal) -> bool:
@@ -284,7 +317,65 @@ def _trace_identity_attributes(
         receipt_id = receipt.get("receipt_id")
         if isinstance(receipt_id, str) and receipt_id:
             projected["trader.argument.receipt_id"] = receipt_id
+    scope_keys = (
+        "asset_class",
+        "build_contract_id",
+        "end",
+        "fields",
+        "implementation_kinds",
+        "query",
+        "start",
+        "symbols",
+        "timeframe",
+    )
+    scope = {key: arguments[key] for key in scope_keys if key in arguments}
+    if scope:
+        projected["trader.argument.scope_digest"] = json_payload_hash(scope)
     return projected
+
+
+def _trace_result(
+    trace_sink: TraceSink,
+    *,
+    correlation: TraceCorrelation,
+    proposal: ToolCallProposal,
+    observation: ToolObservation | None,
+) -> None:
+    """Emit one terminal result span for every authorized MCP dispatch.
+
+    A missing observation means execution ended at the transport boundary. The
+    span records only a fixed public error class; canonical journals remain the
+    authority for whether a provider mutation was accepted before its response
+    was lost.
+    """
+    evidence_refs = observation.evidence_refs if observation is not None else ()
+    error_codes = (
+        sorted(item.code for item in observation.errors)
+        if observation is not None
+        else ["mcp_transport_interrupted"]
+    )
+    with trace_sink.span(
+        f"agent.mcp_result.{proposal.tool_name}",
+        span_type="CHAIN",
+        attributes=correlated_attributes(
+            correlation,
+            **{
+                "trader.tool_name": proposal.tool_name,
+                "trader.call_id": proposal.call_id,
+                "trader.result_ok": (
+                    observation.ok if observation is not None else False
+                ),
+                "trader.evidence_count": len(evidence_refs),
+                "trader.evidence_types": sorted(
+                    item.artifact_type for item in evidence_refs
+                ),
+                "trader.evidence_refs": sorted(item.uri for item in evidence_refs),
+                "trader.error_codes": error_codes,
+                **_trace_identity_attributes(proposal.arguments),
+            },
+        ),
+    ):
+        pass
 
 
 def _normalize_response(

@@ -240,8 +240,12 @@ def _session() -> ResearchSession:
         },
         implementation_ref=None,
         python_quality_guide="docs/python_code_quality.md",
-        model_profile_id="ollama-qwen35-9b-json-v1",
-        agent_program_ids=("coordinator-v1", "data-research-v1", "strategy-engineering-v1"),
+        model_profile_id="ollama-qwen35-9b-json-v2",
+        agent_program_ids=(
+            "coordinator-v1",
+            "data-research-v1",
+            "strategy-engineering-v1",
+        ),
         tool_catalog_id="first-slice-tools-v1",
         budget=AgentBudget(
             max_model_calls=12,

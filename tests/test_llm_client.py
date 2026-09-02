@@ -16,9 +16,36 @@ from trader_agents.llm_client import (
 
 
 class FakeTransport:
-    def __init__(self, response: Mapping[str, Any]) -> None:
+    """Capture deterministic provider requests for client boundary tests."""
+
+    def __init__(
+        self,
+        response: Mapping[str, Any],
+        *,
+        get_response: Mapping[str, Any] | None = None,
+    ) -> None:
+        """Store POST and optional GET responses."""
         self.response = dict(response)
+        self.get_response = dict(get_response or {})
         self.calls: list[dict[str, Any]] = []
+        self.get_calls: list[dict[str, Any]] = []
+
+    async def get_json(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        timeout_seconds: float,
+    ) -> Mapping[str, Any]:
+        """Capture a GET request and return the configured response."""
+        self.get_calls.append(
+            {
+                "url": url,
+                "headers": dict(headers),
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+        return self.get_response
 
     async def post_json(
         self,
@@ -109,10 +136,14 @@ def test_openrouter_style_client_uses_openai_compatible_endpoint() -> None:
         output = await client.complete_json(_request())
 
         assert output == {"action": "finish", "reason": "complete"}
-        assert transport.calls[0]["url"] == "https://openrouter.ai/api/v1/chat/completions"
+        assert (
+            transport.calls[0]["url"] == "https://openrouter.ai/api/v1/chat/completions"
+        )
         assert transport.calls[0]["headers"]["Authorization"] == "Bearer secret"
         assert transport.calls[0]["payload"]["model"] == "openrouter/model"
-        assert transport.calls[0]["payload"]["response_format"] == {"type": "json_object"}
+        assert transport.calls[0]["payload"]["response_format"] == {
+            "type": "json_object"
+        }
         assert transport.calls[0]["timeout_seconds"] == 12.0
 
     anyio.run(_run)
@@ -146,3 +177,76 @@ def test_ollama_client_uses_local_chat_endpoint() -> None:
         assert transport.calls[0]["payload"]["stream"] is False
 
     anyio.run(_run)
+
+
+def test_ollama_client_verifies_admitted_model_digest_before_chat() -> None:
+    digest = "a" * 64
+    transport = FakeTransport(
+        {
+            "message": {
+                "content": '{"action": "finish", "reason": "complete"}',
+            }
+        },
+        get_response={
+            "models": [
+                {
+                    "name": "qwen3.5:9b",
+                    "model": "qwen3.5:9b",
+                    "digest": digest,
+                }
+            ]
+        },
+    )
+    client = build_llm_client_from_env(
+        {
+            "TRADER_AGENTS_LLM_PROVIDER": "ollama",
+            "TRADER_AGENTS_LLM_MODEL": "qwen3.5:9b",
+            "TRADER_AGENTS_LLM_MODEL_REVISION": digest,
+            "TRADER_AGENTS_LLM_BASE_URL": "http://localhost:11434",
+        },
+        transport=transport,
+    )
+
+    async def _run() -> None:
+        output = await client.complete_json(_request())
+
+        assert output == {"action": "finish", "reason": "complete"}
+        assert transport.get_calls[0]["url"] == "http://localhost:11434/api/tags"
+        assert len(transport.calls) == 1
+
+    anyio.run(_run)
+
+
+def test_ollama_client_rejects_model_digest_drift_before_chat() -> None:
+    transport = FakeTransport(
+        {
+            "message": {
+                "content": '{"action": "finish", "reason": "complete"}',
+            }
+        },
+        get_response={
+            "models": [
+                {
+                    "name": "qwen3.5:9b",
+                    "digest": "b" * 64,
+                }
+            ]
+        },
+    )
+    client = build_llm_client_from_env(
+        {
+            "TRADER_AGENTS_LLM_PROVIDER": "ollama",
+            "TRADER_AGENTS_LLM_MODEL": "qwen3.5:9b",
+            "TRADER_AGENTS_LLM_MODEL_REVISION": "a" * 64,
+        },
+        transport=transport,
+    )
+
+    async def _run() -> None:
+        with pytest.raises(LlmConfigurationError, match="digest mismatch"):
+            await client.complete_json(_request())
+
+        assert transport.calls == []
+
+    anyio.run(_run)
+"""Unit tests for provider configuration and exact model identity checks."""

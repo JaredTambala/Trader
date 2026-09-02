@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
+from collections.abc import Callable, Mapping
+from typing import Any, Protocol
 
 import anyio
 from mcp.server.fastmcp import FastMCP
@@ -100,6 +100,28 @@ PredictionRuntimeResolverProvider = Callable[[], PredictionRuntimeResolver]
 ServiceResult = ApplicationResult | ToolEnvelope
 
 
+class ImplementationValidationService(Protocol):
+    """Callable boundary for independently validating one implementation.
+
+    The MCP adapter owns transport normalization and requester attribution. A
+    supplied service owns the deterministic admission decision and canonical
+    validation artifact. Production registration uses the maintained Trader
+    validator; controlled qualification may decorate that validator with a
+    reproducible external failure fixture.
+    """
+
+    def __call__(
+        self,
+        *,
+        implementation_version_id: str | None = None,
+        implementation_version_uri: str | None = None,
+        implementation_version: Mapping[str, Any] | None = None,
+        fixture_parameters: Mapping[str, Any] | None = None,
+        artifact_store: ResearchArtifactStore | None = None,
+    ) -> ApplicationResult:
+        """Validate one exact implementation and persist its admission report."""
+
+
 def register_research_tools(
     server: FastMCP,
     environment: McpEnvironment,
@@ -109,10 +131,13 @@ def register_research_tools(
     artifact_store_provider: ResearchArtifactStoreProvider | None = None,
     optimizer_registry: OptimizationEngineRegistry | None = None,
     tracking_sink_registry: ExperimentTrackingSinkRegistry | None = None,
-    prediction_deployment_reader_provider: PredictionDeploymentReaderProvider | None = None,
+    prediction_deployment_reader_provider: PredictionDeploymentReaderProvider
+    | None = None,
     prediction_mapper_catalog: PredictionMapperCatalog | None = None,
-    prediction_runtime_resolver_provider: PredictionRuntimeResolverProvider | None = None,
+    prediction_runtime_resolver_provider: PredictionRuntimeResolverProvider
+    | None = None,
     coding_workspace_service_provider: CodingWorkspaceServiceProvider | None = None,
+    strategy_validation_service: ImplementationValidationService | None = None,
 ) -> None:
     """Register implementation, specification, backtest, and optimisation tools.
 
@@ -130,18 +155,21 @@ def register_research_tools(
         coding_workspace_service_provider: Optional trusted resolver for
             immutable candidate packages. Complete package source is consumed
             inside this adapter and is never returned to the model.
+        strategy_validation_service: Optional deterministic Strategy admission
+            service. The maintained production validator is used when omitted.
     """
     engines = optimizer_registry or OptimizationEngineRegistry()
     sinks = tracking_sink_registry or ExperimentTrackingSinkRegistry()
+    resolved_strategy_validation_service = (
+        strategy_validation_service or validate_strategy_implementation
+    )
 
     def _store(
         requested_by: str | None = None,
         actor: str | None = None,
     ) -> ResearchArtifactStore | None:
         if (requested_by is None) != (actor is None):
-            raise ValueError(
-                "requested_by and actor must be supplied together"
-            )
+            raise ValueError("requested_by and actor must be supplied together")
         if artifact_store_provider is None:
             return None
         store = artifact_store_provider()
@@ -206,6 +234,14 @@ def register_research_tools(
     def research_list_strategy_templates(
         families: list[str] | None = None,
     ) -> CallToolResult:
+        """Return maintained strategy-template discovery metadata.
+
+        Args:
+            families: Optional family names used to narrow the catalogue.
+
+        Returns:
+            MCP result containing source-free maintained template summaries.
+        """
         return _result(list_strategy_templates(families=families))
 
     @server.tool(
@@ -217,13 +253,19 @@ def register_research_tools(
     def research_list_risk_manager_templates(
         families: list[str] | None = None,
     ) -> CallToolResult:
+        """Return maintained risk-manager template discovery metadata.
+
+        Args:
+            families: Optional family names used to narrow the catalogue.
+
+        Returns:
+            MCP result containing source-free maintained template summaries.
+        """
         return _result(list_risk_manager_templates(families=families))
 
     @server.tool(
         name=RESEARCH_SEARCH_IMPLEMENTATIONS_TOOL,
-        description=RESEARCH_TOOL_DESCRIPTIONS[
-            RESEARCH_SEARCH_IMPLEMENTATIONS_TOOL
-        ],
+        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_SEARCH_IMPLEMENTATIONS_TOOL],
     )
     def research_search_implementations(
         query: str = "",
@@ -289,9 +331,7 @@ def register_research_tools(
 
     @server.tool(
         name=RESEARCH_COMPARE_IMPLEMENTATION_TOOL,
-        description=RESEARCH_TOOL_DESCRIPTIONS[
-            RESEARCH_COMPARE_IMPLEMENTATION_TOOL
-        ],
+        description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_COMPARE_IMPLEMENTATION_TOOL],
     )
     def research_compare_implementation(
         implementation_ref: str,
@@ -338,6 +378,8 @@ def register_research_tools(
         resource_bounds: dict[str, Any] | None,
         provenance_refs: list[dict[str, Any]] | None,
         metadata: dict[str, Any] | None,
+        requested_by: str | None = None,
+        actor: str | None = None,
     ) -> CallToolResult:
         package_id = str(candidate_package_id or "").strip()
         direct_source = source_code if isinstance(source_code, str) else None
@@ -401,12 +443,10 @@ def register_research_tools(
             resource_bounds=resource_bounds,
             provenance_refs=provenance_refs,
             metadata=resolved_metadata,
-            artifact_store=_store(),
+            artifact_store=_store(requested_by, actor),
         )
         if package_id and registration.ok:
-            implementation = dict(
-                registration.data.get("implementation_version", {})
-            )
+            implementation = dict(registration.data.get("implementation_version", {}))
             implementation.pop("source_code", None)
             registration = ApplicationResult(
                 ok=True,
@@ -439,7 +479,32 @@ def register_research_tools(
         resource_bounds: dict[str, Any] | None = None,
         provenance_refs: list[dict[str, Any]] | None = None,
         metadata: dict[str, Any] | None = None,
+        requested_by: str | None = None,
+        actor: str | None = None,
     ) -> CallToolResult:
+        """Register one immutable strategy implementation version.
+
+        Args:
+            name: Stable implementation name.
+            version: Caller-declared implementation version.
+            factory_name: Module factory invoked by Trader.
+            source_code: Complete source for non-agent callers.
+            candidate_package_id: Immutable Coding Workspace package identity.
+            class_name: Optional implementation class name.
+            parameter_schema: Declared parameter contract.
+            dependencies: Pinned descriptive dependency declarations.
+            authoring_origin: Provenance class for the implementation.
+            capabilities: Declared runtime capabilities.
+            runtime_requirements: Declared runtime constraints.
+            resource_bounds: Declared execution resource bounds.
+            provenance_refs: Optional canonical provenance references.
+            metadata: Bounded implementation metadata.
+            requested_by: Optional requesting workflow or session identity.
+            actor: Optional registered actor identity.
+
+        Returns:
+            MCP result with the canonical source-free implementation record.
+        """
         return _register(
             register_strategy_implementation,
             command=RESEARCH_REGISTER_STRATEGY_IMPLEMENTATION_TOOL,
@@ -457,6 +522,8 @@ def register_research_tools(
             resource_bounds=resource_bounds,
             provenance_refs=provenance_refs,
             metadata=metadata,
+            requested_by=requested_by,
+            actor=actor,
         )
 
     @server.tool(
@@ -480,7 +547,32 @@ def register_research_tools(
         resource_bounds: dict[str, Any] | None = None,
         provenance_refs: list[dict[str, Any]] | None = None,
         metadata: dict[str, Any] | None = None,
+        requested_by: str | None = None,
+        actor: str | None = None,
     ) -> CallToolResult:
+        """Register one immutable risk-manager implementation version.
+
+        Args:
+            name: Stable implementation name.
+            version: Caller-declared implementation version.
+            factory_name: Module factory invoked by Trader.
+            source_code: Complete source for non-agent callers.
+            candidate_package_id: Immutable Coding Workspace package identity.
+            class_name: Optional implementation class name.
+            parameter_schema: Declared parameter contract.
+            dependencies: Pinned descriptive dependency declarations.
+            authoring_origin: Provenance class for the implementation.
+            capabilities: Declared runtime capabilities.
+            runtime_requirements: Declared runtime constraints.
+            resource_bounds: Declared execution resource bounds.
+            provenance_refs: Optional canonical provenance references.
+            metadata: Bounded implementation metadata.
+            requested_by: Optional requesting workflow or session identity.
+            actor: Optional registered actor identity.
+
+        Returns:
+            MCP result with the canonical source-free implementation record.
+        """
         return _register(
             register_risk_manager_implementation,
             command=RESEARCH_REGISTER_RISK_MANAGER_IMPLEMENTATION_TOOL,
@@ -498,6 +590,8 @@ def register_research_tools(
             resource_bounds=resource_bounds,
             provenance_refs=provenance_refs,
             metadata=metadata,
+            requested_by=requested_by,
+            actor=actor,
         )
 
     @server.tool(
@@ -521,6 +615,26 @@ def register_research_tools(
         provenance_refs: list[dict[str, Any]] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> CallToolResult:
+        """Register one immutable optimization-objective implementation.
+
+        Args:
+            name: Stable objective name.
+            version: Caller-declared objective version.
+            source_code: Complete objective source.
+            factory_name: Module factory used to construct the objective.
+            class_name: Optional objective class name.
+            parameter_schema: Declared objective parameter contract.
+            dependencies: Pinned descriptive dependency declarations.
+            authoring_origin: Provenance class for the source.
+            capabilities: Declared objective capabilities.
+            runtime_requirements: Declared runtime constraints.
+            resource_bounds: Declared execution resource bounds.
+            provenance_refs: Optional canonical provenance references.
+            metadata: Bounded implementation metadata.
+
+        Returns:
+            MCP result containing the canonical objective version.
+        """
         return _register(
             register_optimization_objective,
             command=RESEARCH_REGISTER_OPTIMIZATION_OBJECTIVE_TOOL,
@@ -574,8 +688,21 @@ def register_research_tools(
         requested_by: str | None = None,
         actor: str | None = None,
     ) -> CallToolResult:
+        """Validate one exact strategy version through independent admission.
+
+        Args:
+            implementation_version_id: Exact canonical implementation ID.
+            implementation_version_uri: Exact canonical implementation URI.
+            implementation_version: Inline implementation for bounded callers.
+            fixture_parameters: Optional deterministic fixture parameters.
+            requested_by: Optional requesting workflow or session identity.
+            actor: Optional registered actor identity.
+
+        Returns:
+            MCP result containing the canonical admission report.
+        """
         return _validate(
-            validate_strategy_implementation,
+            resolved_strategy_validation_service,
             implementation_version_id=implementation_version_id,
             implementation_version_uri=implementation_version_uri,
             implementation_version=implementation_version,
@@ -598,6 +725,19 @@ def register_research_tools(
         requested_by: str | None = None,
         actor: str | None = None,
     ) -> CallToolResult:
+        """Validate one exact risk-manager version through admission.
+
+        Args:
+            implementation_version_id: Exact canonical implementation ID.
+            implementation_version_uri: Exact canonical implementation URI.
+            implementation_version: Inline implementation for bounded callers.
+            fixture_parameters: Optional deterministic fixture parameters.
+            requested_by: Optional requesting workflow or session identity.
+            actor: Optional registered actor identity.
+
+        Returns:
+            MCP result containing the canonical admission report.
+        """
         return _validate(
             validate_risk_manager_implementation,
             implementation_version_id=implementation_version_id,
@@ -622,6 +762,19 @@ def register_research_tools(
         requested_by: str | None = None,
         actor: str | None = None,
     ) -> CallToolResult:
+        """Validate one exact optimization-objective implementation.
+
+        Args:
+            implementation_version_id: Exact canonical implementation ID.
+            implementation_version_uri: Exact canonical implementation URI.
+            implementation_version: Inline implementation for bounded callers.
+            fixture_parameters: Optional deterministic fixture parameters.
+            requested_by: Optional requesting workflow or session identity.
+            actor: Optional registered actor identity.
+
+        Returns:
+            MCP result containing the canonical admission report.
+        """
         return _validate(
             validate_optimization_objective,
             implementation_version_id=implementation_version_id,
@@ -651,6 +804,24 @@ def register_research_tools(
         requested_by: str | None = None,
         actor: str | None = None,
     ) -> CallToolResult:
+        """Create an immutable strategy specification from passed admission.
+
+        Args:
+            implementation_validation_ref: Passed implementation admission ref.
+            parameters: Exact configured strategy parameters.
+            sizing: Exact position-sizing configuration.
+            portfolio_mode: Declared single- or multi-asset runtime mode.
+            required_runtime_context: Required deterministic runtime inputs.
+            execution_assumptions: Explicit non-data execution assumptions.
+            tunable_fields: Configuration paths later search may change.
+            provenance_refs: Optional canonical provenance references.
+            prediction_bindings: Optional immutable model-to-input bindings.
+            requested_by: Optional requesting workflow or session identity.
+            actor: Optional registered actor identity.
+
+        Returns:
+            MCP result containing the canonical strategy specification.
+        """
         return _result(
             create_strategy_specification(
                 implementation_validation_ref=implementation_validation_ref,
@@ -681,6 +852,18 @@ def register_research_tools(
         requested_by: str | None = None,
         actor: str | None = None,
     ) -> CallToolResult:
+        """Validate one exact strategy specification and upstream lineage.
+
+        Args:
+            strategy_specification_id: Exact canonical specification ID.
+            strategy_specification_uri: Exact canonical specification URI.
+            strategy_specification: Inline specification for bounded callers.
+            requested_by: Optional requesting workflow or session identity.
+            actor: Optional registered actor identity.
+
+        Returns:
+            MCP result containing the canonical validation report.
+        """
         return _result(
             validate_strategy_specification(
                 strategy_specification_id=strategy_specification_id,
@@ -705,6 +888,18 @@ def register_research_tools(
         requested_by: str | None = None,
         actor: str | None = None,
     ) -> CallToolResult:
+        """Create an immutable ordered risk-stack specification.
+
+        Args:
+            risk_managers: Ordered admitted manager configurations.
+            execution_assumptions: Explicit stack execution assumptions.
+            provenance_refs: Optional canonical provenance references.
+            requested_by: Optional requesting workflow or session identity.
+            actor: Optional registered actor identity.
+
+        Returns:
+            MCP result containing the canonical risk-stack specification.
+        """
         return _result(
             create_risk_stack_specification(
                 risk_managers=risk_managers,
@@ -727,6 +922,18 @@ def register_research_tools(
         requested_by: str | None = None,
         actor: str | None = None,
     ) -> CallToolResult:
+        """Validate one risk stack and every ordered implementation ref.
+
+        Args:
+            risk_stack_specification_id: Exact canonical stack ID.
+            risk_stack_specification_uri: Exact canonical stack URI.
+            risk_stack_specification: Inline stack for bounded callers.
+            requested_by: Optional requesting workflow or session identity.
+            actor: Optional registered actor identity.
+
+        Returns:
+            MCP result containing the canonical validation report.
+        """
         return _result(
             validate_risk_stack_specification(
                 risk_stack_specification_id=risk_stack_specification_id,
@@ -761,6 +968,30 @@ def register_research_tools(
         requested_by: str | None = None,
         actor: str | None = None,
     ) -> CallToolResult:
+        """Create an immutable backtest specification over exact evidence.
+
+        Args:
+            strategy_specification_validation_ref: Passed strategy-spec ref.
+            dataset_manifest: Complete Data-owned dataset manifest.
+            data_quality_report: Matching complete quality report.
+            risk_stack_specification_validation_ref: Optional passed risk ref.
+            assumptions: Explicit market and execution assumptions.
+            initial_cash: Starting cash balance.
+            initial_positions: Optional starting portfolio positions.
+            benchmark: Optional benchmark declaration.
+            deterministic_seed: Seed for deterministic runtime behavior.
+            max_runs: Optional run-count ceiling.
+            log_cycle_details: Whether bounded cycle detail is retained.
+            runtime_limits: Explicit runtime resource ceilings.
+            parent_specification_ref: Optional immutable parent specification.
+            selection_origin_ref: Optional selection-lineage reference.
+            variant_reason: Optional bounded successor rationale.
+            requested_by: Optional requesting workflow or session identity.
+            actor: Optional registered actor identity.
+
+        Returns:
+            MCP result containing the canonical backtest specification.
+        """
         return _result(
             create_backtest_specification(
                 strategy_specification_validation_ref=strategy_specification_validation_ref,
@@ -797,6 +1028,18 @@ def register_research_tools(
         requested_by: str | None = None,
         actor: str | None = None,
     ) -> CallToolResult:
+        """Validate a backtest specification and all canonical inputs.
+
+        Args:
+            backtest_specification_id: Exact canonical specification ID.
+            backtest_specification_uri: Exact canonical specification URI.
+            backtest_specification: Inline specification for bounded callers.
+            requested_by: Optional requesting workflow or session identity.
+            actor: Optional registered actor identity.
+
+        Returns:
+            MCP result containing the canonical validation report.
+        """
         return _result(
             validate_backtest_specification(
                 backtest_specification_id=backtest_specification_id,
@@ -819,6 +1062,16 @@ def register_research_tools(
         requested_by: str | None = None,
         actor: str | None = None,
     ) -> CallToolResult:
+        """Execute one passed backtest specification behind runtime gates.
+
+        Args:
+            backtest_specification_validation_ref: Passed specification ref.
+            requested_by: Optional requesting workflow or session identity.
+            actor: Optional registered actor identity.
+
+        Returns:
+            MCP result containing the canonical backtest run evidence.
+        """
         blocked = _runtime_error(RESEARCH_RUN_BACKTEST_SPECIFICATION_TOOL)
         if blocked is not None:
             return blocked
@@ -853,6 +1106,15 @@ def register_research_tools(
         run_id: str | None = None,
         backtest_run_uri: str | None = None,
     ) -> CallToolResult:
+        """Resolve one exact canonical backtest result.
+
+        Args:
+            run_id: Exact canonical run ID.
+            backtest_run_uri: Exact canonical run URI.
+
+        Returns:
+            MCP result containing the revalidated backtest evidence.
+        """
         return _result(
             get_backtest_results(
                 run_id=run_id,
@@ -870,6 +1132,16 @@ def register_research_tools(
         ranking_metric: str = "sharpe",
         sort_order: str = "descending",
     ) -> CallToolResult:
+        """Compare exact backtest runs without creating a research verdict.
+
+        Args:
+            backtest_run_refs: Canonical runs included in the comparison.
+            ranking_metric: Reported metric used for deterministic ordering.
+            sort_order: Ascending or descending result order.
+
+        Returns:
+            MCP result containing bounded comparative measurements.
+        """
         return _result(
             compare_backtest_results(
                 backtest_run_refs=backtest_run_refs,
@@ -884,6 +1156,11 @@ def register_research_tools(
         description=RESEARCH_TOOL_DESCRIPTIONS[RESEARCH_GET_OPTIMIZER_RUNTIME_TOOL],
     )
     def research_get_optimizer_runtime() -> CallToolResult:
+        """Return configured optimizer profiles without starting a run.
+
+        Returns:
+            MCP result describing available and configured optimizer engines.
+        """
         return _result(get_optimizer_runtime(engine_registry=engines))
 
     @server.tool(
@@ -908,6 +1185,27 @@ def register_research_tools(
         requested_by: str | None = None,
         actor: str | None = None,
     ) -> CallToolResult:
+        """Create a prospective immutable parameter-optimization plan.
+
+        Args:
+            base_backtest_specification_validation_ref: Passed base spec ref.
+            holdout_dataset_manifest: Sealed holdout Data manifest.
+            holdout_data_quality_report: Matching holdout quality report.
+            objective_validation_ref: Passed optimization-objective ref.
+            search_space: Prospective tunable dimensions and values.
+            direction: Objective maximization or minimization direction.
+            constraints: Optional prospective selection constraints.
+            seed: Deterministic sampler seed.
+            max_trials: Maximum visible trial count.
+            resource_limits: Explicit trial and execution ceilings.
+            parent_plan_ref: Optional immutable parent plan.
+            variant_reason: Optional bounded successor rationale.
+            requested_by: Optional requesting workflow or session identity.
+            actor: Optional registered actor identity.
+
+        Returns:
+            MCP result containing the canonical optimization plan.
+        """
         return _result(
             create_parameter_optimization_plan(
                 base_backtest_specification_validation_ref=base_backtest_specification_validation_ref,
@@ -939,6 +1237,18 @@ def register_research_tools(
         requested_by: str | None = None,
         actor: str | None = None,
     ) -> CallToolResult:
+        """Execute or resume one gated parameter-optimization plan.
+
+        Args:
+            optimization_plan_ref: Exact canonical plan reference.
+            optimizer_profile: Registered deterministic or Optuna profile.
+            max_new_trials: Optional bound on trials added by this call.
+            requested_by: Optional requesting workflow or session identity.
+            actor: Optional registered actor identity.
+
+        Returns:
+            MCP result containing the reconciled optimization run.
+        """
         blocked = _runtime_error(
             RESEARCH_RUN_PARAMETER_OPTIMIZATION_TOOL, optimization=True
         )
@@ -995,6 +1305,14 @@ def register_research_tools(
     def research_get_parameter_optimization_results(
         optimization_run_ref: str,
     ) -> CallToolResult:
+        """Resolve one exact canonical optimization result ledger.
+
+        Args:
+            optimization_run_ref: Exact canonical run reference.
+
+        Returns:
+            MCP result containing trials, selection, and lineage evidence.
+        """
         return _result(
             get_parameter_optimization_results(
                 optimization_run_ref=optimization_run_ref,
@@ -1013,6 +1331,16 @@ def register_research_tools(
         requested_by: str | None = None,
         actor: str | None = None,
     ) -> CallToolResult:
+        """Execute all immutable optimization variants in an audit plan.
+
+        Args:
+            audit_plan_ref: Exact canonical adversarial audit-plan reference.
+            requested_by: Optional requesting workflow or session identity.
+            actor: Optional registered actor identity.
+
+        Returns:
+            MCP result containing reconciled variant-run evidence.
+        """
         blocked = _runtime_error(
             RESEARCH_RUN_PARAMETER_OPTIMIZATION_VARIANTS_TOOL, optimization=True
         )
@@ -1078,6 +1406,15 @@ def register_research_tools(
         canonical_run_ref: str,
         tracking_profile: str,
     ) -> CallToolResult:
+        """Project canonical run metadata to an approved tracking sink.
+
+        Args:
+            canonical_run_ref: Exact authoritative Trader run reference.
+            tracking_profile: Registered non-authoritative sink profile.
+
+        Returns:
+            MCP result containing the projection receipt or blocked reason.
+        """
         if (
             not environment.allow_external_research_writes
             or not environment.allow_experiment_tracking_writes

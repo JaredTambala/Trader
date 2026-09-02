@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import json
 import time
 from typing import Any, Generic, TypeVar
+from uuid import uuid4
 
 from pydantic import BaseModel, ValidationError
 
@@ -56,6 +57,26 @@ class ModelInvocationResult(Generic[OutputT]):
     output_tokens: int
     duration_ms: int
     schema_repairs: int
+
+
+@dataclass(frozen=True)
+class _ModelTraceIdentity:
+    """Public identities joining one invocation, provider call, and validation."""
+
+    role: str
+    invocation_id: str
+    call_id: str
+    output_contract: str
+    schema_repair: int
+
+    def attributes(self) -> dict[str, str | int]:
+        """Return the JSON-native public identity projection."""
+        return {
+            "trader.model_invocation_id": self.invocation_id,
+            "trader.model_call_id": self.call_id,
+            "trader.output_contract": self.output_contract,
+            "trader.schema_repair": self.schema_repair,
+        }
 
 
 @dataclass(frozen=True)
@@ -118,9 +139,17 @@ class StructuredModelRunner:
         total_output_tokens = 0
         total_duration_ms = 0
         last_errors: list[dict[str, Any]] = []
+        invocation_id = uuid4().hex
 
         for repair in range(program.max_schema_repairs + 1):
             ledger.ensure_model_call_available()
+            trace_identity = _ModelTraceIdentity(
+                role=program.role.value,
+                invocation_id=invocation_id,
+                call_id=uuid4().hex,
+                output_contract=output_type.__name__,
+                schema_repair=repair,
+            )
             messages: tuple[LlmMessage, ...] = base_messages
             if repair:
                 messages = (
@@ -144,19 +173,53 @@ class StructuredModelRunner:
                 thinking=profile.thinking,
             )
             started = time.perf_counter()
-            with self.trace_sink.span(
-                f"agent.model.{program.role.value}",
-                span_type="LLM",
-                attributes=correlated_attributes(
-                    correlation,
-                    **{
-                        "trader.output_contract": output_type.__name__,
-                        "trader.schema_repair": repair,
-                    },
-                ),
-            ):
-                completion = await _complete_with_usage(self.client, request)
-            duration_ms = max(0, round((time.perf_counter() - started) * 1_000))
+            try:
+                with self.trace_sink.span(
+                    f"agent.model.{program.role.value}",
+                    span_type="LLM",
+                    attributes=correlated_attributes(
+                        correlation,
+                        **trace_identity.attributes(),
+                    ),
+                ):
+                    completion = await _complete_with_usage(self.client, request)
+            except BaseException:
+                duration_ms = _elapsed_milliseconds(started)
+                _trace_model_result(
+                    self.trace_sink,
+                    correlation=correlation,
+                    identity=trace_identity,
+                    provider=profile.provider,
+                    model=profile.model,
+                    input_tokens=0,
+                    output_tokens=0,
+                    duration_ms=duration_ms,
+                    result_ok=False,
+                )
+                try:
+                    ledger.record_model_call(
+                        input_tokens=0,
+                        output_tokens=0,
+                        duration_ms=duration_ms,
+                    )
+                except Exception:
+                    # Preserve the provider or process failure that prevented a
+                    # usable result; the public result span still accounts for
+                    # the attempted call during qualification.
+                    pass
+                raise
+            duration_ms = _elapsed_milliseconds(started)
+            _trace_model_result(
+                self.trace_sink,
+                correlation=correlation,
+                identity=trace_identity,
+                provider=completion.provider,
+                model=completion.model,
+                input_tokens=completion.usage.input_tokens,
+                output_tokens=completion.usage.output_tokens,
+                duration_ms=duration_ms,
+                result_ok=True,
+            )
             ledger.record_model_call(
                 input_tokens=completion.usage.input_tokens,
                 output_tokens=completion.usage.output_tokens,
@@ -169,12 +232,26 @@ class StructuredModelRunner:
                 output = output_type.model_validate(completion.payload)
             except ValidationError as exc:
                 last_errors = _public_validation_errors(exc)
+                _trace_model_validation(
+                    self.trace_sink,
+                    correlation=correlation,
+                    identity=trace_identity,
+                    schema_valid=False,
+                    validation_error_count=len(last_errors),
+                )
                 if repair >= program.max_schema_repairs:
                     raise StructuredOutputError(
                         f"{program.program_id} failed {output_type.__name__} validation",
                         validation_errors=last_errors,
                     ) from exc
                 continue
+            _trace_model_validation(
+                self.trace_sink,
+                correlation=correlation,
+                identity=trace_identity,
+                schema_valid=True,
+                validation_error_count=0,
+            )
             return ModelInvocationResult(
                 output=output,
                 provider=completion.provider,
@@ -222,6 +299,67 @@ async def _complete_with_usage(
         provider="unknown",
         model=request.model or "unknown",
     )
+
+
+def _trace_model_result(
+    trace_sink: TraceSink,
+    *,
+    correlation: TraceCorrelation,
+    identity: _ModelTraceIdentity,
+    provider: str,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    duration_ms: int,
+    result_ok: bool,
+) -> None:
+    """Emit bounded terminal accounting for one physical provider call."""
+    with trace_sink.span(
+        f"agent.model_result.{identity.role}",
+        span_type="LLM",
+        attributes=correlated_attributes(
+            correlation,
+            **{
+                **identity.attributes(),
+                "trader.model_provider": provider,
+                "trader.model_name": model,
+                "trader.input_tokens": input_tokens,
+                "trader.output_tokens": output_tokens,
+                "trader.duration_ms": duration_ms,
+                "trader.result_ok": result_ok,
+            },
+        ),
+    ):
+        pass
+
+
+def _trace_model_validation(
+    trace_sink: TraceSink,
+    *,
+    correlation: TraceCorrelation,
+    identity: _ModelTraceIdentity,
+    schema_valid: bool,
+    validation_error_count: int,
+) -> None:
+    """Emit the strict public-schema verdict for one completed response."""
+    with trace_sink.span(
+        f"agent.model_validation.{identity.role}",
+        span_type="LLM",
+        attributes=correlated_attributes(
+            correlation,
+            **{
+                **identity.attributes(),
+                "trader.schema_valid": schema_valid,
+                "trader.validation_error_count": validation_error_count,
+            },
+        ),
+    ):
+        pass
+
+
+def _elapsed_milliseconds(started: float) -> int:
+    """Return a non-negative rounded duration from a monotonic start time."""
+    return max(0, round((time.perf_counter() - started) * 1_000))
 
 
 def _bounded_context_json(public_context: Mapping[str, Any]) -> str:

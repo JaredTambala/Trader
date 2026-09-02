@@ -85,27 +85,27 @@ def first_slice_programs() -> AgentProgramRegistry:
     return AgentProgramRegistry(
         (
             AgentProgram(
-                program_id="research-coordinator-v3",
+                program_id="research-coordinator-v4",
                 role=AgentRole.RESEARCH_COORDINATOR,
-                version="3.0.0",
+                version="4.0.0",
                 model_profile_id=DEVELOPMENT_MODEL_PROFILE_ID,
                 system_instruction=COORDINATOR_SYSTEM_INSTRUCTION,
                 output_contracts=("CoordinatorAgenda", "CoordinatorDecision"),
                 tool_policy_version=TOOL_POLICY_VERSION,
             ),
             AgentProgram(
-                program_id="data-research-v3",
+                program_id="data-research-v4",
                 role=AgentRole.DATA_RESEARCH,
-                version="3.0.0",
+                version="4.0.0",
                 model_profile_id=DEVELOPMENT_MODEL_PROFILE_ID,
                 system_instruction=DATA_RESEARCH_SYSTEM_INSTRUCTION,
                 output_contracts=("DataAgentTurn",),
                 tool_policy_version=TOOL_POLICY_VERSION,
             ),
             AgentProgram(
-                program_id="strategy-engineering-v3",
+                program_id="strategy-engineering-v4",
                 role=AgentRole.STRATEGY_ENGINEERING,
-                version="3.0.0",
+                version="4.0.0",
                 model_profile_id=DEVELOPMENT_MODEL_PROFILE_ID,
                 system_instruction=STRATEGY_ENGINEERING_SYSTEM_INSTRUCTION,
                 output_contracts=("StrategyAgentTurn",),
