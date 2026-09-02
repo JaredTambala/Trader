@@ -154,6 +154,12 @@ Controlled-acceptance progress at candidate creation is **0 of 8 mandatory pre-a
 freeze**. No canonical agentic acceptance row exists. Locally passing tests establish development confidence only;
 they are not counted as controlled phase verdicts.
 
+The first candidate exposed a real MCP transport-shape mismatch at session creation and exceptional stdio cleanup that
+masked the primary failure. That candidate recorded a blocked end-to-end phase and is invalid for acceptance. The
+normalizer now consumes the canonical metadata-backed `ArtifactReference` contract, and persistent clients close their
+nested AnyIO resources normally before propagating the caller's exception. A successor freeze must restart every phase
+from zero after focused regression evidence and database reprovisioning.
+
 Execution resumed on 2026-09-02. The local Docker sandbox is available and has passed the development qualification
 cases, but no controlled phase has yet been retained against the candidate. Isolated qualification-database
 provisioning and the canonical agentic acceptance record occur only after the clean revision is tagged.

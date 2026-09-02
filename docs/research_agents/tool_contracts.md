@@ -145,12 +145,15 @@ Fields:
 - `warnings`: non-fatal issues.
 - `errors`: structured fatal errors when `ok=false`.
 
-Canonical MCP research artifact refs use `research://postgres/{artifact_type}/{artifact_id}`. New implementation,
-specification, backtest, optimisation, Evaluation, and Adversarial services require the structured store and have no
-filesystem authority or fallback. Canonical `research_artifacts` rows use required `domain_owner` and `producer_tool`
-columns plus nullable `requested_by` and `actor`. Direct calls leave unavailable requester/actor provenance null;
-orchestration values require both fields, the resume shell retains them in checkpoint state, and the workflow executor
-propagates the workflow ID and `workflow_executor` actor into orchestrated calls.
+Canonical MCP research artifact refs use `research://postgres/{artifact_type}/{artifact_id}`. Their public
+`ArtifactReference` shape keeps `artifact_type` and `uri` at the top level and carries `id`, `domain_owner`,
+`producer_tool`, status, and hashes in bounded `metadata`; it never exposes the stored payload. The agent MCP boundary
+normalizes that transport shape into its strict evidence-ref contract and rejects a canonical URI whose ID or owner is
+missing. New implementation, specification, backtest, optimisation, Evaluation, and Adversarial services require the
+structured store and have no filesystem authority or fallback. Canonical `research_artifacts` rows use required
+`domain_owner` and `producer_tool` columns plus nullable `requested_by` and `actor`. Direct calls leave unavailable
+requester/actor provenance null; orchestration values require both fields, the resume shell retains them in checkpoint
+state, and the workflow executor propagates the workflow ID and `workflow_executor` actor into orchestrated calls.
 
 `SpecialistHandoff` is a separate governance contract. It requires non-empty `domain_owner`, `producer_tool`,
 `requested_by` and `actor`, validates domain authority against the artifact type, and carries either a canonical

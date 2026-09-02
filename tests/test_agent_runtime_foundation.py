@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping, Sequence
+from contextlib import AsyncExitStack
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
 import json
@@ -42,6 +43,7 @@ from trader_agents import (
     ParameterContract,
     PolicyContext,
     PolicyViolation,
+    PersistentStdioMcpToolClient,
     PublicIssue,
     RecordingTraceSink,
     ResearchCoordinator,
@@ -925,6 +927,28 @@ def test_role_scoped_mcp_runtime_validates_transport_envelope() -> None:
     )
     assert "BTC/USD" not in json.dumps(traces.spans[0]["attributes"])
     assert all("source_code" not in str(span) for span in traces.spans)
+
+
+def test_persistent_stdio_clients_preserve_primary_exception_on_close() -> None:
+    """Close nested MCP task groups without masking the caller's failure."""
+
+    async def _run() -> None:
+        with pytest.raises(ValueError, match="primary runtime failure"):
+            async with AsyncExitStack() as stack:
+                clients = [
+                    await stack.enter_async_context(
+                        PersistentStdioMcpToolClient(
+                            command="uv",
+                            args=("run", "python", "-m", "trader_mcp.server"),
+                            cwd=Path.cwd(),
+                        )
+                    )
+                    for _ in range(3)
+                ]
+                assert await clients[0].list_tools()
+                raise ValueError("primary runtime failure")
+
+    anyio.run(_run)
 
 
 def test_role_scoped_runtime_traces_interrupted_transport_terminally() -> None:
@@ -3518,7 +3542,7 @@ class _DataLoopMcpClient:
                 "agent_owner": "Data Agent",
                 "side_effect": side_effect,
                 "data": {"complete": True, "arguments": dict(arguments)},
-                "artifacts": artifacts,
+                "artifacts": _mcp_artifacts(artifacts),
                 "warnings": [],
                 "errors": [],
             },
@@ -3603,7 +3627,7 @@ class _DataBackfillMcpClient:
                 "agent_owner": "Data Agent",
                 "side_effect": side_effect,
                 "data": data,
-                "artifacts": artifacts,
+                "artifacts": _mcp_artifacts(artifacts),
                 "warnings": [],
                 "errors": [],
             },
@@ -3674,7 +3698,7 @@ class _PartialDataMcpClient:
                 "agent_owner": "Data Agent",
                 "side_effect": side_effect,
                 "data": data,
-                "artifacts": artifacts,
+                "artifacts": _mcp_artifacts(artifacts),
                 "warnings": [],
                 "errors": [],
             },
@@ -3818,7 +3842,7 @@ class _StrategyLoopMcpClient:
                 "agent_owner": "Strategy Engineering Agent",
                 "side_effect": "read_only",
                 "data": data,
-                "artifacts": artifacts,
+                "artifacts": _mcp_artifacts(artifacts),
                 "warnings": [],
                 "errors": [],
             },
@@ -4003,7 +4027,7 @@ class _StrategyAdaptMcpClient:
                 "agent_owner": "Strategy Engineering Agent",
                 "side_effect": side_effect,
                 "data": data,
-                "artifacts": artifacts,
+                "artifacts": _mcp_artifacts(artifacts),
                 "warnings": [],
                 "errors": [],
             },
@@ -4094,7 +4118,7 @@ class _CoordinatorMcpClient:
                 "agent_owner": "Research Coordinator",
                 "side_effect": side_effect,
                 "data": data,
-                "artifacts": artifacts,
+                "artifacts": _mcp_artifacts(artifacts),
                 "warnings": [],
                 "errors": [],
             },
@@ -4180,7 +4204,7 @@ class _StrategyBuildMcpClient:
                 "agent_owner": "Strategy Engineering Agent",
                 "side_effect": side_effect,
                 "data": data,
-                "artifacts": artifacts,
+                "artifacts": _mcp_artifacts(artifacts),
                 "warnings": [],
                 "errors": [],
             },
@@ -4303,7 +4327,7 @@ class _StrategyRepairMcpClient:
                 "agent_owner": "Strategy Engineering Agent",
                 "side_effect": side_effect,
                 "data": data,
-                "artifacts": artifacts,
+                "artifacts": _mcp_artifacts(artifacts),
                 "warnings": [],
                 "errors": errors,
             },
@@ -4511,3 +4535,29 @@ def _evidence_payload(
         "domain_owner": domain_owner,
         "uri": f"research://postgres/{artifact_type}/{artifact_id}",
     }
+
+
+def _mcp_artifacts(
+    artifacts: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project strict evidence refs into the public MCP artifact shape."""
+    projected: dict[str, Any] = {}
+    for label, raw in artifacts.items():
+        if not isinstance(raw, Mapping):
+            projected[label] = raw
+            continue
+        uri = str(raw.get("uri") or "")
+        if not uri.startswith("research://postgres/"):
+            projected[label] = dict(raw)
+            continue
+        projected[label] = {
+            "artifact_type": raw["artifact_type"],
+            "path": None,
+            "uri": uri,
+            "metadata": {
+                "id": raw["artifact_id"],
+                "domain_owner": raw["domain_owner"],
+                "source_hash": raw.get("source_hash"),
+            },
+        }
+    return projected

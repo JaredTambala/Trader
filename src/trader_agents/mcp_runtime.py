@@ -426,7 +426,23 @@ def _normalize_response(
 
 
 def _evidence_refs(value: object) -> tuple[CanonicalEvidenceRef, ...]:
-    """Normalize canonical refs from a labelled MCP artifact mapping."""
+    """Normalize canonical refs from the public MCP artifact contract.
+
+    Canonical application results use ``ArtifactReference`` values: type and
+    URI are top-level, while identity and domain authority are bounded
+    metadata. Keeping that conversion at the MCP boundary prevents model code
+    from depending on persistence-specific record layouts.
+
+    Args:
+        value: Labelled artifact mapping from one structured MCP envelope.
+
+    Returns:
+        Strict canonical evidence references for Postgres-backed artifacts.
+
+    Raises:
+        RuntimeError: If a canonical URI lacks its required public identity or
+            ownership metadata.
+    """
     if not isinstance(value, Mapping):
         return ()
     references = []
@@ -444,11 +460,18 @@ def _evidence_refs(value: object) -> tuple[CanonicalEvidenceRef, ...]:
                 continue
             metadata = candidate.get("metadata")
             metadata_mapping = metadata if isinstance(metadata, Mapping) else {}
+            artifact_type = str(candidate.get("artifact_type") or "").strip()
+            artifact_id = str(metadata_mapping.get("id") or "").strip()
+            domain_owner = str(metadata_mapping.get("domain_owner") or "").strip()
+            if not artifact_type or not artifact_id or not domain_owner:
+                raise RuntimeError(
+                    "canonical MCP artifact reference is missing type, ID, or owner"
+                )
             references.append(
                 CanonicalEvidenceRef(
-                    artifact_type=str(candidate.get("artifact_type") or ""),
-                    artifact_id=str(candidate.get("artifact_id") or ""),
-                    domain_owner=str(candidate.get("domain_owner") or ""),
+                    artifact_type=artifact_type,
+                    artifact_id=artifact_id,
+                    domain_owner=domain_owner,
                     uri=uri,
                     source_hash=(
                         str(metadata_mapping["source_hash"])

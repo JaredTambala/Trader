@@ -16,7 +16,9 @@ from mcp.client.stdio import stdio_client
 class McpToolClient(Protocol):
     """Minimal async MCP tool client protocol for agent graph nodes."""
 
-    async def call_tool(self, tool_name: str, arguments: Mapping[str, Any]) -> Mapping[str, Any]:
+    async def call_tool(
+        self, tool_name: str, arguments: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
         """Call an MCP tool.
 
         Args:
@@ -71,7 +73,9 @@ class StdioMcpToolClient:
     env: Mapping[str, str] | None = None
     read_timeout_seconds: int = 10
 
-    async def call_tool(self, tool_name: str, arguments: Mapping[str, Any]) -> Mapping[str, Any]:
+    async def call_tool(
+        self, tool_name: str, arguments: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
         """Call one MCP tool over a stdio server process.
 
         Args:
@@ -168,8 +172,12 @@ class PersistentStdioMcpToolClient:
             write_stream,
             read_timeout_seconds=timedelta(seconds=self.read_timeout_seconds),
         )
-        self._session = await self._session_context.__aenter__()
-        await self._session.initialize()
+        try:
+            self._session = await self._session_context.__aenter__()
+            await self._session.initialize()
+        except BaseException:
+            await self.__aexit__(None, None, None)
+            raise
         return self
 
     async def __aexit__(
@@ -188,14 +196,26 @@ class PersistentStdioMcpToolClient:
         Returns:
             False so exceptions propagate normally.
         """
-        if self._session_context is not None:
-            await self._session_context.__aexit__(exc_type, exc, tb)
-        if self._stdio_context is not None:
-            await self._stdio_context.__aexit__(exc_type, exc, tb)
-        self._session = None
+        del exc_type, exc, tb
+        try:
+            if self._session_context is not None:
+                # MCP and AnyIO own nested task-group cancel scopes. Close
+                # those resources normally, then let this wrapper return false
+                # so the caller's primary exception propagates unchanged.
+                await self._session_context.__aexit__(None, None, None)
+        finally:
+            try:
+                if self._stdio_context is not None:
+                    await self._stdio_context.__aexit__(None, None, None)
+            finally:
+                self._session = None
+                self._session_context = None
+                self._stdio_context = None
         return False
 
-    async def call_tool(self, tool_name: str, arguments: Mapping[str, Any]) -> Mapping[str, Any]:
+    async def call_tool(
+        self, tool_name: str, arguments: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
         """Call one MCP tool over the persistent session.
 
         Args:
@@ -210,7 +230,9 @@ class PersistentStdioMcpToolClient:
             RuntimeError: If the client is used outside its async context.
         """
         if self._session is None:
-            raise RuntimeError("PersistentStdioMcpToolClient must be used as an async context manager")
+            raise RuntimeError(
+                "PersistentStdioMcpToolClient must be used as an async context manager"
+            )
         result = await self._session.call_tool(tool_name, dict(arguments))
         return {
             "content": [_content_block_to_dict(block) for block in result.content],
@@ -221,7 +243,9 @@ class PersistentStdioMcpToolClient:
     async def list_tools(self) -> Sequence[McpToolDescription]:
         """List current MCP tool schemas over the persistent session."""
         if self._session is None:
-            raise RuntimeError("PersistentStdioMcpToolClient must be used as an async context manager")
+            raise RuntimeError(
+                "PersistentStdioMcpToolClient must be used as an async context manager"
+            )
         result = await self._session.list_tools()
         return tuple(_tool_description(item) for item in result.tools)
 
@@ -257,5 +281,7 @@ def _tool_description(tool: object) -> McpToolDescription:
         name=name,
         description=description,
         input_schema=dict(input_schema),
-        output_schema=(dict(output_schema) if isinstance(output_schema, Mapping) else None),
+        output_schema=(
+            dict(output_schema) if isinstance(output_schema, Mapping) else None
+        ),
     )
