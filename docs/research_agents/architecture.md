@@ -1,7 +1,8 @@
 # Research Agent Architecture
 
 Trader separates core trading runtime code from research tooling, MCP transport, and LangGraph agent orchestration.
-Research agents produce deterministic artifacts for inspection and backtesting; they do not control live trading.
+Model-backed agents choose research actions within code-enforced boundaries; deterministic services produce the
+inspectable artifacts on which those agents reason. Agents do not control live trading.
 
 This document describes the current bounded-context platform and the first implemented model-backed orchestration
 slice. The former deterministic `trader_agents` control plane is frozen in Git history and has been removed without a
@@ -45,8 +46,8 @@ paths have no compatibility aliases or fallback readers.
 
 The pre-refactor inventory, dependency findings, migration sequence and qualification evidence remain available in the
 [deprecated tracker snapshot](../../plans/mcp_trading_research_tools_plan.md) and Git history. The
-[active capability roadmap](../../plans/research_capability_roadmap.md) maps TRR-1 through TRR-12 to the accepted
-bounded-context baseline without repeating the historical migration narrative here.
+[active capability roadmap](../../plans/research_capability_roadmap.md) maps the current capability names to the
+accepted bounded-context baseline without repeating the historical migration narrative here.
 
 ### Context Map
 
@@ -258,8 +259,14 @@ Experiment-owned artifact type.
 
 `trader_mcp` composes every domain operation through the public `data`, `knowledge`, `methodology`, `experiments`, and
 `review` facades. It obtains persistence and provider implementations from `infrastructure.postgres` and explicit
-`infrastructure.providers` modules, then injects those adapters through public protocols. `trader_agents` imports only
-Foundation and Governance contracts; it does not import domain service implementations or bypass MCP tools.
+`infrastructure.providers` modules, then injects those adapters through public protocols. `trader_agents` imports
+stable Foundation and Governance contracts plus MCP transport vocabulary such as tool constants and side-effect
+classes; it does not import domain service implementations or bypass MCP tools.
+
+One current exception exists outside the Coordinator/Data/Strategy execution path: `trader_mcp.knowledge_tools`
+imports provider-neutral LLM client types from `trader_agents.llm_client`. This reverse package edge is documented in
+[Dependency Direction Into `trader_research` And `trader`](#dependency-direction-into-trader_research-and-trader) and
+must not be used as a pattern for new MCP operations.
 
 Knowledge and Methodology facades explicitly export their application operations and composition ports, so MCP no
 longer imports lifecycle, storage, extraction, or implementation internals. Foundation and Governance likewise expose
@@ -308,8 +315,12 @@ The first model-backed slice selected LangGraph 1.2.2 with `langgraph-checkpoint
 comparison with PydanticAI 2.37.0. The comparison used strict Pydantic outputs, dynamically narrowed MCP choices,
 parallel observations, an evidence-led specialist revision, an operator interrupt, resume through a new PostgreSQL
 connection, and MLflow-correlated traces. PydanticAI required custom durable suspension/control glue for the equivalent
-path and is not a production dependency. Production model calls remain behind a provider-neutral client; the initial
-development profile is Ollama `qwen3.5:9b`, temperature zero, thinking disabled, and one bounded schema repair.
+path and is not a production dependency. Production model calls remain behind a provider-neutral client. The active
+evaluation profile is Ollama `lfm2.5:8b`, temperature zero, thinking disabled, and at most one schema-only retry. Its
+exact local digest is pinned by `ollama-lfm25-8b-json-v1`. It selected only Data for three equivalent readiness briefs
+but failed the material-ambiguity case by proposing executable Data work; the dependent Data specialist test was not
+run. The prior `qwen3.5:9b` profile also remains rejected. The runtime does not rewrite model fields or feed domain
+validation failures back to a model to make a profile pass.
 
 ## Higher-Level Orchestration Architecture
 
@@ -322,6 +333,9 @@ The current implemented slice is deliberately bounded:
 - The Research Coordinator is the only user-facing model. It creates a typed agenda, schedules dependency-ready work,
   invokes specialists, validates every returned canonical ref through MCP, and records an append-only public decision
   receipt before continuing or terminating.
+- The agenda selects only the non-empty subset of specialist responsibilities materially required by the brief.
+  Unselected specialists receive no model or MCP calls, and conclusion requires ready returns only from roles present
+  in the accepted agenda.
 - Data Research and Strategy Engineering are context-isolated specialist model/tool loops. Each receives only its
   typed delegation and role-scoped MCP catalogue and returns bounded findings, issues, usage, and exact evidence refs.
 - Data Research covers the full approved multi-asset scope, including discovery, inventory, quality inspection,
@@ -352,25 +366,29 @@ The implementation is split by responsibility and call direction:
 ```text
 operator -> immutable ResearchSession -> Research Coordinator
   -> typed agenda -> dependency/budget scheduler
-  -> [Data Research || Strategy Engineering] -> role-scoped MCP
+  -> selected subset of [Data Research, Strategy Engineering] -> role-scoped MCP
   -> structured returns -> coordinator canonical-read verification
   -> append-only decision receipt
   -> revise/revisit/fork/ask/stop/conclude
 ```
 
-Every model output is parsed into a strict public schema. Invalid structured output gets at most one bounded schema
-repair. Tool proposals are authorized against the exact program, role, phase, session scope, approval policy, mutation
+Every model output is parsed into a strict public schema. Invalid structured output gets at most one schema-only retry.
+Schema-valid output is not rewritten, and domain-validation failures are not returned to the model for another
+attempt. Tool proposals are authorized against the exact program, role, phase, session scope, approval policy, mutation
 lifecycle, and remaining budget before MCP dispatch. Tool descriptions and observations are bounded, and raw prompts,
 messages, secrets, hidden reasoning, and complete tool responses are excluded from checkpoints and decision records.
+The model profile explicitly pins both provider context and output ceilings. Agent context distinguishes legal control
+actions and evidence obligations from decisions: deterministic code may reject an unavailable tool or unsupported
+claim, but it does not select a specialist query, build path, or conclusion.
 MCP call/result and coordinator commit spans retain only correlation identities, allowlisted public operation or
 artifact identities, evidence types/URIs, and public error codes. Malformed envelopes fail inside the traced boundary
 and still consume the crossed tool-call budget.
-The current `strategy-engineering-v4` program and `first-slice-tool-policy-v4` require package-backed registration:
+The current `strategy-engineering-v6` program and `first-slice-tool-policy-v5` require package-backed registration:
 complete candidate source remains in the coding service's immutable package, the model supplies only its exact ID, and
 the MCP adapter resolves source and injects candidate-attempt/build-contract/repository lineage before Experiments
 registration. Workspace destruction therefore does not make a packaged candidate unrecoverable.
 
-The `data-research-v4` mutation boundary similarly separates model judgment from replay control. The model may choose
+The `data-research-v6` mutation boundary similarly separates model judgment from replay control. The model may choose
 an approved load only after inspecting a deterministic costed plan. The runtime then binds operation, requester, and
 actor identity; the Data service persists a prepared journal record before calling the provider and terminal evidence
 afterward. An accepted operation replays from evidence, and an interrupted prepared operation never blindly repeats
@@ -386,6 +404,531 @@ a bounded writable `noexec` temporary filesystem, no network or IPC namespace sh
 capabilities, no-new-privileges, and explicit CPU, memory, process, file-descriptor, deadline, and output ceilings. The
 runner owns an exact container ID, force-removes that container after every exit or cutoff, verifies its absence, and
 never falls back to host execution.
+
+### What Constitutes An Agent In This Package
+
+An agent is not just a prompt, a model call, or a LangGraph node. In the current implementation, an executable agent
+identity is the composition of all of the following:
+
+1. A public role in `AgentRole`, such as Research Coordinator, Data Research, or Strategy Engineering.
+2. One versioned `AgentProgram` containing the role instruction, required output contracts, tool-policy version, and
+   schema-repair limit.
+3. One immutable `ModelProfile` containing the exact provider, model, model revision, sampling controls, context and
+   output ceilings, timeout, and thinking mode.
+4. Strict Pydantic input, turn, return, and decision contracts. Model text has no authority until it validates as one
+   of these contracts.
+5. A role- and phase-scoped view of the code-owned `ToolCatalogue`, intersected with the tools actually advertised by
+   that role's MCP transport.
+6. Deterministic runtime policy that binds trusted identities, checks authority and lifecycle invariants, meters
+   budgets, and rejects illegal calls before transport dispatch.
+7. A LangGraph state machine that controls when the model can act, when an MCP call can cross the process boundary,
+   when state is checkpointed, and what constitutes termination.
+8. A role-dedicated MCP client session and a bounded checkpoint identity. Coordinator, Data, and Strategy roles do not
+   share MCP sessions; every specialist delegation has its own LangGraph thread.
+
+This definition matters because swapping only the natural-language instruction does not create a new admitted agent.
+Changing a role, program, model profile, public contract, or tool catalogue is a versioned change and must advance the
+corresponding code-owned ID or content digest. Those recorded pins are checked again on recovery; the runtime does not
+select a different named program, profile, or catalogue to make an old checkpoint runnable.
+
+The present multi-agent system has one coordinating agent and two specialist agent types:
+
+| Agent | Model-owned judgment | Code-owned control | Terminal handoff |
+| --- | --- | --- | --- |
+| Research Coordinator | Interpret the brief into a task agenda; review verified specialist results; choose the next permitted research transition. | Validate the agenda and decision, schedule ready work, create delegations, verify cited evidence, persist the decision receipt, and route the graph. | Grounded `AgenticSliceResult` or bounded `OperatorInterrupt`. |
+| Data Research | Decide which allowed discovery, inventory, quality, loading, and snapshot action best resolves the delegated data-readiness question. | Enforce the complete approved data scope, loading approval, phase order, replay identity, evidence obligations, and budget. | `SpecialistReturn` with exact readiness/snapshot refs or public blockers. |
+| Strategy Engineering | Decide whether to reuse, adapt, or author; choose the next allowed catalogue or workspace operation; assess when the candidate is ready to return. | Enforce catalogue comparison, workspace isolation, build-contract fidelity, packaging, independent registration/validation, cleanup, revision bounds, and budget. | `SpecialistReturn` with exact admitted implementation refs or public blockers. |
+
+The model owns choices inside an admitted boundary. It does not own the boundary itself. Code does not choose the
+research conclusion on the model's behalf, but it does reject conclusions unsupported by the required lifecycle and
+canonical evidence.
+
+### Agent Package Map
+
+The `trader_agents` package is arranged by runtime responsibility rather than by a separate directory for each role.
+The important modules are:
+
+| Module | Architectural responsibility |
+| --- | --- |
+| `runtime.py` | Production composition root and user-facing `start`, `resume`, `cancel`, and `inspect` lifecycle. |
+| `coordinator.py` | Coordinator LangGraph, agenda interpretation, delegation dispatch, evidence verification, decision commit, and operator interrupt. |
+| `data_research.py` | Isolated Data Research model/tool loop and Data-specific evidence-readiness rules. |
+| `strategy_engineering.py` | Isolated Strategy Engineering model/tool loop and catalogue/workspace/admission lifecycle. |
+| `contracts.py` | Strict public model outputs, agendas, delegations, observations, returns, decisions, and operator/runtime results. |
+| `inputs.py` | Normalization of a `ResearchSession` into role-specific data scope and strategy build inputs, plus runtime-pin validation. |
+| `profiles.py` | Immutable model profiles and model/program registries. |
+| `programs.py` | Versioned, role-specific system instructions and output-contract declarations. |
+| `structured_model.py` | Provider-neutral structured-output call boundary, schema-only repair, usage accounting, and redacted model tracing. |
+| `catalogue.py` | Code-owned tool identity, ownership, side-effect, phase, and approval metadata. |
+| `policy.py` | Authorization, scope, lifecycle, budget, mutation, replay, and loop checks applied before MCP execution. |
+| `mcp_runtime.py` | Dynamic tool discovery, catalogue intersection, trusted argument binding, MCP dispatch, and envelope normalization. |
+| `tool_client.py` | Minimal MCP client protocol and the persistent stdio MCP process/session adapter. |
+| `scheduler.py` | Dependency-ready task selection, mutation-conflict exclusion, concurrency limits, and budget reservation. |
+| `checkpointing/` | Coordinator and specialist state contracts, redaction, size/count bounds, thread identity, and PostgreSQL saver setup. |
+| `tracing.py` | Redacted lifecycle, model-call, tool-call, and commit correlation without prompt or payload persistence. |
+| `llm_client.py` | Provider-neutral JSON request/response protocol and environment-selected Ollama or OpenAI-compatible adapters. |
+| `cli.py` | Operator entry point over the runtime lifecycle; it does not contain orchestration rules. |
+
+The package facade in `trader_agents/__init__.py` exports the supported contracts and composition surfaces. Internal
+helper functions are deliberately not an alternative API around policy or MCP.
+
+### Composition Root: How The Multi-Agent System Is Formed
+
+`runtime_from_environment()` in `runtime.py` is the production composition root. It constructs the agent system in a
+fixed order so every participant receives the same immutable registries but a separate execution context:
+
+1. Build the code-owned `ToolCatalogue`, `AgentProgramRegistry`, and `ModelProfileRegistry`.
+2. Resolve the selected model profile and overlay its pinned provider settings onto the runtime environment. This
+   prevents a caller's looser provider settings from weakening the selected profile.
+3. Construct one provider-neutral `RuntimeConfiguredLlmClient` and one trace sink. Three separate
+   `StructuredModelRunner` instances share that client and sink but apply their role's own program and output schema.
+4. Start three persistent stdio MCP clients. Each starts its own `trader_mcp.server` process and owns one MCP session:
+   one for Coordinator governance/evidence calls, one for Data Research, and one for Strategy Engineering.
+5. Open the dedicated asynchronous LangGraph PostgreSQL saver from `TRADER_AGENTS_CHECKPOINT_DSN`. There is no
+   filesystem or canonical-artifact-store fallback.
+6. Construct the two specialist objects with their own model runner and MCP client, then inject both specialists into
+   the `ResearchCoordinator` alongside the Coordinator's own runner and MCP client.
+7. Yield `AgenticResearchRuntime`, which owns the shared registries, the compiled-system factory, the checkpointer, and
+   lifecycle-level single-writer protection. Closing the context closes all three MCP processes and the checkpoint
+   connection.
+
+```text
+AgenticResearchRuntime
+├── exact ToolCatalogue / AgentProgramRegistry / ModelProfileRegistry
+├── one provider-neutral LLM client
+│   ├── Coordinator StructuredModelRunner
+│   ├── Data Research StructuredModelRunner
+│   └── Strategy Engineering StructuredModelRunner
+├── ResearchCoordinator
+│   ├── dedicated Coordinator MCP client ──> trader_mcp.server process A
+│   ├── DataResearchAgent
+│   │   └── dedicated Data MCP client ─────> trader_mcp.server process B
+│   └── StrategyEngineeringAgent
+│       └── dedicated Strategy MCP client ─> trader_mcp.server process C
+└── LangGraph AsyncPostgresSaver
+    ├── coordinator thread
+    ├── Data delegation threads
+    └── Strategy delegation threads
+```
+
+The shared LLM client is a provider adapter, not shared conversational memory. Each call is constructed from the
+selected program, a task instruction, a bounded public context object, and the exact requested Pydantic JSON schema.
+Neither specialist sees the Coordinator's message history or the other specialist's context. There is no persisted
+chat transcript.
+
+MCP isolation is currently per role, while checkpoint isolation is per delegation. Concurrent Data delegations share
+the persistent Data MCP client/session, and concurrent Strategy delegations share the persistent Strategy
+client/session; they still use distinct graph threads, lifecycle state, budgets, branch/delegation identities, and
+model contexts. If a future tool requires transport state to be isolated per delegation, the composition root must
+allocate a client at that narrower lifetime rather than assuming the current role-level session is sufficient.
+
+The optional MCP-client decorator in the composition root is a trusted test/operations seam used to inject controlled
+transport faults. It does not change ownership of the underlying sessions and is omitted in normal production
+composition.
+
+### Identity Pins And Reproducible Runtime Configuration
+
+There are four related identity layers:
+
+| Identity | Contents | Why it is checked |
+| --- | --- | --- |
+| Session identity | Immutable objective, success definition, operator, scope, approvals, budgets, model-profile selection, and session digest. | Prevents a recovered graph from acting under altered operator authority or research scope. |
+| Program identity | Role, versioned instruction, output-contract names, tool-policy version, and schema-repair limit. | Makes the exact model-facing behavior auditable and prevents prompt changes from masquerading as the same agent. |
+| Model-profile identity | Provider, exact model and revision, sampling controls, token ceilings, timeout, and thinking mode. | Prevents silent provider or model substitution and bounds each physical call. |
+| Tool-catalogue identity | Digest of every role/tool/owner/side-effect/phase/approval definition exposed by code. | Prevents a checkpoint from resuming with a different authority surface. |
+
+`runtime_manifest()` exposes the credential-free public manifests and the catalogue digest for inspection. The
+Coordinator checkpoint stores its session digest, Coordinator program ID, model-profile ID, and tool-catalogue ID.
+Each specialist checkpoint stores those pins again together with its exact delegation identity and role. Entry and
+recovery validation happens before the graph is allowed to continue.
+
+The program manifest includes a content digest, but the current checkpoint stores the program ID rather than a
+separate program digest. The model profile similarly stores its profile ID, while the profile maps that ID to an exact
+provider revision; the Ollama adapter checks the served model digest before use. Consequently, program and profile IDs
+must never be edited in place. Controlled qualification binds the digest of the complete public runtime manifest to
+the frozen revision so an in-place content change cannot qualify as the same runtime even though the checkpoint field
+itself is an ID.
+
+The program registry contains exactly one active program per implemented role. The model-profile registry contains
+only the exact profiles the runtime currently permits; the immutable session selects one of them. Rejected evaluation
+profiles may remain as named historical constants and documentation evidence without remaining executable registry
+members. A role cannot ask the runner to use another role's program, and a checkpoint cannot be transparently upgraded
+to a newer program.
+
+### Structured Model Invocation Boundary
+
+`StructuredModelRunner.invoke()` is the only production boundary by which the current graphs ask an LLM for a control
+decision. The graph supplies five trusted inputs: the exact program, the selected profile, the required output model,
+a node-specific instruction, and a JSON-native public context. The runner first verifies that the program belongs to
+the profile and explicitly admits the requested output-contract name.
+
+It constructs two messages for the provider:
+
+1. A system message containing the versioned role instruction from `AgentProgram`.
+2. A user message containing the node-specific instruction, a canonical JSON serialization of the public context,
+   and the complete JSON Schema generated by the requested Pydantic model.
+
+The serialized public context is limited to 96 KB before any provider request is made. The request also carries the
+profile's model, temperature, context-window ceiling, output-token ceiling, and thinking setting. With the current
+Ollama profile, the client verifies the locally served model digest against the profile revision before accepting a
+completion.
+
+The provider must return a JSON object. The runner validates that object directly with the requested Pydantic model;
+it does not strip prose fences, recover a JSON fragment from surrounding text, fill omitted fields, or alter a
+schema-valid value. If schema validation fails and the program permits repair, one further physical model call receives
+only the bounded public validation errors and an instruction to correct structure without adding authority or
+evidence. Domain policy failures occur after this boundary and are not converted into model coaching.
+
+Every physical provider call is metered in the `BudgetLedger`, including an attempted call that raises before yielding
+a usable result. Traces record role, program/profile/catalogue correlation, public contract name, per-call identity,
+repair number, usage, duration, and validation verdict. The raw response, prompt, hidden reasoning, and complete public
+context are not persisted by the runner. The validated Pydantic value is returned to the graph as a
+`ModelInvocationResult`; subsequent domain validation decides whether that structurally valid proposal is legal in the
+current state.
+
+### Public Contracts And Trust Transitions
+
+The architecture deliberately separates model proposals, runtime-created authority, tool observations, and canonical
+evidence. They are not interchangeable forms of JSON.
+
+| Value | Created by | Validation and authority |
+| --- | --- | --- |
+| `CoordinatorAgenda` | Coordinator model | Strict schema plus task ownership, dependency, acyclicity, ambiguity, scope, and non-empty-selection validation. It proposes work but does not authorize a tool call. |
+| `AgendaTaskProposal` | Coordinator model as part of the agenda | Names a role, work kind, dependencies, join mode, evidence needs, and whether mutation may be needed. Runtime derives branch, attempt, mutation, and reservation identities. |
+| `SpecialistDelegation` | Scheduler/runtime code | Trusted task boundary containing exact session, branch, attempt, input refs, permitted side effects, and reserved budgets. A specialist cannot broaden it. |
+| `DataAgentTurn` / `StrategyAgentTurn` | Specialist model | Exactly one action: propose one tool call, make a permitted phase/build choice, or return a conclusion. Domain validation follows schema validation. |
+| `ToolCallProposal` | Model within a specialist turn, or trusted Coordinator code for governance operations | Expresses desired operation and public purpose. Operation ID, actor/requester fields, build provenance, and other replay/security fields are overwritten or injected by runtime code. |
+| `ToolObservation` | `RoleScopedMcpRuntime` from a validated `ToolEnvelope` | Bounded, normalized result with public data, issues, and canonical evidence refs. It is evidence observed by the graph, not proof that a model conclusion is correct. |
+| `SpecialistConclusion` | Specialist model | A proposed status, summary, findings, issues, and cited refs. It contains no trusted runtime identity. |
+| `SpecialistReturn` | Specialist runtime | Adds exact session/delegation/program/model/catalogue identities and measured use; resolves cited refs from observations and rejects any ref not actually observed. This is the only specialist-to-Coordinator handoff. |
+| `CoordinatorDecision` | Coordinator model, or deterministic fail-closed construction | Strictly validated against the reviewed returns, agenda tasks, verified refs, action-specific requirements, loop policy, and remaining revision budget. |
+| Decision receipt and canonical artifact refs | Deterministic research service through MCP | Append-only product evidence. The MCP response is independently normalized and the exact ref becomes part of graph state. |
+
+All public models reject unknown fields and are frozen after validation. Canonical evidence URIs must use the exact
+`research://postgres/{artifact_type}/{artifact_id}` form. A plausible-looking URI in model output is insufficient: it
+must have appeared in an accepted tool observation, and the Coordinator must read and verify cited specialist evidence
+through its own MCP client before relying on it.
+
+This creates an explicit trust sequence:
+
+```text
+untrusted model JSON
+  -> strict public schema
+  -> role/lifecycle/domain validation
+  -> runtime-bound authority and replay fields
+  -> policy authorization
+  -> MCP transport and server-side validation
+  -> validated ToolEnvelope
+  -> bounded ToolObservation
+  -> runtime-owned SpecialistReturn
+  -> independent Coordinator canonical read
+  -> validated CoordinatorDecision
+  -> append-only decision receipt
+```
+
+### Coordinator Graph And Shared-State Ownership
+
+`ResearchCoordinator.build_graph()` compiles a graph around one immutable `ResearchSession`. Its node functions close
+over that session, the exact registries, the two specialist objects, and the checkpointer. The topology is:
+
+```text
+START
+  -> ensure_session
+  -> interpret_brief
+       ├── material ambiguity with no executable agenda -> review_evidence
+       └── executable agenda ---------------------------> dispatch_specialists
+                                                            |
+                                                            v
+                                                       review_evidence
+                                                            |
+                                                            v
+                                                       commit_decision
+                       ┌────────────────────────────────────┼────────────────────┐
+                       v                                    v                    v
+                dispatch_specialists                 await_operator            END
+                                                            |
+                                                            v
+                                                     interpret_brief
+```
+
+The node responsibilities are deliberately narrow:
+
+| Node | Reads | Writes or effects |
+| --- | --- | --- |
+| `ensure_session` | Immutable session and initial checkpoint pins. | Idempotently creates/confirms the canonical research session through Coordinator MCP and records its ref. |
+| `interpret_brief` | Objective, success definition, approved scope, role-authority facts, prior agenda/returns, and bounded operator response. | One validated agenda, deterministic branch IDs, and reset task execution state for that agenda. |
+| `dispatch_specialists` | Agenda DAG, completed tasks, active delegations, budgets, and trusted mutation domains. | Deterministic delegations; concurrent specialist tasks; accepted returns, usage, evidence refs, and unfinished delegation identities. |
+| `review_evidence` | Only returns after the review cursor and the current agenda/state. | Independent canonical artifact reads, one validated decision, semantic-loop fingerprint update, and `committing_decision` state. |
+| `commit_decision` | The already-checkpointed decision and the exact returns it reviewed. | Append-only canonical decision receipt, then the precise routing/state transition represented by that decision. |
+| `await_operator` | A bounded pending interrupt. | LangGraph suspension and a validated response from the owning operator; routes back through brief interpretation. |
+
+The Coordinator is the single writer of shared coordinator state. Specialists receive copied immutable inputs and
+return values; they do not mutate the Coordinator checkpoint. When concurrent specialist tasks complete, the
+Coordinator validates the return identities and digests, merges budget use and canonical refs, and then writes one
+checkpoint update. This avoids concurrent reducers silently resolving authority or evidence conflicts.
+
+The separation between `review_evidence` and `commit_decision` is a recovery invariant. LangGraph checkpoints the
+validated decision before the MCP mutation that records its receipt. If the process stops after the service accepted
+the receipt but before the client observed the response, recovery retries/reconciles that same decision identity. It
+does not ask the model for another decision and risk two distinct accepted transitions.
+
+Coordinator actions have different routing meanings:
+
+- `advance` continues dependency-ready work under the existing agenda.
+- `revise` and `revisit` clear completion for the affected agenda tasks so the scheduler can dispatch another bounded
+  attempt under the same agenda and branch. They are distinct public research decisions but currently share this
+  graph-routing behavior.
+- `fork` also clears affected task completion, but first assigns each affected task a new deterministic branch identity.
+  All three actions consume bounded revision authority.
+- `ask_operator` suspends with a public question and explicit resume schema.
+- `conclude` is legal only when every role selected by the agenda has a ready return and all agenda tasks are complete.
+- `stop_fail_closed` terminates with public blockers rather than inventing missing authority or evidence.
+
+Cancellation is an operator lifecycle operation, not a model action. The runtime first cancels an in-process active
+task, then advances the last completed checkpoint through the Coordinator's cancellation path and records a canonical
+cancelled decision receipt. Already crossed provider mutations rely on their operation journals for reconciliation;
+the runtime does not blindly replay them.
+
+### Specialist Graphs And Context Isolation
+
+Each specialist invocation has its own LangGraph thread and a small one-node iterative state machine:
+
+```text
+START -> model_tool_step
+           ├── propose tool -> authorize -> MCP call -> observe -> checkpoint -> model_tool_step
+           ├── phase/build choice -----------------------> checkpoint -> model_tool_step
+           ├── grounded return --------------------------> END
+           └── schema/policy/runtime failure -> failed return -> END
+```
+
+One iteration permits one model choice and at most one MCP operation. The loop reconstructs its budget ledger,
+redacted observations, observed evidence refs, successful-step history, lifecycle state, and semantic fingerprints
+from the specialist checkpoint. It then obtains the *current* role/phase tool view, calls the structured model, and
+validates the chosen action. A successful tool response updates the lifecycle and checkpoint before another model
+choice. This makes tool use iterative and evidence-led rather than a model generating an entire unverified call plan
+up front.
+
+The two current specialist graphs share that execution shape but not their domain state machines:
+
+| Concern | Data Research | Strategy Engineering |
+| --- | --- | --- |
+| Entry contract | Complete normalized multi-asset data scope from the immutable session. | Behaviorally complete `StrategyBuildContract` from the immutable session. |
+| Initial investigation | Symbol discovery, inventory, and quality over the complete requested scope. | Template/implementation search, retrieval, and comparison against the build contract. |
+| Model choice | Whether more inspection is required, approved loading is justified, the phase may advance, or evidence is ready. | Exact reuse versus adaptation versus authoring, followed by the next workspace/admission action. |
+| Mutation boundary | `data_ensure_loaded`, only with explicit session approval and a deterministic costed plan. | Isolated Coding Workspace mutations and package-backed implementation registration, only with explicit approval and delegation authority. |
+| Admission/readiness rule | Full-scope inventory and quality must be observed after the latest real load; the returned snapshot must match the scope. | Catalogue comparison precedes build; checks precede packaging; immutable package precedes registration; independent validation precedes ready return. |
+| Recovery-sensitive state | Scope, load lifecycle, operation evidence, hashes/summaries, and exact refs; no raw provider payload. | Build choice, candidate attempt, workspace/package/registration/admission identities, hashes/summaries, and exact refs; no complete source. |
+| Failure cleanup | Ambiguous interrupted provider mutations require journal-backed reconciliation. | A rejected candidate's workspace is destroyed; a bounded new candidate attempt receives a new immutable identity. All exits attempt cleanup. |
+
+Context isolation is enforced structurally:
+
+- A specialist receives only the session fields normalized for its role, its exact delegation, required input refs,
+  remaining reservation, current lifecycle, bounded observations, and current tool descriptions/schemas.
+- It does not receive the Coordinator's hidden or raw messages, another specialist's observations, or a general-purpose
+  MCP client.
+- Its MCP process may advertise the full server surface, but `RoleScopedMcpRuntime` exposes only the intersection
+  admitted for that role, phase, and approval policy.
+- Its `SpecialistConclusion` cannot declare its own trusted session, program, model, catalogue, or usage identities.
+  `build_specialist_return()` adds those from runtime state and filters evidence to refs the specialist actually
+  observed.
+
+### Scheduling, Parallelism, And Join Semantics
+
+The Coordinator model proposes the task dependency graph, but `scheduler.py` decides what may execute now. It walks
+the agenda in stable order and selects only tasks whose dependencies are complete, whose mutation keys do not conflict
+with admitted work, and for which it can reserve model-call, tool-call, and token capacity.
+
+Read-only work over disjoint or shared inputs may run concurrently. Mutating work receives trusted mutation keys
+derived from its normalized scope and branch; overlapping keys serialize the tasks even if the model proposed
+parallelism. The scheduler divides the remaining session budget into bounded specialist reservations and never lends a
+specialist unbounded access to the session-wide ceiling.
+
+For a ready set, the Coordinator creates all admitted delegations and starts their `run()` methods with
+`asyncio.create_task()`:
+
+- With only hard joins, it waits for all active delegations before review.
+- If any active delegation uses a soft join, it returns to review after the first completion. Pending asyncio tasks
+  are cancelled for that invocation, but their stable delegation identities remain active in shared state so the
+  same specialist checkpoint can be resumed or invoked again.
+- A dependency is still hard even when a task uses a soft join. Soft join changes when the Coordinator may review; it
+  does not allow a dependent task to ignore incomplete prerequisites.
+- Only the Coordinator accepts returns and marks agenda tasks complete. A specialist cannot self-schedule a sibling or
+  directly hand work to another specialist.
+
+This is coordinator-pattern concurrency, not conversational peer-to-peer messaging. All cross-agent information is a
+typed delegation, canonical input ref, bounded specialist return, or Coordinator decision.
+
+### MCP Boundary: From Model Proposal To Trader Capability
+
+The model does not invoke a Python function or platform service directly. `RoleScopedMcpRuntime` turns a validated
+proposal into an MCP request through the following stages:
+
+```text
+specialist model
+  -> strict turn and ToolCallProposal
+  -> role/phase catalogue lookup
+  -> live MCP list_tools intersection
+  -> runtime binds operation, actor, requester, scope and provenance fields
+  -> ToolPolicy.authorize
+  -> transport input-schema check
+  -> PersistentStdioMcpToolClient.call_tool
+  -> trader_mcp FastMCP operation
+  -> trader_mcp adapter
+  -> trader_research deterministic service
+  -> trader core interface where platform execution/storage is required
+  -> ToolEnvelope
+  -> owner/command/side-effect/size/error validation
+  -> bounded ToolObservation and canonical refs
+```
+
+There are intentionally two tool catalogues at this boundary:
+
+1. The code-owned agent catalogue declares which exact operation a role may see in each phase, expected MCP owner,
+   maximum side effect, and any required session approval. Its content digest is pinned to the session runtime.
+2. The MCP transport catalogue is discovered with `list_tools` from the live server and supplies the actual input
+   schema. An operation must be present in both catalogues. A code admission for a server operation that is missing at
+   runtime is an error; an extra server operation is invisible to the model.
+
+Before dispatch, policy rechecks the session/program/catalogue pins, role, phase, approval, delegation side effects,
+budget, lifecycle, scope, mutation justification, and semantic call fingerprint. Runtime-owned fields use stable
+identities derived from session, delegation, attempt, step, and tool. The model cannot choose an idempotency key,
+impersonate the operator, expand a data scope, weaken a strategy build contract, or claim a successful prerequisite.
+
+The persistent client keeps one stdio server process and MCP session alive for the lifetime of its role's runtime.
+`ToolEnvelope` is the transport return contract: it carries success, command, agent owner, declared side effect,
+public data, canonical artifact refs, warnings, errors, timestamp, and schema version. The agent runtime verifies that
+the command, owner, and side effect match the code-owned definition, rejects malformed or oversized responses, and
+meters every physical call even if transport or envelope validation fails.
+
+Coordinator MCP usage follows the same boundary, although session creation, evidence reading, and decision receipt
+recording are constructed by trusted Coordinator code rather than selected from a model-visible tool turn. This keeps
+canonical governance mutations on MCP without asking a model to invent their authoritative payloads.
+
+### Dependency Direction Into `trader_research` And `trader`
+
+The intended runtime dependency direction is:
+
+```text
+operator / CLI
+      |
+      v
+trader_agents                    model reasoning, policy, graphs, checkpoints
+      |
+      | MCP protocol over dedicated stdio sessions
+      v
+trader_mcp                       transport schemas and adapters
+      |
+      v
+trader_research                  deterministic research services and artifacts
+      |
+      +---------------------> trader_standard implementations, where selected
+      v
+trader                           event store, market data, strategy/risk and backtest core
+```
+
+`trader_agents` does import stable domain contracts such as `ResearchSession`, budgets, canonical reference types, and
+receipt constructors from `trader_research`, plus MCP operation constants and `SideEffect` from `trader_mcp`. Those
+imports define shared data and policy vocabulary. They are not an execution bypass: when a registered tool exists,
+agent code reaches persistence, data providers, coding services, implementation admission, and artifact reads only
+through its MCP client.
+
+The MCP server is the application composition boundary below the agents. `trader_mcp.server` lazily constructs
+`trader_research` services, the core `trader` configuration and event store, and provider adapters such as Alpaca,
+MLflow, or Optuna where the registered operation requires them. This is why an agent can ask for a data inventory or
+candidate admission without receiving database handles, provider clients, repository paths, or platform service
+objects.
+
+The core `trader` and maintained `trader_standard` packages do not import the research-agent control plane. They remain
+usable without an LLM, LangGraph, or MCP process. No agent can place orders, mutate broker state, reconcile live
+orders, clear a halt, or perform arbitrary SQL; broker-read and broker-mutating side effects are rejected when the
+agent tool catalogue is constructed.
+
+There is one current package-level exception that should not be copied: `trader_mcp.knowledge_tools` imports the
+provider-neutral LLM request/client types from `trader_agents.llm_client`. That knowledge-extraction path is outside
+the current Coordinator/Data/Strategy runtime, but it creates a reverse `trader_mcp -> trader_agents` import edge.
+The target correction is to move that provider-neutral protocol into a neutral shared package or inject it behind a
+knowledge-service protocol. Until then, diagrams of the intended direction must acknowledge this exception rather
+than treating the Python dependency graph as perfectly acyclic.
+
+### Operational State, Canonical Evidence, And Recovery
+
+The system uses two PostgreSQL-backed state planes for different purposes:
+
+| Plane | Owns | Does not own |
+| --- | --- | --- |
+| LangGraph checkpoint database | Current phase/status, exact identity pins, agenda, delegations, accepted return summaries, public decision, evidence refs, budgets, loop fingerprints, lifecycle summaries, interrupt, cursor, and terminal result. | Research truth, complete source, provider payloads, prompts, hidden reasoning, raw messages, credentials, or raw tool transcripts. |
+| Trader research persistence behind MCP | Immutable sessions, tool-produced artifacts, operation journals, implementation packages/versions, admission evidence, and append-only decision receipts. | Graph routing, transient model context, or resumable conversational state. |
+
+Coordinator thread IDs use `agent-session:{session_id}:coordinator`. Specialist thread IDs use
+`agent-session:{session_id}:specialist:{delegation_id}`. This lets a fresh runtime reconstruct the same graph and query
+the exact thread without sharing specialist state. `start()` returns an existing terminal/interrupt result when one is
+already checkpointed, resumes a nonterminal checkpoint when present, and only creates initial state when no thread
+exists. `resume()` requires both a real interrupt and the same owning operator identity.
+
+Coordinator state is bounded to 256 KB with explicit limits on delegations, returns, evidence refs, issues, and loop
+fingerprints. Specialist state is bounded separately to 192 KB and retains at most bounded redacted observations,
+successful steps, refs, and fingerprints. Recursive forbidden-key checks exclude secrets, prompts, raw messages,
+scratchpads, source code, and tool transcripts.
+
+Some information is intentionally transient. Complete repository files, candidate source, and source-like tool
+payloads may be available to a specialist during one process invocation, but the checkpoint stores only safe
+summaries, hashes, lifecycle identities, and canonical refs. After recovery, the model must re-read an authorized
+resource through MCP when the retained public summary is insufficient. This increases calls but preserves the trust
+boundary and avoids turning the checkpointer into an uncontrolled data store.
+
+Canonical operation journals protect mutating Data and coding/admission calls from blind replay. The separate
+Coordinator decide/commit boundary protects public research transitions. Checkpoint recovery therefore restores where
+reasoning should continue, while canonical persistence answers whether an external mutation or decision was already
+accepted.
+
+### Failure, Budget, And Security Semantics
+
+Failures are represented at the boundary where they occur:
+
+- Invalid model JSON or schema-invalid output receives at most one schema-only repair using public Pydantic errors.
+  Domain or policy failures are not fed back as semantic coaching and model fields are never silently rewritten.
+- A specialist schema, policy, runtime, or domain error produces a failed `SpecialistReturn` with a bounded public
+  blocker. It does not escape its delegation and improvise another role's work.
+- A schema-valid but invalid Coordinator decision becomes a deterministic `stop_fail_closed` decision and is recorded
+  through the normal decision path.
+- Missing tools, catalogue mismatches, envelope ownership/side-effect mismatches, oversized responses, exhausted
+  budgets, repeated low-information actions, and out-of-scope mutations fail before they can be treated as evidence.
+- Model, tool, token, revision, wall-time, and concurrency ceilings come from the immutable session and delegation
+  reservation. Physical provider/tool calls are counted at the crossed boundary, including calls whose result is
+  malformed or whose process ends before the next checkpoint.
+- Tracing retains correlation identities, public operation/artifact identities, digests, usage, duration, and public
+  error codes. It excludes prompts, hidden reasoning, credentials, source, and complete argument/response payloads.
+
+Fail-closed behavior is not a substitute for specialist reasoning. It defines what happens when reasoning cannot be
+safely converted into an authorized, evidenced transition. Likewise, replay and validation code preserves exact
+accepted work; it does not manufacture an alternative agenda, tool choice, or conclusion to make a model appear
+successful.
+
+### Extending The System With Another Specialist
+
+A new specialist is an architectural addition, not merely another prompt or MCP allowlist entry. A complete addition
+requires:
+
+1. Add the role and its strict entry, turn/action, conclusion, return, and lifecycle contracts.
+2. Record its mission, authority, required context, evidence obligations, termination rules, and concurrency semantics
+   in the owning agent design and `agents.md`.
+3. Add a versioned program and bind it to an admitted model profile and tool-policy version.
+4. Admit the smallest required MCP operations in the code-owned catalogue with exact owner, side effect, phases, and
+   approval requirements. The server operation and `ToolEnvelope` contract must already exist or be implemented in
+   the correct lower bounded context.
+5. Implement a small isolated graph whose state contains only resumable operational facts. Keep deterministic scope,
+   lifecycle, provenance, and readiness validation outside model instructions.
+6. Add specialist-specific policy checks for authority, scope, mutation, replay identity, evidence readiness, and
+   semantic loops.
+7. Teach the Coordinator's agenda and delegation builders how to express the new work without giving the Coordinator
+   ownership of the specialist's judgment. Inject the specialist at the composition root with a dedicated MCP client
+   and its own checkpoint thread identity.
+8. Add contract tests first, then focused model-choice, policy/security, MCP-boundary, recovery, parallel-join, and
+   end-to-end qualification scenarios. Update the active roadmap and package documentation in the same change.
+
+Do not add direct service calls from the new agent, a general-purpose tool bag, peer-to-peer hidden messages, a shared
+scratchpad, or a second canonical state store. The stable integration language between agents is typed public
+contracts plus canonical evidence references.
 
 ### Frozen Deterministic Baseline (Removed)
 
@@ -975,11 +1518,11 @@ reports blockers, caveats, and performance conclusions. It should not repair mis
 
 ### Current Method-Card Baseline And Remaining Work
 
-The 33P-33AB implementation and 33V evidence regression prove the canonical method-card architecture across controlled
-sources containing previously unseen method names. Source-backed identity discovery, target-bound evidence packets,
-deterministic field extraction, semantic validation, stable method-card sets, explicit publication, and
-readiness-gated strategy use all run through MCP without a maintained registry of method targets. Shallow records remain
-legacy/projection artifacts and cannot satisfy rich strategy or risk generation.
+The implemented method-card pipeline and its evidence-regression suite prove the canonical architecture across
+controlled sources containing previously unseen method names. Source-backed identity discovery, target-bound evidence
+packets, deterministic field extraction, semantic validation, stable method-card sets, explicit publication, and
+readiness-gated strategy use all run through MCP without a maintained registry of method targets. Shallow records
+remain legacy/projection artifacts and cannot satisfy rich strategy or risk generation.
 
 The proof deliberately distinguishes target openness from evidence-role discipline. New method names are open-world,
 while family evidence roles and downstream readiness requirements remain maintained contracts. A definition-only
@@ -999,10 +1542,11 @@ synthesis, field-to-span entailment validation, and generation-consistent full-s
 may support multiple methods through different or shared spans; competing concepts are context, not automatic blockers.
 Deterministic extraction must continue to leave unsupported fields null. More precise parsers or a bounded enrichment
 adapter may improve formulas, parameter structures, and decision rules only while preserving the evidence-packet
-boundary, field-level citations, semantic validation, readiness gates, and explicit approval model. Tracker item 33AB
-adds this claim-level hardening and its bounded canonical design document. Its live book evidence correctly removes
-neighbor-method attribution and then blocks when target-bound implementation inputs remain missing; passing controlled
-33V fixtures still must not be interpreted as evidence that every arbitrary book passage is method-card ready.
+boundary, field-level citations, semantic validation, readiness gates, and explicit approval model. The active
+claim-level hardening work and its bounded canonical design document add these requirements. Its live book evidence
+correctly removes neighbor-method attribution and then blocks when target-bound implementation inputs remain missing;
+passing controlled evidence-regression fixtures still must not be interpreted as evidence that every arbitrary book
+passage is method-card ready.
 
 ## Next Steps
 
@@ -1072,8 +1616,8 @@ contracts; it should not be the primary path from a method specification to a tr
 architecture work is therefore strategy/risk implementation intake and versioning, reproducible backtest
 specifications, ML model versioning, and robustness/adversarial evaluation over immutable baseline runs.
 
-Tracker item 33AC records composite methodology representation as a deferred architectural follow-on. Tracker items
-56-57 and the reprioritized 39, 44, and 46 items record the active implementation-to-evidence work.
+The roadmap records composite methodology representation as a deferred architectural follow-on and tracks the active
+implementation-to-evidence, ML lifecycle, robustness, and review work by capability name.
 
 ## ML Lifecycle Architecture
 
@@ -1085,7 +1629,8 @@ trials, selections, backtests, trading-specific lineage, safety decisions, and r
 
 ### Implemented Runtime Slice
 
-Tasks 39H-I implement the execution-side boundary while 39A-G/J remain planned. Core `trader.predictions` defines
+The runtime prediction, deployment-validation, and strategy-binding boundary is implemented, while feature
+engineering, training, model evaluation/registration, and drift remain planned. Core `trader.predictions` defines
 dependency-neutral feature batches, immutable model identity, requests, raw observations/batches, inference policy,
 runtime binding, and failure evidence. `trader_mlflow` supplies a lazy local `python_function` adapter;
 `trader_standard` supplies point-in-time bar features, maintained mappers, and a model-driven strategy. No core module
@@ -1233,7 +1778,7 @@ implementations. The ML Agent owns feature-set composition, training datasets, f
 model versions, deployment candidates, predictions, and drift. The Quant Research Supervisor binds a passed deployment
 manifest into strategy/backtest artifacts. Evaluation and Adversarial agents judge trading and robustness evidence.
 
-Tracker tasks 39A-39J implement this deterministic tool universe before task 40 adds an ML Agent graph.
+The deterministic ML tool universe must be completed before an ML Agent graph is added.
 
 ## Experiment Tracking And Optimisation Architecture
 
@@ -1328,27 +1873,27 @@ payload from a supported canonical run, uses a configured sink profile, and writ
 blocks without damaging canonical evidence. The optional MLflow sink is therefore an analytical convenience for
 backtest optimisation, separate from MLflow's authoritative role for ML training telemetry and model packages.
 
-Walk-forward optimisation in task 58 composes these same contracts inside each immutable fold. It does not introduce a
-second optimiser abstraction or fold robustness attacks into selection. Task 59 remains the separate stitched
-out-of-sample Evaluation and Adversarial audit layer.
+Walk-forward optimisation composes these same contracts inside each immutable fold. It does not introduce a second
+optimiser abstraction or fold robustness attacks into selection. Stitched out-of-sample Evaluation and Adversarial
+audit remain a separate layer.
 
 ## Walk-Forward Validation And Optimisation
 
 Walk-forward validation and walk-forward optimisation are related but belong at different delivery stages.
 
-Chronological walk-forward validation is foundational model-fitting correctness. Tasks 39C and 39F must support rolling,
-expanding, or anchored folds, target horizons, purge/embargo, preprocessing fit scope, and untouched holdouts before the
-ML Agent can claim that a model evaluation is time-series valid. This does not require searching strategy parameters or
-selecting a winning model on every fold.
+Chronological walk-forward validation is foundational model-fitting correctness. The dataset and evaluation
+capabilities must support rolling, expanding, or anchored folds, target horizons, purge/embargo, preprocessing fit
+scope, and untouched holdouts before the ML Agent can claim that a model evaluation is time-series valid. This does not
+require searching strategy parameters or selecting a winning model on every fold.
 
 Full walk-forward optimisation is a later orchestration capability. It repeatedly searches a bounded strategy-parameter
 or model-choice space on declared in-sample/validation windows, locks the selected parameters or immutable model version,
 and runs an untouched out-of-sample backtest. It depends on capabilities that must exist first:
 
-- immutable handwritten/AI-produced strategy and risk implementation versions from task 56
-- reproducible, parameterized backtest specifications and child-run lineage from task 57
-- point-in-time ML training/evaluation and version-pinned model-backed strategy integration through task 39I
-- cost, parameter, scope, and data perturbation primitives from tasks 44 and 46
+- immutable handwritten/AI-produced strategy and risk implementation versions
+- reproducible, parameterized backtest specifications and child-run lineage
+- point-in-time ML training/evaluation and version-pinned model-backed strategy integration
+- cost, parameter, scope, and data perturbation primitives
 
 Assigning the complete process to the Robustness Agent would let the same decision-maker create selected evidence and
 judge its robustness. Decision authority and artifact authority are therefore split:

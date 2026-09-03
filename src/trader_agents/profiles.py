@@ -12,13 +12,21 @@ from trader_research.foundation import json_payload_hash
 from .contracts import AgentRole
 
 
-DEVELOPMENT_MODEL_PROFILE_ID = "ollama-qwen35-9b-json-v2"
-"""Pinned development model profile selected by the framework spike."""
+DEVELOPMENT_MODEL_PROFILE_ID = "ollama-lfm25-8b-json-v1"
+"""Pinned local model profile selected for bounded agentic evaluation."""
+
+OLLAMA_LFM25_8B_DIGEST = (
+    "9cf756159fc2f3b9128c6a3f544ec90c5e9b8afdbb4179a57b8aea9de589cfb2"
+)
+"""Exact Ollama content digest selected for bounded agentic evaluation."""
+
+REJECTED_QWEN35_9B_MODEL_PROFILE_ID = "ollama-qwen35-9b-json-v5"
+"""Historical profile identity rejected by bounded model-choice tests."""
 
 OLLAMA_QWEN35_9B_DIGEST = (
     "6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7"
 )
-"""Exact Ollama content digest admitted by the development profile."""
+"""Historical Ollama content digest retained with the rejected profile."""
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
@@ -34,6 +42,8 @@ class ModelProfile:
         model_revision: Immutable provider revision served for ``model``.
         base_url: Provider endpoint without credentials.
         temperature: Sampling temperature for control decisions.
+        context_window_tokens: Maximum input-plus-output context admitted for
+            one provider call.
         max_output_tokens: Maximum generated tokens per call.
         timeout_seconds: Provider request timeout.
         thinking: Whether provider-specific internal thinking is enabled.
@@ -45,7 +55,8 @@ class ModelProfile:
     model_revision: str
     base_url: str
     temperature: float = 0.0
-    max_output_tokens: int = 900
+    context_window_tokens: int = 8_192
+    max_output_tokens: int = 2_048
     timeout_seconds: float = 120.0
     thinking: bool = False
 
@@ -66,8 +77,12 @@ class ModelProfile:
             raise ValueError("Ollama model_revision must be a lowercase SHA-256 digest")
         if not 0.0 <= self.temperature <= 2.0:
             raise ValueError("temperature must be between 0 and 2")
+        if not 4_096 <= self.context_window_tokens <= 131_072:
+            raise ValueError("context_window_tokens must be between 4096 and 131072")
         if not 1 <= self.max_output_tokens <= 8_192:
             raise ValueError("max_output_tokens must be between 1 and 8192")
+        if self.max_output_tokens >= self.context_window_tokens:
+            raise ValueError("max_output_tokens must be smaller than the context window")
         if not 1.0 <= self.timeout_seconds <= 600.0:
             raise ValueError("timeout_seconds must be between 1 and 600")
 
@@ -80,6 +95,7 @@ class ModelProfile:
             "model_revision": self.model_revision,
             "base_url": self.base_url,
             "temperature": self.temperature,
+            "context_window_tokens": self.context_window_tokens,
             "max_output_tokens": self.max_output_tokens,
             "timeout_seconds": self.timeout_seconds,
             "thinking": self.thinking,
@@ -231,17 +247,18 @@ class AgentProgramRegistry:
 
 
 def development_model_profiles() -> ModelProfileRegistry:
-    """Return the model profile registry selected by the framework spike."""
+    """Return the active model profile registry for bounded evaluation."""
     return ModelProfileRegistry(
         (
             ModelProfile(
                 profile_id=DEVELOPMENT_MODEL_PROFILE_ID,
                 provider="ollama",
-                model="qwen3.5:9b",
-                model_revision=OLLAMA_QWEN35_9B_DIGEST,
+                model="lfm2.5:8b",
+                model_revision=OLLAMA_LFM25_8B_DIGEST,
                 base_url="http://127.0.0.1:11434",
                 temperature=0.0,
-                max_output_tokens=900,
+                context_window_tokens=8_192,
+                max_output_tokens=2_048,
                 timeout_seconds=120.0,
                 thinking=False,
             ),

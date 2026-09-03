@@ -17,7 +17,7 @@ from tests.support.agentic_qualification import (
 )
 from trader_agents.profiles import (
     DEVELOPMENT_MODEL_PROFILE_ID,
-    OLLAMA_QWEN35_9B_DIGEST,
+    OLLAMA_LFM25_8B_DIGEST,
 )
 
 
@@ -43,19 +43,20 @@ def test_agentic_identity_manifest_pins_model_program_tools_fixture_and_image() 
         {
             "profile_id": DEVELOPMENT_MODEL_PROFILE_ID,
             "provider": "ollama",
-            "model": "qwen3.5:9b",
-            "model_revision": OLLAMA_QWEN35_9B_DIGEST,
+            "model": "lfm2.5:8b",
+            "model_revision": OLLAMA_LFM25_8B_DIGEST,
             "base_url": "http://127.0.0.1:11434",
             "temperature": 0.0,
-            "max_output_tokens": 900,
+            "context_window_tokens": 8_192,
+            "max_output_tokens": 2_048,
             "timeout_seconds": 120.0,
             "thinking": False,
         }
     ]
     assert {item["program_id"] for item in programs} == {
-        "research-coordinator-v4",
-        "data-research-v4",
-        "strategy-engineering-v4",
+        "research-coordinator-v7",
+        "data-research-v6",
+        "strategy-engineering-v6",
     }
     assert manifest["evaluation_dataset_digest"] == agentic_evaluation_digest()
     assert set(manifest["evaluation_component_digests"]) == {

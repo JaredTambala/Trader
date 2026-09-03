@@ -40,6 +40,8 @@ class LlmJsonRequest:
         response_schema: JSON Schema the returned object must satisfy.
         model: Optional request-specific model override.
         temperature: Provider-neutral sampling temperature.
+        context_window_tokens: Maximum input-plus-output context requested from
+            providers that expose a per-request context setting.
         max_tokens: Maximum generated output tokens.
         thinking: Whether a provider may emit an internal thinking phase. The
             default is false for bounded structured control decisions.
@@ -49,6 +51,7 @@ class LlmJsonRequest:
     response_schema: Mapping[str, Any]
     model: str | None = None
     temperature: float = 0.0
+    context_window_tokens: int = 8_192
     max_tokens: int = 800
     thinking: bool = False
 
@@ -310,9 +313,13 @@ class OllamaJsonLlmClient:
             "model": selected_model,
             "messages": llm_request.messages_payload(),
             "stream": False,
-            "format": "json",
+            "format": dict(llm_request.response_schema),
             "think": llm_request.thinking,
-            "options": {"temperature": llm_request.temperature},
+            "options": {
+                "temperature": llm_request.temperature,
+                "num_ctx": llm_request.context_window_tokens,
+                "num_predict": llm_request.max_tokens,
+            },
         }
         response = await self.transport.post_json(
             _join_url(self.config.base_url, "api/chat"),

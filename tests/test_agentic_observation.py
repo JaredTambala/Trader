@@ -183,7 +183,7 @@ def test_public_span_rejects_raw_secret_and_credential_uri_attributes() -> None:
     """Fail before unsafe MLflow attributes enter qualification evidence."""
     base = {
         "trader.session_id": "session",
-        "trader.program_id": "research-coordinator-v4",
+        "trader.program_id": "research-coordinator-v7",
     }
     with pytest.raises(ValueError, match="forbidden"):
         PublicTraceSpan(
@@ -244,7 +244,7 @@ def test_real_mlflow_loader_returns_only_requested_redacted_lifecycle_trace(
             attributes={
                 "trader.session_id": "session-observed",
                 "trader.branch_id": "root",
-                "trader.program_id": "research-coordinator-v4",
+                "trader.program_id": "research-coordinator-v7",
                 "trader.lifecycle_operation": "start",
             },
         ):
@@ -254,7 +254,7 @@ def test_real_mlflow_loader_returns_only_requested_redacted_lifecycle_trace(
                 attributes={
                     "trader.session_id": "session-observed",
                     "trader.branch_id": "root",
-                    "trader.program_id": "research-coordinator-v4",
+                    "trader.program_id": "research-coordinator-v7",
                     "trader.output_contract": "CoordinatorAgenda",
                 },
             ):
@@ -265,7 +265,7 @@ def test_real_mlflow_loader_returns_only_requested_redacted_lifecycle_trace(
             attributes={
                 "trader.session_id": "another-session",
                 "trader.branch_id": "root",
-                "trader.program_id": "research-coordinator-v4",
+                "trader.program_id": "research-coordinator-v7",
                 "trader.lifecycle_operation": "inspect",
             },
         ):

@@ -20,6 +20,7 @@ from .contracts import (
     StrategyBuildContract,
     ToolCallProposal,
 )
+from .inputs import scope_timestamps_equal
 
 
 class PolicyViolation(ValueError):
@@ -309,7 +310,15 @@ class ToolPolicy:
             value = arguments.get(key)
             if value is None:
                 continue
-            if not any(str(getattr(item, key)) == str(value) for item in scope.items):
+            matches_scope = any(
+                (
+                    scope_timestamps_equal(value, getattr(item, key))
+                    if key in {"start", "end"}
+                    else str(getattr(item, key)) == str(value)
+                )
+                for item in scope.items
+            )
+            if not matches_scope:
                 raise PolicyViolation(
                     "data_scope_mismatch",
                     f"Data call {key} is outside approved scope",

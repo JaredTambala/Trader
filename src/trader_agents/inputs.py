@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime, timezone
 from typing import Any
 
 from trader_research.foundation import stable_research_id
@@ -15,6 +16,29 @@ from .profiles import AgentProgramRegistry, ModelProfileRegistry
 
 class SessionInputError(ValueError):
     """Raised when an approved session cannot enter the first-slice runtime."""
+
+
+def scope_timestamps_equal(left: object, right: object) -> bool:
+    """Return whether two timezone-aware scope boundaries name one instant.
+
+    Args:
+        left: Candidate RFC 3339/ISO 8601 boundary value.
+        right: Approved RFC 3339/ISO 8601 boundary value.
+
+    Returns:
+        ``True`` only when both values are timezone-aware and normalize to the
+        same UTC instant.
+    """
+    try:
+        parsed = [
+            datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            for value in (left, right)
+        ]
+    except ValueError:
+        return False
+    if any(value.tzinfo is None for value in parsed):
+        return False
+    return parsed[0].astimezone(timezone.utc) == parsed[1].astimezone(timezone.utc)
 
 
 def composite_data_scope_from_session(

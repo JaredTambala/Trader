@@ -50,12 +50,31 @@ from .inputs import (
 )
 from .mcp_runtime import RoleScopedMcpRuntime
 from .policy import BudgetLedger, PolicyContext, PolicyViolation
-from .profiles import AgentProgramRegistry, ModelProfileRegistry
+from .profiles import (
+    AgentProgram,
+    AgentProgramRegistry,
+    ModelProfile,
+    ModelProfileRegistry,
+)
 from .scheduler import SchedulingError, compute_ready_set
 from .strategy_engineering import StrategyEngineeringAgent
-from .structured_model import StructuredModelRunner
+from .structured_model import (
+    ModelInvocationResult,
+    StructuredModelRunner,
+    StructuredOutputError,
+)
 from .tool_client import McpToolClient
 from .tracing import NoOpTraceSink, TraceCorrelation, TraceSink
+
+
+_COORDINATOR_AGENDA_INSTRUCTION = (
+    "Interpret the operator objective into a visible first-slice agenda. "
+    "Select only the specialist responsibilities that are materially required "
+    "by the brief. Treat unknown evidence as a specialist research question. "
+    "Declare a behaviorally material operator ambiguity instead of inventing "
+    "semantics, and return no tasks when such an ambiguity exists. Use the "
+    "typed task and dependency contract to express any justified parallelism."
+)
 
 
 @dataclass
@@ -153,50 +172,21 @@ class ResearchCoordinator:
             """Ask the model for a visible bounded agenda."""
             _validate_state_session(state, session)
             ledger = _ledger(session, state)
-            prior_agenda = dict(state.get("agenda", {}))
-            operator_response = dict(state.get("operator_response", {}))
-            invocation = await self.model_runner.invoke(
+            invocation = await _propose_coordinator_agenda(
+                model_runner=self.model_runner,
                 program=coordinator_program,
                 profile=profile,
-                output_type=CoordinatorAgenda,
-                instruction=(
-                    "Interpret the operator objective into a visible first-slice "
-                    "agenda. Declare material ambiguity instead of inventing "
-                    "strategy semantics. Use separate soft-join tasks only for "
-                    "genuinely independent Data scopes or catalogue work, and "
-                    "add a hard-join reconciliation task before a complete "
-                    "specialist handoff. Include both responsibilities when "
-                    "the approved inputs are sufficient."
-                ),
-                public_context={
-                    "session": _public_session(session),
-                    "prior_agenda": prior_agenda,
-                    "accepted_specialist_returns": list(
-                        state.get("specialist_returns", [])
-                    ),
-                    "operator_response": operator_response,
-                    "scope_contracts": {
-                        "data_scope": composite_data_scope_from_session(
-                            session
-                        ).model_dump(mode="json"),
-                        "implementation_specification_present": (
-                            session.implementation_specification is not None
-                        ),
-                    },
-                },
+                session=session,
+                catalogue=self.tool_catalogue,
                 ledger=ledger,
-                correlation=_correlation(
-                    session=session,
-                    branch_id=str(state["branch_id"]),
-                    program_id=coordinator_program.program_id,
-                    tool_catalog_id=self.tool_catalogue.catalogue_id,
+                branch_id=str(state["branch_id"]),
+                prior_agenda=dict(state.get("agenda", {})),
+                accepted_specialist_returns=list(
+                    state.get("specialist_returns", [])
                 ),
+                operator_response=dict(state.get("operator_response", {})),
             )
             agenda = invocation.output
-            _validate_first_slice_agenda(
-                agenda,
-                data_scope=composite_data_scope_from_session(session),
-            )
             branch_by_task = {
                 task.task_id: _branch_id(session.session_id, task.task_id)
                 for task in agenda.tasks
@@ -257,7 +247,11 @@ class ResearchCoordinator:
                         branch_id=str(branches[task.task_id]),
                         task=task,
                         required_input_refs=_refs_from_state(state),
-                        permitted_side_effects=["read_only", "local_mutating"],
+                        permitted_side_effects=(
+                            ["read_only", "local_mutating"]
+                            if task.mutation_requested
+                            else ["read_only"]
+                        ),
                         reserved_model_calls=scheduled.reservation.model_calls,
                         reserved_tool_calls=scheduled.reservation.tool_calls,
                         reserved_tokens=scheduled.reservation.tokens,
@@ -366,54 +360,73 @@ class ResearchCoordinator:
                 ),
             )
             agenda = CoordinatorAgenda.model_validate(state.get("agenda", {}))
-            invocation = await self.model_runner.invoke(
-                program=coordinator_program,
-                profile=profile,
-                output_type=CoordinatorDecision,
-                instruction=(
-                    "Review every supplied specialist return and verified exact "
-                    "artifact. Choose advance, revise, revisit, fork, ask_operator, "
-                    "conclude, or stop_fail_closed. Do not claim efficacy."
-                ),
-                public_context={
-                    "session_objective": session.objective,
-                    "success_definition": session.success_definition,
-                    "agenda": agenda.model_dump(mode="json"),
-                    "new_specialist_returns": [
-                        item.model_dump(mode="json") for item in new_returns
-                    ],
-                    "all_specialist_returns": [
-                        item.model_dump(mode="json") for item in returns
-                    ],
-                    "verified_artifacts": verified,
-                    "operator_response": dict(state.get("operator_response", {})),
-                    "budget_used": ledger.usage.model_dump(mode="json"),
-                },
-                ledger=ledger,
-                correlation=_correlation(
-                    session=session,
-                    branch_id=str(state["branch_id"]),
-                    program_id=coordinator_program.program_id,
-                    tool_catalog_id=self.tool_catalogue.catalogue_id,
-                ),
-            )
-            decision = invocation.output
+            expected_reviewed_ids = [item.delegation_id for item in new_returns]
+            verified_references = [item["reference"] for item in verified]
             try:
+                invocation = await self.model_runner.invoke(
+                    program=coordinator_program,
+                    profile=profile,
+                    output_type=CoordinatorDecision,
+                    instruction=(
+                        "Review every supplied specialist return and verified exact "
+                        "artifact. Choose advance, revise, revisit, fork, ask_operator, "
+                        "conclude, or stop_fail_closed. Do not claim efficacy."
+                    ),
+                    public_context={
+                        "session_objective": session.objective,
+                        "success_definition": session.success_definition,
+                        "agenda": agenda.model_dump(mode="json"),
+                        "new_specialist_returns": [
+                            item.model_dump(mode="json") for item in new_returns
+                        ],
+                        "all_specialist_returns": [
+                            item.model_dump(mode="json") for item in returns
+                        ],
+                        "verified_artifacts": verified,
+                        "operator_response": dict(
+                            state.get("operator_response", {})
+                        ),
+                        "decision_constraints": {
+                            "reviewed_delegation_ids_must_equal": (
+                                expected_reviewed_ids
+                            ),
+                            "affected_task_ids_must_be_subset_of": [
+                                task.task_id for task in agenda.tasks
+                            ],
+                            "revision_revisit_or_fork_requires_affected_task_ids": (
+                                True
+                            ),
+                            "cited_evidence_refs_must_be_selected_from": [
+                                item["uri"] for item in verified_references
+                            ],
+                            "conclude_requires_ready_agenda_roles": sorted(
+                                {task.role for task in agenda.tasks}
+                            ),
+                        },
+                        "budget_used": ledger.usage.model_dump(mode="json"),
+                    },
+                    ledger=ledger,
+                    correlation=_correlation(
+                        session=session,
+                        branch_id=str(state["branch_id"]),
+                        program_id=coordinator_program.program_id,
+                        tool_catalog_id=self.tool_catalogue.catalogue_id,
+                    ),
+                )
+                decision = invocation.output
                 _validate_coordinator_decision(
                     decision,
                     agenda=agenda,
                     new_returns=new_returns,
                     all_returns=returns,
-                    verified_refs=[item["reference"] for item in verified],
+                    verified_refs=verified_references,
                     completed_task_ids=list(state.get("completed_task_ids", [])),
                 )
-            except ValueError as exc:
+            except (StructuredOutputError, ValueError) as exc:
                 decision = _fail_closed_decision(
                     code="invalid_coordinator_decision",
                     message=str(exc),
-                    reviewed_delegation_ids=[
-                        item.delegation_id for item in new_returns
-                    ],
+                    reviewed_delegation_ids=expected_reviewed_ids,
                 )
             loop_fingerprints = dict(state.get("loop_fingerprints", {}))
             decision = _apply_coordinator_loop_policy(
@@ -888,6 +901,86 @@ def _ledger(
     )
 
 
+async def _propose_coordinator_agenda(
+    *,
+    model_runner: StructuredModelRunner,
+    program: AgentProgram,
+    profile: ModelProfile,
+    session: ResearchSession,
+    catalogue: ToolCatalogue,
+    ledger: BudgetLedger,
+    branch_id: str,
+    prior_agenda: Mapping[str, Any] | None = None,
+    accepted_specialist_returns: Sequence[Mapping[str, Any]] = (),
+    operator_response: Mapping[str, Any] | None = None,
+) -> ModelInvocationResult[CoordinatorAgenda]:
+    """Invoke the production Coordinator agenda boundary in isolation.
+
+    This seam deliberately stops before specialist dispatch. It lets focused
+    model-choice contracts exercise the exact instruction, trusted context,
+    and semantic validation used by the full graph without
+    introducing MCP, persistence, or specialist uncertainty.
+
+    Args:
+        model_runner: Strict structured model invocation boundary.
+        program: Exact Coordinator program selected for the session.
+        profile: Exact admitted model profile.
+        session: Immutable operator-approved research boundary.
+        catalogue: Code-owned role and phase capability catalogue.
+        ledger: Session budget ledger charged for provider calls.
+        branch_id: Stable Coordinator branch identity for tracing.
+        prior_agenda: Optional previously visible agenda on resumed work.
+        accepted_specialist_returns: Public specialist returns already accepted.
+        operator_response: Optional public response to an earlier interrupt.
+
+    Returns:
+        Validated agenda and bounded model-call measurements.
+    """
+    data_scope = composite_data_scope_from_session(session)
+    authority_facts = _coordinator_authority_facts(
+        session,
+        catalogue=catalogue,
+    )
+    invocation = await model_runner.invoke(
+        program=program,
+        profile=profile,
+        output_type=CoordinatorAgenda,
+        instruction=_COORDINATOR_AGENDA_INSTRUCTION,
+        public_context={
+            "session": _public_session(session),
+            "authority_facts": authority_facts,
+            "prior_agenda": dict(prior_agenda or {}),
+            "accepted_specialist_returns": list(accepted_specialist_returns),
+            "operator_response": dict(operator_response or {}),
+            "scope_contracts": {
+                "data_scope": data_scope.model_dump(mode="json"),
+                "data_responsibility": (
+                    "Determine exact multi-asset readiness, use approved "
+                    "loading when needed, revalidate after loading, and "
+                    "return canonical snapshot and quality evidence."
+                ),
+                "implementation_specification_present": (
+                    session.implementation_specification is not None
+                ),
+                "strategy_responsibility": (
+                    "Search and compare implementation versions, then reuse, "
+                    "adapt, or author code and obtain independent admission; "
+                    "do not execute the strategy."
+                ),
+            },
+        },
+        ledger=ledger,
+        correlation=_correlation(
+            session=session,
+            branch_id=branch_id,
+            program_id=program.program_id,
+            tool_catalog_id=catalogue.catalogue_id,
+        ),
+    )
+    _validate_first_slice_agenda(invocation.output, data_scope=data_scope)
+    return invocation
+
+
 def _coordinator_policy_context(
     *,
     session: ResearchSession,
@@ -920,12 +1013,13 @@ def _validate_first_slice_agenda(
 ) -> None:
     """Validate legal specialist decomposition for the first agentic slice.
 
-    A compact agenda may contain one complete task for each specialist. Larger
-    Data scopes may instead be partitioned into disjoint investigations whose
-    evidence is joined by one reconciliation task. Strategy catalogue work may
-    similarly fan out, but every construction task must wait for all catalogue
-    tasks. These structural rules are code-owned so the model cannot invent
-    unsafe parallelism or omit approved scope.
+    A compact agenda may select either or both available specialist roles and
+    contain one complete task for each selected role. Larger Data scopes may
+    instead be partitioned into disjoint investigations whose evidence is joined
+    by one reconciliation task. Strategy catalogue work may similarly fan out,
+    but every construction task must wait for all catalogue tasks. These
+    structural rules are code-owned so the model cannot invent unsafe
+    parallelism or omit approved Data scope after selecting that responsibility.
 
     Args:
         agenda: Model-proposed visible task graph.
@@ -936,13 +1030,9 @@ def _validate_first_slice_agenda(
             invalid.
     """
     if agenda.material_ambiguities:
+        if agenda.tasks:
+            raise ValueError("an agenda with a material ambiguity cannot contain tasks")
         return
-    required: set[Literal["data_research", "strategy_engineering"]] = {
-        AgentRole.DATA_RESEARCH.value,
-        AgentRole.STRATEGY_ENGINEERING.value,
-    }
-    if {task.role for task in agenda.tasks} != required:
-        raise ValueError("first-slice agenda requires Data and Strategy tasks")
 
     data_tasks = [
         task for task in agenda.tasks if task.role == AgentRole.DATA_RESEARCH.value
@@ -952,65 +1042,104 @@ def _validate_first_slice_agenda(
         for task in agenda.tasks
         if task.role == AgentRole.STRATEGY_ENGINEERING.value
     ]
-    approved_scope_ids = {item.item_id for item in data_scope.items}
-    for task in data_tasks:
-        unknown = set(task.scope_item_ids) - approved_scope_ids
-        if unknown:
-            raise ValueError(
-                "Data task claims unknown scope items: " + ", ".join(sorted(unknown))
+    if data_tasks:
+        approved_scope_ids = {item.item_id for item in data_scope.items}
+        for task in data_tasks:
+            unknown = set(task.scope_item_ids) - approved_scope_ids
+            if unknown:
+                raise ValueError(
+                    "Data task claims unknown scope items: "
+                    + ", ".join(sorted(unknown))
+                )
+        if len(data_tasks) == 1:
+            task = data_tasks[0]
+            if task.work_kind != "complete" or task.join_mode != "hard":
+                raise ValueError(
+                    "a single Data task must be a hard-join complete task"
+                )
+            if task.scope_item_ids and set(task.scope_item_ids) != approved_scope_ids:
+                raise ValueError("a complete Data task must cover the full scope")
+        else:
+            _validate_decomposed_data_tasks(
+                data_tasks,
+                approved_scope_ids=approved_scope_ids,
             )
 
-    if len(data_tasks) == 1:
-        task = data_tasks[0]
-        if task.work_kind != "complete" or task.join_mode != "hard":
-            raise ValueError("a single Data task must be a hard-join complete task")
-        if task.scope_item_ids and set(task.scope_item_ids) != approved_scope_ids:
-            raise ValueError("a complete Data task must cover the full scope")
-    else:
-        reconciliation = [task for task in data_tasks if task.work_kind == "reconcile"]
-        investigations = [
-            task for task in data_tasks if task.work_kind == "investigate"
-        ]
-        if len(reconciliation) != 1 or len(investigations) < 2:
-            raise ValueError(
-                "decomposed Data work requires independent investigations "
-                "and exactly one reconciliation"
-            )
-        if len(investigations) + 1 != len(data_tasks):
-            raise ValueError(
-                "decomposed Data work may contain only investigations and "
-                "one reconciliation"
-            )
-        claimed: set[str] = set()
-        for task in investigations:
-            scope_ids = set(task.scope_item_ids)
-            if not scope_ids:
-                raise ValueError(
-                    "each Data investigation must claim explicit scope items"
-                )
-            overlap = claimed.intersection(scope_ids)
-            if overlap:
-                raise ValueError(
-                    "parallel Data investigations overlap scope items: "
-                    + ", ".join(sorted(overlap))
-                )
-            claimed.update(scope_ids)
-        if claimed != approved_scope_ids:
-            raise ValueError(
-                "parallel Data investigations must cover the full approved scope"
-            )
-        join_task = reconciliation[0]
-        investigation_ids = {task.task_id for task in investigations}
-        if join_task.join_mode != "hard":
-            raise ValueError("Data reconciliation must use a hard join")
-        if not investigation_ids.issubset(set(join_task.dependencies)):
-            raise ValueError("Data reconciliation must depend on every investigation")
-        if (
-            join_task.scope_item_ids
-            and set(join_task.scope_item_ids) != approved_scope_ids
-        ):
-            raise ValueError("Data reconciliation must cover the full scope")
+    if strategy_tasks:
+        _validate_strategy_tasks(strategy_tasks)
 
+
+def _validate_decomposed_data_tasks(
+    data_tasks: Sequence[AgendaTaskProposal],
+    *,
+    approved_scope_ids: set[str],
+) -> None:
+    """Validate disjoint Data investigations and their reconciliation join.
+
+    Args:
+        data_tasks: Data-owned tasks from one coordinator agenda.
+        approved_scope_ids: Exact item identities in the approved Data scope.
+
+    Raises:
+        ValueError: If investigations overlap, omit scope, or lack one hard
+            reconciliation join.
+    """
+    reconciliation = [task for task in data_tasks if task.work_kind == "reconcile"]
+    investigations = [
+        task for task in data_tasks if task.work_kind == "investigate"
+    ]
+    if len(reconciliation) != 1 or len(investigations) < 2:
+        raise ValueError(
+            "decomposed Data work requires independent investigations "
+            "and exactly one reconciliation"
+        )
+    if len(investigations) + 1 != len(data_tasks):
+        raise ValueError(
+            "decomposed Data work may contain only investigations and "
+            "one reconciliation"
+        )
+    claimed: set[str] = set()
+    for task in investigations:
+        scope_ids = set(task.scope_item_ids)
+        if not scope_ids:
+            raise ValueError(
+                "each Data investigation must claim explicit scope items"
+            )
+        overlap = claimed.intersection(scope_ids)
+        if overlap:
+            raise ValueError(
+                "parallel Data investigations overlap scope items: "
+                + ", ".join(sorted(overlap))
+            )
+        claimed.update(scope_ids)
+    if claimed != approved_scope_ids:
+        raise ValueError(
+            "parallel Data investigations must cover the full approved scope"
+        )
+    join_task = reconciliation[0]
+    investigation_ids = {task.task_id for task in investigations}
+    if join_task.join_mode != "hard":
+        raise ValueError("Data reconciliation must use a hard join")
+    if not investigation_ids.issubset(set(join_task.dependencies)):
+        raise ValueError("Data reconciliation must depend on every investigation")
+    if (
+        join_task.scope_item_ids
+        and set(join_task.scope_item_ids) != approved_scope_ids
+    ):
+        raise ValueError("Data reconciliation must cover the full scope")
+
+
+def _validate_strategy_tasks(
+    strategy_tasks: Sequence[AgendaTaskProposal],
+) -> None:
+    """Validate one complete Strategy task or a catalogue/construction graph.
+
+    Args:
+        strategy_tasks: Strategy-owned tasks from one coordinator agenda.
+
+    Raises:
+        ValueError: If the task structure omits a required hard join.
+    """
     if len(strategy_tasks) == 1:
         task = strategy_tasks[0]
         if task.work_kind != "complete" or task.join_mode != "hard":
@@ -1142,16 +1271,14 @@ def _validate_coordinator_decision(
         raise ValueError("revision, revisit, or fork requires affected tasks")
     if decision.action is CoordinatorAction.CONCLUDE:
         latest_by_role = {item.role: item for item in all_returns}
-        if set(latest_by_role) != {
-            AgentRole.DATA_RESEARCH.value,
-            AgentRole.STRATEGY_ENGINEERING.value,
-        }:
-            raise ValueError("conclusion requires both specialist returns")
+        required_roles = {task.role for task in agenda.tasks}
+        if not required_roles.issubset(latest_by_role):
+            raise ValueError("conclusion requires a return for every agenda role")
         if any(
-            item.status is not SpecialistStatus.READY
-            for item in latest_by_role.values()
+            latest_by_role[role].status is not SpecialistStatus.READY
+            for role in required_roles
         ):
-            raise ValueError("conclusion requires ready Data and Strategy returns")
+            raise ValueError("conclusion requires every agenda role to be ready")
         if set(completed_task_ids) != known_tasks:
             raise ValueError("conclusion requires every agenda task to be completed")
 
@@ -1396,6 +1523,54 @@ def _public_session(session: ResearchSession) -> dict[str, Any]:
         "implementation_specification": session.implementation_specification,
         "python_quality_guide": session.python_quality_guide,
         "budget": session.budget.to_dict(),
+    }
+
+
+def _coordinator_authority_facts(
+    session: ResearchSession,
+    *,
+    catalogue: ToolCatalogue,
+) -> dict[str, Any]:
+    """Return code-owned authority facts for coordinator interpretation.
+
+    The model must distinguish missing research evidence from missing operator
+    authority. Tool exposure is the canonical policy projection, so these facts
+    are derived from the same catalogue and immutable approval policy that will
+    govern a later specialist dispatch.
+
+    Args:
+        session: Immutable operator-approved research boundary.
+        catalogue: Exact role and phase-aware tool catalogue.
+
+    Returns:
+        JSON-native delegation, investigation, and mutation authority facts.
+    """
+    data_tools = {
+        definition.name
+        for definition in catalogue.available(
+            role=AgentRole.DATA_RESEARCH,
+            phase=AgentPhase.REMEDIATE,
+            approval_policy=session.approval_policy,
+        )
+    }
+    strategy_tools = {
+        definition.name
+        for definition in catalogue.available(
+            role=AgentRole.STRATEGY_ENGINEERING,
+            phase=AgentPhase.CONSTRUCT,
+            approval_policy=session.approval_policy,
+        )
+    }
+    return {
+        "specialist_delegation_authorized": True,
+        "read_only_investigation_authorized": True,
+        "missing_prior_evidence_disposition": "delegate_investigation",
+        "data_loading_within_scope_authorized": (
+            "data_ensure_loaded" in data_tools
+        ),
+        "coding_workspace_authorized": "coding_create_workspace" in strategy_tools,
+        "scope_expansion_authorized": False,
+        "live_or_paper_trading_authorized": False,
     }
 
 

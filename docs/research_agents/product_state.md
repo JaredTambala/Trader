@@ -7,7 +7,7 @@ capabilities remain open.
 It does not define request schemas, repeat historical implementation narratives, or prescribe one linear delivery
 sequence. Use the [capability roadmap](../../plans/research_capability_roadmap.md) for remaining work and dependencies.
 
-Last reviewed: 2026-09-02.
+Last reviewed: 2026-09-03.
 
 ## How To Read Capability State
 
@@ -40,11 +40,12 @@ It also provides bounded source ingestion and methodology extraction, plus a new
 consuming immutable predictive models in strategies and synchronized-universe backtests.
 
 Trader now has an implemented but unqualified first model-backed orchestration slice. One Research Coordinator model
-creates an agenda, delegates dependency-ready tasks, reviews every specialist return against canonical evidence, and
-records append-only public decisions. Data Research and Strategy Engineering run as context-isolated specialist
-model/tool loops over dynamically narrowed MCP capabilities. The Data loop covers complete multi-asset scope,
-approved loading, revalidation, and exact snapshots. The Strategy loop searches and compares admitted implementations
-before exact reuse or isolated authorship, checks, packaging, registration, and independent admission.
+creates an agenda containing only the specialist responsibilities materially required by the brief, delegates
+dependency-ready tasks, reviews every selected return against canonical evidence, and records append-only public
+decisions. Data Research and Strategy Engineering run as context-isolated specialist model/tool loops over dynamically
+narrowed MCP capabilities. The Data loop covers complete multi-asset scope, approved loading, revalidation, and exact
+snapshots. The Strategy loop searches and compares admitted implementations before exact reuse or isolated authorship,
+checks, packaging, registration, and independent admission.
 
 The former deterministic `trader_agents` coordinator, specialist shell, composition runner, and fixed executor have
 been removed without compatibility imports. Their controlled acceptance remains valid only for the frozen Git tag; it
@@ -60,7 +61,7 @@ cancellation, queryable redacted MLflow correlation, and a real isolated Coding 
 and all controlled phase entry points are implemented. Repeated real-model, frozen Postgres, retained scale, and final
 operational acceptance evidence remain outstanding.
 
-Strategy authorship now uses `strategy-engineering-v4` with `first-slice-tool-policy-v4`. Packaging retains complete
+Strategy authorship now uses `strategy-engineering-v6` with `first-slice-tool-policy-v5`. Packaging retains complete
 source in an immutable, content-addressed coding package while returning only identity, lineage, source hash, and file
 manifest to the model. Registration accepts that exact package ID; the MCP adapter resolves source internally and
 injects attempt/build/repository lineage. Agent-proposed direct source registration fails closed, and a package remains
@@ -70,18 +71,28 @@ resolvable after its disposable workspace is destroyed.
 
 The clean control plane is specified by [Agent Designs](../../plans/agent_designs.md) and the temporary
 [First Agentic Slice Implementation Plan](../../plans/agent_designs/first_agentic_slice_implementation_plan.md). The
-first Coordinator–Data–Strategy runtime has now been implemented with no compatibility for old `trader_agents`
-imports, graphs, checkpoints, tasks, policies, catalogs, or fixed workflow state. It is not yet a controlled product
-capability.
+first runtime supporting Coordinator-to-Data, Coordinator-to-Strategy, and combined Coordinator–Data–Strategy work has
+now been implemented with no compatibility for old `trader_agents` imports, graphs, checkpoints, tasks, policies,
+catalogs, or fixed workflow state. It is not yet a controlled product capability.
 
 The system uses a model-backed Research Coordinator supervising context-isolated specialist agents. Models own
 research planning, delegation, tool choice, replanning, and synthesis; deterministic Trader and research
 services will continue to own data mutation, code admission, backtests, accounting, optimisation, artifact validation,
 policy enforcement, and broker isolation. The real-model framework spike selected LangGraph 1.2.2 with its 3.1.x
-Postgres checkpointer. Strict Pydantic schemas validate provider-neutral JSON outputs with one bounded repair; the
-development profile is Ollama `qwen3.5:9b` with thinking disabled for control decisions. DSPy remains reserved for
-later evaluation-driven program optimization, MCP is the capability boundary, and MLflow covers complex-signal plus
-agent trace/evaluation lifecycle without becoming product authority.
+Postgres checkpointer. The active evaluation profile is `ollama-lfm25-8b-json-v1`, pinned to local Ollama digest
+`9cf756159fc2f3b9128c6a3f544ec90c5e9b8afdbb4179a57b8aea9de589cfb2`, an 8,192-token context window, a
+2,048-token output ceiling, temperature zero, and disabled thinking. Neutral control contracts expose legal actions
+and evidence obligations without selecting specialist queries or build paths. The rejected
+`ollama-qwen35-9b-json-v5` profile and its failed Coordinator and ready-Data evidence remain recorded; they do not
+qualify the replacement profile. The LFM profile selected only Data for three equivalent readiness briefs, but it
+failed the material-ambiguity brief by proposing executable Data work. The complete Coordinator choice gate therefore
+remains failed, and the dependent LFM Data specialist contract was not run.
+The current `research-coordinator-v7` program selects relevant specialist responsibilities rather than requiring every
+available role. Strict Pydantic schemas validate provider-neutral JSON outputs with at most one schema-only retry.
+There is no post-generation field rewriting, permissive fenced-JSON parsing, semantic validation feedback, agenda task
+rewriting, or code-selected research route. Domain and policy violations fail closed. DSPy remains reserved for later
+evaluation-driven program optimization, MCP is the capability boundary, and MLflow covers complex-signal plus agent
+trace/evaluation lifecycle without becoming product authority.
 
 Every specialist return rejoins the coordinator. The coordinator inspects its canonical evidence and
 chooses explicitly whether to advance, request revision, revisit an earlier responsibility, create a separately tracked
@@ -102,6 +113,10 @@ detail blocks or branches the method rather than being guessed. The complete tar
 The design/evaluation charter, 12-case `first-agentic-slice-evaluation-v1` dataset, complete first-slice capability
 inventory, and framework/observability decision now precede the active production runtime work. The controlled
 `verification-orchestration-v1-freeze` record remains valid evidence only for the frozen deterministic surface.
+The dataset's mapped scripted trajectories are deterministic runtime and policy conformance evidence: their prewritten
+model outputs do not demonstrate autonomous reasoning. The active implementation plan now separates those tests from
+real-model choice tests, scripted production-boundary tests, and the combined vertical behavior required before the
+broader campaign resumes.
 
 Design review has accepted the complete Research Coordinator, Data Research, and Strategy Engineering records plus the
 shared first-slice pattern review. The measured runtime choice implements those boundaries through native Postgres
@@ -110,11 +125,14 @@ MCP, and redacted traces. Later specialist records remain under review or parked
 [Agent Designs](../../plans/agent_designs.md); accepted design, implemented loops, and focused tests still do not make
 the production model-backed slice controlled.
 
-The implemented agenda boundary now admits either one complete task per specialist or explicit decomposition. Data
-fan-out must partition every approved scope item without overlap and hard-join through a Data-owned reconciliation;
-Strategy catalogue fan-out must hard-join before construction. The scheduler derives mutation locks from trusted scope
-or candidate-branch identity. A soft join checkpoints the first completed return while unfinished specialist
-delegations retain their identity and resume from their own checkpoint thread.
+The implemented agenda boundary now admits a non-empty subset of the available specialist roles, with either one
+complete task for each selected role or explicit decomposition. Conclusion requires a ready return from every role in
+that agenda, not from roles the brief did not select. A focused full-graph test proves one Data delegation, independent
+rereads of its manifest and quality refs, one grounded terminal decision, and zero Strategy model or MCP activity.
+Data fan-out must partition every approved scope item without overlap and hard-join through a Data-owned
+reconciliation; Strategy catalogue fan-out must hard-join before construction. The scheduler derives mutation locks
+from trusted scope or candidate-branch identity. A soft join checkpoints the first completed return while unfinished
+specialist delegations retain their identity and resume from their own checkpoint thread.
 
 The Data Research Agent architecture is accepted for the first slice. Its requirements cover multi-asset
 composite scope, model-selected use of an evolving role-scoped MCP data catalogue, readiness assessment, and bounded
@@ -394,11 +412,11 @@ the current first slice.
 
 | Agent | Current operational state | Target state | Main gap |
 | --- | --- | --- | --- |
-| Data Research Agent | A strict model/tool loop investigates complete composite scope through role- and phase-scoped MCP, performs only approved bounded loading, revalidates evidence, and returns exact snapshot refs or typed blockers. | Controlled Data specialist with broader calendar/provider coverage and measured behavioral reliability. | Controlled real-MCP/Postgres recovery, prompt-security, and repeated real-model evidence. |
+| Data Research Agent | A strict model/tool loop investigates complete composite scope through role- and phase-scoped MCP, performs only approved bounded loading, revalidates evidence, and returns exact snapshot refs or typed blockers. Scripted conformance is focused; the rejected Qwen profile failed three repeated ready-scope choice tests, and the LFM test is blocked by its failed Coordinator prerequisite. | Controlled Data specialist with broader calendar/provider coverage and measured behavioral reliability. | Pass the Coordinator model gate, then establish Data model behavior before controlled real-MCP/Postgres recovery, prompt-security, and repeated evaluation. |
 | Experiment Design Agent | No model-backed graph in the clean runtime. Deterministic proposal services remain available through MCP. | Model-backed Experiment Design Agent that converts briefs, candidates, and Data slices into prospective experiment charters with protected-evidence roles, stage gates, specialist authority envelopes, and material approval requests. | Free-form interpretation, staged evidence contracts, scientific replanning, structured agent program, and behavioral evaluation. |
 | Knowledge Research Agent | No separate current identity. Full-document source ingestion, hybrid retrieval, bounded evidence dereferencing, exact claim spans, and method artifacts are currently assigned to the deterministic Quantitative Methods surface. | Model-backed source investigator that decomposes evidence obligations, navigates structure, iteratively retrieves and expands approved evidence, reconciles sources, and returns a validated research dossier. | Structure-preserving parsing, source maps/resources, dossier artifacts and validation, role-scoped MCP, model program, and textbook benchmark. |
 | Quantitative Methods Agent | Allowlist, approved decision boundary and deterministic MCP tools exist. No complete specialist graph coordinates them. | Pre-code, outcome-blind specialist that converts a passed dossier into a validated implementation brief with source-backed and engineering decisions separated. | Model policy, brief contract/validation, role-scoped MCP composition, and measured multi-source handoff quality. |
-| Research Coordinator | The user-facing model creates/revises typed agendas, delegates context-isolated Data/Strategy work, schedules disjoint work concurrently, verifies canonical refs, checkpoints decisions before receipt mutation, records decisions, interrupts for authority, supports owning-operator cancellation, and returns grounded terminal results. | Controlled supervisor extended to later accepted specialists and deterministic experiment execution tools. | Controlled security/scale/recovery evidence, repeated real-model evaluation, and final acceptance. |
+| Research Coordinator | The user-facing model creates/revises typed agendas, delegates context-isolated Data/Strategy work, schedules disjoint work concurrently, verifies canonical refs, checkpoints decisions before receipt mutation, records decisions, interrupts for authority, supports owning-operator cancellation, and returns grounded terminal results. Scripted behavior is focused; the active LFM profile passed three Data-only selections but failed the material-ambiguity case. | Controlled supervisor extended to later accepted specialists and deterministic experiment execution tools. | Resolve and pass the complete Coordinator model gate, then controlled security/scale/recovery evidence, repeated evaluation, and final acceptance. |
 | Strategy Engineering Agent | A catalogue-first model/tool loop compares prior implementations, reuses only exact admitted versions, or authors/checks/packages/submits code through isolated Coding Workspace and admission MCP tools. An actionable failed admission cleans up the workspace and may consume one bounded new candidate attempt. | Controlled coding specialist with qualified real sandbox execution and robust bounded admission repair. | Frozen real-container, prompt-security, fresh-process repair, and repeated real-model qualification. |
 | ML Agent | Ownership and deployment MCP tools exist; no ML Agent graph exists. | Parked future ML Signal Research Agent coordinating point-in-time features, training, evaluation, MLflow registry evidence, runtime parity, and drift. | Intentionally deferred until the first non-ML agentic slice is qualified; deterministic ML lifecycle tools and model-backed qualification remain future gaps. |
 | Evaluation Agent | Optimisation Evaluation service/tool exists; no Evaluation graph exists. | Independent model-backed critic of leakage, selection, costs, robustness, completeness, and alternative explanations. | Broader attribution/evaluation tools, isolated context, agent program, and evidence-grounding evaluations. |

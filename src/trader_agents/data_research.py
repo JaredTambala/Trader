@@ -37,6 +37,7 @@ from .contracts import (
     ToolObservation,
     build_specialist_return,
 )
+from .inputs import scope_timestamps_equal
 from .mcp_runtime import RoleScopedMcpRuntime
 from .policy import BudgetLedger, PolicyContext, PolicyViolation
 from .profiles import AgentProgram, ModelProfile
@@ -252,6 +253,11 @@ class DataResearchAgent:
                     correlation=correlation,
                 )
                 turn = invocation.output
+                _validate_data_turn(
+                    turn,
+                    scope=scope,
+                    successful_steps=successful_steps,
+                )
                 if turn.action == "return_result":
                     conclusion = _required_conclusion(turn)
                     _validate_data_conclusion(
@@ -587,6 +593,113 @@ def _next_data_phase(
     return target
 
 
+def _validate_data_turn(
+    turn: DataAgentTurn,
+    *,
+    scope: CompositeDataScope,
+    successful_steps: Sequence[tuple[str, Mapping[str, Any]]],
+) -> None:
+    """Validate a model turn against completed full-scope Data obligations.
+
+    Args:
+        turn: Schema-valid proposed Data action.
+        scope: Exact composite scope owned by the delegation.
+        successful_steps: Accepted MCP calls in lifecycle order.
+    Raises:
+        ValueError: If review or a ready conclusion is proposed before the
+            required exact-scope evidence exists.
+    """
+    if turn.action == "call_tool" and turn.tool_call is not None:
+        _validate_data_tool_scope(turn.tool_call, scope)
+    if (
+        turn.action == "change_phase"
+        and turn.next_phase == AgentPhase.REMEDIATE.value
+    ):
+        _validate_data_review_evidence(scope, successful_steps)
+    if turn.action == "change_phase" and turn.next_phase == AgentPhase.REVIEW.value:
+        _validate_data_review_evidence(scope, successful_steps)
+
+
+def _validate_data_tool_scope(
+    proposal: ToolCallProposal,
+    scope: CompositeDataScope,
+) -> None:
+    """Require scoped Data proposals to stay inside one approved item.
+
+    The policy layer still performs the final authoritative scope check before
+    any MCP dispatch.
+
+    Args:
+        proposal: Schema-valid model-proposed Data tool call.
+        scope: Exact composite scope delegated to Data Research.
+
+    Raises:
+        ValueError: If a scope-bearing proposal expands symbols, time, asset
+            class, or timeframe beyond every approved scope item.
+    """
+    scoped_tools = {
+        "data_get_inventory",
+        "data_summarize_quality",
+        "data_ensure_loaded",
+        "data_create_research_snapshot",
+    }
+    if proposal.tool_name not in scoped_tools:
+        return
+    if not any(
+        _arguments_within_item(proposal.arguments, item) for item in scope.items
+    ):
+        raise ValueError(
+            f"{proposal.tool_name} arguments must remain inside one exact "
+            "approved scope item"
+        )
+
+
+def _arguments_within_item(arguments: Mapping[str, Any], item: Any) -> bool:
+    """Return whether present scope arguments stay inside one fixed item."""
+    requested_symbols = set(arguments.get("symbols") or ())
+    if requested_symbols and not requested_symbols.issubset(item.symbols):
+        return False
+    for key in ("asset_class", "timeframe", "start", "end"):
+        value = arguments.get(key)
+        if value is None:
+            continue
+        if key in {"start", "end"}:
+            if not scope_timestamps_equal(value, getattr(item, key)):
+                return False
+        elif str(value) != str(getattr(item, key)):
+            return False
+    return True
+
+
+def _validate_data_review_evidence(
+    scope: CompositeDataScope,
+    successful_steps: Sequence[tuple[str, Mapping[str, Any]]],
+) -> None:
+    """Require full-scope inventory and quality after the latest actual load."""
+    last_load_index = max(
+        (
+            index
+            for index, (name, arguments) in enumerate(successful_steps)
+            if name == "data_ensure_loaded" and arguments.get("dry_run") is False
+        ),
+        default=-1,
+    )
+    relevant_steps = successful_steps[last_load_index + 1 :]
+    missing = []
+    for item in scope.items:
+        for tool_name in ("data_get_inventory", "data_summarize_quality"):
+            if not any(
+                name == tool_name and _arguments_cover_item(arguments, item)
+                for name, arguments in relevant_steps
+            ):
+                missing.append(f"{item.item_id}:{tool_name}")
+    if missing:
+        raise ValueError(
+            "Data review requires matching full-scope evidence: "
+            + ", ".join(missing)
+        )
+
+
 def _required_conclusion(turn: DataAgentTurn) -> SpecialistConclusion:
     """Return the selected conclusion or reject an inconsistent turn."""
     if turn.final_conclusion is None:
@@ -642,8 +755,8 @@ def _arguments_cover_item(arguments: Mapping[str, Any], item: Any) -> bool:
         set(arguments.get("symbols") or ()) == set(item.symbols)
         and str(arguments.get("asset_class") or "") == item.asset_class
         and str(arguments.get("timeframe") or "") == item.timeframe
-        and str(arguments.get("start") or "") == item.start
-        and str(arguments.get("end") or "") == item.end
+        and scope_timestamps_equal(arguments.get("start"), item.start)
+        and scope_timestamps_equal(arguments.get("end"), item.end)
     )
 
 
@@ -660,12 +773,19 @@ def _failed_return(
 ) -> SpecialistReturn:
     """Build a bounded fail-closed return for runtime/policy failures."""
     code = error.code if isinstance(error, PolicyViolation) else "data_agent_failed"
+    details = (
+        {"validation_errors": error.validation_errors}
+        if isinstance(error, StructuredOutputError)
+        else {}
+    )
     conclusion = SpecialistConclusion(
         status=SpecialistStatus.FAILED,
         unresolved_questions=[delegation.task.question],
         findings=["Data investigation did not reach a validated readiness verdict."],
         evidence_refs=observed_refs,
-        blockers=[PublicIssue(code=code, message=str(error)[:1_000])],
+        blockers=[
+            PublicIssue(code=code, message=str(error)[:1_000], details=details)
+        ],
         advisory_next_actions=["review the blocker before any new delegation"],
     )
     return build_specialist_return(

@@ -183,7 +183,7 @@ def test_role_catalogue_and_policy_fail_closed() -> None:
         session=session,
         role=AgentRole.DATA_RESEARCH,
         phase=AgentPhase.INVESTIGATE,
-        program_id="data-research-v4",
+        program_id="data-research-v6",
         tool_catalogue=catalogue,
         usage=BudgetLedger(session.budget).usage,
         runtime_state={},
@@ -253,7 +253,7 @@ def test_denied_trading_path_has_no_agent_capability() -> None:
         session=session,
         role=AgentRole.STRATEGY_ENGINEERING,
         phase=AgentPhase.TERMINAL,
-        program_id="strategy-engineering-v4",
+        program_id="strategy-engineering-v6",
         tool_catalogue=catalogue,
         usage=BudgetUsage(),
         runtime_state={},
@@ -353,7 +353,7 @@ def test_data_backfill_requires_costed_matching_dry_run_plan() -> None:
             session=session,
             role=AgentRole.DATA_RESEARCH,
             phase=AgentPhase.REMEDIATE,
-            program_id="data-research-v4",
+            program_id="data-research-v6",
             tool_catalogue=catalogue,
             usage=BudgetUsage(),
             runtime_state=lifecycle,
@@ -372,6 +372,53 @@ def test_data_backfill_requires_costed_matching_dry_run_plan() -> None:
 
     authorized = ToolPolicy().authorize(proposal, _context(10.0))
     assert authorized.proposal.arguments["acquisition_plan_id"] == "plan-1"
+
+
+def test_data_scope_policy_normalizes_equivalent_timezone_boundaries() -> None:
+    """Equivalent aware timestamps do not become false scope expansions."""
+    session = _session(session_id="session-timezone-normalization")
+    catalogue = first_slice_tool_catalogue()
+    scope = composite_data_scope_from_session(session)
+    delegation = build_delegation(
+        session_id=session.session_id,
+        branch_id="data-timezone-branch",
+        task=_task("data-timezone", "data_research"),
+        required_input_refs=[],
+        permitted_side_effects=["read_only"],
+        reserved_model_calls=2,
+        reserved_tool_calls=2,
+        reserved_tokens=2_000,
+        attempt=1,
+    )
+    proposal = ToolCallProposal(
+        call_id="timezone-inventory",
+        tool_name="data_get_inventory",
+        arguments={
+            "symbols": ["BTC/USD", "ETH/USD"],
+            "asset_class": "crypto",
+            "timeframe": "1h",
+            "start": "2023-12-31T19:00:00-05:00",
+            "end": "2024-06-30T19:00:00-04:00",
+        },
+        purpose="Read the exact scope using equivalent timezone offsets.",
+        expected_evidence=["bounded inventory"],
+    )
+    context = PolicyContext(
+        session=session,
+        role=AgentRole.DATA_RESEARCH,
+        phase=AgentPhase.INVESTIGATE,
+        program_id="data-research-v6",
+        tool_catalogue=catalogue,
+        usage=BudgetUsage(),
+        runtime_state={},
+        loop_fingerprints={},
+        delegation=delegation,
+        data_scope=scope,
+    )
+
+    authorized = ToolPolicy().authorize(proposal, context)
+
+    assert authorized.proposal.call_id == "timezone-inventory"
 
 
 def test_scheduler_parallelizes_ready_work_and_honors_hard_joins() -> None:
@@ -437,7 +484,7 @@ def test_coordinator_semantic_loop_guard_ignores_paraphrase_and_new_attempt_id()
             branch_id=delegation.branch_id,
             attempt_id=delegation.attempt_id,
             role="data_research",
-            program_id="data-research-v4",
+            program_id="data-research-v6",
             model_profile_id=session.model_profile_id,
             tool_catalog_id=session.tool_catalog_id,
             status=SpecialistStatus.BLOCKED,
@@ -551,6 +598,30 @@ def test_agenda_decomposes_disjoint_data_and_joins_before_construction() -> None
     assert btc_scope.scope_id != data_scope.scope_id
 
 
+def test_agenda_accepts_only_the_specialist_required_by_the_brief() -> None:
+    """Coordinator agendas may select Data or Strategy without synthetic work."""
+    data_scope = composite_data_scope_from_session(_session())
+    data_agenda = CoordinatorAgenda(
+        objective_summary="Establish whether the approved Data scope is ready.",
+        tasks=[_task("data", "data_research")],
+    )
+    strategy_agenda = CoordinatorAgenda(
+        objective_summary="Find an admitted implementation for the supplied brief.",
+        tasks=[_task("strategy", "strategy_engineering")],
+    )
+
+    _validate_first_slice_agenda(data_agenda, data_scope=data_scope)
+    _validate_first_slice_agenda(strategy_agenda, data_scope=data_scope)
+
+
+def test_agenda_rejects_empty_executable_work() -> None:
+    """A non-ambiguous agenda must select at least one specialist task."""
+    with pytest.raises(ValueError, match="requires tasks"):
+        CoordinatorAgenda(
+            objective_summary="Investigate the approved research question.",
+        )
+
+
 def test_agenda_rejects_overlapping_parallel_data_scopes() -> None:
     """The model cannot assign the same mutable Data scope to parallel work."""
     base_scope = composite_data_scope_from_session(_session())
@@ -592,6 +663,22 @@ def test_agenda_rejects_overlapping_parallel_data_scopes() -> None:
         _validate_first_slice_agenda(agenda, data_scope=data_scope)
 
 
+def test_ambiguous_agenda_rejects_executable_tasks() -> None:
+    """A declared material ambiguity cannot include speculative work."""
+    session = _session()
+    agenda = CoordinatorAgenda(
+        objective_summary="Resolve the missing behavior before investigation.",
+        material_ambiguities=["Failure behavior is not specified."],
+        tasks=[_task("speculative-data", "data_research")],
+    )
+
+    with pytest.raises(ValueError, match="cannot contain tasks"):
+        _validate_first_slice_agenda(
+            agenda,
+            data_scope=composite_data_scope_from_session(session),
+        )
+
+
 def test_distinct_briefs_produce_distinct_valid_agendas_under_same_policy() -> None:
     """Material ambiguity changes the model agenda without changing authority."""
     ready_session = _session(session_id="session-distinct-ready")
@@ -606,8 +693,16 @@ def test_distinct_briefs_produce_distinct_valid_agendas_under_same_policy() -> N
         "objective_summary": "Prepare exact Data and implementation evidence.",
         "material_ambiguities": [],
         "tasks": [
-            _task("data", "data_research").model_dump(mode="json"),
-            _task("strategy", "strategy_engineering").model_dump(mode="json"),
+            _task(
+                "data",
+                "data_research",
+                mutation_requested=True,
+            ).model_dump(mode="json"),
+            _task(
+                "strategy",
+                "strategy_engineering",
+                mutation_requested=True,
+            ).model_dump(mode="json"),
         ],
     }
     ambiguous_payload = {
@@ -795,15 +890,15 @@ def test_mlflow_trace_sink_persists_only_public_correlation(
     public_attributes = {
         "trader.session_id": "session-trace",
         "trader.branch_id": "branch-trace",
-        "trader.program_id": "data-research-v4",
+        "trader.program_id": "data-research-v6",
         "trader.tool_name": "data_get_inventory",
         "trader.result_ok": True,
     }
     root_attributes = {
         "trader.session_id": "session-trace",
         "trader.branch_id": "branch-trace",
-        "trader.program_id": "research-coordinator-v4",
-        "trader.model_profile_id": "ollama-qwen35-9b-json-v2",
+        "trader.program_id": "research-coordinator-v7",
+        "trader.model_profile_id": "ollama-lfm25-8b-json-v1",
         "trader.tool_catalog_id": first_slice_tool_catalogue().catalogue_id,
         "trader.lifecycle_operation": "start",
     }
@@ -863,7 +958,7 @@ def test_role_scoped_mcp_runtime_validates_transport_envelope() -> None:
     delegation = build_delegation(
         session_id=session.session_id,
         branch_id="data-branch",
-        task=_task("data", "data_research"),
+        task=_task("data", "data_research", mutation_requested=True),
         required_input_refs=[],
         permitted_side_effects=["read_only"],
         reserved_model_calls=4,
@@ -884,7 +979,7 @@ def test_role_scoped_mcp_runtime_validates_transport_envelope() -> None:
         session=session,
         role=AgentRole.DATA_RESEARCH,
         phase=AgentPhase.INVESTIGATE,
-        program_id="data-research-v4",
+        program_id="data-research-v6",
         tool_catalogue=runtime.catalogue,
         usage=ledger.usage,
         runtime_state={},
@@ -910,7 +1005,7 @@ def test_role_scoped_mcp_runtime_validates_transport_envelope() -> None:
         return await runtime.execute(
             proposal,
             context=context,
-            correlation=_correlation("data-research-v4"),
+            correlation=_correlation("data-research-v6"),
         )
 
     result = anyio.run(_run)
@@ -978,7 +1073,7 @@ def test_role_scoped_runtime_traces_interrupted_transport_terminally() -> None:
         session=session,
         role=AgentRole.DATA_RESEARCH,
         phase=AgentPhase.INVESTIGATE,
-        program_id="data-research-v4",
+        program_id="data-research-v6",
         tool_catalogue=runtime.catalogue,
         usage=ledger.usage,
         runtime_state={},
@@ -1005,7 +1100,7 @@ def test_role_scoped_runtime_traces_interrupted_transport_terminally() -> None:
             await runtime.execute(
                 proposal,
                 context=context,
-                correlation=_correlation("data-research-v4"),
+                correlation=_correlation("data-research-v6"),
             )
 
     anyio.run(_run)
@@ -1547,7 +1642,7 @@ def test_strategy_loop_requires_catalogue_comparison_for_exact_reuse() -> None:
     delegation = build_delegation(
         session_id=session.session_id,
         branch_id="strategy-branch",
-        task=_task("strategy", "strategy_engineering"),
+        task=_task("strategy", "strategy_engineering", mutation_requested=True),
         required_input_refs=[],
         permitted_side_effects=["read_only"],
         reserved_model_calls=6,
@@ -2423,6 +2518,172 @@ def test_strategy_loop_stops_after_irreparable_equivalent_admissions() -> None:
     }
 
 
+def test_coordinator_graph_selects_data_only_and_verifies_its_return() -> None:
+    """One Data handoff concludes without invoking the unselected specialist."""
+    session = replace(
+        _session(session_id="session-data-only"),
+        objective="Establish whether the approved multi-asset Data scope is ready.",
+        success_definition="Return exact manifest and quality evidence.",
+        approval_policy={"data_loading": "preapproved_within_scope"},
+        implementation_specification=None,
+        implementation_ref="research://implementation_version/existing-input",
+    )
+    session_ref = _evidence_payload(
+        "research_session",
+        session.session_id,
+        domain_owner="Orchestration",
+    )
+    manifest_ref = _evidence_payload("dataset_manifest", "manifest-data-only")
+    quality_ref = _evidence_payload(
+        "data_quality_report",
+        "quality-data-only",
+    )
+    scope_arguments = {
+        "symbols": ["BTC/USD", "ETH/USD"],
+        "asset_class": "crypto",
+        "timeframe": "1h",
+        "start": "2024-01-01T00:00:00Z",
+        "end": "2024-06-30T23:00:00Z",
+    }
+    data_responses = (
+        _data_tool_turn("inventory", "data_get_inventory", scope_arguments),
+        _data_tool_turn("quality", "data_summarize_quality", scope_arguments),
+        {
+            "action": "change_phase",
+            "public_rationale": "The readiness evidence can be captured canonically.",
+            "next_phase": "review",
+        },
+        _data_tool_turn(
+            "snapshot",
+            "data_create_research_snapshot",
+            {
+                **scope_arguments,
+                "requested_by": session.session_id,
+                "actor": "Data Research Agent",
+            },
+            mutation_reason="Capture the exact readiness evidence.",
+        ),
+        {
+            "action": "return_result",
+            "public_rationale": "The approved scope has exact readiness evidence.",
+            "final_conclusion": {
+                "status": "ready",
+                "answered_questions": ["The approved Data scope is ready."],
+                "findings": ["Both requested assets have complete coverage."],
+                "evidence_refs": [manifest_ref, quality_ref],
+                "unresolved_questions": [],
+                "assumptions": [],
+                "uncertainty": [],
+                "blockers": [],
+                "advisory_next_actions": ["coordinator review"],
+            },
+        },
+    )
+    agenda_task = _task(
+        "data-readiness",
+        "data_research",
+        mutation_requested=True,
+    )
+    agenda = {
+        "objective_summary": "Establish readiness of the approved Data scope.",
+        "material_ambiguities": [],
+        "tasks": [agenda_task.model_dump(mode="json")],
+    }
+    data_branch = stable_research_id(
+        "agent_branch",
+        {"session_id": session.session_id, "task_id": agenda_task.task_id},
+    )
+    data_delegation = build_delegation(
+        session_id=session.session_id,
+        branch_id=data_branch,
+        task=agenda_task,
+        required_input_refs=[CanonicalEvidenceRef.model_validate(session_ref)],
+        permitted_side_effects=["read_only", "local_mutating"],
+        reserved_model_calls=5,
+        reserved_tool_calls=11,
+        reserved_tokens=6_000,
+        attempt=1,
+    )
+    conclusion = {
+        "action": "conclude",
+        "summary": "The approved Data scope is ready for downstream research.",
+        "reviewed_delegation_ids": [data_delegation.delegation_id],
+        "cited_evidence_refs": [manifest_ref, quality_ref],
+        "criteria_applied": ["complete coverage and canonical quality evidence"],
+        "affected_task_ids": [agenda_task.task_id],
+        "blockers": [],
+        "permitted_next_actions": ["use the exact Data snapshot"],
+    }
+    coordinator_client = StaticJsonLlmClient((agenda, conclusion))
+    data_client = StaticJsonLlmClient(data_responses)
+    strategy_client = StaticJsonLlmClient(())
+    catalogue = first_slice_tool_catalogue()
+    coordinator_mcp = _CoordinatorMcpClient(
+        session_ref=session_ref,
+        artifacts={
+            manifest_ref["uri"]: manifest_ref,
+            quality_ref["uri"]: quality_ref,
+        },
+    )
+    strategy_mcp = _StrategyLoopMcpClient(manifest_ref, quality_ref)
+    coordinator = ResearchCoordinator(
+        model_runner=StructuredModelRunner(coordinator_client),
+        mcp_client=coordinator_mcp,
+        data_agent=DataResearchAgent(
+            model_runner=StructuredModelRunner(data_client),
+            mcp_client=_DataLoopMcpClient(manifest_ref, quality_ref),
+            tool_catalogue=catalogue,
+        ),
+        strategy_agent=StrategyEngineeringAgent(
+            model_runner=StructuredModelRunner(strategy_client),
+            mcp_client=strategy_mcp,
+            tool_catalogue=catalogue,
+        ),
+        tool_catalogue=catalogue,
+        programs=first_slice_programs(),
+        model_profiles=development_model_profiles(),
+    )
+    initial = build_agent_checkpoint_state(
+        session_id=session.session_id,
+        session_digest=session.session_digest,
+        branch_id="root",
+        coordinator_program_id="research-coordinator-v7",
+        model_profile_id=session.model_profile_id,
+        tool_catalog_id=catalogue.catalogue_id,
+    )
+    graph = coordinator.build_graph(
+        session=session,
+        checkpointer=InMemorySaver(),
+    )
+
+    async def _run() -> Any:
+        """Run the single-delegation graph to its terminal decision."""
+        return await graph.ainvoke(
+            initial,
+            coordinator_thread_config(session.session_id),
+        )
+
+    output = anyio.run(_run)
+    result = AgenticSliceResult.model_validate(output["terminal_result"])
+
+    assert result.status == "completed"
+    assert result.data_return is not None
+    assert result.data_return.delegation_id == data_delegation.delegation_id
+    assert result.strategy_return is None
+    assert {reference.uri for reference in result.decision.cited_evidence_refs} == {
+        manifest_ref["uri"],
+        quality_ref["uri"],
+    }
+    assert result.budget_used.model_calls == 7
+    assert len(coordinator_client.requests) == 2
+    assert len(data_client.requests) == 5
+    assert strategy_client.requests == []
+    assert strategy_mcp.list_calls == 0
+    assert strategy_mcp.calls == []
+    assert coordinator_mcp.read_calls == 2
+    assert len(coordinator_mcp.decision_payloads) == 1
+
+
 def test_coordinator_graph_parallel_joins_verifies_and_concludes() -> None:
     """Both specialists rejoin one writer before a grounded conclusion."""
     session = _session()
@@ -2536,8 +2797,16 @@ def test_coordinator_graph_parallel_joins_verifies_and_concludes() -> None:
         "objective_summary": "Prepare exact Data and admitted implementation evidence.",
         "material_ambiguities": [],
         "tasks": [
-            _task("data", "data_research").model_dump(mode="json"),
-            _task("strategy", "strategy_engineering").model_dump(mode="json"),
+            _task(
+                "data",
+                "data_research",
+                mutation_requested=True,
+            ).model_dump(mode="json"),
+            _task(
+                "strategy",
+                "strategy_engineering",
+                mutation_requested=True,
+            ).model_dump(mode="json"),
         ],
     }
     data_branch = stable_research_id(
@@ -2550,7 +2819,7 @@ def test_coordinator_graph_parallel_joins_verifies_and_concludes() -> None:
     data_delegation = build_delegation(
         session_id=session.session_id,
         branch_id=data_branch,
-        task=_task("data", "data_research"),
+        task=_task("data", "data_research", mutation_requested=True),
         required_input_refs=required_refs,
         permitted_side_effects=["read_only", "local_mutating"],
         reserved_model_calls=5,
@@ -2561,7 +2830,7 @@ def test_coordinator_graph_parallel_joins_verifies_and_concludes() -> None:
     strategy_delegation = build_delegation(
         session_id=session.session_id,
         branch_id=contract_branch,
-        task=_task("strategy", "strategy_engineering"),
+        task=_task("strategy", "strategy_engineering", mutation_requested=True),
         required_input_refs=required_refs,
         permitted_side_effects=["read_only", "local_mutating"],
         reserved_model_calls=5,
@@ -2643,7 +2912,7 @@ def test_coordinator_graph_parallel_joins_verifies_and_concludes() -> None:
         session_id=session.session_id,
         session_digest=session.session_digest,
         branch_id="root",
-        coordinator_program_id="research-coordinator-v4",
+        coordinator_program_id="research-coordinator-v7",
         model_profile_id=session.model_profile_id,
         tool_catalog_id=catalogue.catalogue_id,
     )
@@ -2763,7 +3032,7 @@ def test_coordinator_interrupt_resumes_with_a_fresh_graph_instance() -> None:
         session_id=session.session_id,
         session_digest=session.session_digest,
         branch_id="root",
-        coordinator_program_id="research-coordinator-v4",
+        coordinator_program_id="research-coordinator-v7",
         model_profile_id=session.model_profile_id,
         tool_catalog_id=catalogue.catalogue_id,
     )
@@ -2857,7 +3126,7 @@ def test_coordinator_replays_checkpointed_decision_after_lost_receipt_response()
         session_id=session.session_id,
         session_digest=session.session_digest,
         branch_id="root",
-        coordinator_program_id="research-coordinator-v4",
+        coordinator_program_id="research-coordinator-v7",
         model_profile_id=session.model_profile_id,
         tool_catalog_id=catalogue.catalogue_id,
     )
@@ -2995,7 +3264,7 @@ def test_checkpoint_state_is_bounded_redacted_and_thread_isolated() -> None:
         session_id=session.session_id,
         session_digest=session.session_digest,
         branch_id="root",
-        coordinator_program_id="research-coordinator-v4",
+        coordinator_program_id="research-coordinator-v7",
         model_profile_id=session.model_profile_id,
         tool_catalog_id=session.tool_catalog_id,
     )
@@ -3056,7 +3325,7 @@ def test_specialist_checkpoint_redacts_source_and_raw_command_output() -> None:
         delegation=delegation,
         role=AgentRole.STRATEGY_ENGINEERING,
         phase=AgentPhase.ADMIT.value,
-        program_id="strategy-engineering-v4",
+        program_id="strategy-engineering-v6",
         model_profile_id=session.model_profile_id,
         tool_catalog_id=session.tool_catalog_id,
     )
@@ -3368,7 +3637,7 @@ def test_coordinator_recovers_checkpointed_decision_across_postgres_connections(
         session_id=session.session_id,
         session_digest=session.session_digest,
         branch_id="root",
-        coordinator_program_id="research-coordinator-v4",
+        coordinator_program_id="research-coordinator-v7",
         model_profile_id=session.model_profile_id,
         tool_catalog_id=catalogue.catalogue_id,
     )
@@ -3786,9 +4055,12 @@ class _StrategyLoopMcpClient:
 
     implementation_ref: Mapping[str, Any]
     validation_ref: Mapping[str, Any]
+    list_calls: int = 0
+    calls: list[str] = field(default_factory=list)
 
     async def list_tools(self) -> Sequence[McpToolDescription]:
         """Expose every Strategy capability with permissive test schemas."""
+        self.list_calls += 1
         catalogue = first_slice_tool_catalogue()
         names = {
             definition.name
@@ -3817,6 +4089,7 @@ class _StrategyLoopMcpClient:
         arguments: Mapping[str, Any],
     ) -> Mapping[str, Any]:
         """Return catalogue results and exact admitted refs."""
+        self.calls.append(tool_name)
         data: dict[str, Any]
         artifacts: Mapping[str, Any] = {}
         if tool_name == "research_search_implementations":
@@ -4420,7 +4693,7 @@ def _session(*, session_id: str = "session-foundation") -> ResearchSession:
         },
         implementation_ref=None,
         python_quality_guide="docs/python_code_quality.md",
-        model_profile_id="ollama-qwen35-9b-json-v2",
+        model_profile_id="ollama-lfm25-8b-json-v1",
         agent_program_ids=tuple(
             programs.for_role(role).program_id for role in AgentRole
         ),
@@ -4473,7 +4746,7 @@ def _correlation(program_id: str) -> TraceCorrelation:
         session_id="session-foundation",
         branch_id="data-branch",
         program_id=program_id,
-        model_profile_id="ollama-qwen35-9b-json-v2",
+        model_profile_id="ollama-lfm25-8b-json-v1",
         tool_catalog_id=first_slice_tool_catalogue().catalogue_id,
     )
 

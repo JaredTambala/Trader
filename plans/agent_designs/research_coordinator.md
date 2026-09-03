@@ -2,7 +2,7 @@
 
 Status: architecture record and first-slice patterns accepted; implementation in progress and qualification pending.
 
-Last reviewed: 2026-08-28.
+Last reviewed: 2026-09-03.
 
 This document is the canonical build-lifecycle architecture record for the Research Coordinator. Review status and
 shared principles are maintained in the parent [Agent Designs](../agent_designs.md) tracker. System-level direction
@@ -11,8 +11,11 @@ in the [Research Capability Roadmap](../research_capability_roadmap.md).
 
 The responsibility boundary and complete architecture record were accepted in design review on 2026-08-24. The shared
 first-slice pattern review, concrete schemas, development model profile, decide/commit recovery boundary, semantic loop
-guard, and operator cancellation transition are implemented. Security, scale, repeated real-model, and controlled
-operational qualification remain open and do not invalidate that boundary.
+guard, and operator cancellation transition are implemented. The rejected Qwen 9B profile failed the bounded
+role-selection and ambiguity contract. The replacement LFM 2.5 8B profile selected only Data for three equivalent
+readiness briefs but failed the material-ambiguity case by proposing executable Data work. It is not accepted for
+qualification. Security, scale, repeated real-model, and controlled operational qualification remain open and do not
+invalidate the architecture boundary.
 
 ## Mission and exclusive decisions
 
@@ -77,9 +80,11 @@ authority limits. It produces structured agendas, delegations, evidence-review d
 synthesis rather than relying on prose parsing for control flow.
 
 The first-slice framework spike selected LangGraph 1.2.2 with the 3.1.x Postgres checkpointer and strict Pydantic
-structured outputs. The development model profile is `ollama-qwen35-9b-json-v1`: Ollama `qwen3.5:9b`, temperature zero,
-thinking disabled for bounded control decisions, provider-neutral JSON-schema requests, and at most one validation
-repair. Exact prompts and agent-program identities remain versioned production artifacts. A model, program, schema, or
+structured outputs. The active evaluation profile is `ollama-lfm25-8b-json-v1`: Ollama `lfm2.5:8b`, temperature zero,
+an explicit 8,192-token context window, a 2,048-token output ceiling, thinking disabled for bounded control decisions,
+provider-neutral JSON-schema requests, and at most one schema-only retry. It is not yet an accepted behavioral profile.
+Schema-valid agenda fields are never rewritten, and domain-validation failures do not trigger a model retry. Exact
+prompts and agent-program identities remain versioned production artifacts. A model, program, schema, context, or
 sampling-policy upgrade is a product change and must be evaluated before promotion.
 
 ## Capability surface
@@ -118,6 +123,9 @@ interpret or clarify brief
 
 The coordinator is an evidence-aware supervisor, not a fixed router. The model chooses work and revises the agenda;
 deterministic services enforce permissions, side-effect policy, identity, idempotency, budgets, and scientific guards.
+An executable agenda contains only the non-empty subset of specialist responsibilities materially required by the
+brief. Availability does not imply selection: an omitted specialist receives no model or tool calls. A conclusion
+requires a ready return for every role named in the accepted agenda, not for unrelated roles deployed by the runtime.
 
 ## Parallel coordination model
 

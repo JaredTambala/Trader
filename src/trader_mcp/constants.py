@@ -432,10 +432,22 @@ AGENTIC_TOOL_DESCRIPTIONS: Final = {
 """Descriptions for first-slice Research Coordinator control-plane tools."""
 
 DATA_TOOL_DESCRIPTIONS: Final = {
-    DATA_DISCOVER_SYMBOLS_TOOL: "Discover or validate provider-scoped market-data symbols before data queries.",
-    DATA_GET_INVENTORY_TOOL: "Return bounded market-data inventory and dataset manifest.",
-    DATA_SUMMARIZE_QUALITY_TOOL: "Return bounded market-data quality gaps and completeness.",
-    DATA_ENSURE_LOADED_TOOL: "Inspect, sample-load, or plan bounded market-data loading.",
+    DATA_DISCOVER_SYMBOLS_TOOL: (
+        "Discover or validate provider-scoped symbols; Alpaca stock and crypto "
+        "bars use bar_type=trade_bar."
+    ),
+    DATA_GET_INVENTORY_TOOL: (
+        "Return bounded coverage inventory; use matching quality analysis to "
+        "detect internal timestamp gaps."
+    ),
+    DATA_SUMMARIZE_QUALITY_TOOL: (
+        "Return missing-interval, duplicate, and completeness evidence for the "
+        "exact requested scope."
+    ),
+    DATA_ENSURE_LOADED_TOOL: (
+        "Plan or execute bounded loading: dry_run=true returns a plan, then a "
+        "matching dry_run=false backfill cites its acquisition_plan_id."
+    ),
     DATA_CREATE_RESEARCH_SNAPSHOT_TOOL: (
         "Persist one exact inventory and quality pair as canonical Data-domain evidence."
     ),
@@ -548,7 +560,9 @@ RESEARCH_TOOL_DESCRIPTIONS: Final = {
     RESEARCH_LIST_STRATEGY_TEMPLATES_TOOL: "List neutral metadata for maintained strategy implementations.",
     RESEARCH_LIST_RISK_MANAGER_TEMPLATES_TOOL: "List neutral metadata for maintained risk implementations.",
     RESEARCH_SEARCH_IMPLEMENTATIONS_TOOL: (
-        "Search maintained metadata and exact admitted implementation versions using typed and lexical constraints."
+        "Search maintained and admitted versions. Capability filters are hard "
+        "all-of constraints; omit them when looking for a closest adaptation "
+        "candidate, and use an empty query for the broadest bounded search."
     ),
     RESEARCH_GET_IMPLEMENTATION_TOOL: (
         "Resolve one exact implementation version and matching admission evidence."

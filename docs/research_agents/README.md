@@ -133,16 +133,19 @@ paths.
 3. [agents.md: ML Lifecycle Ownership](agents.md#ml-lifecycle-ownership)
 4. [mcp_tools.md: ML Agent Tools](mcp_tools.md#ml-agent-tools)
 
-Runtime prediction, deployment validation, and strategy binding are implemented by 39H-I. Feature engineering,
-training, model evaluation/registration, and drift remain the 39A-G/J roadmap.
+Runtime prediction, deployment validation, and strategy binding are implemented. Feature engineering, training, model
+evaluation/registration, and drift remain roadmap capabilities.
 
 ### Higher-Level Orchestration
 
 1. [Agent Designs](../../plans/agent_designs.md) for accepted and pending per-agent architecture decisions
 2. [First Agentic Slice Implementation Plan](../../plans/agent_designs/first_agentic_slice_implementation_plan.md) for the temporary build and qualification checklist
 3. [product_state.md: Active Agentic Redesign](product_state.md#active-agentic-redesign) for the implemented/unqualified boundary
-4. [architecture.md: Higher-Level Orchestration Architecture](architecture.md#higher-level-orchestration-architecture) for current code
-5. [Active capability roadmap: Active Work Graph](../../plans/research_capability_roadmap.md#active-work-graph) for remaining gates
+4. [architecture.md: What Constitutes An Agent](architecture.md#what-constitutes-an-agent-in-this-package) for the executable agent identity and package map
+5. [architecture.md: Composition Root](architecture.md#composition-root-how-the-multi-agent-system-is-formed) for object construction, isolation, and checkpoint wiring
+6. [architecture.md: Coordinator Graph](architecture.md#coordinator-graph-and-shared-state-ownership) for routing and shared-state ownership
+7. [architecture.md: MCP Boundary](architecture.md#mcp-boundary-from-model-proposal-to-trader-capability) for the complete call path into research and core Trader services
+8. [Active capability roadmap: Active Work Graph](../../plans/research_capability_roadmap.md#active-work-graph) for remaining gates
 
 ## Document Roles
 

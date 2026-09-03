@@ -47,6 +47,7 @@ trader_research = ["method_contracts_seed.json"]
 pythonpath = ["src"]
 addopts = "-q"
 markers = [
+    "local_model: opt-in contract tests requiring the admitted local LLM",
     "postgres: integration tests requiring a live Postgres instance",
 ]
 

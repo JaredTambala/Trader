@@ -240,7 +240,7 @@ def _session() -> ResearchSession:
         },
         implementation_ref=None,
         python_quality_guide="docs/python_code_quality.md",
-        model_profile_id="ollama-qwen35-9b-json-v2",
+        model_profile_id="ollama-lfm25-8b-json-v1",
         agent_program_ids=(
             "coordinator-v1",
             "data-research-v1",

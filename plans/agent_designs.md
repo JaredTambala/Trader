@@ -2,7 +2,7 @@
 
 Status: active design workbook; no implementation is authorized by this document.
 
-Last reviewed: 2026-09-01.
+Last reviewed: 2026-09-03.
 
 This is the canonical working record for the architecture of Trader's target model-backed agents. It carries accepted
 boundaries and pending decisions across review, implementation, and qualification, preventing the target from
@@ -164,10 +164,16 @@ real stdio MCP calls, and correlated MLflow 3.14 traces across two materially di
 
 The runtime choice implements rather than changes the accepted patterns. Production uses LangGraph threads and
 checkpoint namespaces for operational state; strict Pydantic contracts for model outputs; provider-neutral JSON-schema
-model requests with one bounded validation repair; explicit custom nodes for deterministic policy and MCP calls; native
+model requests with at most one schema-only retry; explicit custom nodes for deterministic policy and MCP calls; native
 interrupt/resume for operator authority; parallel specialist/tool work with declared joins; and MLflow as a redacted
 diagnostic projection. Canonical Trader/Postgres artifacts remain the only product evidence. PydanticAI is not a
 production dependency, and DSPy remains a later offline program-optimization option after evaluation data exists.
+
+The active local evaluation profile is digest-pinned Ollama `lfm2.5:8b`. Its first bounded Coordinator gate produced
+the correct Data-only role subset for three equivalent readiness briefs but failed to surface an explicitly declared
+material strategy ambiguity. It is therefore not accepted for qualification, and the dependent Data-agent model test
+remains unexecuted. The rejected Qwen 9B evidence is retained separately. Model behavior is not made acceptable through
+output rewriting, semantic feedback retries, or code-selected research actions.
 
 The current first-slice implementation checkpoints a validated coordinator decision before its canonical receipt
 mutation, then commits the exact checkpointed decision. A fresh-process resume can therefore reconcile a lost receipt

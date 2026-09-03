@@ -112,7 +112,6 @@ class StructuredModelRunner:
             public_context: Bounded JSON-native session/evidence projection.
             ledger: Session resource ledger updated after every provider call.
             correlation: Stable redacted trace identities.
-
         Returns:
             Validated output and aggregate usage for this invocation.
 
@@ -169,6 +168,7 @@ class StructuredModelRunner:
                 response_schema=schema,
                 model=profile.model,
                 temperature=profile.temperature,
+                context_window_tokens=profile.context_window_tokens,
                 max_tokens=profile.max_output_tokens,
                 thinking=profile.thinking,
             )

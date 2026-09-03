@@ -59,7 +59,7 @@ configuration. Runtime failures belong inside the affected tool envelope.
 | `TRADER_MCP_CODING_REPOSITORY_REVISION` | empty | Exact pinned repository revision used by every workspace. |
 | `TRADER_MCP_CODING_CONTAINER_IMAGE` | empty | Exact admitted image used for isolated checks, required as `repository@sha256:<64 hex>`; tags and shortened digests fail closed. |
 | `TRADER_AGENTS_CHECKPOINT_DSN` | empty | Dedicated PostgreSQL DSN for replaceable LangGraph operational checkpoints. |
-| `TRADER_AGENTS_MODEL_PROFILE_ID` | `ollama-qwen35-9b-json-v2` | Exact admitted model profile. The first slice currently registers only its development Ollama profile and verifies its served content digest before use. |
+| `TRADER_AGENTS_MODEL_PROFILE_ID` | `ollama-lfm25-8b-json-v1` | Exact active evaluation profile. It pins Ollama `lfm2.5:8b` digest `9cf756159fc2f3b9128c6a3f544ec90c5e9b8afdbb4179a57b8aea9de589cfb2`, an 8,192-token context window, and a 2,048-token output ceiling. Its first complete Coordinator gate failed, so it is not accepted for qualification. |
 | `TRADER_AGENTS_MCP_COMMAND` | current Python executable | Command used to start each isolated MCP stdio server. |
 | `TRADER_AGENTS_MCP_ARGS` | `-m trader_mcp.server` | Arguments for each MCP stdio server. |
 | `TRADER_AGENTS_MCP_CWD` | current directory | Working directory for MCP server processes. |
@@ -83,15 +83,18 @@ and qualification; it is not yet a controlled production capability.
 ### What The Command Does
 
 One invocation opens three independent MCP stdio clients and one PostgreSQL LangGraph checkpointer. The Research
-Coordinator model creates or resumes the shared agenda. Data Research and Strategy Engineering receive separate,
-bounded contexts and can run concurrently only when their declared dependencies and mutation keys permit it. Each
-specialist proposes one tool call at a time; code validates the proposal against the immutable session before MCP sees
-it. Their structured returns rejoin the Coordinator, which re-reads exact canonical evidence before recording a public
-decision receipt and choosing the next action.
+Coordinator model creates or resumes the shared agenda and selects only responsibilities required by the brief. Data
+Research and Strategy Engineering receive separate, bounded contexts only when selected and can run concurrently only
+when their declared dependencies and mutation keys permit it. Each selected specialist proposes one tool call at a
+time; code validates the proposal against the immutable session before MCP sees it. Structured returns rejoin the
+Coordinator, which re-reads exact canonical evidence before recording a public decision receipt and choosing the next
+action. An unselected specialist's client remains idle.
 
-The slice ends with Data readiness plus an admitted strategy or risk implementation, a blocker, an operator question,
-or an explicit cancellation. It does not backtest the implementation, optimize it, perform robustness or walk-forward
-analysis, recommend paper trading, or touch a broker.
+The slice ends when every responsibility in the accepted agenda is ready, or with a blocker, an operator question, or
+an explicit cancellation. A complete combined brief still requires Data readiness plus an admitted strategy or risk
+implementation; a Data-only or Strategy-only brief can conclude without inventing work for the other role. The slice
+does not backtest the implementation, optimize it, perform robustness or walk-forward analysis, recommend paper
+trading, or touch a broker.
 
 ### Prerequisites And Configuration
 
@@ -102,7 +105,7 @@ Before starting a session:
 2. Configure `TRADER_MCP_TRADER_CONFIG_PATH` for the canonical research store and set
    `TRADER_AGENTS_CHECKPOINT_DSN` to a dedicated checkpoint role/database or schema. Do not rely on the research-store
    DSN as a checkpoint fallback.
-3. Serve the model named by the admitted profile. The current development profile requires Ollama `qwen3.5:9b` with
+3. Serve the model named by the active evaluation profile. The current profile requires Ollama `lfm2.5:8b` with
    the exact content digest embedded in `trader_agents.profiles`; a matching name backed by different bytes fails
    before its first model decision.
 4. Keep `TRADER_MCP_ALLOW_BROKER_MUTATION=false` and `TRADER_MCP_ALLOW_RAW_SQL=false`. Enable Data loading only when
@@ -236,9 +239,10 @@ The deterministic admission service remains a separate gate after any sandbox ch
 
 ### Read Results, Evidence, And Traces
 
-An `AgenticSliceResult` reports the terminal status, public summary, Data and Strategy specialist returns, the exact
-Coordinator decision, its canonical receipt ref, aggregate budget use, and permitted next actions. Treat its refs—not
-the prose summary—as the audit trail:
+An `AgenticSliceResult` reports the terminal status, public summary, optional Data and Strategy specialist returns, the
+exact Coordinator decision, its canonical receipt ref, aggregate budget use, and permitted next actions. A specialist
+return is absent when that responsibility was not selected. Treat the included refs—not the prose summary—as the audit
+trail:
 
 - Data refs resolve to the exact manifest and quality evidence for the complete or explicitly partial scope.
 - Strategy refs resolve to the exact implementation version and its own matching admission report.

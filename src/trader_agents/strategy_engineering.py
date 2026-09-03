@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -246,6 +246,10 @@ class StrategyEngineeringAgent:
                     correlation=correlation,
                 )
                 turn = invocation.output
+                _validate_strategy_turn(
+                    turn,
+                    successful_steps=successful_steps,
+                )
                 if turn.action == "return_result":
                     conclusion = _required_conclusion(turn)
                     _validate_strategy_conclusion(
@@ -665,6 +669,29 @@ def _accept_build_decision(
     return AgentPhase.INVESTIGATE if decision == "reuse" else AgentPhase.CONSTRUCT
 
 
+def _validate_strategy_turn(
+    turn: StrategyAgentTurn,
+    *,
+    successful_steps: Sequence[Mapping[str, Any]],
+) -> None:
+    """Validate one Strategy turn against public lifecycle evidence.
+
+    Args:
+        turn: Schema-valid proposed Strategy action.
+        successful_steps: Accepted MCP operations in lifecycle order.
+    Raises:
+        ValueError: If the proposal repeats a search without changed evidence.
+    """
+    if turn.action == "call_tool" and turn.tool_call is not None:
+        proposal = turn.tool_call
+        if proposal.tool_name == "research_search_implementations" and any(
+            step.get("tool_name") == proposal.tool_name
+            and step.get("arguments") == proposal.arguments
+            for step in successful_steps
+        ):
+            raise ValueError("an identical implementation search cannot be repeated")
+
+
 def _next_strategy_phase(
     current: AgentPhase,
     proposed: str | None,
@@ -858,12 +885,19 @@ def _failed_return(
 ) -> SpecialistReturn:
     """Build a bounded fail-closed return for runtime/policy failures."""
     code = error.code if isinstance(error, PolicyViolation) else "strategy_agent_failed"
+    details = (
+        {"validation_errors": error.validation_errors}
+        if isinstance(error, StructuredOutputError)
+        else {}
+    )
     conclusion = SpecialistConclusion(
         status=SpecialistStatus.FAILED,
         unresolved_questions=[delegation.task.question],
         findings=["Strategy Engineering did not reach a validated admission verdict."],
         evidence_refs=observed_refs,
-        blockers=[PublicIssue(code=code, message=str(error)[:1_000])],
+        blockers=[
+            PublicIssue(code=code, message=str(error)[:1_000], details=details)
+        ],
         advisory_next_actions=["review the blocker before any new candidate attempt"],
     )
     return build_specialist_return(
