@@ -13,15 +13,14 @@ Use the existing documentation as the source of truth:
 
 - Product and setup overview: [README.md](README.md)
 - Documentation index: [docs/README.md](docs/README.md)
-- Core runtime architecture: [docs/core/system_architecture.md](docs/core/system_architecture.md)
-- Core platform docs: [docs/core/README.md](docs/core/README.md)
-- Research-agent docs: [docs/research_agents/README.md](docs/research_agents/README.md)
-- Current research product state: [docs/research_agents/product_state.md](docs/research_agents/product_state.md)
+- Cross-package architecture: [docs/system_architecture.md](docs/system_architecture.md)
+- Current product state: [docs/product_state.md](docs/product_state.md)
+- Package documentation: the owning package's `README.md` and `docs/` directory under `src/`
 - Target model-backed agent designs: [plans/agent_designs.md](plans/agent_designs.md)
-- Research-agent architecture: [docs/research_agents/architecture.md](docs/research_agents/architecture.md)
-- Agent identities, decision boundaries, and artifact authority: [docs/research_agents/agents.md](docs/research_agents/agents.md)
-- Current MCP tool catalog: [docs/research_agents/mcp_tools.md](docs/research_agents/mcp_tools.md)
-- MCP/tool envelope contracts: [docs/research_agents/tool_contracts.md](docs/research_agents/tool_contracts.md)
+- Research-agent architecture: [src/trader_agents/docs/architecture.md](src/trader_agents/docs/architecture.md)
+- Agent identities and authority: [src/trader_agents/docs/roles_and_authority.md](src/trader_agents/docs/roles_and_authority.md)
+- Current MCP tool catalog: [src/trader_mcp/docs/tools.md](src/trader_mcp/docs/tools.md)
+- MCP/tool envelope contracts: [src/trader_mcp/docs/contracts.md](src/trader_mcp/docs/contracts.md)
 - Active research capability roadmap: [plans/research_capability_roadmap.md](plans/research_capability_roadmap.md)
 - Python contributor standard: [docs/python_code_quality.md](docs/python_code_quality.md)
 
@@ -36,10 +35,12 @@ Use the existing documentation as the source of truth:
 - `trader_mcp`: MCP server and adapters over `trader_research` services. Keep transport concerns here.
 - `trader_agents`: LangGraph identities, state schemas, policy routers, tool allowlists, and graph wiring over MCP
   tools. Agent code should call MCP tools, not platform internals, when a tool exists.
+- `trader_mlflow`: optional MLflow pyfunc loading and prediction normalization over core prediction contracts. It does
+  not own training governance, strategy mapping, or agent decisions.
 
 ## Agent Definitions
 
-Follow [agents.md](docs/research_agents/agents.md) for the authoritative boundaries.
+Follow [roles_and_authority.md](src/trader_agents/docs/roles_and_authority.md) for the authoritative boundaries.
 
 - Data Agent: owns symbol discovery, dataset manifests, data inventory, quality reports, and explicit bounded loading
   evidence.
@@ -61,7 +62,7 @@ For every task, do this in order:
 
 1. Read the relevant tracker entry first. For research-agent/MCP work, start with
    [plans/research_capability_roadmap.md](plans/research_capability_roadmap.md) and confirm the current baseline in
-   [docs/research_agents/product_state.md](docs/research_agents/product_state.md).
+   [docs/product_state.md](docs/product_state.md).
 2. Identify current status, acceptance criteria, evidence, and active docs before editing.
 3. Inspect the change surface with repo searches and nearby code reads. Prefer `rg` and targeted file reads.
 4. Plan narrowly around the package boundary and existing patterns.
@@ -70,8 +71,12 @@ For every task, do this in order:
 6. Test the direct behavior first, then broaden tests when touching shared contracts, MCP registration, agent identity,
    persistence, or package boundaries.
 7. Update active documentation and the tracker in the same change when behavior, APIs, artifacts, or status change.
-8. Review `git status --short` before staging. Stage only intended files.
-9. Commit only when the user asks for a commit, or when an agreed workflow explicitly requires one.
+8. Treat package documentation as part of feature completion: update usage and executable examples when a public
+   surface changes, extend the tutorial when the normal user journey changes, and update architecture when boundaries,
+   dependencies, state, persistence, or control flow change. If none applies, state why in the final response.
+9. Run the owning package's documentation and example checks before completion.
+10. Review `git status --short` before staging. Stage only intended files.
+11. Commit only when the user asks for a commit, or when an agreed workflow explicitly requires one.
 
 ## Python Code Quality
 
@@ -92,18 +97,29 @@ Apply [docs/python_code_quality.md](docs/python_code_quality.md) to all Python c
 ## Documentation And Tracker Rules
 
 - Feature work is not complete until active docs and the active capability roadmap reflect the implementation.
+- Before implementing a feature, read the owning package's `README.md` and relevant documents in its `docs/`
+  directory.
+- Public features must update their usage reference and executable examples. Extend a package tutorial whenever the
+  normal learning path or user workflow changes.
+- Boundary, dependency, state, persistence, and control-flow changes must update the owning package's architecture
+  documentation.
+- Python and shell snippets that claim to run must name and pass their documentation test. Unverified executable
+  fences are not allowed.
+- Package internals have one canonical owner under that package. Root documentation describes only cross-package
+  architecture, product state, environment, end-to-end workflows, contributor standards, and history.
+- Never name an architectural element after an implementation checkpoint code.
 - For research-agent and MCP work, update [plans/research_capability_roadmap.md](plans/research_capability_roadmap.md)
   whenever status, scope, evidence, or follow-on work changes.
 - Update the tracker and general principles in [plans/agent_designs.md](plans/agent_designs.md), plus the owning record
   under `plans/agent_designs/`, when a target model-backed agent's mission, authority, entry or context boundary,
   model/tool loop, state, evidence return, termination, evaluation, concurrency, or review status changes.
-- Update [docs/research_agents/tool_contracts.md](docs/research_agents/tool_contracts.md) when tool inputs, outputs,
+- Update [src/trader_mcp/docs/contracts.md](src/trader_mcp/docs/contracts.md) when tool inputs, outputs,
   envelopes, side effects, or artifact contracts change.
-- Update [docs/research_agents/agents.md](docs/research_agents/agents.md) when agent ownership, boundaries, or
+- Update [src/trader_agents/docs/roles_and_authority.md](src/trader_agents/docs/roles_and_authority.md) when agent ownership, boundaries, or
   allowlists change.
-- Update [docs/research_agents/mcp_tools.md](docs/research_agents/mcp_tools.md) when MCP registration, tool ownership,
+- Update [src/trader_mcp/docs/tools.md](src/trader_mcp/docs/tools.md) when MCP registration, tool ownership,
   side effects, or capability flags change.
-- Update core docs under [docs/core/](docs/core/) when runtime, storage, strategy/risk, market-data, backtest, or
+- Update the relevant `src/trader/docs/` document when runtime, storage, strategy/risk, market-data, backtest, or
   operator behavior changes.
 - Do not create new documents when an existing canonical document can be updated.
 
@@ -111,8 +127,10 @@ Apply [docs/python_code_quality.md](docs/python_code_quality.md) to all Python c
 
 Use the narrowest checks that prove the change, then broaden when shared surfaces are touched.
 
-- Docs-only root instruction changes: run link/text checks such as
-  `rg -n "agent_designs|research_capability_roadmap|product_state|python_code_quality|tool_contracts" AGENTS.md`.
+- Documentation changes: run `uv run pytest tests/test_package_documentation.py tests/test_research_agent_docs.py -q`.
+- Notebook changes: also run `uv run pytest tests/test_documentation_notebooks.py -q`.
+- Packaging changes: build to a temporary directory and run `tests/support/verify_wheel_documentation.py` against the
+  wheel.
 - Python changes: run targeted tests for the changed behavior and `uv run ruff check` on touched Python paths.
 - Shared contracts, MCP registration, agent identity, persistence, or package-boundary changes: run the relevant targeted
   suites and consider `uv run pytest -m 'not postgres' -q`.

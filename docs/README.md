@@ -1,22 +1,36 @@
-# Documentation Contexts
+# Trader Documentation
 
-Documentation is split by bounded context. Keep new documents in the context that owns the behavior being described.
+Documentation is owned at the same boundary as the code it explains. Package internals live beside and ship with their
+package; repository docs cover only relationships and workflows that cross package boundaries.
 
-Use [python_code_quality.md](python_code_quality.md) for cross-codebase Python contributor guidance: readability,
-testability, observability, comments, docstrings, error handling, and review expectations.
+## Package documentation
 
-## Core Platform
+- [`trader`](../src/trader/README.md): core platform and runtime
+- [`trader_standard`](../src/trader_standard/README.md): maintained implementations
+- [`trader_research`](../src/trader_research/README.md): deterministic research capabilities
+- [`trader_mcp`](../src/trader_mcp/README.md): MCP tools and contracts
+- [`trader_agents`](../src/trader_agents/README.md): multi-agent coordination
+- [`trader_mlflow`](../src/trader_mlflow/README.md): MLflow inference adapter
 
-Use [core/README.md](core/README.md) for the `trader` and `trader_standard` runtime documentation: market data, event
-store, brokers, strategy/risk interfaces, backtesting, live runtime, operations, schema, and tests.
+Each package provides a README, architecture, tutorial, and usage reference. Focused pages are linked from its README.
+Python examples use doctest-compatible form; executable shell fences name their verifier; selected notebooks are
+output-free and executed in temporary copies during documentation tests.
 
-## Research Agents and MCP
+## Cross-package documentation
 
-Start with [research_agents/product_state.md](research_agents/product_state.md) for the current research capability and
-qualification baseline. Use [research_agents/README.md](research_agents/README.md) for architecture, agent identities,
-MCP catalogs, workflows, operations, detailed contracts, and the active capability roadmap.
+- [System architecture](system_architecture.md)
+- [Product state](product_state.md)
+- [Environment and local services](environment.md)
+- [Getting started workflow](workflows/getting_started.md)
+- [Research workflows](workflows/research.md)
+- [Research and agent operations](workflows/research_operations.md)
+- [Python code quality](python_code_quality.md)
+- [Functional refactoring control](functional_refactoring_control_document.md)
+- [History](history/README.md)
 
-## History
+## Ownership rule
 
-Use [history/README.md](history/README.md) for historical audits, sprint plans, and superseded task breakdowns. These
-documents preserve context but are not the active operating manual.
+A topic has one canonical owner. Root pages link to package details instead of copying them. New behavior is incomplete
+until its owning usage guide and executable examples are updated, its tutorial reflects changes to the normal user
+journey, and its architecture records changes to boundaries, dependencies, state, persistence, or control flow.
+Architectural elements are named by responsibility, never by delivery checkpoint codes.

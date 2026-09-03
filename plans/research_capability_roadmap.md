@@ -4,7 +4,7 @@ This is the canonical active roadmap for Trader's research product. It translate
 [Agentic Research Orchestration Redesign](agentic_orchestration_redesign.md) and the accepted per-agent records in
 [Agent Designs](agent_designs.md) into capability frontiers, dependencies, delivery status, and acceptance evidence.
 
-Read [Research Product State](../docs/research_agents/product_state.md) first for what works today. Current package
+Read [Product State](../docs/product_state.md) first for what works today. Current package
 boundaries, agent allowlists, MCP registration, tool contracts, workflows, and operations remain authoritative only for
 implemented behavior.
 
@@ -33,6 +33,30 @@ Last reviewed: 2026-09-03.
 | Implementation | `absent`, `partial`, `implemented` |
 | Qualification | `none`, `focused`, `integration`, `controlled` |
 | Availability | `unregistered`, `registered`, `gated`, `operator_only`, `deferred` |
+
+## Package-Owned Documentation Register
+
+This register controls the migration from centralized implementation documentation to documentation owned and shipped
+by each Python package. A package is complete only when its README, architecture, tutorial, usage reference, focused
+documents, executable examples, links, and wheel contents pass verification. Root documentation retains only
+cross-package concerns.
+
+| Package | Status | Canonical learning surface | Acceptance evidence |
+| --- | --- | --- | --- |
+| `trader` | complete | `src/trader/README.md` and `src/trader/docs/` | Package tutorial and backtesting notebook execute; public facade and core boundaries are documented; wheel includes every page. |
+| `trader_standard` | complete | `src/trader_standard/README.md` and `src/trader_standard/docs/` | Composition tutorial and notebook execute; maintained implementations and extension boundaries are documented. |
+| `trader_research` | complete | `src/trader_research/README.md` and `src/trader_research/docs/` | Evidence tutorial executes; research artifact ownership, persistence, and deterministic services are documented. |
+| `trader_mcp` | complete | `src/trader_mcp/README.md` and `src/trader_mcp/docs/` | Tool catalog, envelopes, policy, configuration, and transport boundary have one tested owner. |
+| `trader_agents` | complete | `src/trader_agents/README.md` and `src/trader_agents/docs/` | Agent topology, authority, MCP interaction, model runtime, recovery, and qualification are tutorialised and tested. |
+| `trader_mlflow` | complete | `src/trader_mlflow/README.md` and `src/trader_mlflow/docs/` | Prediction tutorial and notebook execute without a live tracking server; adapter boundary is documented. |
+| Root consolidation | complete | `README.md` and `docs/` | Cross-package index, architecture, product state, environment, workflows, standards, and history remain; displaced centralized pages and stale links are absent. |
+| Documentation verification | complete | `tests/test_package_documentation.py` and notebook/wheel checks | Executable fences declare verification; configuration snippets cross the real loader; Markdown links and anchors resolve; notebooks are output-free and deterministic; every package page ships in the wheel. |
+
+Accepted on 2026-09-03. The package documentation, executable Markdown, notebook, existing behavioral documentation,
+package-boundary, and broad offline suites passed. A built wheel was checked against every owned Markdown page and
+notebook. Ruff and whitespace checks passed; the local Docker Postgres verification identity remained readable without
+mutating product state. No runtime or database contract changed in this documentation cutover, so controlled Postgres
+qualification and the already-failed local-model behavioral campaign were not rerun.
 
 ## Capability Dependency Graph
 
@@ -105,7 +129,7 @@ The current 33AB subsystem is a bounded evidence baseline, not an implementation
 The target design is canonical in
 [Research-Backed Implementation Architecture](agentic_orchestration_redesign.md#research-backed-implementation-architecture)
 and the current/target evidence boundary is recorded in
-[Semantic Methodology Extraction](../docs/research_agents/semantic_extraction.md#planned-agentic-knowledge-to-implementation-path).
+[Knowledge Ingestion And Semantic Methodology Extraction](../src/trader_research/docs/knowledge.md#planned-agentic-knowledge-to-implementation-path).
 
 | Capability frontier | Status | Hard dependencies | Current deliverable | Acceptance evidence |
 | --- | --- | --- | --- | --- |
@@ -125,7 +149,7 @@ workflow, or import compatibility is required. The detailed design and behaviora
 | Capability frontier | Status | Hard dependencies | Current deliverable | Acceptance evidence |
 | --- | --- | --- | --- | --- |
 | Design and evaluation charter | complete | Current-state, dependency, and lineage audit | The approved temporary [First Agentic Implementation Slice plan](agent_designs/first_agentic_slice_implementation_plan.md), complete Coordinator/Data/Strategy records, accepted shared patterns, representative scenarios, deterministic invariants, and layered qualification contract define the slice. Other specialist records continue later; ML is parked. | Every first-slice agent has an accepted complete record, slice-wide patterns preserve those boundaries, representative scenarios are labelled, and deferred decisions cannot leak into the slice. |
-| MCP capability and trust-boundary inventory | complete | Accepted slice charter | The canonical first-slice inventory in `docs/research_agents/tool_contracts.md` records every support, session, canonical-read, Data, catalogue, Coding Workspace, and admission operation. Candidate writes and cleanup use source-free replay records; provider-backed Data loading uses prepared and terminal canonical operation evidence and fails closed when post-interruption state is ambiguous. | Every operation records role, side effect, approval, idempotency/recovery, public output/errors, disposition, and one or more cases in `first-agentic-slice-evaluation-v1`. |
+| MCP capability and trust-boundary inventory | complete | Accepted slice charter | The canonical first-slice inventory in `src/trader_mcp/docs/contracts.md` records every support, session, canonical-read, Data, catalogue, Coding Workspace, and admission operation. Candidate writes and cleanup use source-free replay records; provider-backed Data loading uses prepared and terminal canonical operation evidence and fails closed when post-interruption state is ambiguous. | Every operation records role, side effect, approval, idempotency/recovery, public output/errors, disposition, and one or more cases in `first-agentic-slice-evaluation-v1`. |
 | Framework and observability spike | complete | Approved first-slice charter and representative scenario fixtures | The real-model comparison selected LangGraph 1.2.2 plus the 3.1.x Postgres checkpointer over PydanticAI 2.37.0 for control-runtime fit. Both used strict schemas, dynamic narrowed tool choices, real MCP, parallel work, evidence-led revision, PostgreSQL resume, interrupts, and queryable MLflow traces across two different briefs; the disposable code was removed. | Different briefs changed agenda digests, Data tool choice, evidence gaps, and coordinator action. Four recorded trace IDs resolved; LangGraph resumed natively after a new connection, while PydanticAI required custom checkpoint/control glue. |
 | Agent runtime foundation | in_progress | Accepted framework spike | Clean `trader_agents` cutover is implemented with exact model/program/tool identity, MCP adapters, role-aware dynamic tools, context policy, budgets, delegation/evidence-return/coordinator-decision contracts, branch lineage, semantic loop guards, bounded source-free Postgres state, interrupts, owning-operator cancellation, redacted MLflow lifecycle traces, runtime composition, and CLI. Data and Strategy fault matrices plus process-level cancellation exercise fresh-process recovery without replaying accepted mutations. Provider calls, results, and validation failures retain physical-call accounting even when a process exits before checkpointing. The active evaluation profile now pins local Ollama `lfm2.5:8b` to its exact digest with the existing 8,192-token context and 2,048-token output ceilings; agent-program identities advanced with the profile. The boundary has no model-output rewriting, permissive fenced-JSON parsing, semantic feedback retry, agenda task rewriting, or prescriptive phase routing. The real digest-pinned Docker sandbox passes local isolation/cleanup checks, and all controlled phase entry points exist. The canonical architecture now records the executable agent composition, Coordinator and specialist graph topology, contract trust transitions, role-isolated MCP call path, package dependency direction, parallel joins, and checkpoint/evidence recovery model. Frozen operational qualification remains. | Contract, policy, persistence, security, fresh-process, real-container, and trace tests prove model/tool loops without direct platform access, host execution fallback, or replayed mutations. |
 | Coordinator evidence-review loop | in_progress | Agent runtime foundation | The implemented Coordinator selects the non-empty subset of specialist responsibilities materially required by the brief, rejoins every selected return, independently reads canonical refs, checkpoints a validated decision before append-only receipt mutation, then applies the exact decision after the receipt is accepted. It can revise, revisit, fork, ask, conclude, cancel, or fail closed. A focused full-graph test proves a Data-only agenda, one delegation, two exact evidence rereads, one grounded conclusion, and zero unselected Strategy activity. Agenda policy also admits disjoint Data and Strategy catalogue fan-out, enforces specialist-owned hard joins, derives mutation locks from trusted scope, and preserves unfinished delegation identity across a soft join. Semantic fingerprints ignore paraphrase and disposable IDs so an equivalent second transition stops with `low_information_loop`; revision decisions consume the coordinator revision budget. Four bounded-scale profiles now cover composite, parallel, recovery, and concurrent-session paths; controlled evidence remains. | Poor/promising/stable/unstable scenarios produce evidence-consistent decisions; single-role briefs omit irrelevant specialists; equivalent loops, exhausted budgets, contaminated evaluation, and out-of-authority actions stop before mutation. |

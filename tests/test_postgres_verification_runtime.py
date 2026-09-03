@@ -39,7 +39,7 @@ from tests.support.postgres_verification import (
     ("path", "allowed"),
     [
         ("README.md", True),
-        ("docs/research_agents/operations.md", True),
+        ("docs/workflows/research_operations.md", True),
         ("tests/conftest.py", True),
         ("plans/mcp_trading_research_tools_plan.md", True),
         ("plans/research_capability_roadmap.md", True),

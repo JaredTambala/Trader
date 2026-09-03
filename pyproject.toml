@@ -24,6 +24,10 @@ dependencies = [
     "uvicorn>=0.40.0",
 ]
 
+[project.urls]
+Repository = "https://github.com/JaredTambala/Trader"
+Documentation = "https://github.com/JaredTambala/Trader/tree/main/docs"
+
 [project.scripts]
 trader-agent = "trader_agents.cli:main"
 
@@ -40,7 +44,12 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-trader_research = ["method_contracts_seed.json"]
+trader = ["README.md", "docs/*.md", "docs/*.ipynb"]
+trader_standard = ["README.md", "docs/*.md", "docs/*.ipynb"]
+trader_research = ["README.md", "docs/*.md", "docs/*.ipynb", "method_contracts_seed.json"]
+trader_mcp = ["README.md", "docs/*.md", "docs/*.ipynb"]
+trader_agents = ["README.md", "docs/*.md", "docs/*.ipynb"]
+trader_mlflow = ["README.md", "docs/*.md", "docs/*.ipynb"]
 "trader_standard.indicators" = ["cpp/*.cpp.template", "bindings/*.json"]
 
 [tool.pytest.ini_options]
@@ -98,5 +107,10 @@ dev = [
     "pytest-mock>=3.15.1",
     "ruff>=0.13.1",
     "types-pyyaml>=6.0.12.20250915",
+]
+docs = [
+    "ipykernel>=6,<8",
+    "nbclient>=0.10,<1",
+    "nbformat>=5.10,<6",
 ]
 ui = ["reflex", "plotly>=5.20.0"]

@@ -39,7 +39,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --dev --extra ml --group docs
 
       - name: Ruff
         run: uv run ruff check src tests examples run_*.py external_strategy_demo.py
@@ -49,3 +49,9 @@ jobs:
 
       - name: Pytest
         run: uv run pytest
+
+      - name: Build distribution
+        run: uv build --out-dir /tmp/trader-dist
+
+      - name: Verify packaged documentation
+        run: uv run python tests/support/verify_wheel_documentation.py /tmp/trader-dist/*.whl

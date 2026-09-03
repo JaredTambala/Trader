@@ -8,21 +8,59 @@ from trader_research.governance.ownership import AGENT_DEFINITIONS
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DOC_ROOT = REPO_ROOT / "docs" / "research_agents"
+DOC_ROOT = REPO_ROOT / "docs"
 PRODUCT_STATE_PATH = DOC_ROOT / "product_state.md"
 ROADMAP_PATH = REPO_ROOT / "plans" / "research_capability_roadmap.md"
 LEGACY_TRACKER_PATH = REPO_ROOT / "plans" / "mcp_trading_research_tools_plan.md"
-CURRENT_DOCS = (
-    "README.md",
-    "product_state.md",
-    "architecture.md",
-    "agents.md",
-    "mcp_tools.md",
-    "workflows.md",
-    "operations.md",
-    "semantic_extraction.md",
-    "tool_contracts.md",
+PACKAGE_ROOTS = tuple(
+    REPO_ROOT / "src" / package
+    for package in (
+        "trader",
+        "trader_standard",
+        "trader_research",
+        "trader_mcp",
+        "trader_agents",
+        "trader_mlflow",
+    )
 )
+DOC_PATHS = {
+    "README.md": (
+        REPO_ROOT / "src" / "trader_research" / "README.md",
+        REPO_ROOT / "src" / "trader_mcp" / "README.md",
+        REPO_ROOT / "src" / "trader_agents" / "README.md",
+    ),
+    "product_state.md": (PRODUCT_STATE_PATH,),
+    "architecture.md": (
+        DOC_ROOT / "system_architecture.md",
+        REPO_ROOT / "src" / "trader_research" / "docs" / "architecture.md",
+        REPO_ROOT / "src" / "trader_research" / "docs" / "experiments.md",
+        REPO_ROOT / "src" / "trader_research" / "docs" / "ml.md",
+        REPO_ROOT / "src" / "trader_agents" / "docs" / "architecture.md",
+        REPO_ROOT / "src" / "trader_agents" / "docs" / "coordinator.md",
+        REPO_ROOT / "src" / "trader_agents" / "docs" / "model_runtime.md",
+        REPO_ROOT / "src" / "trader_mlflow" / "docs" / "architecture.md",
+    ),
+    "agents.md": (
+        REPO_ROOT / "src" / "trader_agents" / "docs" / "roles_and_authority.md",
+        REPO_ROOT / "src" / "trader_agents" / "docs" / "coordinator.md",
+        REPO_ROOT / "src" / "trader_agents" / "docs" / "specialists.md",
+    ),
+    "mcp_tools.md": (REPO_ROOT / "src" / "trader_mcp" / "docs" / "tools.md",),
+    "workflows.md": (DOC_ROOT / "workflows" / "research.md",),
+    "operations.md": (
+        DOC_ROOT / "workflows" / "research_operations.md",
+        DOC_ROOT
+        / "history"
+        / "research_agents"
+        / "research_operations_before_package_ownership.md",
+    ),
+    "semantic_extraction.md": (
+        REPO_ROOT / "src" / "trader_research" / "docs" / "knowledge.md",
+    ),
+    "tool_contracts.md": (
+        REPO_ROOT / "src" / "trader_mcp" / "docs" / "contracts.md",
+    ),
+}
 STALE_CURRENT_CLAIMS = (
     "backtest tools are not registered yet",
     "No backtest tool is exposed",
@@ -30,26 +68,24 @@ STALE_CURRENT_CLAIMS = (
 )
 
 
-def test_research_agent_readme_links_canonical_docs_and_history() -> None:
-    readme = (DOC_ROOT / "README.md").read_text(encoding="utf-8")
-
-    for filename in CURRENT_DOCS:
-        assert (DOC_ROOT / filename).exists()
-        if filename != "README.md":
-            assert f"({filename})" in readme
-    assert "(history/)" in readme
-    assert (DOC_ROOT / "history").is_dir()
+def test_package_readmes_link_canonical_docs_and_history_is_retained() -> None:
+    for package_root in PACKAGE_ROOTS:
+        readme = (package_root / "README.md").read_text(encoding="utf-8")
+        for filename in ("architecture.md", "tutorial.md", "usage.md"):
+            assert (package_root / "docs" / filename).exists()
+            assert f"docs/{filename}" in readme
+    assert (DOC_ROOT / "history" / "research_agents").is_dir()
 
 
 def test_registered_mcp_tools_are_documented_once_in_canonical_catalog() -> None:
-    catalog = (DOC_ROOT / "mcp_tools.md").read_text(encoding="utf-8")
+    catalog = _read_doc("mcp_tools.md")
 
     for tool_name in REGISTERED_TOOL_NAMES:
         assert catalog.count(f"`{tool_name}`") == 1, tool_name
 
 
 def test_agent_identities_are_documented_in_canonical_agent_doc() -> None:
-    agents_doc = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
+    agents_doc = _read_doc("agents.md")
 
     for definition in AGENT_DEFINITIONS:
         assert definition.display_name in agents_doc
@@ -65,9 +101,9 @@ def test_current_research_agent_docs_do_not_carry_stale_tool_claims() -> None:
 
 
 def test_rich_methodology_operator_guide_covers_required_workflows() -> None:
-    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
-    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
-    contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
+    workflows = _read_doc("workflows.md")
+    operations = _read_doc("operations.md")
+    contracts = _read_doc("tool_contracts.md")
     combined = "\n".join((workflows, operations, contracts)).lower()
 
     required_phrases = (
@@ -87,8 +123,8 @@ def test_rich_methodology_operator_guide_covers_required_workflows() -> None:
         assert phrase in combined
 
 
-def test_canonical_readme_links_resolve() -> None:
-    readme_path = DOC_ROOT / "README.md"
+def test_research_package_readme_links_resolve() -> None:
+    readme_path = REPO_ROOT / "src" / "trader_research" / "README.md"
     readme = readme_path.read_text(encoding="utf-8")
 
     for target in re.findall(r"\]\(([^)]+)\)", readme):
@@ -112,7 +148,7 @@ def test_product_state_and_roadmap_links_resolve() -> None:
 
 
 def test_semantic_extraction_doc_is_canonical_and_preserves_overlap_invariant() -> None:
-    semantic_doc = (DOC_ROOT / "semantic_extraction.md").read_text(encoding="utf-8")
+    semantic_doc = _read_doc("semantic_extraction.md")
     required_phrases = (
         "Evidence units are non-exclusive",
         "addressable claim span",
@@ -124,28 +160,29 @@ def test_semantic_extraction_doc_is_canonical_and_preserves_overlap_invariant() 
     for phrase in required_phrases:
         assert phrase in semantic_doc
 
-    for filename in (
-        "README.md",
-        "architecture.md",
-        "workflows.md",
-        "tool_contracts.md",
-    ):
-        content = (DOC_ROOT / filename).read_text(encoding="utf-8")
-        assert "(semantic_extraction.md)" in content
+    linked_docs = (
+        REPO_ROOT / "src" / "trader_research" / "README.md",
+        ROADMAP_PATH,
+        REPO_ROOT / "src" / "trader_mcp" / "docs" / "contracts.md",
+        DOC_ROOT / "workflows" / "research.md",
+    )
+    for path in linked_docs:
+        content = path.read_text(encoding="utf-8")
+        assert "knowledge.md" in content
 
 
 def test_docs_pin_knowledge_baseline_and_identify_next_delivery_focus() -> None:
-    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
-    semantic_doc = (DOC_ROOT / "semantic_extraction.md").read_text(encoding="utf-8")
-    contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
-    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
+    product_state = _read_doc("product_state.md")
+    semantic_doc = _read_doc("semantic_extraction.md")
+    contracts = _read_doc("tool_contracts.md")
+    workflows = _read_doc("workflows.md")
     roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
 
     assert (
         "| Methodology extraction and method cards | implemented | integration |"
         in product_state
     )
-    assert "The implemented subsystem is pinned at the 33AB baseline" in semantic_doc
+    assert "The implemented bounded methodology subsystem supports" in semantic_doc
     assert (
         "execution begins with content-addressed implementation versions" in contracts
     )
@@ -171,41 +208,36 @@ def test_docs_pin_knowledge_baseline_and_identify_next_delivery_focus() -> None:
 
 
 def test_docs_define_current_research_architecture_and_refactor_lineage() -> None:
-    readme = (DOC_ROOT / "README.md").read_text(encoding="utf-8")
-    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
-    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    readme = _read_doc("README.md")
+    architecture = _read_doc("architecture.md")
+    product_state = _read_doc("product_state.md")
     roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
 
     required_readme_phrases = (
-        "## What Trader Research Does",
-        "## Start Here",
-        "## Topic Reading Paths",
-        "## Document Roles",
-        "Data Agent scope and quality evidence",
-        "canonical Postgres backtest",
-        "Adversarial",
+        "deterministic research capability layer",
+        "## Bounded contexts",
+        "## Learning path",
+        "canonical",
+        "data readiness",
+        "experiment specifications and execution",
+        "adversarial review",
     )
     for phrase in required_readme_phrases:
         assert phrase in readme
 
     required_architecture_phrases = (
-        "## Bounded Context Architecture",
-        "### Context Map",
-        "### Public And Transport Boundaries",
-        "Business operations return typed application results",
-        "There are no old-to-new Python modules, aliases, dual writes",
-        "one evidence-backed, citeable methodology record",
-        "`trader_research.data` is the sole application facade",
-        "Provider SDK code does not belong to the Data context",
-        "`trader_research.experiments` is the single outer application facade",
-        "Neither adapter is imported by",
-        "Review imports only `trader_research.experiments.reads`",
-        "It exposes no implementation",
-        "`trader_mcp` composes every domain operation through the public",
-        "forcibly rejects every `optuna` and `mlflow` import",
-        "### Boundary Enforcement",
-        "### Refactor Record",
-        "`verification-57i-freeze-v6`",
+        "# Research Capability Architecture",
+        "## Context map",
+        "## Application boundary",
+        "Public context functions return `ApplicationResult`",
+        "Contexts exchange stable artifact references",
+        "trader_mcp -> public context facades",
+        "Provider SDK payloads are normalized",
+        "Artifact domain ownership is distinct",
+        "append-only",
+        "Docker, provider network calls",
+        "Add capability to the owning context",
+        "do not import the new service from agent code",
     )
     for phrase in required_architecture_phrases:
         assert phrase in architecture
@@ -249,7 +281,7 @@ def test_active_docs_reference_current_research_source_paths() -> None:
 
 
 def test_docs_walk_supplied_implementations_to_bounded_evidence() -> None:
-    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
+    workflows = _read_doc("workflows.md")
     required_tools = (
         "research_register_strategy_implementation",
         "research_validate_strategy_implementation",
@@ -275,7 +307,7 @@ def test_docs_walk_supplied_implementations_to_bounded_evidence() -> None:
 def test_active_operator_docs_do_not_advertise_retired_research_clis() -> None:
     active_paths = (
         REPO_ROOT / "README.md",
-        *(REPO_ROOT / "docs" / "core").rglob("*.md"),
+        *(REPO_ROOT / "src" / "trader" / "docs").rglob("*.md"),
     )
     retired_commands = (
         "run_compare_results.py",
@@ -294,12 +326,12 @@ def test_active_operator_docs_do_not_advertise_retired_research_clis() -> None:
 
 
 def test_docs_define_provider_neutral_optimization_and_independent_review() -> None:
-    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
-    agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
-    catalog = (DOC_ROOT / "mcp_tools.md").read_text(encoding="utf-8")
-    contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
-    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
-    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
+    architecture = _read_doc("architecture.md")
+    agents = _read_doc("agents.md")
+    catalog = _read_doc("mcp_tools.md")
+    contracts = _read_doc("tool_contracts.md")
+    operations = _read_doc("operations.md")
+    workflows = _read_doc("workflows.md")
     combined = "\n".join(
         (architecture, agents, catalog, contracts, operations, workflows)
     )
@@ -320,16 +352,16 @@ def test_docs_define_provider_neutral_optimization_and_independent_review() -> N
     for phrase in required_phrases:
         assert phrase in combined
 
-    assert "MLflow is authoritative for ML lifecycle records only" in architecture
+    assert "MLflow is authoritative for ML training telemetry" in architecture
     assert "Trader never queries that" in architecture
     assert "ml_list_experiments" not in combined
     assert "ml_list_training_experiments" in combined
 
 
 def test_docs_define_controlled_verification_profiles_and_stop_conditions() -> None:
-    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
+    operations = _read_doc("operations.md")
     normalized_operations = " ".join(operations.split())
-    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    product_state = _read_doc("product_state.md")
     roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
 
     required_phrases = (
@@ -360,7 +392,7 @@ def test_docs_define_controlled_verification_profiles_and_stop_conditions() -> N
     assert "| 57I-S | Frozen Postgres/MCP qualification and acceptance |" in roadmap
 
     contracts = " ".join(
-        (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8").split()
+        _read_doc("tool_contracts.md").split()
     )
     for phrase in (
         "Dependency declarations are descriptive",
@@ -374,7 +406,7 @@ def test_docs_define_controlled_verification_profiles_and_stop_conditions() -> N
 def test_product_state_separates_implementation_qualification_and_availability() -> (
     None
 ):
-    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    product_state = _read_doc("product_state.md")
 
     for heading in (
         "## How To Read Capability State",
@@ -399,45 +431,38 @@ def test_product_state_separates_implementation_qualification_and_availability()
         assert phrase in product_state
 
 
-def test_docs_define_cross_cutting_target_artifact_orchestration() -> None:
+def test_docs_define_cross_cutting_agent_orchestration() -> None:
     architecture = " ".join(
-        (DOC_ROOT / "architecture.md").read_text(encoding="utf-8").split()
+        _read_doc("architecture.md").split()
     )
-    agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
+    agents = _read_doc("agents.md")
 
     for phrase in (
-        "Higher-Level Orchestration Architecture",
-        "Orchestration is a cross-cutting control capability",
-        "A separate non-agent compiler/executor runs",
-        "`ResearchObjective`",
-        "`CapabilityDefinition`",
-        "`WorkflowPlan`",
-        "`WorkflowStepResult`",
-        "`WorkflowOutcome`",
-        "Planning is target-artifact driven",
-        "Operational graph state and product evidence have separate authority",
-        "Trader should not build one graph containing every possible research activity",
-        "does not require rewriting a universal state machine",
+        "# Multi-Agent Architecture",
+        "## What constitutes an agent",
+        "## Coordinator graph",
+        "## Specialist graphs",
+        "## Parallelism and joins",
+        "## Trust transitions",
+        "`AgentCheckpointState`",
+        "`SpecialistCheckpointState`",
+        "The Coordinator remains the single writer",
+        "Models decide interpretations and next actions",
+        "An agent checkpoint is not research evidence",
     ):
         assert phrase in architecture
 
-    assert (
-        "Ownership definitions do not imply that every named agent has an operational graph"
-        in agents
-    )
-    assert "(product_state.md#agent-state)" in agents
-    assert (
-        "(../../plans/research_capability_roadmap.md#target-agent-capability-map)"
-        in agents
-    )
+    assert "Ownership definitions do not imply that every named agent has an operational graph" in agents
+    assert "Product State" in agents
+    assert "capability roadmap" in agents
 
 
 def test_docs_define_non_overlapping_experiment_research_decisions() -> None:
-    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
-    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
-    agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
-    catalog = (DOC_ROOT / "mcp_tools.md").read_text(encoding="utf-8")
-    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
+    product_state = _read_doc("product_state.md")
+    architecture = _read_doc("architecture.md")
+    agents = _read_doc("agents.md")
+    catalog = _read_doc("mcp_tools.md")
+    workflows = _read_doc("workflows.md")
     roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
     combined = "\n".join((product_state, architecture, agents, workflows))
 
@@ -456,13 +481,13 @@ def test_docs_define_non_overlapping_experiment_research_decisions() -> None:
         "Agents own bounded decisions. Domain contexts own canonical artifacts.",
         "`ExperimentProtocol`",
         "The canonical proposal remains immutable while material assumptions are decided",
-        "The workflow executor is not an agent",
+        "A deterministic execution service is not an agent",
         "Robustness findings feed Evaluation",
         "`domain_owner`",
         "`producer_tool`",
         "`requested_by`",
         "`actor`",
-        "No Backtest Agent, Optimisation Agent, Strategy Agent or Risk Agent is required",
+        "Backtest execution, optimisation scheduling, and risk evaluation do not become agents",
     ):
         assert phrase in combined
 
@@ -495,11 +520,11 @@ def test_docs_define_non_overlapping_experiment_research_decisions() -> None:
 
 
 def test_docs_define_shared_specialist_boundary_and_bounded_composition() -> None:
-    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
-    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
-    agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
-    contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
-    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
+    product_state = _read_doc("product_state.md")
+    architecture = _read_doc("architecture.md")
+    agents = _read_doc("agents.md")
+    contracts = _read_doc("tool_contracts.md")
+    workflows = _read_doc("workflows.md")
     roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
     combined = "\n".join(
         (product_state, architecture, agents, contracts, workflows, roadmap)
@@ -548,7 +573,7 @@ def test_docs_define_shared_specialist_boundary_and_bounded_composition() -> Non
         "`ORCHESTRATION_ACCEPTANCE`",
     ):
         assert phase in roadmap
-    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
+    operations = _read_doc("operations.md")
     for phrase in (
         "### Controlled Orchestration Qualification",
         "controlled_orchestration_v1",
@@ -575,13 +600,13 @@ def test_docs_define_shared_specialist_boundary_and_bounded_composition() -> Non
 def test_docs_explain_implemented_experiment_design_approval_boundary() -> None:
     combined = "\n".join(
         (
-            PRODUCT_STATE_PATH.read_text(encoding="utf-8"),
-            (DOC_ROOT / "architecture.md").read_text(encoding="utf-8"),
-            (DOC_ROOT / "agents.md").read_text(encoding="utf-8"),
-            (DOC_ROOT / "mcp_tools.md").read_text(encoding="utf-8"),
-            (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8"),
-            (DOC_ROOT / "workflows.md").read_text(encoding="utf-8"),
-            (DOC_ROOT / "operations.md").read_text(encoding="utf-8"),
+            _read_doc("product_state.md"),
+            _read_doc("architecture.md"),
+            _read_doc("agents.md"),
+            _read_doc("mcp_tools.md"),
+            _read_doc("tool_contracts.md"),
+            _read_doc("workflows.md"),
+            _read_doc("operations.md"),
         )
     )
 
@@ -600,11 +625,11 @@ def test_docs_explain_implemented_experiment_design_approval_boundary() -> None:
 
 
 def test_docs_define_declaration_contract_scope_without_claiming_execution() -> None:
-    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
-    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
-    contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
-    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
-    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
+    product_state = _read_doc("product_state.md")
+    architecture = _read_doc("architecture.md")
+    contracts = _read_doc("tool_contracts.md")
+    workflows = _read_doc("workflows.md")
+    operations = _read_doc("operations.md")
     combined = "\n".join(
         (product_state, architecture, contracts, workflows, operations)
     )
@@ -627,12 +652,12 @@ def test_docs_define_declaration_contract_scope_without_claiming_execution() -> 
 
 
 def test_docs_define_resume_shell_without_claiming_mcp_execution() -> None:
-    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
-    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
-    agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
-    contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
-    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
-    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
+    product_state = _read_doc("product_state.md")
+    architecture = _read_doc("architecture.md")
+    agents = _read_doc("agents.md")
+    contracts = _read_doc("tool_contracts.md")
+    workflows = _read_doc("workflows.md")
+    operations = _read_doc("operations.md")
     roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
     combined = "\n".join(
         (
@@ -659,13 +684,13 @@ def test_docs_define_resume_shell_without_claiming_mcp_execution() -> None:
 
 
 def test_docs_define_deterministic_execution_boundary() -> None:
-    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
-    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
-    agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
-    catalog = (DOC_ROOT / "mcp_tools.md").read_text(encoding="utf-8")
-    contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
-    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
-    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
+    product_state = _read_doc("product_state.md")
+    architecture = _read_doc("architecture.md")
+    agents = _read_doc("agents.md")
+    catalog = _read_doc("mcp_tools.md")
+    contracts = _read_doc("tool_contracts.md")
+    workflows = _read_doc("workflows.md")
+    operations = _read_doc("operations.md")
     roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
     combined = "\n".join(
         (
@@ -703,12 +728,12 @@ def test_docs_define_deterministic_execution_boundary() -> None:
 
 
 def test_docs_explain_current_orchestration_call_and_storage_boundaries() -> None:
-    readme = (DOC_ROOT / "README.md").read_text(encoding="utf-8")
+    readme = _read_doc("README.md")
     normalized_readme = " ".join(readme.split())
-    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
-    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
-    catalog = (DOC_ROOT / "mcp_tools.md").read_text(encoding="utf-8")
-    contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
+    product_state = _read_doc("product_state.md")
+    architecture = _read_doc("architecture.md")
+    catalog = _read_doc("mcp_tools.md")
+    contracts = _read_doc("tool_contracts.md")
     roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
 
     for phrase in (
@@ -740,11 +765,11 @@ def test_docs_explain_current_orchestration_call_and_storage_boundaries() -> Non
 
 
 def test_docs_define_bounded_research_coordinator_policy() -> None:
-    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
-    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
-    agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
-    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
-    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
+    product_state = _read_doc("product_state.md")
+    architecture = _read_doc("architecture.md")
+    agents = _read_doc("agents.md")
+    workflows = _read_doc("workflows.md")
+    operations = _read_doc("operations.md")
     roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
     combined = "\n".join(
         (product_state, architecture, agents, workflows, operations, roadmap)
@@ -857,10 +882,11 @@ def test_active_roadmap_dependencies_reference_known_nodes_and_are_acyclic() -> 
 
 def test_docs_define_57j_isolated_postgres_runtime() -> None:
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
-    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
-    combined = "\n".join((readme, operations, product_state))
-    normalized_readme = " ".join(readme.split())
+    environment = (DOC_ROOT / "environment.md").read_text(encoding="utf-8")
+    operations = _read_doc("operations.md")
+    product_state = _read_doc("product_state.md")
+    combined = "\n".join((readme, environment, operations, product_state))
+    normalized_environment = " ".join(environment.split())
 
     required_phrases = (
         "PG_TEST_HOST",
@@ -879,14 +905,14 @@ def test_docs_define_57j_isolated_postgres_runtime() -> None:
     for phrase in required_phrases:
         assert phrase in combined
 
-    assert "They never read the legacy/operator `PG_HOST`" in normalized_readme
+    assert "never read the legacy/operator `PG_HOST`" in normalized_environment
     assert "Product rows," in operations
     assert "passwords" in operations
 
 
 def test_docs_define_57l_as_postgres_only_direct_service_qualification() -> None:
-    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
-    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    operations = _read_doc("operations.md")
+    product_state = _read_doc("product_state.md")
     combined = "\n".join((operations, product_state))
 
     required_phrases = (
@@ -908,8 +934,8 @@ def test_docs_define_57l_as_postgres_only_direct_service_qualification() -> None
 
 
 def test_docs_define_57m_as_retained_postgres_stdio_mcp_evidence() -> None:
-    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
-    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    operations = _read_doc("operations.md")
+    product_state = _read_doc("product_state.md")
     combined = "\n".join((operations, product_state))
     normalized = " ".join(combined.split())
 
@@ -930,10 +956,10 @@ def test_docs_define_57m_as_retained_postgres_stdio_mcp_evidence() -> None:
 
 
 def test_docs_define_57n_determinism_integrity_and_leakage_controls() -> None:
-    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
-    contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
-    operations = (DOC_ROOT / "operations.md").read_text(encoding="utf-8")
-    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    architecture = _read_doc("architecture.md")
+    contracts = _read_doc("tool_contracts.md")
+    operations = _read_doc("operations.md")
+    product_state = _read_doc("product_state.md")
     combined = "\n".join((architecture, contracts, operations, product_state))
     normalized = " ".join(combined.split())
 
@@ -957,12 +983,12 @@ def test_docs_define_57n_determinism_integrity_and_leakage_controls() -> None:
 
 
 def test_docs_define_mlflow_lifecycle_and_implemented_runtime_boundary() -> None:
-    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
-    agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
-    catalog = (DOC_ROOT / "mcp_tools.md").read_text(encoding="utf-8")
-    contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
-    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
-    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
+    architecture = _read_doc("architecture.md")
+    agents = _read_doc("agents.md")
+    catalog = _read_doc("mcp_tools.md")
+    contracts = _read_doc("tool_contracts.md")
+    workflows = _read_doc("workflows.md")
+    product_state = _read_doc("product_state.md")
     roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
 
     assert "## ML Lifecycle Architecture" in architecture
@@ -996,12 +1022,12 @@ def test_docs_define_mlflow_lifecycle_and_implemented_runtime_boundary() -> None
 def test_docs_defer_walk_forward_optimization_but_keep_validation_foundational() -> (
     None
 ):
-    product_state = PRODUCT_STATE_PATH.read_text(encoding="utf-8")
-    architecture = (DOC_ROOT / "architecture.md").read_text(encoding="utf-8")
-    agents = (DOC_ROOT / "agents.md").read_text(encoding="utf-8")
-    catalog = (DOC_ROOT / "mcp_tools.md").read_text(encoding="utf-8")
-    contracts = (DOC_ROOT / "tool_contracts.md").read_text(encoding="utf-8")
-    workflows = (DOC_ROOT / "workflows.md").read_text(encoding="utf-8")
+    product_state = _read_doc("product_state.md")
+    architecture = _read_doc("architecture.md")
+    agents = _read_doc("agents.md")
+    catalog = _read_doc("mcp_tools.md")
+    contracts = _read_doc("tool_contracts.md")
+    workflows = _read_doc("workflows.md")
     roadmap = ROADMAP_PATH.read_text(encoding="utf-8")
 
     assert "| Walk-forward optimisation | absent | none | deferred |" in product_state
@@ -1024,10 +1050,19 @@ def test_docs_defer_walk_forward_optimization_but_keep_validation_foundational()
 
 
 def _current_markdown_docs() -> tuple[Path, ...]:
-    return tuple(
-        sorted(
-            path
-            for path in DOC_ROOT.glob("*.md")
-            if "history" not in path.relative_to(DOC_ROOT).parts
-        )
+    paths = [
+        path
+        for path in DOC_ROOT.rglob("*.md")
+        if "history" not in path.relative_to(DOC_ROOT).parts
+    ]
+    for package_root in PACKAGE_ROOTS:
+        paths.append(package_root / "README.md")
+        paths.extend((package_root / "docs").glob("*.md"))
+    return tuple(sorted(paths))
+
+
+def _read_doc(name: str) -> str:
+    """Read one logical research topic from its package-owned canonical pages."""
+    return "\n".join(
+        path.read_text(encoding="utf-8") for path in DOC_PATHS[name]
     )

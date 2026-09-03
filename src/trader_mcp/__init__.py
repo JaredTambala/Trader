@@ -1,7 +1,8 @@
-"""MCP adapter package for research tools.
+"""MCP transport and policy adapters over deterministic research services.
 
-The MCP server is introduced in later chunks. This package is intentionally
-importable without MCP SDK dependencies for now.
+The package owns the stdio FastMCP server, public tool envelopes, capability
+registration gates, and provider composition. Research behavior remains in
+``trader_research`` and model-backed control remains in ``trader_agents``.
 """
 
 from .adapters import result_to_mcp_result, mcp_result_json

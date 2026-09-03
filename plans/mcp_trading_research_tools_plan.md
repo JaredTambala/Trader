@@ -10,16 +10,16 @@ capabilities and agents can evolve.
 
 Use these canonical sources instead:
 
-- [Research Product State](../docs/research_agents/product_state.md): what works now, qualification strength,
+- [Product State](../docs/product_state.md): what works now, qualification strength,
   availability, current agent behavior and product limits.
 - [Research Capability Roadmap](research_capability_roadmap.md): active non-linear work graph, hard dependencies,
   parallel workstreams, acceptance conditions and legacy task mapping.
-- [Research Agent Architecture](../docs/research_agents/architecture.md): package boundaries, authority and target
+- [Research Agent Architecture](../src/trader_agents/docs/architecture.md): package boundaries, authority and target
   orchestration principles.
-- [Agent Ownership](../docs/research_agents/agents.md): agent missions, artifact ownership, allowlists and handoffs.
-- [MCP Tool Catalog](../docs/research_agents/mcp_tools.md): tools that are actually registered.
-- [Research Workflows](../docs/research_agents/workflows.md): currently supported deterministic tool chains.
-- [Research Operations](../docs/research_agents/operations.md): gates, Postgres operation and controlled qualification.
+- [Agent Ownership](../src/trader_agents/docs/roles_and_authority.md): agent missions, artifact ownership, allowlists and handoffs.
+- [MCP Tool Catalogue](../src/trader_mcp/docs/tools.md): tools that are actually registered.
+- [Research Workflows](../docs/workflows/research.md): currently supported deterministic tool chains.
+- [Research Operations](../docs/workflows/research_operations.md): gates, Postgres operation and controlled qualification.
 
 ## Historical Snapshot
 

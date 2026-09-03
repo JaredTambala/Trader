@@ -75,10 +75,10 @@ existing decision node would leave the important decisions encoded in catalogs, 
 The redesign must replace the control model rather than decorate it.
 
 The earlier product brief in
-[codex_trading_research_framework_brief.md](../docs/research_agents/history/codex_trading_research_framework_brief.md)
+[codex_trading_research_framework_brief.md](../docs/history/research_agents/codex_trading_research_framework_brief.md)
 contains the product behavior still wanted: the model plans, proposes code, chooses relevant tests, and interprets
 evidence while the platform owns execution and safety. The earlier
-[agent operating model](../docs/research_agents/history/agent_operating_model.md) also contains a useful supervised
+[agent operating model](../docs/history/research_agents/agent_operating_model.md) also contains a useful supervised
 specialist hierarchy. This plan restores those ideas without restoring obsolete schemas or compatibility surfaces.
 
 ### Retain, replace, and reject
