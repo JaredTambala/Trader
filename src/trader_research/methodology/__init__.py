@@ -1,18 +1,16 @@
 """Expose deterministic computational-methodology engineering services.
 
-The package validates method contracts, generates quarantined implementations,
-runs diagnostics and multiple-testing controls, and packages admitted evidence.
-It does not execute trading experiments or place generated code on the live path.
+The package validates method contracts and supplied implementations, runs
+diagnostics and multiple-testing controls, and packages admitted evidence. It
+does not author code, execute trading experiments, or place code on a live path.
 """
 
 from .contracts import MethodContract, MethodRegistryEntry, MethodValidationReport, ParameterSpec
-from .implementation import generation_messages, generation_response_schema
 from .packaging import MethodPackageManifest, method_package_path, package_method_artifact
 from .registry import get_method, list_methods, maintained_method_contracts
 from .services import (
     MATH_COMPILE_KERNEL,
     MATH_GENERATE_CPP_KERNEL,
-    MATH_GENERATE_PYTHON_METHOD,
     MATH_LIST_METHOD_CONTRACTS,
     MATH_PACKAGE_METHOD_ARTIFACT,
     MATH_REGISTER_METHOD_IMPLEMENTATION,
@@ -23,7 +21,6 @@ from .services import (
     MATH_VALIDATE_METHOD_CONTRACT,
     math_compile_kernel,
     math_generate_cpp_kernel,
-    math_generate_python_method,
     math_list_method_contracts,
     math_package_method_artifact,
     math_register_method_implementation,
@@ -37,7 +34,6 @@ from .services import (
 __all__ = [
     "MATH_COMPILE_KERNEL",
     "MATH_GENERATE_CPP_KERNEL",
-    "MATH_GENERATE_PYTHON_METHOD",
     "MATH_LIST_METHOD_CONTRACTS",
     "MATH_PACKAGE_METHOD_ARTIFACT",
     "MATH_REGISTER_METHOD_IMPLEMENTATION",
@@ -52,13 +48,10 @@ __all__ = [
     "MethodValidationReport",
     "ParameterSpec",
     "get_method",
-    "generation_messages",
-    "generation_response_schema",
     "list_methods",
     "maintained_method_contracts",
     "math_compile_kernel",
     "math_generate_cpp_kernel",
-    "math_generate_python_method",
     "math_list_method_contracts",
     "math_package_method_artifact",
     "math_register_method_implementation",

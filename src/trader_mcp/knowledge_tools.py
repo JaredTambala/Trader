@@ -30,7 +30,6 @@ from trader_mcp.constants import (
     KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE_TOOL,
     MATH_COMPILE_KERNEL_TOOL,
     MATH_GENERATE_CPP_KERNEL_TOOL,
-    MATH_GENERATE_PYTHON_METHOD_TOOL,
     MATH_LIST_METHOD_CONTRACTS_TOOL,
     MATH_PACKAGE_METHOD_ARTIFACT_TOOL,
     MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL,
@@ -42,7 +41,6 @@ from trader_mcp.constants import (
     MATH_VALIDATE_METHOD_CONTRACT_TOOL,
 )
 from trader_mcp.environment import McpEnvironment
-from trader_agents.llm_client import LlmJsonRequest, LlmMessage, RuntimeConfiguredLlmClient
 from trader_research.knowledge import (
     DEFAULT_SOURCE_TYPE,
     EmbeddingProvider,
@@ -68,11 +66,8 @@ from trader_research.knowledge import (
     validate_citations as validate_citations_service,
 )
 from trader_research.methodology import (
-    generation_messages,
-    generation_response_schema,
     math_compile_kernel as compile_kernel_service,
     math_generate_cpp_kernel as generate_cpp_kernel_service,
-    math_generate_python_method as generate_python_method_service,
     math_list_method_contracts as list_method_contracts_service,
     math_package_method_artifact as package_method_artifact_service,
     math_register_method_implementation as register_method_implementation_service,
@@ -92,11 +87,9 @@ def register_quant_methods_tools(
     embedding_provider: EmbeddingProvider | None = None,
     knowledge_store_provider: Any | None = None,
     artifact_store_provider: Any | None = None,
-    method_generation_llm_client: Any | None = None,
 ) -> None:
     """Register Slice 5 Quantitative Methods tools on an MCP server."""
     resolved_embedding_provider = embedding_provider or RuntimeConfiguredEmbeddingProvider(env=environment.embeddings_env())
-    resolved_method_generation_llm_client = method_generation_llm_client or RuntimeConfiguredLlmClient()
 
     def _knowledge_store() -> KnowledgeStore | None:
         return knowledge_store_provider() if knowledge_store_provider is not None else None
@@ -598,36 +591,6 @@ def register_quant_methods_tools(
             )
         except ResearchArtifactStoreError as exc:
             return _artifact_store_error(MATH_RUN_SIGNAL_FIXTURES_TOOL, exc)
-        return CallToolResult(**result_to_mcp_result(envelope))
-
-    @server.tool(
-        name=MATH_GENERATE_PYTHON_METHOD_TOOL,
-        description=MATH_TOOL_DESCRIPTIONS[MATH_GENERATE_PYTHON_METHOD_TOOL],
-    )
-    async def math_generate_python_method(
-        method_id: str,
-        method_card_ids: list[str],
-        method_contract: dict[str, Any],
-        fixtures: list[dict[str, Any]] | None = None,
-    ) -> CallToolResult:
-        llm_request = LlmJsonRequest(
-            messages=tuple(
-                LlmMessage(**message)
-                for message in generation_messages(method_id, method_contract, method_card_ids)
-            ),
-            response_schema=generation_response_schema(),
-            max_tokens=1800,
-        )
-        llm_payload = await resolved_method_generation_llm_client.complete_json(llm_request)
-        envelope = generate_python_method_service(
-            artifact_root=environment.artifact_root,
-            method_id=method_id,
-            method_card_ids=method_card_ids,
-            method_contract=method_contract,
-            llm_payload=llm_payload,
-            fixtures=fixtures,
-            approved_card_reader=_approved_card_reader(),
-        )
         return CallToolResult(**result_to_mcp_result(envelope))
 
     @server.tool(

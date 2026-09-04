@@ -99,7 +99,6 @@ LangGraph checkpointer, not to MCP or the canonical research store.
 | `math_register_method_implementation` | `local_mutating` | `method_implementation_manifest` or `research://postgres/...` ref. |
 | `math_run_indicator_fixtures` | `local_mutating` | Indicator validation report. |
 | `math_run_signal_fixtures` | `local_mutating` | Signal validation report. |
-| `math_generate_python_method` | `local_mutating` | Quarantined generated source plus registration/validation artifacts. |
 | `math_run_signal_diagnostics` | `local_mutating` | Signal diagnostic report. |
 | `math_run_multiple_testing_report` | `local_mutating` | Multiple-testing report. |
 | `math_generate_cpp_kernel` | `local_mutating` | C++ kernel manifest. |
@@ -109,6 +108,9 @@ LangGraph checkpointer, not to MCP or the canonical research store.
 | `research_validate_optimization_objective` | `local_mutating` | Objective source/fixture validation report. |
 
 Quantitative Methods tools do not fetch market data, create strategies, run backtests, or promote strategies.
+They also do not invoke a model or author Python. A Quantitative Methods agent produces an accepted implementation
+brief; Strategy Engineering performs model-directed source authoring through the isolated Coding Workspace surface and
+submits the resulting inert package to the independent Experiments admission tools.
 
 Methodology work uses the knowledge tool family as a staged review path: register a source reference, ingest and
 index the whole document into schema-v2 evidence units, retrieve or scan source units, discover methodology candidates,

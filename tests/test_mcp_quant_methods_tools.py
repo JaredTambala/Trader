@@ -71,6 +71,7 @@ def test_mcp_quant_methods_registration_and_maintained_implementation_flow(tmp_p
 
         tool_names = {tool.name for tool in tools}
         assert tool_names == set(REGISTERED_TOOL_NAMES)
+        assert "math_generate_python_method" not in tool_names
         assert KNOWLEDGE_CREATE_METHOD_CARD_DRAFT_TOOL in tool_names
         assert "knowledge_create_rich_method_card_draft" not in tool_names
         metadata = {item["name"]: item for item in config.structuredContent["data"]["tools"]}

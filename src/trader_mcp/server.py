@@ -53,7 +53,6 @@ from trader_mcp.constants import (
     KNOWLEDGE_VALIDATE_METHODOLOGY_CANDIDATE_TOOL,
     MATH_COMPILE_KERNEL_TOOL,
     MATH_GENERATE_CPP_KERNEL_TOOL,
-    MATH_GENERATE_PYTHON_METHOD_TOOL,
     MATH_PACKAGE_METHOD_ARTIFACT_TOOL,
     MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL,
     MATH_RUN_INDICATOR_FIXTURES_TOOL,
@@ -176,7 +175,6 @@ def create_server(
     knowledge_embedding_provider: EmbeddingProvider | None = None,
     knowledge_store_provider: KnowledgeStoreProvider | None = None,
     research_artifact_store_provider: ResearchArtifactStoreProvider | None = None,
-    method_generation_llm_client: Any | None = None,
     backtest_config_provider: ToolConfigProvider | None = None,
     optimizer_registry: OptimizationEngineRegistry | None = None,
     tracking_sink_registry: ExperimentTrackingSinkRegistry | None = None,
@@ -574,7 +572,6 @@ def create_server(
         embedding_provider=knowledge_embedding_provider,
         knowledge_store_provider=resolved_knowledge_store_provider,
         artifact_store_provider=resolved_research_artifact_store_provider,
-        method_generation_llm_client=method_generation_llm_client,
     )
     register_ml_tools(
         server,
@@ -959,7 +956,6 @@ def build_config_envelope(
                 MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL,
                 MATH_RUN_INDICATOR_FIXTURES_TOOL,
                 MATH_RUN_SIGNAL_FIXTURES_TOOL,
-                MATH_GENERATE_PYTHON_METHOD_TOOL,
                 MATH_RUN_SIGNAL_DIAGNOSTICS_TOOL,
                 MATH_RUN_MULTIPLE_TESTING_REPORT_TOOL,
                 MATH_GENERATE_CPP_KERNEL_TOOL,

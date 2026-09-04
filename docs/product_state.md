@@ -123,6 +123,9 @@ Engineering will author code from an accepted brief, after which normal admissio
 apply. Model-generated source maps and summaries are navigation aids, never citations. Missing or conflicting material
 detail blocks or branches the method rather than being guessed. The complete target is in
 [Research-Backed Implementation Architecture](../plans/agentic_orchestration_redesign.md#research-backed-implementation-architecture).
+The MCP server no longer exposes model-owned Python method generation or imports the agent package. Quantitative
+Methods remains a pre-code evidence and brief authority; Strategy Engineering owns model-directed authoring through
+the isolated Coding Workspace and independent Experiments admission path.
 
 The design/evaluation charter, 12-case `first-agentic-slice-evaluation-v1` dataset, complete first-slice capability
 inventory, and framework/observability decision now precede the active production runtime work. The controlled
@@ -364,8 +367,8 @@ Data Agent manifest and quality report
   -> result retrieval and comparison
 ```
 
-The source may be handwritten or produced by an external AI or methodology workflow. Method-card provenance is
-optional and cannot weaken validation.
+The source may be handwritten, externally supplied, or produced by Strategy Engineering in an isolated Coding
+Workspace. Method-card provenance is optional and cannot weaken validation.
 
 ### Parameter Selection And Independent Review
 

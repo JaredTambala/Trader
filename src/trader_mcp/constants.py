@@ -127,9 +127,6 @@ MATH_RUN_INDICATOR_FIXTURES_TOOL: Final = "math_run_indicator_fixtures"
 MATH_RUN_SIGNAL_FIXTURES_TOOL: Final = "math_run_signal_fixtures"
 """Tool name for running deterministic signal fixtures."""
 
-MATH_GENERATE_PYTHON_METHOD_TOOL: Final = "math_generate_python_method"
-"""Tool name for generating and validating a quarantined Python method."""
-
 MATH_RUN_SIGNAL_DIAGNOSTICS_TOOL: Final = "math_run_signal_diagnostics"
 """Tool name for running signal-composition diagnostics."""
 
@@ -341,7 +338,6 @@ MATH_TOOL_NAMES: Final = (
     MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL,
     MATH_RUN_INDICATOR_FIXTURES_TOOL,
     MATH_RUN_SIGNAL_FIXTURES_TOOL,
-    MATH_GENERATE_PYTHON_METHOD_TOOL,
     MATH_RUN_SIGNAL_DIAGNOSTICS_TOOL,
     MATH_RUN_MULTIPLE_TESTING_REPORT_TOOL,
     MATH_GENERATE_CPP_KERNEL_TOOL,
@@ -541,7 +537,6 @@ MATH_TOOL_DESCRIPTIONS: Final = {
     MATH_REGISTER_METHOD_IMPLEMENTATION_TOOL: "Register a citation-backed Python method implementation manifest.",
     MATH_RUN_INDICATOR_FIXTURES_TOOL: "Run deterministic fixtures for a registered Python Indicator implementation.",
     MATH_RUN_SIGNAL_FIXTURES_TOOL: "Run deterministic fixtures for a registered Python Signal implementation.",
-    MATH_GENERATE_PYTHON_METHOD_TOOL: "Generate a quarantined Python method draft and validate it with fixtures.",
     MATH_RUN_SIGNAL_DIAGNOSTICS_TOOL: "Run diagnostics for declared signal-composition candidates against forward returns.",
     MATH_RUN_MULTIPLE_TESTING_REPORT_TOOL: "Run Benjamini-Hochberg controls over a declared signal candidate family.",
     MATH_GENERATE_CPP_KERNEL_TOOL: "Generate a template-restricted C++ kernel from a validated Python reference.",

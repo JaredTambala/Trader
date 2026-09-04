@@ -588,11 +588,11 @@ The provisional disposition of the existing knowledge surface is:
 | `knowledge_get_evidence_chunks` | Retain bounded exact dereferencing, generalized to typed elements/resources and structural expansion. | Exact immutable text and hashes remain the citation foundation; large evidence should not be copied into tool envelopes. |
 | Candidate discovery, evidence assembly, field extraction, and candidate validation tools | Retain for bounded method-card work only if benchmarked useful; replace as the composite implementation path with dossier/brief contracts. | Their deterministic local role assembly is the observed book-scale bottleneck and should not constrain the clean redesign. |
 | Method-card search, draft/publication, and citation validation | Retain by fitness, but do not force a dossier or implementation brief into one card. | Approved method descriptions remain reusable; cross-source research and coding handoff have different responsibilities. |
-| `math_generate_python_method` | Remove from the research-backed authoring path. | Knowledge/Quantitative Methods should produce evidence and a brief; Strategy Engineering owns code in the isolated workspace. |
+| `math_generate_python_method` | Removed from the registered MCP surface. | Knowledge/Quantitative Methods produce evidence and a brief; Strategy Engineering owns code in the isolated workspace. MCP must not own a model loop or import the agent package. |
 
-This table is a design recommendation, not a current tool-catalog change. The formal MCP inventory must confirm side
-effects, role exposure, resource shapes, idempotency, approval, and removal for every registered tool before
-implementation.
+The Python generation removal is reflected in the active tool catalog. The remaining rows are design recommendations,
+not implicit tool-catalog changes; each formal MCP change must still confirm side effects, role exposure, resource
+shapes, idempotency, approval, and removal before implementation.
 
 | Agent task | Target affordance | Output posture |
 | --- | --- | --- |

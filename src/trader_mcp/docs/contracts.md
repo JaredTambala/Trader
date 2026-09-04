@@ -475,7 +475,6 @@ These tools are implemented first because the Data Agent owns the ingredients th
 | `math_register_method_implementation` | Quantitative Methods Agent | `method_implementation_manifest.json` |
 | `math_run_indicator_fixtures` | Quantitative Methods Agent | `indicator_validation_report.json` |
 | `math_run_signal_fixtures` | Quantitative Methods Agent | `signal_implementation_validation_report.json` |
-| `math_generate_python_method` | Quantitative Methods Agent | quarantined generated Python source plus registration and fixture-validation results |
 | `math_run_signal_diagnostics` | Quantitative Methods Agent | `signal_diagnostic_report.json` |
 | `math_run_multiple_testing_report` | Quantitative Methods Agent | `multiple_testing_report.json` |
 | `math_generate_cpp_kernel` | Quantitative Methods Agent | draft `cxx_kernel_manifest.json` from an approved template |
@@ -905,8 +904,8 @@ Method-card set contracts:
 - Source provenance contract: the implementation source file must have a module-level docstring with `Source reference`
   and `Implements` sections. The docstring must name the registry method, at least one approved method-card reference,
   implementation class, Trader runtime contract, implemented formula/algorithm/action rule, input ordering, warmup
-  behavior, output ordering for series methods, and no-lookahead boundary. For generated quarantined implementations,
-  the docstring must name the exact method-card IDs passed to the tool.
+  behavior, output ordering for series methods, and no-lookahead boundary. For non-maintained implementations, the
+  docstring must name the exact method-card IDs passed to the tool.
 - Validation: method ID must exist in `math_registry`; approved method-card refs must match the method; source hash must
   match when supplied; provenance docstring checks must pass; imports and calls must pass the static safety allowlist;
   generated implementations must resolve from their artifact source path.
@@ -986,21 +985,6 @@ Method-card set contracts:
 - Validation failures such as missing candidate family metadata, duplicate candidate IDs, unknown metric candidates,
   duplicate metric rows, invalid p-values, missing candidate p-values, or missing method-card evidence return
   `ok=false` with blockers embedded in the persisted report.
-
-`math_generate_python_method` contract:
-
-- Request: `method_id`, non-empty `method_card_ids`, `method_contract`, and optional `fixtures`.
-- MCP calls the configured provider-neutral LLM client and requires JSON with `class_name` and `source_code`.
-- The generation prompt requires `source_code` to start with the same module-level provenance docstring enforced by
-  `math_register_method_implementation`.
-- Generated code is written only under `artifacts/research/method_implementations/quarantine/`; it is never written to
-  `src/` or imported as a maintained package.
-- Static safety checks reject filesystem access, network/process/SQL/broker imports, dynamic imports, `eval`, `exec`,
-  `open`, global/nonlocal mutation, and dependencies outside the allowlist.
-- Passing generated drafts immediately run through `math_register_method_implementation` and
-  the fixture runner selected by `runtime_contract`: `math_run_indicator_fixtures` for Indicator methods and
-  `math_run_signal_fixtures` for Signal methods. Success data reports the generated source path, registration result,
-  fixture-validation result, and `status="validated"`; failures remain quarantined with `status="blocked"`.
 
 `math_generate_cpp_kernel` contract:
 

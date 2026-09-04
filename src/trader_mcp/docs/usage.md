@@ -30,4 +30,6 @@ the agent runtime assigns it automatically. Never redirect MCP diagnostic output
 
 Do not expose raw SQL, arbitrary host command execution, filesystem escape, credentials, broker mutation, hidden model
 reasoning, or unbounded provider operations. Do not return a database row as an undocumented schema. Do not let tool
-descriptions promise capability that environment policy can never register.
+descriptions promise capability that environment policy can never register. Do not import `trader_agents`, construct
+an LLM client, or place a model call inside a tool adapter. Model-directed authoring belongs to an agent using bounded
+Coding Workspace and independent admission tools.

@@ -6,8 +6,9 @@ gates, builds concrete adapters, and returns stable public envelopes. Its standa
 DEBUG lifecycle logs to `stderr`; protocol `stdout` remains exclusively JSON-RPC.
 
 It does not contain research decision logic, agent prompts/graphs, canonical artifact semantics, or live trading
-controls. A successful tool call means the declared operation succeeded; it does not mean the research conclusion is
-scientifically sound.
+controls. It never imports `trader_agents` or constructs a model client: model calls and code-authoring decisions stay
+above the protocol boundary. A successful tool call means the declared operation succeeded; it does not mean the
+research conclusion is scientifically sound.
 
 ## Learning path
 

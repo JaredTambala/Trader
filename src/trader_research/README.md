@@ -15,7 +15,7 @@ role-scoped `trader_mcp` boundary.
 - `governance`: artifact ownership, actor authority, handoffs, sessions, approvals, and protocol values
 - `data`: multi-asset discovery, inventory, quality, loading policy, and dataset evidence
 - `knowledge`: registered sources, structural chunks, retrieval, claim spans, citations, and method-card state
-- `methodology`: typed method contracts, generated implementation quarantine, diagnostics, kernels, and packaging
+- `methodology`: typed method contracts, supplied implementation validation, diagnostics, kernels, and packaging
 - `coding`: isolated strategy candidate workspaces and bounded checks
 - `experiments`: implementation catalogue/admission, immutable specifications, backtests, optimisation, and projections
 - `review`: independent evaluation and adversarial evidence

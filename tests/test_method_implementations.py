@@ -9,7 +9,6 @@ from trader_research.knowledge.approved_cards import StoreBackedApprovedMethodCa
 from trader_research.knowledge.domain import EvidenceReference, MethodCard
 from trader_research.knowledge.store import JsonKnowledgeStore
 from trader_research.methodology import (
-    math_generate_python_method,
     math_list_method_contracts,
     math_register_method_implementation,
     math_run_indicator_fixtures,
@@ -160,31 +159,6 @@ def test_signal_fixture_failure_remains_inspectable(tmp_path: Path) -> None:
     assert report["fixture_results"][0]["status"] == "failed"
 
 
-def test_generated_implementation_requires_matching_approved_card(tmp_path: Path) -> None:
-    artifact_root = tmp_path / "artifacts"
-    without_reader = math_generate_python_method(
-        artifact_root=artifact_root,
-        method_id="sma",
-        method_card_ids=["method_card_sma_validated_v1"],
-        method_contract=_contract("sma", {"period": 3}, "method_card_sma_validated_v1"),
-        llm_payload={"class_name": "GeneratedSmaIndicator", "source_code": GENERATED_SMA_SOURCE},
-    )
-    reader = _approved_reader(artifact_root, "sma", "method_card_sma_validated_v1", family="indicator")
-    with_reader = math_generate_python_method(
-        artifact_root=artifact_root,
-        method_id="sma",
-        method_card_ids=["method_card_sma_validated_v1"],
-        method_contract=_contract("sma", {"period": 3}, "method_card_sma_validated_v1"),
-        llm_payload={"class_name": "GeneratedSmaIndicator", "source_code": GENERATED_SMA_SOURCE},
-        approved_card_reader=reader,
-    )
-
-    assert without_reader.ok is False
-    assert with_reader.ok is True, with_reader.to_dict()
-    assert with_reader.data["status"] == "validated"
-    assert "method_implementations/quarantine" in Path(with_reader.data["generated_source_path"]).as_posix()
-
-
 def test_registration_rejects_runtime_contract_mismatch_after_evidence_check(tmp_path: Path) -> None:
     artifact_root = tmp_path / "artifacts"
     source = tmp_path / "plain.py"
@@ -228,22 +202,6 @@ def test_registration_rejects_unknown_card_and_source_hash_drift(tmp_path: Path)
 
     assert any("approved method-card evidence does not match" in blocker for blocker in unknown.data["blockers"])
     assert "source hash does not match expected_source_hash" in drift.data["blockers"]
-
-
-def test_generated_python_method_rejects_unsafe_source(tmp_path: Path) -> None:
-    result = math_generate_python_method(
-        artifact_root=tmp_path / "artifacts",
-        method_id="sma",
-        method_card_ids=["method_card_sma_validated_v1"],
-        method_contract=_contract("sma", {"period": 3}, "method_card_sma_validated_v1"),
-        llm_payload={
-            "class_name": "BadIndicator",
-            "source_code": "import os\nfrom trader.indicators import Indicator\nclass BadIndicator(Indicator):\n    pass\n",
-        },
-    )
-
-    assert result.ok is False
-    assert result.errors[0]["code"] == "generated_method_safety_failed"
 
 
 def _approved_reader(
@@ -293,45 +251,6 @@ def _contract(
     if method_card_id is not None:
         payload["knowledge_evidence_refs"] = [{"method_card_id": method_card_id}]
     return payload
-
-
-GENERATED_SMA_SOURCE = '''"""Citation-backed simple moving average implementation.
-
-Source reference:
-- Approved method card: ``method_card_sma_validated_v1``.
-- Registry method: ``sma``.
-
-Implements:
-- Entrypoint ``GeneratedSmaIndicator``.
-- Trader runtime contract ``trader.indicators.Indicator``.
-- Warmup behavior is one complete trailing period.
-- No lookahead: every output uses only its trailing window.
-"""
-
-from trader.indicators import Indicator
-
-
-class GeneratedSmaIndicator(Indicator):
-    def __init__(self, period: int = 3) -> None:
-        self.period = int(period)
-
-    @property
-    def name(self) -> str:
-        return "sma"
-
-    @property
-    def window(self) -> int:
-        return self.period
-
-    def compute_series(self, bars):
-        closes = [float(bar.close) for bar in bars]
-        if len(closes) < self.window:
-            raise ValueError("Insufficient bars for SMA computation")
-        return [
-            sum(closes[index : index + self.window]) / self.window
-            for index in range(0, len(closes) - self.window + 1)
-        ]
-'''
 
 
 GENERATED_PLAIN_SOURCE = '''"""Citation-backed simple moving average implementation.

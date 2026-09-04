@@ -45,9 +45,9 @@ def write_json_artifact(payload: Mapping[str, Any], path: str | Path) -> Path:
 def implementation_root(artifact_root: str | Path) -> Path:
     """Return the root directory for method implementation artifacts.
 
-    All manifests, validation reports, and quarantined generated sources live under
-    this subdirectory so the workflow has one predictable local-mutating artifact
-    boundary beneath the caller-provided artifact root.
+    All manifests and validation reports live under this subdirectory so the
+    workflow has one predictable local-mutating artifact boundary beneath the
+    caller-provided artifact root.
     """
     return Path(artifact_root) / "method_implementations"
 
@@ -70,17 +70,6 @@ def validation_report_path(artifact_root: str | Path, validation_id: str) -> Pat
     runs are easy to compare.
     """
     return implementation_root(artifact_root) / "validation_reports" / f"{validation_id}.json"
-
-
-def quarantine_source_path(artifact_root: str | Path, method_id: str, source_code: str) -> Path:
-    """Return a content-addressed path for generated Python source under quarantine.
-
-    The path includes the method ID and a short source-code hash so generated code
-    is persisted before safety checks without overwriting unrelated drafts. Later
-    registration references this exact file path and source hash.
-    """
-    digest = hashlib.sha256(source_code.encode("utf-8")).hexdigest()[:16]
-    return implementation_root(artifact_root) / "quarantine" / f"{method_id}_{digest}.py"
 
 
 def save_manifest(artifact_root: str | Path, manifest: MethodImplementationManifest) -> Path:
@@ -111,8 +100,8 @@ def load_manifest(artifact_root: str | Path, implementation_id: str) -> MethodIm
 def local_mutating_error(command: str, code: str, message: str) -> ApplicationResult:
     """Build a standard application error for implementation workflows.
 
-    Registration, generation, and fixture runners all write or inspect local
-    artifacts, so their validation failures share this helper to keep side-effect
+    Registration and fixture runners both write or inspect local artifacts, so
+    their validation failures share this helper to keep side-effect
     classification and machine-readable error codes consistent.
     """
     return error_result(

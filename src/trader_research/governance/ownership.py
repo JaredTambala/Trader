@@ -118,7 +118,6 @@ QUANTITATIVE_METHODS_TOOLS = (
     "math_register_method_implementation",
     "math_run_indicator_fixtures",
     "math_run_signal_fixtures",
-    "math_generate_python_method",
     "math_run_signal_diagnostics",
     "math_run_multiple_testing_report",
     "math_generate_cpp_kernel",

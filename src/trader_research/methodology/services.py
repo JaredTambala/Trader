@@ -15,7 +15,6 @@ from trader_research.foundation.artifacts import ResearchArtifactStore
 from trader_research.knowledge.approved_cards import ApprovedMethodCardReadError, ApprovedMethodCardReader
 from trader_research.methodology.kernels import compile_cpp_kernel, generate_cpp_kernel
 from trader_research.methodology.implementation import (
-    generate_python_method_from_payload,
     register_method_implementation,
     run_indicator_fixtures,
     run_signal_fixtures,
@@ -33,7 +32,6 @@ MATH_VALIDATE_METHOD_CONTRACT = "math_validate_method_contract"
 MATH_REGISTER_METHOD_IMPLEMENTATION = "math_register_method_implementation"
 MATH_RUN_INDICATOR_FIXTURES = "math_run_indicator_fixtures"
 MATH_RUN_SIGNAL_FIXTURES = "math_run_signal_fixtures"
-MATH_GENERATE_PYTHON_METHOD = "math_generate_python_method"
 MATH_RUN_SIGNAL_DIAGNOSTICS = "math_run_signal_diagnostics"
 MATH_RUN_MULTIPLE_TESTING_REPORT = "math_run_multiple_testing_report"
 MATH_GENERATE_CPP_KERNEL = "math_generate_cpp_kernel"
@@ -256,38 +254,6 @@ def math_run_signal_fixtures(
         fixtures=fixtures,
         approved_card_reader=approved_card_reader,
         artifact_store=artifact_store,
-    )
-
-
-def math_generate_python_method(
-    *,
-    artifact_root: str | Path,
-    method_id: str,
-    method_card_ids: list[str],
-    method_contract: Mapping[str, Any],
-    llm_payload: Mapping[str, Any],
-    fixtures: list[dict[str, Any]] | None = None,
-    approved_card_reader: ApprovedMethodCardReader | None = None,
-) -> ApplicationResult:
-    """Generate and validate quarantined Python from a structured LLM payload.
-
-    Approved card access, method identity, contract, citations, optional fixtures,
-    and output root are passed to the deterministic generation workflow. The
-    generated files remain research build artifacts and are not admitted as a
-    strategy by this service.
-
-    Returns:
-        The generation workflow's transport-neutral result, including manifest,
-        validation evidence, warnings, blockers, and local artifact references.
-    """
-    return generate_python_method_from_payload(
-        artifact_root=artifact_root,
-        method_id=method_id,
-        method_card_ids=method_card_ids,
-        method_contract=method_contract,
-        llm_payload=llm_payload,
-        fixtures=fixtures,
-        approved_card_reader=approved_card_reader,
     )
 
 

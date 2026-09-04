@@ -1,8 +1,8 @@
-"""Define manifests and closed vocabularies for generated method code.
+"""Define manifests and closed vocabularies for method implementation code.
 
 Manifests pin method-card provenance, source identity, entrypoints, dependencies,
 fixtures, and validation status. Parsing fails on unknown or incomplete shapes so
-generated code cannot expand its declared execution surface implicitly.
+caller-supplied code cannot expand its declared execution surface implicitly.
 """
 
 from __future__ import annotations
@@ -15,8 +15,6 @@ from typing import Any, Mapping, Sequence
 MATH_REGISTER_METHOD_IMPLEMENTATION = "math_register_method_implementation"
 MATH_RUN_INDICATOR_FIXTURES = "math_run_indicator_fixtures"
 MATH_RUN_SIGNAL_FIXTURES = "math_run_signal_fixtures"
-MATH_GENERATE_PYTHON_METHOD = "math_generate_python_method"
-
 SCHEMA_VERSION = "1"
 INDICATOR_RUNTIME_CONTRACT = "trader.indicators.Indicator"
 SIGNAL_RUNTIME_CONTRACT = "trader.signals.Signal"
@@ -61,8 +59,8 @@ class MethodImplementationManifest:
     The manifest links a registry method, approved method-card evidence, source
     path/hash, class entrypoint, constructor kwargs, runtime contract, dependency
     allowlist, and static safety profile. Fixture runners and reviewers use it to
-    reload the exact implementation that was checked and to verify that generated
-    code remains quarantined and evidence-backed.
+    reload the exact implementation that was checked and to verify that
+    non-maintained code remains evidence-backed.
     """
 
     implementation_id: str

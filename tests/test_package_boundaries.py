@@ -145,6 +145,7 @@ RETIRED_METHODOLOGY_SURFACES = {
     Path("src/trader_research/methods"),
     Path("src/trader_research/method_implementations"),
     Path("src/trader_research/knowledge/domain.py"),
+    Path("src/trader_research/methodology/implementation/generation.py"),
     Path("src/trader_research/method_contracts_seed.json"),
     Path("src/trader_research/methodology/method_contracts_seed.json"),
 }
@@ -152,6 +153,7 @@ RETIRED_METHODOLOGY_SURFACES = {
 RETIRED_METHODOLOGY_IMPORTS = {
     "trader_research.methods",
     "trader_research.method_implementations",
+    "trader_research.methodology.implementation.generation",
 }
 
 RETIRED_EXPERIMENT_SURFACES = {
@@ -788,6 +790,23 @@ def test_trader_research_does_not_import_mcp_or_langgraph_agent_packages() -> No
             if imported in {"trader_mcp", "trader_agents"} or imported.startswith(
                 ("trader_mcp.", "trader_agents.")
             ):
+                offenders.append(f"{path}: imports {imported}")
+
+    assert offenders == []
+
+
+def test_trader_mcp_does_not_import_agent_package() -> None:
+    """Keep MCP a transport adapter beneath every model-backed agent loop.
+
+    An MCP import of ``trader_agents`` reverses the declared dependency direction
+    and lets transport code construct model clients, prompts, or orchestration.
+    Agent processes may call MCP tools; MCP implementations must not call back
+    into the agent package.
+    """
+    offenders: list[str] = []
+    for path in Path("src/trader_mcp").rglob("*.py"):
+        for imported in _imported_modules(path):
+            if imported == "trader_agents" or imported.startswith("trader_agents."):
                 offenders.append(f"{path}: imports {imported}")
 
     assert offenders == []

@@ -19,6 +19,9 @@ process identity. Nothing diagnostic is written to protocol `stdout`.
 `create_server` receives a resolved `McpEnvironment` and optional providers for tests or controlled embedding. The
 composition root builds Postgres, knowledge, data, optimisation, tracking, inference, coding, and validation adapters,
 then registers only capabilities admitted by policy. Optional provider imports and secrets remain inside the server.
+The package may depend on `trader_research` and selected `trader` runtime interfaces, but it must never import
+`trader_agents`. MCP adapters do not construct model clients or prompts; model-controlled planning and tool selection
+belong to the calling agent process.
 The parent agent runtime supplies `TRADER_MCP_LOG_LEVEL`, `TRADER_MCP_LOG_FORMAT`, and
 `TRADER_MCP_SERVER_ROLE` independently to each role-scoped child process.
 
