@@ -308,5 +308,5 @@ except BrokerUnavailableError as exc:
 ```bash
 uv run ruff check src tests examples run_*.py external_strategy_demo.py
 uv run mypy
-uv run pytest
+uv run pytest -m 'not postgres'
 ```

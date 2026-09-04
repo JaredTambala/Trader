@@ -29,7 +29,7 @@ Repository = "https://github.com/JaredTambala/Trader"
 Documentation = "https://github.com/JaredTambala/Trader/tree/main/docs"
 
 [project.scripts]
-trader-agent = "trader_agents.cli:main"
+trader-agent = "trader_agents.application.cli:main"
 
 [project.optional-dependencies]
 test = ["pytest>=7.4"]

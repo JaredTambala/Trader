@@ -16,7 +16,7 @@ tool execution.
 
 Create it from the tracked template:
 
-<!-- verified: integration:configuration tests/test_config.py tests/test_agent_runtime_foundation.py -->
+<!-- verified: integration:configuration tests/trader/config/test_config.py tests/trader_agents/application_runtime/test_session_pins.py -->
 ```bash
 cp env.template local.env
 ```
@@ -40,7 +40,7 @@ Keep broker mutation and raw SQL disabled. Enable provider symbol discovery or d
 The active development profile uses an exact digest of local Ollama `lfm2.5:8b`. The package profile, environment, and
 served model must agree. `local.env` may contain:
 
-<!-- verified: integration:local-model tests/test_agentic_qualification.py -->
+<!-- verified: integration:local-model tests/trader_agents/model_runtime/test_local_model_behavior.py -->
 ```bash
 TRADER_AGENTS_LLM_PROVIDER=ollama
 TRADER_AGENTS_LLM_MODEL=lfm2.5:8b
@@ -64,7 +64,7 @@ The MCP server itself owns only:
 
 Data tools may also need a trader runtime YAML when they execute. `TRADER_MCP_TRADER_CONFIG_PATH` points to that YAML when MCP data tools should use a real configured event store:
 
-<!-- verified: integration:configuration tests/test_config.py tests/test_agent_runtime_foundation.py -->
+<!-- verified: integration:configuration tests/trader/config/test_config.py tests/trader_agents/application_runtime/test_session_pins.py -->
 ```bash
 TRADER_MCP_TRADER_CONFIG_PATH=configs/example.yaml
 ```
@@ -74,7 +74,7 @@ Leave it empty for tests or no-op local MCP behavior. Tests may override these v
 If that YAML contains substitutions such as `${PG_PORT}` or `${ALPACA_API_KEY}`, set `TRADER_MCP_TOOL_ENV_PATH` to the
 runtime dotenv file used to expand those values:
 
-<!-- verified: integration:configuration tests/test_config.py tests/test_agent_runtime_foundation.py -->
+<!-- verified: integration:configuration tests/trader/config/test_config.py tests/trader_agents/application_runtime/test_session_pins.py -->
 ```bash
 TRADER_MCP_TOOL_ENV_PATH=.env
 ```
@@ -97,3 +97,7 @@ The core trading runtime also supports a separate `.env` for values expanded by 
 Guarded Postgres verification uses the explicit `PG_TEST_*`, `PG_OPERATOR_*`, `PG_OPTUNA_TEST_*`, and
 `PG_CHECKPOINT_TEST_*` families documented by the qualification procedure. Those tests never read the legacy/operator
 `PG_HOST` family as a fallback. Locale and exact role/database ownership are part of the verification profile.
+
+Provisioning is an explicit operator action. From the repository root, run
+`uv run python -m tests.cross_package.qualification.support.postgres_verification provision --reset` only against the
+dedicated verification database named by the complete guarded profile.

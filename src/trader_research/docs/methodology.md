@@ -16,3 +16,13 @@ finding a convincing trading result. Optional compiled kernels require parity ev
 Knowledge evidence may inform a method contract, but source provenance does not bypass implementation validation.
 Likewise, a passed computational contract does not bypass independent strategy admission, prospective experiment
 design, robustness, or evaluation.
+
+## Verification ownership
+
+Package-owned contracts live under `tests/trader_research/methodology/` and follow the computational pipeline rather
+than execution environment. The method catalogue and validation suite protects typed contracts; implementation tests
+protect registration, runtime conformance, and deterministic fixtures; package tests protect immutable validated
+artifacts; signal diagnostics and multiple-testing suites protect statistical reports. The C++ kernel suite is the
+only compiler-backed module and runs real local generation, successful compilation, missing-compiler, tamper, and
+compiler-error cases. Knowledge candidate interpretation and method-card lifecycle remain under
+`tests/trader_research/knowledge/`.

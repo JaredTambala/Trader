@@ -18,7 +18,7 @@ It is distributed as one project but organized into packages with explicit depen
 
 Python 3.12 and `uv` are required.
 
-<!-- verified: integration:postgres tests/test_package_documentation.py tests/test_postgres_event_store_schema.py -->
+<!-- verified: integration:postgres tests/cross_package/documentation/test_package_documentation.py tests/trader/event_store/test_postgres_event_store_schema.py -->
 ```bash
 uv sync --dev --group docs
 docker compose -f docker-compose.postgres.yml up -d
@@ -51,11 +51,12 @@ model has not passed the complete behavioral gate; see [Product State](docs/prod
 
 ## Quality gates
 
-<!-- verified: integration:repository tests/test_package_documentation.py -->
+<!-- verified: integration:repository tests/cross_package/documentation/test_package_documentation.py -->
 ```bash
 uv run ruff check src tests examples run_*.py external_strategy_demo.py
 uv run mypy
-uv run pytest
+uv run pytest -m 'not postgres'
 ```
 
-Postgres, local-model, notebook, and controlled qualification requirements are declared by their owning docs and tests.
+Postgres, local-model, notebook, and controlled qualification requirements are declared by their owning docs and tests;
+they run through explicit guarded commands rather than the offline default.

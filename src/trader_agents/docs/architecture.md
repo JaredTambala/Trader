@@ -11,7 +11,24 @@ The system deliberately does not persist or depend on hidden chain-of-thought. I
 public agenda, tool purposes, evidence summaries and references, issues, specialist returns, coordinator decisions, and
 resource usage.
 
-The primary graph implementation is `coordinator.py`; Data and Strategy own their corresponding specialist modules.
+The primary graph implementation is `coordination/coordinator.py`; Data and Strategy own
+`specialists/data_research.py` and `specialists/strategy_engineering.py`, respectively.
+
+## Responsibility map
+
+| Source area | Responsibility | May depend on |
+| --- | --- | --- |
+| `contracts/` | Stable public state, decision, evidence, and normalized input shapes. | Research foundation/governance value objects. |
+| `model_runtime/` | Provider calls, admitted profiles/programs, strict schema parsing, and bounded repair. | Agent contracts, MCP policy budgets, and observability ports. |
+| `mcp/` | Tool discovery, role/phase authorization, trusted argument binding, execution, and envelope normalization. | Agent contracts, public MCP catalogue/protocol contracts, and governance values. |
+| `coordination/` | Agenda interpretation, scheduling, specialist dispatch, evidence review, and accepted transitions. | The other Agent responsibility packages through their explicit contracts. |
+| `specialists/` | Isolated Data Research and Strategy Engineering model/tool loops. | Contracts, model runtime, MCP runtime, checkpointing, and observability. |
+| `checkpointing/` | Bounded operational state and PostgreSQL checkpoint composition. | Agent contracts and LangGraph checkpoint interfaces. |
+| `observability/` | Semantic event schema, safe projections, ordered emission, console rendering, and trace sinks. | Agent contracts and stable research hashing only. |
+| `application/` | Environment composition, lifecycle API, subprocess ownership, and CLI. | Every lower Agent responsibility package. |
+
+This direction keeps composition at the outside and contracts at the inside. There are no flat compatibility modules,
+and no source directory is named after a delivery checkpoint.
 
 ## Package composition
 

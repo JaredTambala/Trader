@@ -5,7 +5,7 @@ policy, LangGraph wiring, and operational checkpointing. It does not own
 research evidence, deterministic domain services, or live-trading authority.
 """
 
-from .catalogue import ToolCatalogue, ToolDefinition, first_slice_tool_catalogue
+from .mcp.catalogue import ToolCatalogue, ToolDefinition, first_slice_tool_catalogue
 from .checkpointing import (
     CHECKPOINT_DSN_ENV,
     AgentCheckpointState,
@@ -26,7 +26,7 @@ from .checkpointing import (
     validate_agent_checkpoint_state,
     validate_specialist_checkpoint_state,
 )
-from .contracts import (
+from .contracts.domain import (
     AgentPhase,
     AgentRole,
     AgenticSliceResult,
@@ -56,8 +56,8 @@ from .contracts import (
     build_delegation,
     build_specialist_return,
 )
-from .coordinator import ResearchCoordinator
-from .llm_client import (
+from .coordination.coordinator import ResearchCoordinator
+from .model_runtime.client import (
     LlmClient,
     LlmConfigurationError,
     LlmJsonCompletion,
@@ -67,15 +67,15 @@ from .llm_client import (
     StaticJsonLlmClient,
     UsageAwareLlmClient,
 )
-from .inputs import (
+from .contracts.inputs import (
     SessionInputError,
     composite_data_scope_from_session,
     strategy_build_contract_from_session,
     validate_runtime_pins,
 )
-from .data_research import DataResearchAgent
-from .mcp_runtime import McpExecutionResult, RoleScopedMcpRuntime
-from .observability import (
+from .specialists.data_research import DataResearchAgent
+from .mcp.runtime import McpExecutionResult, RoleScopedMcpRuntime
+from .observability.events import (
     OBSERVABILITY_SCHEMA_VERSION,
     AgentErrorCategory,
     AgentEventAuthority,
@@ -92,7 +92,7 @@ from .observability import (
     validate_agent_event_stream,
     validate_observability_fields,
 )
-from .observability_console import (
+from .observability.console import (
     AGENT_LOG_FORMAT_ENV,
     AGENT_LOG_LEVEL_ENV,
     AgentConsoleConfig,
@@ -101,8 +101,8 @@ from .observability_console import (
     ConsoleObservabilityEventSink,
     agent_console_config,
 )
-from .observability_emit import AgentEventEmitter, EventClock
-from .observability_projections import (
+from .observability.emitter import AgentEventEmitter, EventClock
+from .observability.projections import (
     project_agent_turn,
     project_budget_usage,
     project_checkpoint,
@@ -114,14 +114,14 @@ from .observability_projections import (
     project_tool_call_proposal,
     project_tool_observation,
 )
-from .policy import (
+from .mcp.policy import (
     AuthorizedToolCall,
     BudgetLedger,
     PolicyContext,
     PolicyViolation,
     ToolPolicy,
 )
-from .profiles import (
+from .model_runtime.profiles import (
     AgentProgram,
     AgentProgramRegistry,
     ModelProfile,
@@ -129,32 +129,32 @@ from .profiles import (
     development_model_profiles,
     profile_environment,
 )
-from .programs import first_slice_programs
-from .scheduler import (
+from .model_runtime.programs import first_slice_programs
+from .coordination.scheduler import (
     BudgetReservation,
     ScheduledTask,
     SchedulingError,
     compute_ready_set,
 )
-from .runtime import (
+from .application.runtime import (
     AgentRunOutcome,
     AgenticResearchRuntime,
     runtime_from_environment,
     runtime_manifest,
 )
-from .structured_model import (
+from .model_runtime.structured import (
     ModelInvocationResult,
     StructuredModelRunner,
     StructuredOutputError,
 )
-from .strategy_engineering import StrategyEngineeringAgent
-from .tool_client import (
+from .specialists.strategy_engineering import StrategyEngineeringAgent
+from .mcp.client import (
     McpToolClient,
     McpToolDescription,
     PersistentStdioMcpToolClient,
     StdioMcpToolClient,
 )
-from .tracing import (
+from .observability.tracing import (
     MlflowTraceSink,
     NoOpTraceSink,
     RecordingTraceSink,

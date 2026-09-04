@@ -20,7 +20,7 @@ The engine is split into operational components:
 
 ## 1. Start Postgres
 
-<!-- verified: integration:postgres tests/test_sample_data.py tests/test_backtest.py -->
+<!-- verified: integration:postgres tests/cross_package/workflows/test_sample_data.py tests/trader/backtest/test_backtest.py -->
 ```bash
 docker compose -f docker-compose.postgres.yml up -d
 ```
@@ -29,7 +29,7 @@ Postgres is the runtime source of truth. DuckDB support remains for tests and lo
 
 ## 2. Load Sample Data
 
-<!-- verified: integration:postgres tests/test_sample_data.py tests/test_backtest.py -->
+<!-- verified: integration:postgres tests/cross_package/workflows/test_sample_data.py tests/trader/backtest/test_backtest.py -->
 ```bash
 uv run python examples/load_sample_market_data.py
 ```

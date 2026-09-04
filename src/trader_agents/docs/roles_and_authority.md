@@ -168,8 +168,8 @@ runner executes the selected route or workflow and returns its bounded result fo
   scratchpad, credentials or hidden reasoning. An injected checkpointer retains the first task digest and accepted
   action-result digests so exact resume does not repeat accepted work and changed task content fails closed.
 
-This is a reusable invocation boundary, not a new universal agent. `trader_agents.data_agent` is one production
-registration. Its deterministic policy selects `validate_market_data_scope`, optional
+This is a reusable invocation boundary, not a new universal agent. The frozen deterministic Data registration selects
+`validate_market_data_scope`, optional
 `ensure_market_data_available`, and `capture_market_data_evidence`; handlers alone construct MCP arguments. The final
 handler resolves both snapshot refs from the canonical store and validates scope, ownership, producer, requester,
 actor, status, payload digest and matching dataset identity before returning handoffs. The composition runner invokes
@@ -177,7 +177,7 @@ this route when the Coordinator selects an explicit Data task, validates the ter
 stores only a bounded accepted-result receipt. Approval requests remain Coordinator-owned: a specialist reports an
 approval prerequisite or a proposed artifact but cannot approve its own assumptions.
 
-`trader_agents.experiment_design_agent` is the second production registration. Its strict task carries a complete
+The frozen deterministic Experiment Design registration carries a complete
 `ExperimentDesignRequest` over exact implementation, manifest, quality and optional optimisation-validation refs. Its
 one deterministic policy action calls `research_create_experiment_protocol_proposal`, reloads the canonical
 Experiments-owned proposal, verifies task/objective/design/provenance identity and returns a digest-pinned handoff. A
@@ -186,7 +186,7 @@ protocol, write the store directly or retain the protocol payload in checkpoint 
 
 ### Frozen Research Composition Boundary (Removed)
 
-`trader_agents.research_composition` is the operational connector, not a new decision authority. Its immutable request
+The frozen deterministic composition runner is an operational connector, not a new decision authority. Its immutable request
 contains an approved objective and ordered caller-built specialist tasks. It may execute only the exact route and
 version selected by the Coordinator, and its default catalog registers Data and Experiment Design. A completed result is accepted only
 when task, authority, route, output bindings, provenance and canonical payload digests agree. The approved protocol must

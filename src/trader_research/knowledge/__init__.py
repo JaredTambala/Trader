@@ -47,7 +47,6 @@ from .method_cards import (
 from .methodology_candidates import discover_methodology_candidates
 from .methodology_extraction import extract_methodology_fields
 from .methodology_validation import validate_methodology_candidate
-from .postgres_store import PostgresKnowledgeStore
 from .retrieval import get_evidence_chunks, retrieve_evidence, search_methods
 from .sources import list_sources, register_source
 from .store import KnowledgeStore, UnavailableKnowledgeStore
@@ -73,7 +72,6 @@ __all__ = [
     "KnowledgeStore",
     "MethodCardSummary",
     "MethodCardSet",
-    "PostgresKnowledgeStore",
     "RuntimeConfiguredEmbeddingProvider",
     "StoreBackedApprovedMethodCardReader",
     "UnavailableKnowledgeStore",

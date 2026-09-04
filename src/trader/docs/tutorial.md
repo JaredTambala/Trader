@@ -86,7 +86,7 @@ That example proves composition only; it does not run a backtest.
 The canonical sample loads deterministic CSV bars, composes a maintained strategy, runs historical replay, and exports
 JSON plus CSV. It requires the repository checkout and local Postgres.
 
-<!-- verified: integration:postgres tests/test_sample_data.py tests/test_backtest.py -->
+<!-- verified: integration:postgres tests/cross_package/workflows/test_sample_data.py tests/trader/backtest/test_backtest.py -->
 ```bash
 docker compose -f docker-compose.postgres.yml up -d
 uv run python examples/load_sample_market_data.py

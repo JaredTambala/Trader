@@ -19,8 +19,13 @@ role-scoped `trader_mcp` boundary.
 - `coding`: isolated strategy candidate workspaces and bounded checks
 - `experiments`: implementation catalogue/admission, immutable specifications, backtests, optimisation, and projections
 - `review`: independent evaluation and adversarial evidence
-- `ml`: model/deployment artifact contracts and provider-neutral runtime resolution
+- `ml`: model/deployment artifact contracts, adapter registry, and provider-neutral runtime resolution over the core
+  inference-adapter profile
 - `infrastructure`: concrete Postgres and optional provider adapters
+
+The supported Postgres knowledge adapter is imported from
+`trader_research.infrastructure.postgres.PostgresKnowledgeStore`. The `knowledge` facade owns the domain port and
+application behavior; it does not re-export its concrete persistence implementation.
 
 ## Learning path
 

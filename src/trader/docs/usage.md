@@ -4,7 +4,7 @@
 
 Trader is one Python distribution containing several packages. From a checkout:
 
-<!-- verified: integration:repository tests/test_package_documentation.py -->
+<!-- verified: integration:repository tests/cross_package/documentation/test_package_documentation.py -->
 ```bash
 uv sync --dev --group docs
 ```
@@ -36,7 +36,7 @@ precedence rules are in [Configuration](configuration.md).
 | Risk | `trader.RiskManager`, `trader.RiskPipeline` | caller implementation or `trader_standard` |
 | Persistence | `trader.EventStore` | `PostgresEventStore` or deliberate `NoOpEventStore` |
 | Market data | `trader.MarketDataSource` | static/no-op sources or the Alpaca adapter |
-| Predictions | contracts under `trader.predictions` | feature provider, predictor, mapper, and prediction-driven standard strategy |
+| Predictions | contracts under `trader.predictions` | feature provider, predictor, adapter profile, mapper, and prediction-driven standard strategy |
 
 `BacktestRunner` accepts explicit strategy, risk manager, spec, universe, starting cash, configuration snapshot, and
 assumptions. `TraderService` owns the live service lifecycle and must perform recovery before normal execution.

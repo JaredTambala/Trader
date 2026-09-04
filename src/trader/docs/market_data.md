@@ -27,7 +27,7 @@ Flow:
 
 Reproducible sample workflow:
 
-<!-- verified: integration:postgres/provider tests/test_market_data.py tests/test_market_data_backfill.py -->
+<!-- verified: integration:postgres/provider tests/trader/market_data/test_ingestion.py tests/trader/market_data/test_backfill.py -->
 ```bash
 docker compose -f docker-compose.postgres.yml up -d
 uv run python examples/load_sample_market_data.py
@@ -44,7 +44,7 @@ fallback assumptions.
 
 Realtime operation normally uses a separate market-data stream process:
 
-<!-- verified: integration:postgres/provider tests/test_market_data.py tests/test_market_data_backfill.py -->
+<!-- verified: integration:postgres/provider tests/trader/market_data/test_ingestion.py tests/trader/market_data/test_backfill.py -->
 ```bash
 uv run python run_market_data_stream.py configs/example.yaml
 ```
@@ -63,7 +63,7 @@ facts.
 
 Historical backfill:
 
-<!-- verified: integration:postgres/provider tests/test_market_data.py tests/test_market_data_backfill.py -->
+<!-- verified: integration:postgres/provider tests/trader/market_data/test_ingestion.py tests/trader/market_data/test_backfill.py -->
 ```bash
 uv run python run_market_data_backfill.py configs/example.yaml
 uv run python run_market_data_backfill.py configs/example.yaml --dry-run --json --symbols AAPL,MSFT --asset-class stocks --timeframe 1Min --since 30d
@@ -71,14 +71,14 @@ uv run python run_market_data_backfill.py configs/example.yaml --dry-run --json 
 
 Replay through realtime path:
 
-<!-- verified: integration:postgres/provider tests/test_market_data.py tests/test_market_data_backfill.py -->
+<!-- verified: integration:postgres/provider tests/trader/market_data/test_ingestion.py tests/trader/market_data/test_backfill.py -->
 ```bash
 uv run python -m trader.market_data_replay configs/example.yaml
 ```
 
 Data-quality checks:
 
-<!-- verified: integration:postgres/provider tests/test_market_data.py tests/test_market_data_backfill.py -->
+<!-- verified: integration:postgres/provider tests/trader/market_data/test_ingestion.py tests/trader/market_data/test_backfill.py -->
 ```bash
 uv run python run_data_quality.py configs/example.yaml
 uv run python run_data_quality.py configs/example.yaml --output-json artifacts/data_quality/example.json

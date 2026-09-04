@@ -5,6 +5,6 @@ registration gates, and provider composition. Research behavior remains in
 ``trader_research`` and model-backed control remains in ``trader_agents``.
 """
 
-from .adapters import result_to_mcp_result, mcp_result_json
+from .protocol.adapters import mcp_result_json, result_to_mcp_result
 
 __all__ = ["result_to_mcp_result", "mcp_result_json"]

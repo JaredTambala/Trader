@@ -39,9 +39,9 @@ Each category below records:
   - `src/trader/market_data_replay.py`
   - `src/trader/data_quality.py`
 - Test evidence:
-  - `tests/test_market_data.py`
-  - `tests/test_market_data_stream.py`
-  - `tests/test_market_data_backfill.py`
+  - `tests/trader/market_data/test_ingestion.py`
+  - `tests/trader/market_data/test_stream_adapter.py`
+  - `tests/trader/market_data/test_backfill.py`
 - Doc evidence:
   - `README.md`
   - `agent_docs/stage_0_task_tracker.md`
@@ -58,7 +58,7 @@ Each category below records:
   - `src/trader/data.py`
   - `src/trader/portfolio.py`
 - Test evidence:
-  - `tests/test_data.py`
+  - `tests/trader/event_store/test_duckdb_event_store.py`
   - `tests/support/duckdb_store.py`
 - Doc evidence:
   - `README.md`
@@ -77,8 +77,8 @@ Each category below records:
   - `src/trader/strategies/`
   - `external_strategy_demo.py`
 - Test evidence:
-  - `tests/test_strategy_sma.py`
-  - `tests/test_cycle.py`
+  - `tests/trader_standard/strategies/test_strategy_sma.py`
+  - `tests/trader/cycle/test_pipeline.py`
   - external demo smoke path
 - Doc evidence:
   - `README.md`
@@ -97,9 +97,9 @@ Each category below records:
   - `src/trader/trader_service.py`
   - `src/trader/backtest.py`
 - Test evidence:
-  - `tests/test_risk_manager.py`
-  - `tests/test_cycle.py`
-  - `tests/test_market_data.py`
+  - `tests/trader_standard/risk/test_risk_manager.py`
+  - `tests/trader/cycle/test_pipeline.py`
+  - `tests/trader/market_data/test_ingestion.py`
 - Doc evidence:
   - `README.md`
   - `agent_docs/stage_0_task_tracker.md`
@@ -116,8 +116,8 @@ Each category below records:
   - `src/trader/cycle.py`
   - `src/trader/metrics.py`
 - Test evidence:
-  - `tests/test_backtest.py`
-  - `tests/test_cycle.py`
+  - `tests/trader/backtest/test_backtest.py`
+  - `tests/trader/cycle/test_pipeline.py`
 - Doc evidence:
   - `README.md`
   - `agent_docs/stage_0_task_tracker.md`
@@ -134,8 +134,8 @@ Each category below records:
   - `src/trader/cycle.py`
   - `run_trader_service.py`
 - Test evidence:
-  - `tests/test_trader_service.py`
-  - `tests/test_cycle.py`
+  - `tests/trader/runtime/test_trader_service.py`
+  - `tests/trader/cycle/test_pipeline.py`
 - Doc evidence:
   - `README.md`
   - `agent_docs/stage_0_task_tracker.md`
@@ -152,7 +152,7 @@ Each category below records:
   - `src/trader/cycle.py`
   - `src/trader/trader_service.py`
 - Test evidence:
-  - `tests/test_alpaca_broker.py`
+  - `tests/trader/broker/test_alpaca_broker.py`
 - Doc evidence:
   - `README.md`
   - `agent_docs/stage_0_task_tracker.md`
@@ -189,7 +189,7 @@ Each category below records:
   - `src/ui/`
   - `src/trader/api.py`
 - Test evidence:
-  - `tests/test_backtest_api.py`
+  - `tests/trader/backtest/test_backtest_api.py`
 - Doc evidence:
   - historical references in plans and older README content
 - Conclusion:

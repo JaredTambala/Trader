@@ -2,10 +2,15 @@
 
 ## Entrypoints
 
-- `python -m trader_mcp.server --env-path PATH`: run the local stdio server.
-- `trader_mcp.server.create_server(...)`: compose a server in trusted application/test code.
-- `trader_mcp.environment.load_local_environment(path)`: parse and normalize server policy.
-- `trader_mcp.contracts`: inspect or construct the stable envelope.
+- `python -m trader_mcp.runtime.server --env-path PATH`: run the local stdio server.
+- `trader_mcp.runtime.server.create_server(...)`: compose a server in trusted application/test code.
+- `trader_mcp.catalogue.policy.load_local_environment(path)`: parse and normalize server policy.
+- `trader_mcp.protocol.contracts`: inspect or construct the stable envelope.
+
+`create_server` accepts provider-neutral overrides for controlled tests and embedding. When an override is absent,
+`trader_mcp.runtime.composition` selects the concrete implementation and returns it through a typed runtime-dependency
+bundle. Capability modules must accept the injected port, registry, policy, or factory; they must not import a concrete
+provider to manufacture their own fallback.
 
 ## Server lifecycle
 

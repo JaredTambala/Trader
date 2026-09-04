@@ -46,7 +46,7 @@ research identity or authority.
 
 Reproducible sample output:
 
-<!-- verified: integration:postgres tests/test_backtest.py tests/test_runtime_metrics.py -->
+<!-- verified: integration:postgres tests/trader/backtest/test_backtest.py tests/trader/runtime/test_runtime_metrics.py -->
 ```bash
 uv run python examples/run_reproducible_backtest.py
 ```

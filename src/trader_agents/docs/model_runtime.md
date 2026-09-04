@@ -2,6 +2,10 @@
 
 ## Profiles and programs
 
+The canonical implementation is under `trader_agents.model_runtime`: `client.py` defines provider-neutral clients,
+`profiles.py` defines admitted model/program registries, `programs.py` supplies the current programs, and
+`structured.py` owns schema-bound invocation.
+
 `ModelProfile` fixes provider, model name, immutable revision, endpoint, temperature, context/output limits, timeout,
 and thinking mode. `AgentProgram` fixes role, version, system instruction, output contracts, tool-policy version, and
 schema-repair limit. Registries reject duplicate roles/identities and publish content-derived manifests.

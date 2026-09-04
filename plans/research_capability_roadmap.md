@@ -58,7 +58,7 @@ cross-package concerns.
 | `trader_agents` | complete | `src/trader_agents/README.md` and `src/trader_agents/docs/` | Agent topology, authority, MCP interaction, model runtime, recovery, and qualification are tutorialised and tested. |
 | `trader_mlflow` | complete | `src/trader_mlflow/README.md` and `src/trader_mlflow/docs/` | Prediction tutorial and notebook execute without a live tracking server; adapter boundary is documented. |
 | Root consolidation | complete | `README.md` and `docs/` | Cross-package index, architecture, product state, environment, workflows, standards, and history remain; displaced centralized pages and stale links are absent. |
-| Documentation verification | complete | `tests/test_package_documentation.py` and notebook/wheel checks | Executable fences declare verification; configuration snippets cross the real loader; Markdown links and anchors resolve; notebooks are output-free and deterministic; every package page ships in the wheel. |
+| Documentation verification | complete | `tests/cross_package/documentation/test_package_documentation.py` and notebook/wheel checks | Executable fences declare verification; configuration snippets cross the real loader; Markdown links and anchors resolve; notebooks are output-free and deterministic; every package page ships in the wheel. |
 
 Accepted on 2026-09-03. The package documentation, executable Markdown, notebook, existing behavioral documentation,
 package-boundary, and broad offline suites passed. A built wheel was checked against every owned Markdown page and

@@ -18,3 +18,15 @@ decide canonical state.
 
 Optuna qualification uses a dedicated non-`public` schema and writer role. Its sampler state is provider state, not the
 canonical trial ledger; every suggestion and terminal trial remains recorded by Trader.
+
+## Verification ownership
+
+Package-owned contracts live under `tests/trader_research/experiments/`. Implementation catalogue and maintained
+template suites verify bounded discovery, trust tiers, exact source disclosure, comparison evidence, family filters,
+and real maintained entrypoints. Optimisation is separated into canonical workflow/selection, source and dependency
+isolation, and Optuna provider-profile contracts. The provider-profile suite validates configuration without opening a
+database connection; the separately marked Postgres projection suite verifies typed plan, run, trial, and authority
+rows against the guarded local database. Prediction-binding contracts remain here because they protect canonical
+strategy specifications, deployment and mapper pins, and dependency revalidation; ML deployment records are
+collaborators owned by the ML context. These tests do not treat tracking projections or optimisation selection as
+independent evaluation.

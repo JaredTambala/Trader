@@ -153,7 +153,7 @@ it never updates or deletes old lifecycle rows.
 
 The unified operator entrypoint is:
 
-<!-- verified: integration:postgres/provider tests/test_cycle.py tests/test_order_recovery.py -->
+<!-- verified: integration:postgres/provider tests/trader/cycle/test_pipeline.py tests/trader/runtime/test_order_recovery.py -->
 ```bash
 uv run python run_operator.py configs/example.yaml status --json
 uv run python run_operator.py configs/example.yaml health --json

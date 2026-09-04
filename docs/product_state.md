@@ -90,8 +90,9 @@ Postgres checkpointer. The active evaluation profile is `ollama-lfm25-8b-json-v1
 and evidence obligations without selecting specialist queries or build paths. The rejected
 `ollama-qwen35-9b-json-v5` profile and its failed Coordinator and ready-Data evidence remain recorded; they do not
 qualify the replacement profile. The LFM profile selected only Data for three equivalent readiness briefs, but it
-failed the material-ambiguity brief by proposing executable Data work. The complete Coordinator choice gate therefore
-remains failed, and the dependent LFM Data specialist contract was not run.
+failed the material-ambiguity brief by proposing executable Data work. A later diagnostic execution of the still-gated
+Data specialist contract failed twice at strict turn-schema validation before any MCP call. The complete model-choice
+gate therefore remains failed; neither result qualifies the profile or authorizes the broader campaign.
 The current `research-coordinator-v7` program selects relevant specialist responsibilities rather than requiring every
 available role. Strict Pydantic schemas validate provider-neutral JSON outputs with at most one schema-only retry.
 There is no post-generation field rewriting, permissive fenced-JSON parsing, semantic validation feedback, agenda task
@@ -228,7 +229,7 @@ describe dependency state, not selected priority; no new ML agent or ML capabili
 | Market data, events, portfolio behavior, backtest runtime, risk and broker interfaces | Core `trader` runtime |
 | Maintained indicators, signals, strategies, risk managers, feature providers and prediction mappers | `trader_standard` |
 | Research implementations, specifications, runs, trials, selections, reviews and deployment evidence | Trader Postgres |
-| Source text, evidence units, embeddings and canonical method cards | Trader Postgres knowledge store |
+| Source text, evidence units, embeddings and canonical method cards | `trader_research` Postgres knowledge store |
 | ML training telemetry, packaged models and registry records | Configured MLflow instance, once the planned training lifecycle exists |
 | MCP registration, transport envelopes and coarse policy gates | `trader_mcp` |
 | Agent planning, allowed tool use, handoffs and operational checkpoints | `trader_agents` and its configured checkpointer |
@@ -272,9 +273,9 @@ The current first slice is a real model/tool control loop, not a deterministic s
 | Stage | Current implementation | Boundary |
 | --- | --- | --- |
 | Session and entry contracts | Immutable `ResearchSession` plus normalized composite Data scope and typed Strategy build contract. | Runtime pins, scope, approvals, budgets, model/program/catalog identities, and implementation inputs must validate before graph work. |
-| Coordinator | Strict model-proposed agenda and evidence decision in `trader_agents.coordinator`, with a deterministic scheduler, semantic loop guard, checkpointed decide/commit boundary, and single-writer LangGraph state. | Delegates and routes; it cannot replace specialist ownership, skip canonical verification, or directly access Trader services/SQL. |
-| Data Research | Structured model/tool loop in `trader_agents.data_research`. | Uses only phase-appropriate Data MCP tools; loading must remain in the approved multi-asset envelope. |
-| Strategy Engineering | Catalogue-first structured loop in `trader_agents.strategy_engineering`. | Reuse requires exact passed admission evidence; authorship uses isolated Coding Workspace MCP and independent admission, never host execution or self-approval. |
+| Coordinator | Strict model-proposed agenda and evidence decision in `trader_agents.coordination.coordinator`, with a deterministic scheduler, semantic loop guard, checkpointed decide/commit boundary, and single-writer LangGraph state. | Delegates and routes; it cannot replace specialist ownership, skip canonical verification, or directly access Trader services/SQL. |
+| Data Research | Structured model/tool loop in `trader_agents.specialists.data_research`. | Uses only phase-appropriate Data MCP tools; loading must remain in the approved multi-asset envelope. |
+| Strategy Engineering | Catalogue-first structured loop in `trader_agents.specialists.strategy_engineering`. | Reuse requires exact passed admission evidence; authorship uses isolated Coding Workspace MCP and independent admission, never host execution or self-approval. |
 | Evidence join | Structured returns plus exact `research_read_artifact` checks and append-only decision receipts. | A URI alone is insufficient; type, identity, owner, session/actor lineage, and bounded public metadata must agree. |
 | Runtime | `AgenticResearchRuntime.start`, `.resume`, `.cancel`, and `.inspect`, with three isolated MCP stdio clients and a PostgreSQL LangGraph saver. | Checkpoints are operational and redacted; canonical evidence remains in research persistence. Cancellation requires the owning operator and records a canonical terminal receipt. |
 
@@ -294,13 +295,13 @@ responsibilities:
 | Stage | Current implementation | Boundary |
 | --- | --- | --- |
 | Declaration contracts | Immutable objective, protocol, approval, capability, artifact-slot, plan, step-result and outcome contracts in the `protocols` and `workflows` modules under `trader_research.governance.orchestration`. | Validates what may run; performs no I/O, MCP calls or checkpointing. |
-| Coordinator policy | Strict `CoordinationDecision`, code-owned `WorkflowTemplateCatalog`, deterministic selection policy and one-node graph in `trader_agents.research_coordinator`. | Selects one explicit unaccepted specialist task, requests prerequisites/approvals, selects one registered template or reports terminal state; it cannot express tool arguments, alter protocol scope, call MCP or execute the selected action. |
-| Specialist policy shell | Strict specialist task/decision/result contracts, authority-scoped action catalogs and a checkpoint-capable policy/action graph in `trader_agents.specialists`. | Executes only injected registered handlers after validating canonical bindings, authority, side effects, policy gates, task digests and accepted-action replay; it does not decide specialist policy, construct MCP arguments or compose itself with the Coordinator. |
-| Data specialist | Strict `DataSpecialistRequest`, deterministic policy and MCP-backed handlers in `trader_agents.data_agent`. | Validates symbols, optionally loads only approved idempotent sample data, captures one exact snapshot, resolves both refs in the canonical store, and returns handoffs or typed issues. It does not use model-selected tools/arguments or expose provider backfill. |
-| Experiment Design specialist | Strict `ExperimentDesignRequest`, deterministic one-action policy and MCP-backed proposal handler in `trader_agents.experiment_design_agent`. | Pins supplied implementations and canonical Data evidence into an immutable Experiments-owned proposal with requested approvals. It cannot infer missing design choices, approve assumptions, execute experiments or redesign after results. |
-| Composition runner | Strict request/state contracts, code-owned specialist routes and a one-transition resumable graph in `trader_agents.research_composition`. | Executes selected Data and Experiment Design tasks, validates every returned handoff, pauses for operator approval, enters the fixed workflow and feeds the canonical outcome back. It does not infer tasks, author or approve protocols, build MCP arguments or reinterpret specialist findings. |
+| Coordinator policy | Strict `CoordinationDecision`, code-owned `WorkflowTemplateCatalog`, deterministic selection policy and one-node graph in the removed frozen revision. | Selects one explicit unaccepted specialist task, requests prerequisites/approvals, selects one registered template or reports terminal state; it cannot express tool arguments, alter protocol scope, call MCP or execute the selected action. |
+| Specialist policy shell | Strict specialist task/decision/result contracts, authority-scoped action catalogs and a checkpoint-capable policy/action graph in the removed frozen revision. | Executes only injected registered handlers after validating canonical bindings, authority, side effects, policy gates, task digests and accepted-action replay; it does not decide specialist policy, construct MCP arguments or compose itself with the Coordinator. |
+| Data specialist | Strict `DataSpecialistRequest`, deterministic policy and MCP-backed handlers in the removed frozen revision. | Validates symbols, optionally loads only approved idempotent sample data, captures one exact snapshot, resolves both refs in the canonical store, and returns handoffs or typed issues. It does not use model-selected tools/arguments or expose provider backfill. |
+| Experiment Design specialist | Strict `ExperimentDesignRequest`, deterministic one-action policy and MCP-backed proposal handler in the removed frozen revision. | Pins supplied implementations and canonical Data evidence into an immutable Experiments-owned proposal with requested approvals. It cannot infer missing design choices, approve assumptions, execute experiments or redesign after results. |
+| Composition runner | Strict request/state contracts, code-owned specialist routes and a one-transition resumable graph in the removed frozen revision. | Executes selected Data and Experiment Design tasks, validates every returned handoff, pauses for operator approval, enters the fixed workflow and feeds the canonical outcome back. It does not infer tasks, author or approve protocols, build MCP arguments or reinterpret specialist findings. |
 | Resume shell | A LangGraph shell in `trader_agents.checkpointing` that orders ready plan steps, validates resumed `WorkflowStepResult` values and stores bounded progress. | Performs no research tool call and creates no canonical evidence. |
-| Fixed workflow execution | The versioned `supplied_implementation_to_evidence` compiler and executor in `trader_agents.orchestration`. | Compiles only an already approved objective/protocol and mechanically invokes registered MCP tools; it does not design or independently select the workflow. |
+| Fixed workflow execution | The versioned `supplied_implementation_to_evidence` compiler and executor in the removed frozen revision. | Compiles only an already approved objective/protocol and mechanically invokes registered MCP tools; it does not design or independently select the workflow. |
 
 The present call flow is:
 
@@ -429,7 +430,7 @@ the current first slice.
 
 | Agent | Current operational state | Target state | Main gap |
 | --- | --- | --- | --- |
-| Data Research Agent | A strict model/tool loop investigates complete composite scope through role- and phase-scoped MCP, performs only approved bounded loading, revalidates evidence, and returns exact snapshot refs or typed blockers. Scripted conformance is focused; the rejected Qwen profile failed three repeated ready-scope choice tests, and the LFM test is blocked by its failed Coordinator prerequisite. | Controlled Data specialist with broader calendar/provider coverage and measured behavioral reliability. | Pass the Coordinator model gate, then establish Data model behavior before controlled real-MCP/Postgres recovery, prompt-security, and repeated evaluation. |
+| Data Research Agent | A strict model/tool loop investigates complete composite scope through role- and phase-scoped MCP, performs only approved bounded loading, revalidates evidence, and returns exact snapshot refs or typed blockers. Scripted conformance is focused; the rejected Qwen profile failed three repeated ready-scope choice tests. The still-gated LFM contract has now been run diagnostically twice and failed strict turn-schema validation before any MCP call. | Controlled Data specialist with broader calendar/provider coverage and measured behavioral reliability. | Resolve the Coordinator and Data model-choice failures before controlled real-MCP/Postgres recovery, prompt-security, and repeated evaluation. |
 | Experiment Design Agent | No model-backed graph in the clean runtime. Deterministic proposal services remain available through MCP. | Model-backed Experiment Design Agent that converts briefs, candidates, and Data slices into prospective experiment charters with protected-evidence roles, stage gates, specialist authority envelopes, and material approval requests. | Free-form interpretation, staged evidence contracts, scientific replanning, structured agent program, and behavioral evaluation. |
 | Knowledge Research Agent | No separate current identity. Full-document source ingestion, hybrid retrieval, bounded evidence dereferencing, exact claim spans, and method artifacts are currently assigned to the deterministic Quantitative Methods surface. | Model-backed source investigator that decomposes evidence obligations, navigates structure, iteratively retrieves and expands approved evidence, reconciles sources, and returns a validated research dossier. | Structure-preserving parsing, source maps/resources, dossier artifacts and validation, role-scoped MCP, model program, and textbook benchmark. |
 | Quantitative Methods Agent | Allowlist, approved decision boundary and deterministic MCP tools exist. No complete specialist graph coordinates them. | Pre-code, outcome-blind specialist that converts a passed dossier into a validated implementation brief with source-backed and engineering decisions separated. | Model policy, brief contract/validation, role-scoped MCP composition, and measured multi-source handoff quality. |
@@ -547,8 +548,8 @@ The maintained Postgres saver is configured independently with `TRADER_AGENTS_CH
 are replaceable operational state and are not `research_artifacts`, typed research projections or evidence for any
 claim. The resume shell contains no MCP calls and creates no canonical workflow outcome.
 
-The fixed `supplied_implementation_to_evidence` compiler and mechanical executor are implemented in
-`trader_agents.orchestration`. It pins strategy/risk implementation records and Data snapshots by payload hash,
+The fixed `supplied_implementation_to_evidence` compiler and mechanical executor are preserved only in the frozen
+revision. It pins strategy/risk implementation records and Data snapshots by payload hash,
 constructs the capability DAG, invokes only registered MCP tools, validates envelope command/owner/side-effect metadata,
 and converts each response into a bounded step result for the resume shell. It executes baseline evidence and, when declared, optimisation,
 sealed holdout, Evaluation, Adversarial attack planning, immutable variants and robustness judgment. Payload drift,
@@ -563,7 +564,7 @@ typed `research_experiment_protocol_proposals`, `research_objectives`, `research
 workflow through a Python policy/graph API; execution remains an explicit library call rather than a generic high-level
 MCP runner.
 
-`trader_agents.research_composition` provides the bounded higher-level library entrypoint. Its request fixes the exact
+The removed frozen composition runner provides the bounded higher-level library entrypoint. Its request fixes the exact
 objective and explicit specialist tasks; its code-owned route catalog registers Data and Experiment Design. It records
 accepted result receipts only after task, route and canonical handoff validation, requires the approved protocol to
 match the proposal and consume accepted Data refs, and isolates composition, specialist and workflow checkpoint

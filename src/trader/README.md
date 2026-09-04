@@ -3,6 +3,8 @@
 `trader` is the dependency root of the Trader distribution. It owns the platform contracts and runtime primitives for
 market data, strategies, risk, brokers, portfolios, event persistence, backtesting, predictions, and operator control.
 It does not contain maintained trading ideas, research workflows, MCP transport, agent logic, or MLflow loading.
+Research knowledge schemas and persistence adapters likewise belong to `trader_research`, not the core event-store
+boundary.
 
 The package is designed as a Python library. Applications construct a `Strategy` and `RiskManager`, choose concrete
 adapters at the boundary, and inject those objects into `BacktestRunner` or `TraderService`. Postgres is the durable
@@ -19,8 +21,8 @@ The package root exposes the stable, commonly composed contracts:
 - market data: normalized bar events, sources, ingestion, streaming, backfill, and sample loading
 - execution state: `Broker`, portfolio value objects, and deterministic identifiers
 - backtesting: `BacktestRunner`, execution assumptions, results, serialization, and exports
-- prediction integration: provider-neutral feature, predictor, model-identity, and mapping contracts under
-  `trader.predictions`
+- prediction integration: provider-neutral feature, predictor, model-identity, adapter-profile, and mapping contracts
+  under `trader.predictions`
 - live paper runtime: `TraderService` and explicit operator primitives
 
 Concrete first-party indicators, signals, strategies, and risk managers belong to

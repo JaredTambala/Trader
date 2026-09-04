@@ -13,7 +13,7 @@ from typing import Any, TypedDict
 
 from trader_research.foundation import json_payload_hash
 
-from ..contracts import (
+from trader_agents.contracts.domain import (
     BudgetUsage,
     CanonicalEvidenceRef,
     CoordinatorAgenda,

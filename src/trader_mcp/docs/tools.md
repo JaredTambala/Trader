@@ -1,7 +1,7 @@
 # MCP Tool Catalogue
 
 This is the canonical catalog for the currently registered research-agent MCP tools. Tool names, descriptions, groups,
-and capability flags are defined in `src/trader_mcp/constants.py`; owner lookup is defined in
+and capability flags are defined in `src/trader_mcp/catalogue/definitions.py`; owner lookup is defined in
 `src/trader_research/governance/ownership.py`.
 
 Every tool returns a shared `ToolEnvelope` through MCP `structuredContent` and text content. See
@@ -43,7 +43,7 @@ MCP adapters live in `trader_mcp`; deterministic tool behavior lives in bounded 
 ## Orchestration Surface
 
 There is no registered high-level agent or workflow-execution tool. The model-backed runtime is a Python boundary in
-`trader_agents.runtime`; its Coordinator, Data Research, and Strategy Engineering loops each receive an isolated MCP
+`trader_agents.application.runtime`; its Coordinator, Data Research, and Strategy Engineering loops each receive an isolated MCP
 client dynamically narrowed by role, phase, immutable session scope, approval policy, mutation lifecycle, and budget.
 This keeps every deterministic Data, implementation, Coding Workspace, admission, and evidence contract visible.
 

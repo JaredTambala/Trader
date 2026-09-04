@@ -19,7 +19,7 @@ allowed to reach the broker.
 
 Backtest wrappers construct strategy and risk objects directly:
 
-<!-- verified: integration:postgres tests/test_strategy_library.py tests/test_risk_manager.py -->
+<!-- verified: integration:postgres tests/trader_standard/strategies/test_strategy_library.py tests/trader_standard/risk/test_risk_manager.py -->
 ```bash
 uv run python examples/run_injected_backtest.py
 uv run python examples/run_library_backtest.py
@@ -52,7 +52,7 @@ execution layer under the configured assumptions.
 
 Live wrappers construct strategy and risk objects before starting `TraderService`:
 
-<!-- verified: integration:postgres tests/test_strategy_library.py tests/test_risk_manager.py -->
+<!-- verified: integration:postgres tests/trader_standard/strategies/test_strategy_library.py tests/trader_standard/risk/test_risk_manager.py -->
 ```bash
 uv run python examples/run_injected_trader_service.py
 uv run python examples/run_library_trader_service.py

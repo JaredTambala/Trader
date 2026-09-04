@@ -10,3 +10,7 @@ tracking authority, or agent decisions. MLflow and pandas are optional imports l
 Start with the [tutorial](docs/tutorial.md), then use [usage](docs/usage.md) and [architecture](docs/architecture.md).
 The [prediction notebook](docs/mlflow_prediction_tutorial.ipynb) exercises normalization with a fake already-loaded
 model and therefore needs no MLflow server.
+
+Package-owned tests use only core prediction contracts. Verification that composes an approved research deployment
+with a real local MLflow model is a cross-package workflow, because the asserted seam—not either package in
+isolation—is its subject.

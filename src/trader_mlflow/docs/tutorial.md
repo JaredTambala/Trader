@@ -11,19 +11,26 @@ adapter version. The caller also supplies a content-hashed point-in-time `Featur
 ## 2. Predict through the provider-neutral contract
 
 The complete executable example is in [the notebook](mlflow_prediction_tutorial.ipynb) and
-`tests/test_mlflow_inference_adapter.py`. It builds a two-symbol feature batch, runs a fake loaded pyfunc model through
-`MLflowPyfuncPredictor`, and inspects normalized observations.
+`tests/trader_mlflow/inference/test_pyfunc_inference_adapter.py`. It builds a feature batch, runs a fake loaded pyfunc
+model through `MLflowPyfuncPredictor`, and inspects normalized observations without importing the optional provider.
 
-<!-- verified: integration:mlflow tests/test_mlflow_inference_adapter.py -->
+<!-- verified: integration:repository tests/trader_mlflow/inference/test_pyfunc_inference_adapter.py -->
 ```bash
-uv run pytest tests/test_mlflow_inference_adapter.py -q
+uv run pytest tests/trader_mlflow/inference/test_pyfunc_inference_adapter.py -q
 ```
 
 ## 3. Use real MLflow only at composition
 
 Install the `ml` optional dependency, create `MLflowLocalPyfuncAdapter(profile_name=..., tracking_uri=...)`, register it
-with the research inference adapter registry, and resolve only an approved deployment manifest. The adapter loads the
-pinned URI locally and runs its parity fixture before the runtime uses it.
+with the research inference adapter registry, and resolve only an approved deployment manifest. The adapter and registry
+share the core `trader.predictions.InferenceAdapterProfile` contract without depending on one another. The adapter loads
+the pinned URI locally and runs its parity fixture before the runtime uses it. That composition is verified separately
+because it crosses the `trader_mlflow` and `trader_research` boundary.
+
+<!-- verified: integration:mlflow tests/cross_package/workflows/test_mlflow_inference_adapter.py -->
+```bash
+uv run pytest tests/cross_package/workflows/test_mlflow_inference_adapter.py -q
+```
 
 ## 4. Handle failure
 

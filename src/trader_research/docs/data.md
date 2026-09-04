@@ -13,3 +13,15 @@ interruption, the caller reconciles prepared or terminal evidence rather than bl
 
 Public operations are exported from `trader_research.data`: discovery, inventory, quality, loading, and research
 snapshot creation. MCP ownership and agent selection are outside this package.
+
+## Verification ownership
+
+Data-context tests live under `tests/trader_research/data/` and separate provider catalogue adaptation, provider-context
+and symbol discovery, dataset inventory, quality summarization, readiness/loading, and fresh-connection recovery. The
+offline suites use injected catalogues, the shared DuckDB test adapter, and the checked-in sample dataset; they make no
+provider network calls. The Postgres recovery contract is separately marked and requires
+`TRADER_AGENTS_ARTIFACT_TEST_DSN` to target an isolated test database. A skipped recovery test is not external evidence.
+
+Core event-store behavior and core quality-report file export remain under `tests/trader/`, even when research services
+consume those lower-level capabilities. Test ownership follows the asserted production contract, not a generic
+historical filename or the presence of a lower-level collaborator.

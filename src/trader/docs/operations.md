@@ -162,7 +162,7 @@ Global halt state lives in `config_kv`:
 
 Set a halt before maintenance, suspected broker mismatch, or any manual safety stop:
 
-<!-- verified: integration:postgres/provider tests/test_operator_cli.py tests/test_order_recovery.py -->
+<!-- verified: integration:postgres/provider tests/trader/operator/test_operator_cli.py tests/trader/runtime/test_order_recovery.py -->
 ```bash
 uv run python run_operator.py configs/example.yaml halt set --reason "manual safety test"
 uv run python run_operator.py configs/example.yaml health --json
@@ -171,7 +171,7 @@ uv run python run_operator.py configs/example.yaml health --json
 While halted, live `run_cycle` records `run_events.status='halted'` with `error_message='global_halt'` and submits no
 orders. Clear the halt only after the event store, broker account, and open-order state are understood:
 
-<!-- verified: integration:postgres/provider tests/test_operator_cli.py tests/test_order_recovery.py -->
+<!-- verified: integration:postgres/provider tests/trader/operator/test_operator_cli.py tests/trader/runtime/test_order_recovery.py -->
 ```bash
 uv run python run_operator.py configs/example.yaml halt clear
 uv run python run_operator.py configs/example.yaml status --json

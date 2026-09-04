@@ -19,16 +19,16 @@ registered. ML feature/training/evaluation/registry/monitoring and broader robus
 
 The MCP server uses stdio:
 
-<!-- verified: integration:postgres/local-model/provider tests/test_postgres_verification_runtime.py tests/test_postgres_agentic_acceptance.py tests/test_postgres_optimization_acceptance.py -->
+<!-- verified: integration:postgres/local-model/provider tests/cross_package/qualification/test_postgres_verification_runtime.py tests/cross_package/qualification/test_postgres_agentic_acceptance.py tests/cross_package/qualification/test_postgres_optimization_acceptance.py -->
 ```bash
-uv run python -m trader_mcp.server
+uv run python -m trader_mcp.runtime.server
 ```
 
 For an MCP client, configure:
 
 ```text
 command: uv
-args: ["run", "python", "-m", "trader_mcp.server"]
+args: ["run", "python", "-m", "trader_mcp.runtime.server"]
 cwd: /home/jared/Trader
 ```
 
@@ -64,7 +64,7 @@ configuration. Runtime failures belong inside the affected tool envelope.
 | `TRADER_AGENTS_CHECKPOINT_DSN` | empty | Dedicated PostgreSQL DSN for replaceable LangGraph operational checkpoints. |
 | `TRADER_AGENTS_MODEL_PROFILE_ID` | `ollama-lfm25-8b-json-v1` | Exact active evaluation profile. It pins Ollama `lfm2.5:8b` digest `9cf756159fc2f3b9128c6a3f544ec90c5e9b8afdbb4179a57b8aea9de589cfb2`, an 8,192-token context window, and a 2,048-token output ceiling. Its first complete Coordinator gate failed, so it is not accepted for qualification. |
 | `TRADER_AGENTS_MCP_COMMAND` | current Python executable | Command used to start each isolated MCP stdio server. |
-| `TRADER_AGENTS_MCP_ARGS` | `-m trader_mcp.server` | Arguments for each MCP stdio server. |
+| `TRADER_AGENTS_MCP_ARGS` | `-m trader_mcp.runtime.server` | Arguments for each MCP stdio server. |
 | `TRADER_AGENTS_MCP_CWD` | current directory | Working directory for MCP server processes. |
 | `TRADER_AGENTS_MCP_TIMEOUT_SECONDS` | `180` | Per-call MCP transport timeout. |
 | `TRADER_AGENTS_LOG_LEVEL` | `INFO` | `INFO` operator narrative or `DEBUG` diagnostic event detail on agent `stderr`. |
@@ -111,7 +111,7 @@ Before starting a session:
    `TRADER_AGENTS_CHECKPOINT_DSN` to a dedicated checkpoint role/database or schema. Do not rely on the research-store
    DSN as a checkpoint fallback.
 3. Serve the model named by the active evaluation profile. The current profile requires Ollama `lfm2.5:8b` with
-   the exact content digest embedded in `trader_agents.profiles`; a matching name backed by different bytes fails
+   the exact content digest embedded in `trader_agents.model_runtime.profiles`; a matching name backed by different bytes fails
    before its first model decision.
 4. Keep `TRADER_MCP_ALLOW_BROKER_MUTATION=false` and `TRADER_MCP_ALLOW_RAW_SQL=false`. Enable Data loading only when
    the session also contains a matching pre-approved acquisition envelope.
@@ -127,7 +127,7 @@ identities are inputs to the session, not informative labels that the runtime ma
 
 First inspect the exact credential-free runtime identities:
 
-<!-- verified: integration:postgres/local-model/provider tests/test_postgres_verification_runtime.py tests/test_postgres_agentic_acceptance.py tests/test_postgres_optimization_acceptance.py -->
+<!-- verified: integration:postgres/local-model/provider tests/cross_package/qualification/test_postgres_verification_runtime.py tests/cross_package/qualification/test_postgres_agentic_acceptance.py tests/cross_package/qualification/test_postgres_optimization_acceptance.py -->
 ```bash
 uv run trader-agent manifest
 ```
@@ -144,11 +144,11 @@ and tool-catalogue identities from that manifest. The session is the authority b
 - finite call, token, time, mutation, revision, and concurrency budgets.
 
 The model may reason inside these bounds but cannot infer missing material strategy semantics or expand authority.
-`tests/fixtures/agentic_slice_session_inputs.json` is a comprehensive non-production example of the normalized input
+`tests/trader_agents/contracts_state/fixtures/agentic_slice_session_inputs.json` is a comprehensive non-production example of the normalized input
 shape and edge cases. It is a qualification fixture, not a ready-to-run production session. Validate a completed
 session without opening Postgres, a model, or MCP subprocesses:
 
-<!-- verified: integration:postgres/local-model/provider tests/test_postgres_verification_runtime.py tests/test_postgres_agentic_acceptance.py tests/test_postgres_optimization_acceptance.py -->
+<!-- verified: integration:postgres/local-model/provider tests/cross_package/qualification/test_postgres_verification_runtime.py tests/cross_package/qualification/test_postgres_agentic_acceptance.py tests/cross_package/qualification/test_postgres_optimization_acceptance.py -->
 ```bash
 uv run trader-agent validate-session --session /absolute/path/to/session.json
 ```
@@ -164,7 +164,7 @@ For execution, configure the canonical research store/MCP environment, dedicated
 admitted model. Apply the idempotent LangGraph checkpoint schema explicitly when provisioning a fresh checkpoint
 namespace:
 
-<!-- verified: integration:postgres/local-model/provider tests/test_postgres_verification_runtime.py tests/test_postgres_agentic_acceptance.py tests/test_postgres_optimization_acceptance.py -->
+<!-- verified: integration:postgres/local-model/provider tests/cross_package/qualification/test_postgres_verification_runtime.py tests/cross_package/qualification/test_postgres_agentic_acceptance.py tests/cross_package/qualification/test_postgres_optimization_acceptance.py -->
 ```bash
 export TRADER_AGENTS_CHECKPOINT_DSN='postgresql://checkpoint_role:...@localhost:5432/trader_checkpoints'
 uv run trader-agent run --session /absolute/path/to/session.json --setup-checkpoint-schema
@@ -189,14 +189,14 @@ uv run trader-agent --log-level DEBUG --log-format json run \
 The event log is redacted diagnostic evidence, not a canonical research record. Use `pytest -s` to display live logs
 during a focused test or `--capture=tee-sys` to display them while retaining pytest capture.
 
-<!-- verified: integration:postgres/local-model/provider tests/test_postgres_verification_runtime.py tests/test_postgres_agentic_acceptance.py tests/test_postgres_optimization_acceptance.py -->
+<!-- verified: integration:postgres/local-model/provider tests/cross_package/qualification/test_postgres_verification_runtime.py tests/cross_package/qualification/test_postgres_agentic_acceptance.py tests/cross_package/qualification/test_postgres_optimization_acceptance.py -->
 ```bash
 uv run trader-agent inspect --session /absolute/path/to/session.json
 ```
 
 Resume an interrupt using the same session and exact operator identity:
 
-<!-- verified: integration:postgres/local-model/provider tests/test_postgres_verification_runtime.py tests/test_postgres_agentic_acceptance.py tests/test_postgres_optimization_acceptance.py -->
+<!-- verified: integration:postgres/local-model/provider tests/cross_package/qualification/test_postgres_verification_runtime.py tests/cross_package/qualification/test_postgres_agentic_acceptance.py tests/cross_package/qualification/test_postgres_optimization_acceptance.py -->
 ```bash
 uv run trader-agent resume \
   --session /absolute/path/to/session.json \
@@ -207,7 +207,7 @@ uv run trader-agent resume \
 
 Cancel a checkpointed non-terminal session using the owning operator identity and a bounded public reason:
 
-<!-- verified: integration:postgres/local-model/provider tests/test_postgres_verification_runtime.py tests/test_postgres_agentic_acceptance.py tests/test_postgres_optimization_acceptance.py -->
+<!-- verified: integration:postgres/local-model/provider tests/cross_package/qualification/test_postgres_verification_runtime.py tests/cross_package/qualification/test_postgres_agentic_acceptance.py tests/cross_package/qualification/test_postgres_optimization_acceptance.py -->
 ```bash
 uv run trader-agent cancel \
   --session /absolute/path/to/session.json \
@@ -238,7 +238,7 @@ materially different objective, scope, build contract, program, model, tool cata
 Build the sandbox from the repository revision that the session pins, publish it to a registry that the local Docker
 daemon can resolve, and use the immutable repository digest rather than a tag:
 
-<!-- verified: integration:postgres/local-model/provider tests/test_postgres_verification_runtime.py tests/test_postgres_agentic_acceptance.py tests/test_postgres_optimization_acceptance.py -->
+<!-- verified: integration:postgres/local-model/provider tests/cross_package/qualification/test_postgres_verification_runtime.py tests/cross_package/qualification/test_postgres_agentic_acceptance.py tests/cross_package/qualification/test_postgres_optimization_acceptance.py -->
 ```bash
 docker build -f containers/agent-sandbox/Dockerfile -t trader-agent-sandbox:candidate .
 docker tag trader-agent-sandbox:candidate localhost:5000/trader/agent-sandbox:candidate
@@ -249,7 +249,7 @@ docker image inspect --format '{{index .RepoDigests 0}}' \
 
 Then configure a dedicated workspace root outside the repository:
 
-<!-- verified: integration:postgres/local-model/provider tests/test_postgres_verification_runtime.py tests/test_postgres_agentic_acceptance.py tests/test_postgres_optimization_acceptance.py -->
+<!-- verified: integration:postgres/local-model/provider tests/cross_package/qualification/test_postgres_verification_runtime.py tests/cross_package/qualification/test_postgres_agentic_acceptance.py tests/cross_package/qualification/test_postgres_optimization_acceptance.py -->
 ```bash
 export TRADER_MCP_ALLOW_CODING_WORKSPACE=true
 export TRADER_MCP_CODING_WORKSPACE_ROOT=/absolute/dedicated/trader-agent-workspaces
@@ -307,6 +307,21 @@ controlled release. Controlled status requires all mandatory phases to persist m
 freeze, followed by independent verification and a canonical acceptance record. The roadmap and product-state page
 remain authoritative for that verdict.
 
+The optimization qualification contracts now live together under `tests/cross_package/qualification/`. Their
+canonical entry points are:
+
+- `tests/cross_package/qualification/test_postgres_realistic_optimization_fixture.py` for the bounded direct-service fixture;
+- `tests/cross_package/qualification/test_postgres_optimization_evidence_graph.py` for the real stdio MCP evidence graph;
+- `tests/cross_package/qualification/test_postgres_optimization_determinism_integrity.py` for determinism, tamper rejection, and holdout isolation;
+- `tests/cross_package/qualification/test_postgres_optimization_recovery.py` for restart, retry, and deadline evidence;
+- `tests/cross_package/qualification/test_postgres_optimization_provider_independence.py` for built-in execution without optional providers;
+- `tests/cross_package/qualification/test_postgres_optimization_bounded_scale.py` for scale ceilings and projection reconciliation; and
+- `tests/cross_package/qualification/test_postgres_optimization_acceptance.py` for the final same-revision acceptance record.
+
+Invoke any entry point with its full `tests/cross_package/qualification/` prefix. These are guarded qualification
+contracts, not ordinary local tests: the Postgres cases require the controlled profile and the final acceptance case
+requires every preceding phase record to exist for the same immutable revision.
+
 ### MLflow Runtime Boundary
 
 The current MLflow integration supports explicit non-authoritative optimisation projection and a separate lazy local
@@ -337,9 +352,9 @@ Deployment and validation rows are visible in `research_ml_deployments` and
 written to `prediction_events`, mapped strategy inputs to `signal_events`, and prediction lineage to
 `order_events.decision_evidence`. The local adapter qualification command is:
 
-<!-- verified: integration:postgres/local-model/provider tests/test_postgres_verification_runtime.py tests/test_postgres_agentic_acceptance.py tests/test_postgres_optimization_acceptance.py -->
+<!-- verified: integration:postgres/local-model/provider tests/cross_package/qualification/test_postgres_verification_runtime.py tests/cross_package/qualification/test_postgres_agentic_acceptance.py tests/cross_package/qualification/test_postgres_optimization_acceptance.py -->
 ```bash
-uv run --extra ml pytest tests/test_mlflow_inference_adapter.py -q
+uv run --extra ml pytest tests/cross_package/workflows/test_mlflow_inference_adapter.py -q
 ```
 
 Quantitative Methods knowledge tools expect a configured knowledge store for production use. Postgres-backed knowledge

@@ -7,7 +7,7 @@ mutating tool.
 
 <!-- verified: doctest -->
 ```pycon
->>> from trader_mcp.contracts import SideEffect, success_envelope
+>>> from trader_mcp.protocol.contracts import SideEffect, success_envelope
 >>> envelope = success_envelope(
 ...     command="mcp_health",
 ...     side_effect=SideEffect.READ_ONLY,
@@ -26,11 +26,12 @@ by the role-scoped runtime before dispatch.
 ## 2. Configure a local read-only server
 
 Copy the repository example environment, keep every mutation flag false, and point it at a deliberate artifact root.
-The real parser test in `tests/test_mcp_server.py` validates the environment boundary.
+The real parser test in `tests/trader_mcp/catalogue_policy/test_environment_and_registration.py` validates the
+environment boundary.
 
-<!-- verified: integration:mcp tests/test_mcp_server.py -->
+<!-- verified: integration:mcp tests/trader_mcp/catalogue_policy/test_environment_and_registration.py -->
 ```bash
-uv run python -m trader_mcp.server --env-path local.env
+uv run python -m trader_mcp.runtime.server --env-path local.env
 ```
 
 The process speaks MCP over stdio. Do not write logs or prompts to stdout; stdout is transport-owned.

@@ -19,7 +19,7 @@ Backtest orchestration is handled by `BacktestRunner`.
 
 Primary entrypoints:
 
-<!-- verified: integration:postgres/provider tests/test_trader_service.py tests/test_runtime_status.py -->
+<!-- verified: integration:postgres/provider tests/trader/runtime/test_trader_service.py tests/trader/runtime/test_runtime_status.py -->
 ```bash
 uv run python examples/run_injected_backtest.py
 uv run python examples/run_library_backtest.py
@@ -58,7 +58,7 @@ Live orchestration is handled by `TraderService`.
 
 Primary entrypoints:
 
-<!-- verified: integration:postgres/provider tests/test_trader_service.py tests/test_runtime_status.py -->
+<!-- verified: integration:postgres/provider tests/trader/runtime/test_trader_service.py tests/trader/runtime/test_runtime_status.py -->
 ```bash
 uv run python examples/run_injected_trader_service.py
 uv run python examples/run_library_trader_service.py
@@ -100,7 +100,7 @@ also mean the current service favors safety over throughput.
 
 Operator commands are centralized in `run_operator.py`:
 
-<!-- verified: integration:postgres/provider tests/test_trader_service.py tests/test_runtime_status.py -->
+<!-- verified: integration:postgres/provider tests/trader/runtime/test_trader_service.py tests/trader/runtime/test_runtime_status.py -->
 ```bash
 uv run python run_operator.py configs/example.yaml status --json
 uv run python run_operator.py configs/example.yaml health --json

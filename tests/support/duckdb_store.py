@@ -1,4 +1,13 @@
-"""DuckDB-backed event store for tests only."""
+"""Shared in-process implementation of the core event-store contract for tests.
+
+Subject: Deterministic event, runtime, portfolio, and experiment persistence without an external database.
+Level: Shared test infrastructure.
+Collaborators: The core ``EventStore`` interface and DuckDB's in-process connection.
+Guarantees: Multiple package owners exercise the same SQL-shaped persistence behavior in isolated files.
+Non-goals: Postgres compatibility qualification, concurrency guarantees, migration testing, or production use.
+Cohesion rationale: The implementation is intentionally one complete ``EventStore`` test double; splitting its
+schema and methods would obscure the interface-wide state transitions that its cross-package consumers depend on.
+"""
 
 from __future__ import annotations
 

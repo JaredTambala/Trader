@@ -18,8 +18,9 @@ prove security or recovery.
 
 The implementation passes its focused scripted, security, isolation, observation, persistence, and recovery checks.
 The active LFM profile selected Data correctly for equivalent readiness briefs but returned executable work for a brief
-with material ambiguity. The combined coordinator model gate therefore failed; dependent model tests and the broader
-campaign were not promoted. No fallback or post-hoc output rewrite counts as acceptance.
+with material ambiguity. A later diagnostic execution of the still-gated Data contract failed twice at strict
+turn-schema validation before any MCP call. The combined model gate therefore remains failed and the broader campaign
+was not promoted. No fallback or post-hoc output rewrite counts as acceptance.
 
 The canonical current statement is in [Product State](../../../docs/product_state.md). When qualification resumes, all
 mandatory phases must run against the same clean revision, exact model digest, isolated Postgres profile, tool catalogue,

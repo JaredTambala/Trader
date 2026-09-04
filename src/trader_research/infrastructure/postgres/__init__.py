@@ -9,5 +9,10 @@ from .artifact_store import (
     RESEARCH_ARTIFACT_SCHEMA_STATEMENTS,
     PostgresResearchArtifactStore,
 )
+from .knowledge import PostgresKnowledgeStore
 
-__all__ = ["RESEARCH_ARTIFACT_SCHEMA_STATEMENTS", "PostgresResearchArtifactStore"]
+__all__ = [
+    "RESEARCH_ARTIFACT_SCHEMA_STATEMENTS",
+    "PostgresKnowledgeStore",
+    "PostgresResearchArtifactStore",
+]

@@ -14,6 +14,7 @@ Use the existing documentation as the source of truth:
 - Product and setup overview: [README.md](README.md)
 - Documentation index: [docs/README.md](docs/README.md)
 - Cross-package architecture: [docs/system_architecture.md](docs/system_architecture.md)
+- Repository and test ownership: [docs/test_architecture.md](docs/test_architecture.md)
 - Current product state: [docs/product_state.md](docs/product_state.md)
 - Package documentation: the owning package's `README.md` and `docs/` directory under `src/`
 - Target model-backed agent designs: [plans/agent_designs.md](plans/agent_designs.md)
@@ -161,9 +162,15 @@ Apply [docs/python_code_quality.md](docs/python_code_quality.md) to all Python c
 
 Use the narrowest checks that prove the change, then broaden when shared surfaces are touched.
 
-- Documentation changes: run `uv run pytest tests/test_package_documentation.py tests/test_research_agent_docs.py -q`.
-- Notebook changes: also run `uv run pytest tests/test_documentation_notebooks.py -q`.
-- Packaging changes: build to a temporary directory and run `tests/support/verify_wheel_documentation.py` against the
+- Place new tests under `tests/<owning-package>/<bounded-context>/`. Use `tests/cross_package/` only when the package
+  seam, complete workflow, documentation distribution, or release qualification is itself the subject. External
+  execution requirements belong in markers and explicit module names, not directory axes.
+- New and migrated test modules must follow [docs/test_architecture.md](docs/test_architecture.md): document subject,
+  level, collaborator reality, guarantees, and non-goals; give every test a contract-focused docstring; and record a
+  cohesion rationale when a module exceeds the review threshold.
+- Documentation changes: run `uv run pytest tests/cross_package/documentation/test_package_documentation.py tests/cross_package/documentation/test_agent_orchestration_docs.py tests/cross_package/documentation/test_controlled_qualification_docs.py tests/cross_package/documentation/test_research_capability_docs.py tests/cross_package/documentation/test_research_roadmap_docs.py -q`.
+- Notebook changes: also run `uv run pytest tests/cross_package/documentation/test_tutorial_notebooks.py -q`.
+- Packaging changes: build to a temporary directory and run `tests/cross_package/documentation/support/verify_wheel_documentation.py` against the
   wheel.
 - Python changes: run targeted tests for the changed behavior and `uv run ruff check` on touched Python paths.
 - Shared contracts, MCP registration, agent identity, persistence, or package-boundary changes: run the relevant targeted

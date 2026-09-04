@@ -83,7 +83,7 @@ The project has an event-sourced storage foundation with append-only execution r
 - Event-store implementation: `src/trader/data.py`
 - DuckDB test support: `tests/support/duckdb_store.py`
 - Schema docs: `docs/schema.md`, `docs/er.md`
-- Tests: `tests/test_data.py`
+- Tests: `tests/trader/event_store/test_duckdb_event_store.py`
 
 ### Remaining gaps
 - None for Phase 1 foundation, but historical wording in older docs had drifted and is corrected by this refactor.
@@ -109,7 +109,7 @@ Run sessions, cycles, and client order IDs are deterministic enough to support i
 ### Evidence
 - Identifiers: `src/trader/identifiers.py`
 - Cycle/run-session usage: `src/trader/cycle.py`, `src/trader/trader_service.py`, `src/trader/backtest.py`
-- Tests: `tests/test_identifiers.py`, `tests/test_cycle.py`, `tests/test_data.py`, `tests/test_alpaca_broker.py`
+- Tests: `tests/trader/identifiers/test_identifiers.py`, `tests/trader/cycle/test_pipeline.py`, `tests/trader/event_store/test_duckdb_event_store.py`, `tests/trader/broker/test_alpaca_broker.py`
 
 ---
 
@@ -135,7 +135,7 @@ The engine can ingest Alpaca market data, persist bars, replay stored bars, and 
 - Backfill: `src/trader/market_data_backfill.py`
 - Replay: `src/trader/market_data_replay.py`
 - Data quality: `src/trader/data_quality.py`
-- Tests: `tests/test_market_data.py`, `tests/test_market_data_stream.py`, `tests/test_market_data_backfill.py`
+- Tests: `tests/trader/market_data/test_ingestion.py`, `tests/trader/market_data/test_stream_adapter.py`, `tests/trader/market_data/test_backfill.py`
 
 ---
 
@@ -175,7 +175,7 @@ The runtime system is Postgres-first, with schema creation, runtime writes, and 
 - Event store: `src/trader/data.py`
 - Local runtime infra: `docker-compose.postgres.yml`
 - Runtime integrations: `src/trader/cycle.py`, `src/trader/trader_service.py`, `src/trader/market_data_stream.py`, `src/trader/market_data_backfill.py`
-- Tests: `tests/test_market_data.py`, `tests/test_data.py`
+- Tests: `tests/trader/market_data/test_ingestion.py`, `tests/trader/event_store/test_duckdb_event_store.py`
 
 ---
 
@@ -202,7 +202,7 @@ The system has a working strategy/backtest foundation, including signal generati
 - Signals/indicators: `src/trader/signals/`, `src/trader/indicators/`, `src/trader/signal_generators/`
 - Backtest: `src/trader/backtest.py`
 - Portfolio: `src/trader/portfolio.py`
-- Tests: `tests/test_backtest.py`, `tests/test_portfolio.py`, `tests/test_cycle.py`, `tests/test_strategy_sma.py`
+- Tests: `tests/trader/backtest/test_backtest.py`, `tests/trader/portfolio/test_portfolio.py`, `tests/trader/cycle/test_pipeline.py`, `tests/trader_standard/strategies/test_strategy_sma.py`
 
 ### Notes
 - Earlier built-in strategy selection and class-path-first language is historical. The current Phase 1 strategy model is direct injection only.
@@ -227,7 +227,7 @@ The repo contains an internal execution simulator aligned with the event-sourced
 - Broker implementation: `src/trader/broker.py`
 - Cycle integration: `src/trader/cycle.py`
 - Metrics: `src/trader/metrics.py`
-- Tests: `tests/test_cycle_events.py`, `tests/test_backtest.py`, `tests/test_data.py`
+- Tests: `tests/trader/cycle/test_event_persistence.py`, `tests/trader/cycle/test_order_recording.py`, `tests/trader/backtest/test_backtest.py`, `tests/trader/event_store/test_duckdb_event_store.py`
 
 ### Remaining gaps
 - Richer stochastic fill realism is explicitly deferred to Task 0.8c.
@@ -254,7 +254,7 @@ The live paper broker path exists and supports deterministic client order IDs, A
 ### Evidence
 - Broker: `src/trader/broker.py`
 - Cycle/runtime integration: `src/trader/cycle.py`, `src/trader/trader_service.py`
-- Tests: `tests/test_alpaca_broker.py`
+- Tests: `tests/trader/broker/test_alpaca_broker.py`
 - Docs: `docs/execution.md`, `README.md`
 
 ---
@@ -270,7 +270,7 @@ This is frontend/interface work. It exists in the repo, but it is not part of th
 ### Evidence
 - Backend API: `src/trader/api.py`
 - UI pages/state: `src/ui/ui/pages/backtest.py`, `src/ui/ui/pages/backtest_result.py`, `src/ui/ui/state.py`
-- Tests: `tests/test_backtest_api.py`
+- Tests: `tests/trader/backtest/test_backtest_api.py`
 
 ### Related plan
 - Historical plan: `git show 39106fc:plans/task_0_8b_breakdown.md`
@@ -384,7 +384,7 @@ Risk is now a standalone pipeline that filters candidate orders using a rich run
 - Risk layer: `src/trader/risk.py`
 - Cycle integration: `src/trader/cycle.py`
 - Runtime integration: `src/trader/trader_service.py`, `src/trader/backtest.py`
-- Tests: `tests/test_risk_manager.py`, `tests/test_cycle.py`, `tests/test_market_data.py`
+- Tests: `tests/trader_standard/risk/test_risk_manager.py`, `tests/trader/cycle/test_pipeline.py`, `tests/trader/market_data/test_ingestion.py`
 
 ---
 
@@ -407,7 +407,7 @@ The runtime orchestrator exists and supports loop/once/realtime execution, LISTE
 - Runtime service: `src/trader/trader_service.py`
 - Cycle engine: `src/trader/cycle.py`
 - Replay: `src/trader/market_data_replay.py`
-- Tests: `tests/test_trader_service.py`, `tests/test_cycle.py`, `tests/test_backtest.py`
+- Tests: `tests/trader/runtime/test_trader_service.py`, `tests/trader/cycle/test_pipeline.py`, `tests/trader/backtest/test_backtest.py`
 
 ---
 

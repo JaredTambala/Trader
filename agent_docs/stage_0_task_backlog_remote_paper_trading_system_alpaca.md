@@ -354,7 +354,7 @@ Repo evidence:
 - `src/trader/api.py`
 - `src/ui/ui/pages/backtest.py`
 - `src/ui/ui/pages/backtest_result.py`
-- `tests/test_backtest_api.py`
+- `tests/trader/backtest/test_backtest_api.py`
 
 Related plan:
 - Historical plan: `git show 39106fc:plans/task_0_8b_breakdown.md`

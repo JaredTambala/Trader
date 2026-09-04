@@ -30,6 +30,21 @@ whether a retry is safe.
 infrastructure layer is the canonical runtime adapter. `UnavailableResearchArtifactStore` makes an absent dependency
 explicit and prevents accidental fallback to memory in a production workflow.
 
+Knowledge services accept the `KnowledgeStore` port from `trader_research.knowledge`. Runtime composition uses the
+concrete adapter from the outer infrastructure package:
+
+<!-- verified: doctest -->
+```pycon
+>>> from trader_research.infrastructure.postgres import PostgresKnowledgeStore
+>>> PostgresKnowledgeStore.__name__
+'PostgresKnowledgeStore'
+```
+
+Constructing this adapter opens a Postgres connection and may initialize the knowledge schema and pgvector extension;
+the executable example therefore verifies the import boundary without constructing it. Inject the adapter into
+knowledge services or the MCP composition root and close it with the owning process. Do not import it from
+`trader_research.knowledge` or `trader`.
+
 ## Provider choices
 
 Provider adapters are optional and injected. Alpaca symbol discovery/data loading, embedding providers, Optuna, and

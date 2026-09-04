@@ -32,6 +32,7 @@ output-free and executed in temporary copies during documentation tests.
 ## Cross-package documentation
 
 - [System architecture](system_architecture.md)
+- [Repository and test architecture](test_architecture.md)
 - [Product state](product_state.md)
 - [Environment and local services](environment.md)
 - [Getting started workflow](workflows/getting_started.md)

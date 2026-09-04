@@ -7,9 +7,14 @@
 session is an immutable `trader_research.governance.ResearchSession`, normally loaded through its canonical MCP
 reference rather than constructed ad hoc.
 
+Application callers should import stable public types and lifecycle functions from `trader_agents`. Contributors who
+need an internal extension seam should use its canonical responsibility path—for example,
+`trader_agents.model_runtime.client.LlmClient` or `trader_agents.mcp.client.McpToolClient`. Flat implementation-module
+imports are intentionally unsupported; source moves do not leave aliases behind.
+
 ## CLI
 
-<!-- verified: offline-shell tests/test_package_documentation.py::test_declared_shell_examples -->
+<!-- verified: offline-shell tests/cross_package/documentation/test_package_documentation.py::test_declared_shell_examples -->
 ```bash
 trader-agent --log-level INFO --log-format human --help
 ```

@@ -91,7 +91,9 @@ class FeatureBatch:
             unknown = set(row.values).difference(names)
             missing = set(names).difference(row.values)
             if unknown:
-                raise ValueError(f"feature row contains unknown columns: {sorted(unknown)}")
+                raise ValueError(
+                    f"feature row contains unknown columns: {sorted(unknown)}"
+                )
             if missing:
                 raise ValueError(f"feature row is missing columns: {sorted(missing)}")
             for column in self.schema:
@@ -99,7 +101,9 @@ class FeatureBatch:
                     raise ValueError(f"feature {column.name} is not nullable")
         expected = _feature_batch_hash(self.identity_payload())
         if self.input_hash != expected:
-            raise ValueError("feature batch input_hash does not match canonical content")
+            raise ValueError(
+                "feature batch input_hash does not match canonical content"
+            )
 
     @classmethod
     def build(
@@ -171,6 +175,52 @@ class FeatureBatch:
 
 
 @dataclass(frozen=True)
+class InferenceAdapterProfile:
+    """Credential-free identity and runtime capabilities of an inference adapter.
+
+    Attributes:
+        profile_name: Stable configuration name used to select the adapter.
+        provider: Provider or adapter family, such as ``mlflow``.
+        adapter_version: Adapter and provider implementation identity.
+        configuration_digest: Non-secret digest of material adapter configuration.
+        capabilities: Declared bounded capabilities supported by the adapter.
+        available: Whether required runtime dependencies are currently available.
+        reason: Actionable explanation when the adapter is unavailable.
+    """
+
+    profile_name: str
+    provider: str
+    adapter_version: str
+    configuration_digest: str
+    capabilities: tuple[str, ...]
+    available: bool
+    reason: str | None = None
+
+    def __post_init__(self) -> None:
+        """Require a complete immutable adapter identity."""
+        for name in (
+            "profile_name",
+            "provider",
+            "adapter_version",
+            "configuration_digest",
+        ):
+            if not str(getattr(self, name)).strip():
+                raise ValueError(f"inference adapter {name} is required")
+
+    def to_dict(self) -> dict[str, object]:
+        """Return the stable non-secret adapter profile payload."""
+        return {
+            "profile_name": self.profile_name,
+            "provider": self.provider,
+            "adapter_version": self.adapter_version,
+            "configuration_digest": self.configuration_digest,
+            "capabilities": list(self.capabilities),
+            "available": self.available,
+            "reason": self.reason,
+        }
+
+
+@dataclass(frozen=True)
 class ModelIdentity:
     """Immutable identity of the model used for one prediction."""
 
@@ -217,7 +267,9 @@ class PredictionRequest:
         """Reject incomplete or unbounded requests."""
         if not self.run_id.strip() or not self.cycle_id.strip():
             raise ValueError("prediction run_id and cycle_id are required")
-        if not self.requested_outputs or any(not item.strip() for item in self.requested_outputs):
+        if not self.requested_outputs or any(
+            not item.strip() for item in self.requested_outputs
+        ):
             raise ValueError("at least one requested prediction output is required")
         if len(set(self.requested_outputs)) != len(self.requested_outputs):
             raise ValueError("requested prediction outputs must be unique")
@@ -240,8 +292,14 @@ class PredictionObservation:
 
     def __post_init__(self) -> None:
         """Validate the output without imposing a closed methodology vocabulary."""
-        if not self.output_name.strip() or not self.semantics.strip() or not self.horizon.strip():
-            raise ValueError("prediction output_name, semantics, and horizon are required")
+        if (
+            not self.output_name.strip()
+            or not self.semantics.strip()
+            or not self.horizon.strip()
+        ):
+            raise ValueError(
+                "prediction output_name, semantics, and horizon are required"
+            )
         object.__setattr__(self, "symbol", _optional_symbol(self.symbol))
         _json_value(self.value, "prediction value")
         _json_value(self.uncertainty, "prediction uncertainty")
@@ -286,11 +344,15 @@ class PredictionBatch:
             raise ValueError("prediction latency_ms must be finite and non-negative")
         keys = [(item.symbol, item.output_name) for item in self.observations]
         if len(set(keys)) != len(keys):
-            raise ValueError("prediction observations must be unique by symbol and output")
+            raise ValueError(
+                "prediction observations must be unique by symbol and output"
+            )
         if self.status == "success" and not self.observations:
             raise ValueError("successful prediction batches require observations")
         if self.status != "success" and self.observations:
-            raise ValueError("non-success prediction batches cannot contain observations")
+            raise ValueError(
+                "non-success prediction batches cannot contain observations"
+            )
         _json_value(dict(self.coverage), "prediction coverage")
 
     def to_dict(self) -> dict[str, object]:
@@ -323,13 +385,26 @@ class InferencePolicy:
         if isinstance(self.timeout_ms, bool) or not 1 <= self.timeout_ms <= 300_000:
             raise ValueError("inference timeout_ms must be between 1 and 300000")
         if self.failure_action not in FAILURE_ACTIONS:
-            raise ValueError(f"unsupported inference failure_action: {self.failure_action}")
+            raise ValueError(
+                f"unsupported inference failure_action: {self.failure_action}"
+            )
         if self.max_feature_age_seconds is not None:
-            if not math.isfinite(float(self.max_feature_age_seconds)) or self.max_feature_age_seconds < 0:
-                raise ValueError("max_feature_age_seconds must be finite and non-negative")
-        if self.failure_action == "validated_fallback" and not str(self.fallback_ref or "").strip():
+            if (
+                not math.isfinite(float(self.max_feature_age_seconds))
+                or self.max_feature_age_seconds < 0
+            ):
+                raise ValueError(
+                    "max_feature_age_seconds must be finite and non-negative"
+                )
+        if (
+            self.failure_action == "validated_fallback"
+            and not str(self.fallback_ref or "").strip()
+        ):
             raise ValueError("validated_fallback requires fallback_ref")
-        if self.failure_action != "validated_fallback" and self.fallback_ref is not None:
+        if (
+            self.failure_action != "validated_fallback"
+            and self.fallback_ref is not None
+        ):
             raise ValueError("fallback_ref is only valid for validated_fallback")
 
     def to_dict(self) -> dict[str, object]:
@@ -365,7 +440,9 @@ class StrategyPrediction:
 def canonical_json_hash(value: object) -> str:
     """Return a deterministic SHA-256 digest for JSON-compatible content."""
     return hashlib.sha256(
-        json.dumps(_jsonable(value), sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+        json.dumps(
+            _jsonable(value), sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")
     ).hexdigest()
 
 
@@ -390,7 +467,9 @@ def _utc(value: datetime) -> datetime:
 
 def _json_value(value: object, label: str) -> None:
     try:
-        json.dumps(_jsonable(value), sort_keys=True, separators=(",", ":"), allow_nan=False)
+        json.dumps(
+            _jsonable(value), sort_keys=True, separators=(",", ":"), allow_nan=False
+        )
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{label} must be finite JSON-compatible content") from exc
 
@@ -400,7 +479,9 @@ def _jsonable(value: object) -> Any:
         return _utc(value).isoformat()
     if isinstance(value, MappingABC):
         return {str(key): _jsonable(inner) for key, inner in value.items()}
-    if isinstance(value, SequenceABC) and not isinstance(value, (str, bytes, bytearray)):
+    if isinstance(value, SequenceABC) and not isinstance(
+        value, (str, bytes, bytearray)
+    ):
         return [_jsonable(item) for item in value]
     if isinstance(value, float) and not math.isfinite(value):
         raise ValueError("non-finite numeric values are not JSON-compatible")

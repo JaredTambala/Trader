@@ -247,7 +247,7 @@ the session's scope, side-effect, mutation, and budget policy before the MCP cal
 | `research_register_risk_manager_implementation` | Strategy Engineering caller, Experiments authority; canonical local mutation; accepted package/build lineage and mutation budget required. General callers select exactly one of complete `source_code` or `candidate_package_id`; Strategy Engineering policy permits only its exact package ID. | Same deterministic retained-package resolution and content-addressed replay contract as Strategy registration. | Source-free Strategy-facing risk implementation result and canonical ref; selector, package, schema, source, or store conflict; risk-build variants. |
 | `research_validate_risk_manager_implementation` | Independent deterministic admission called by Strategy Engineering; canonical local mutation; exact version required. | Exact implementation/source/fixture validation replays to the same report identity. | Passed/failed admission report and actionable findings; source/runtime/contract failure; risk-build variants. |
 
-The versioned fixture `tests/fixtures/agentic_slice_scenarios.json` is the qualification source for the named cases in
+The versioned fixture `tests/trader_agents/contracts_state/fixtures/agentic_slice_scenarios.json` is the qualification source for the named cases in
 the final column. The inventory intentionally exposes judgment-sized operations: deterministic services still own
 mutation and admission, while the models retain the meaningful choices about investigation, comparison, authorship,
 revision, and evidence sufficiency.

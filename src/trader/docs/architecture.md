@@ -27,6 +27,10 @@ The active system is therefore defined around:
 
 The runtime is **Postgres-first**.
 
+Postgres-first does not mean every Postgres schema belongs to core. Research knowledge sources, evidence units,
+embeddings, ingestion reports, and method-card records are owned by `trader_research.infrastructure`; `trader` neither
+defines nor exports that research persistence surface.
+
 ## System Principles
 
 ### Safety First
@@ -146,8 +150,10 @@ stream cycle paths.
 Core model inference lives in `trader.predictions` as provider-neutral contracts. A `FeatureProvider` produces a
 point-in-time, content-hashed `FeatureBatch`; a `Predictor` produces typed raw `PredictionObservation` records under an
 immutable `ModelIdentity`; and a strategy-owned `PredictionMapper` converts those outputs into strategy inputs. The
-model cannot emit orders directly. Optional MLflow loading and maintained feature/mapper/strategy implementations live
-outside core in `trader_mlflow` and `trader_standard` respectively.
+model cannot emit orders directly. `InferenceAdapterProfile` supplies the credential-free provider, version,
+configuration-digest, capability, and availability contract used to select an adapter without importing it. Optional
+MLflow loading and maintained feature/mapper/strategy implementations live outside core in `trader_mlflow` and
+`trader_standard` respectively.
 
 ### 4. Risk Layer
 

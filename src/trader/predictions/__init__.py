@@ -7,6 +7,7 @@ from .domain import (
     FeatureBatch,
     FeatureColumn,
     FeatureRow,
+    InferenceAdapterProfile,
     InferencePolicy,
     ModelIdentity,
     PredictionBatch,
@@ -15,7 +16,12 @@ from .domain import (
     StrategyPrediction,
     canonical_json_hash,
 )
-from .protocols import FeatureProvider, PredictionMapper, Predictor, ValidatedPredictionFallback
+from .protocols import (
+    FeatureProvider,
+    PredictionMapper,
+    Predictor,
+    ValidatedPredictionFallback,
+)
 from .runtime import (
     PredictionDecision,
     PredictionRuntimeError,
@@ -31,6 +37,7 @@ __all__ = [
     "FeatureColumn",
     "FeatureProvider",
     "FeatureRow",
+    "InferenceAdapterProfile",
     "InferencePolicy",
     "ModelIdentity",
     "PredictionBatch",

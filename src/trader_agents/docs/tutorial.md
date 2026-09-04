@@ -69,7 +69,7 @@ fixed phase sequence beyond the safety and evidence invariants described in [Arc
 The CLI is an integration surface requiring local Ollama, the stdio MCP server configuration, checkpoint Postgres, and
 canonical research Postgres. MLflow tracing is optional when explicitly configured.
 
-<!-- verified: offline-shell tests/test_package_documentation.py::test_declared_shell_examples -->
+<!-- verified: offline-shell tests/cross_package/documentation/test_package_documentation.py::test_declared_shell_examples -->
 ```bash
 trader-agent --log-level INFO --log-format human --help
 ```

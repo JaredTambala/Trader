@@ -6,10 +6,12 @@
   predictor from an immutable manifest.
 - `MLflowPyfuncPredictor(model, dataframe_factory, identity, output_contract)`: adapts one already-loaded pyfunc-like
   object to the core predictor protocol.
+- `InferenceAdapterProfile` is the return type of `profile()` and is imported from `trader.predictions`; this package
+  does not obtain it through the research package.
 
 ## Optional dependency
 
-<!-- verified: integration:mlflow tests/test_mlflow_inference_adapter.py -->
+<!-- verified: integration:mlflow tests/cross_package/workflows/test_mlflow_inference_adapter.py -->
 ```bash
 uv sync --extra ml
 ```

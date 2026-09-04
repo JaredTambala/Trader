@@ -168,7 +168,7 @@ Annualization uses a calendar year (365 days) and the configured `timeframe`.
 
 ## Running a backtest
 
-<!-- verified: integration:postgres tests/test_backtest.py tests/test_backtest_api.py -->
+<!-- verified: integration:postgres tests/trader/backtest/test_backtest.py tests/trader/backtest/test_backtest_api.py -->
 ```bash
 uv run python examples/run_injected_backtest.py
 uv run python examples/run_library_backtest.py
@@ -176,7 +176,7 @@ uv run python examples/run_library_backtest.py
 
 To exercise the checked-in deterministic sample workflow:
 
-<!-- verified: integration:postgres tests/test_backtest.py tests/test_backtest_api.py -->
+<!-- verified: integration:postgres tests/trader/backtest/test_backtest.py tests/trader/backtest/test_backtest_api.py -->
 ```bash
 docker compose -f docker-compose.postgres.yml up -d
 uv run python examples/load_sample_market_data.py

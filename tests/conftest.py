@@ -1,3 +1,12 @@
+"""Shared guarded-Postgres fixtures for package and cross-package test owners.
+
+Subject: Repository-wide creation and cleanup of isolated verification stores and connections.
+Level: Shared test infrastructure.
+Collaborators: Core and research Postgres adapters plus the verification safety policy.
+Guarantees: Destructive setup targets only the marked test database and retained phases are not truncated.
+Non-goals: Package-specific fixtures, production database provisioning, or implicit operator credentials.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -6,10 +15,12 @@ import pytest
 import psycopg
 
 from trader.event_store import PostgresEventStore
-from trader_research.knowledge.postgres_store import PostgresKnowledgeStore
+from trader_research.infrastructure.postgres import (
+    PostgresKnowledgeStore,
+    PostgresResearchArtifactStore,
+)
 from trader_research.knowledge.store import KnowledgeVectorExtensionUnavailable
-from trader_research.infrastructure.postgres import PostgresResearchArtifactStore
-from tests.support.postgres_verification import (
+from tests.cross_package.qualification.support.postgres_verification import (
     VerificationConfigurationError,
     assert_connection_targets_verification_database,
     assert_verification_database,
@@ -69,8 +80,7 @@ def _truncate_knowledge_tables(
             knowledge_chunks,
             knowledge_sources,
             knowledge_method_cards,
-            knowledge_method_card_sets,
-            knowledge_method_contracts
+            knowledge_method_card_sets
         CASCADE
         """
     )
@@ -121,6 +131,7 @@ def _truncate_research_artifact_tables(
 
 @pytest.fixture
 def postgres_settings() -> dict[str, object]:
+    """Return verified test settings or skip when the guarded profile is absent."""
     settings = _postgres_settings_from_env()
     if settings is None:
         pytest.skip(
@@ -139,6 +150,7 @@ def postgres_settings() -> dict[str, object]:
 def postgres_event_store(
     postgres_settings: dict[str, object],
 ) -> Iterator[PostgresEventStore]:
+    """Yield an isolated core event store with phase-aware cleanup."""
     store = PostgresEventStore(**postgres_settings)
     if not retain_verification_evidence():
         _truncate_runtime_tables(store, postgres_settings)
@@ -151,7 +163,10 @@ def postgres_event_store(
 
 
 @pytest.fixture
-def postgres_listener_connection(postgres_settings: dict[str, object]) -> Iterator[psycopg.Connection]:
+def postgres_listener_connection(
+    postgres_settings: dict[str, object],
+) -> Iterator[psycopg.Connection]:
+    """Yield an autocommit listener connection to the verified test database."""
     connection = psycopg.connect(**postgres_settings)
     connection.autocommit = True
     try:
@@ -164,6 +179,7 @@ def postgres_listener_connection(postgres_settings: dict[str, object]) -> Iterat
 def postgres_knowledge_store(
     postgres_settings: dict[str, object],
 ) -> Iterator[PostgresKnowledgeStore]:
+    """Yield a clean knowledge store when the vector extension is available."""
     try:
         store = PostgresKnowledgeStore(**postgres_settings)
     except KnowledgeVectorExtensionUnavailable as exc:
@@ -180,6 +196,7 @@ def postgres_knowledge_store(
 def postgres_research_artifact_store(
     postgres_settings: dict[str, object],
 ) -> Iterator[PostgresResearchArtifactStore]:
+    """Yield an isolated artifact store while preserving retained qualification evidence."""
     store = PostgresResearchArtifactStore(**postgres_settings)
     if not retain_verification_evidence():
         _truncate_research_artifact_tables(store, postgres_settings)

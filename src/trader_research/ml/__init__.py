@@ -8,7 +8,7 @@ current package facade.
 
 from trader_research.foundation import PredictionDeploymentReader
 
-from .adapters import InferenceAdapter, InferenceAdapterProfile, InferenceAdapterRegistry
+from .adapters import InferenceAdapter, InferenceAdapterRegistry
 from .deployment import (
     ArtifactPredictionDeploymentReader,
     create_deployment_manifest,
@@ -21,7 +21,6 @@ __all__ = [
     "ArtifactPredictionDeploymentReader",
     "ArtifactPredictionRuntimeResolver",
     "InferenceAdapter",
-    "InferenceAdapterProfile",
     "InferenceAdapterRegistry",
     "PredictionDeploymentReader",
     "create_deployment_manifest",

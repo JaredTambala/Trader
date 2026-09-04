@@ -7,27 +7,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_DB: trader
-          POSTGRES_USER: trader
-          POSTGRES_PASSWORD: traderpass
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U trader -d trader"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    env:
-      PG_HOST: 127.0.0.1
-      PG_PORT: 5432
-      PG_DB: trader
-      PG_USER: trader
-      PG_PASSWORD: traderpass
 
     steps:
       - uses: actions/checkout@v4
@@ -47,11 +26,11 @@ jobs:
       - name: Mypy
         run: uv run mypy
 
-      - name: Pytest
-        run: uv run pytest
+      - name: Offline tests
+        run: uv run pytest -m 'not postgres'
 
       - name: Build distribution
         run: uv build --out-dir /tmp/trader-dist
 
       - name: Verify packaged documentation
-        run: uv run python tests/support/verify_wheel_documentation.py /tmp/trader-dist/*.whl
+        run: uv run python tests/cross_package/documentation/support/verify_wheel_documentation.py /tmp/trader-dist/*.whl

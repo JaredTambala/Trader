@@ -325,6 +325,19 @@ Canonical runtime state is Postgres-backed:
 - JSONB payloads preserve complete claim-span and synthesis lineage;
 - projections expose stable artifact IDs, statuses, source IDs, chunk IDs, and candidate/card lineage for pgAdmin.
 
+## Verification ownership
+
+Package-owned contracts live under `tests/trader_research/knowledge/`. Method-card lifecycle tests cover draft,
+publication, revision, retirement, and the approved-card read port. Candidate-interpretation tests are separated into
+discovery, evidence-packet assembly, field extraction and validation, and claim-span isolation so a failure identifies
+the affected knowledge stage. These suites are offline and use deterministic embeddings, local JSON stores, and
+in-memory artifact records; the separately named Postgres store suite owns the guarded persistence lifecycle.
+
+The inner context defines the `KnowledgeStore` port. Production composition imports its concrete Postgres adapter as
+`trader_research.infrastructure.postgres.PostgresKnowledgeStore`; the context facade does not re-export the adapter.
+The adapter owns the knowledge schema and row normalization and translates persistence failures into the context's
+stable error types.
+
 Successful Postgres ingestion publishes replacement evidence units, embeddings, and the ingestion report within one
 transaction. Failed embedding generation records a blocked attempt where possible without replacing the previous active
 evidence generation.
@@ -347,3 +360,13 @@ Semantic extraction changes require tests at increasing scope:
 Passing synthetic fixtures demonstrates contract behavior. Production readiness additionally requires representative
 real-source evidence, because PDF layout, formulas, headings, and multi-concept prose create failure modes that clean
 fixtures do not reproduce.
+
+The package-owned suite lives under `tests/trader_research/knowledge/`. Separate modules protect canonical domain
+values, runtime-configured embedding adapters, Postgres row/schema normalization, the local registration-to-citation
+workflow, JSON persistence and retrieval, and the real Postgres lifecycle. Offline adapter tests mock HTTP transport;
+they do not call OpenAI-compatible services. Filesystem workflows use temporary directories plus the checked-in SMA
+source, and PDF extraction uses a locally generated blank document.
+
+`test_postgres_store.py` is marked `postgres` and must pass against the guarded verification database with pgvector
+available. Its fixture truncates the context-specific knowledge tables before and after execution. A skip caused by
+missing connection settings or vector support is not qualification evidence.

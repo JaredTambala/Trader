@@ -26,6 +26,22 @@ scheduling, checkpoint, and budget detail. Human-readable and JSON-lines formats
 recursive redaction rules. Final CLI results remain JSON on `stdout`, and the child MCP processes reserve `stdout`
 exclusively for JSON-RPC.
 
+## Source layout
+
+The package tree expresses durable control responsibilities rather than development phases:
+
+- `application/` composes the runtime and owns the CLI lifecycle boundary.
+- `contracts/` defines public state, decisions, evidence references, and normalized session inputs.
+- `coordination/` owns the Coordinator graph and dependency-aware scheduler.
+- `specialists/` contains the Data Research and Strategy Engineering model/tool loops.
+- `model_runtime/` owns provider clients, admitted profiles, agent programs, and strict structured output.
+- `mcp/` owns the code-side catalogue, authorization policy, role-scoped execution, and transport client.
+- `checkpointing/` owns bounded LangGraph state plus the PostgreSQL saver adapter.
+- `observability/` owns semantic events, public projections, emission, console rendering, and trace sinks.
+
+Only `trader_agents.__init__` is a public convenience facade. The responsibility packages are canonical internal
+locations; the removed flat module paths are not compatibility entry points.
+
 ## Learning path
 
 1. Follow the [tutorial](docs/tutorial.md) for an offline inspection and the guarded runtime entrypoint.

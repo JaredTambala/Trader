@@ -34,3 +34,10 @@ Add a maintained implementation here when it is generally useful, has stable sem
 project. Bespoke research code belongs in an explicit candidate/workspace flow and must be admitted before execution.
 New implementations must declare metadata and parameters, test mathematical behavior, test runtime composition, and
 update the [catalogue](catalogue.md) plus [tutorial](tutorial.md) when they affect the normal learning path.
+
+## Verification ownership
+
+Package tests live under `tests/trader_standard/` by extension family: prediction mappers, risk managers, and
+strategies. A test remains owned here when core contracts are used to prove the behavior or composability of a
+maintained implementation. Tests whose subject is the core runtime, prediction protocol, or portfolio behavior live
+under `tests/trader/` even when a standard implementation is a convenient collaborator.

@@ -20,7 +20,12 @@ trader_standard -----> trader <----- trader_mlflow
 `trader` is the core dependency root. `trader_standard` implements its extension contracts. `trader_research` composes
 core and maintained behavior into deterministic evidence-producing services. `trader_mcp` adapts those services to a
 policy-aware protocol boundary. `trader_agents` reaches platform capabilities only through MCP. `trader_mlflow` bridges
-MLflow pyfunc inference into core prediction contracts and may be composed by research infrastructure.
+MLflow pyfunc inference into core prediction contracts and may be composed by research infrastructure. Its adapter
+profile is also core-owned, so `trader_mlflow` never imports `trader_research` merely to describe itself.
+
+The one deliberate outer dependency exception is `trader_mcp.runtime.composition`: it constructs the MCP process's
+concrete stores, providers, optional adapters, and maintained implementations. Protocol registration and capability
+adapters consume its typed dependency bundle and cannot import those concrete surfaces directly.
 
 ## State authorities
 
@@ -52,3 +57,13 @@ The agent path adds model interpretation and routing above role-scoped MCP tools
 
 For internal topology, use the owning package's architecture page. For what is currently implemented and qualified, use
 [Product State](product_state.md).
+
+## Repository And Test Ownership
+
+Source directories follow package ownership, then bounded context or control responsibility, then cohesive component.
+Tests follow the package and context whose behavior they assert; execution requirements such as Postgres and local
+models are markers rather than directory axes. Genuine dependency seams, system workflows, documentation validation,
+and release qualification live under the cross-package test boundary.
+
+The complete placement rules, narrative contract, dependency exceptions, and staged migration protocol are defined in
+[Repository and Test Architecture](test_architecture.md).

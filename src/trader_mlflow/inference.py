@@ -13,6 +13,7 @@ from trader.predictions import (
     FeatureBatch,
     FeatureColumn,
     FeatureRow,
+    InferenceAdapterProfile,
     ModelIdentity,
     PredictionBatch,
     PredictionObservation,
@@ -20,7 +21,6 @@ from trader.predictions import (
     Predictor,
     canonical_json_hash,
 )
-from trader_research.ml.adapters import InferenceAdapterProfile
 
 
 class MLflowLocalPyfuncAdapter:
@@ -36,13 +36,20 @@ class MLflowLocalPyfuncAdapter:
 
     def profile(self) -> InferenceAdapterProfile:
         """Return provider metadata without importing optional runtime packages."""
-        available = importlib.util.find_spec("mlflow") is not None and importlib.util.find_spec("pandas") is not None
+        available = (
+            importlib.util.find_spec("mlflow") is not None
+            and importlib.util.find_spec("pandas") is not None
+        )
         try:
-            provider_version = importlib.metadata.version("mlflow") if available else "unavailable"
+            provider_version = (
+                importlib.metadata.version("mlflow") if available else "unavailable"
+            )
         except importlib.metadata.PackageNotFoundError:
             provider_version = "unavailable"
             available = False
-        configuration_digest = f"sha256:{canonical_json_hash({'tracking_uri': self._tracking_uri})}"
+        configuration_digest = (
+            f"sha256:{canonical_json_hash({'tracking_uri': self._tracking_uri})}"
+        )
         return InferenceAdapterProfile(
             profile_name=self._profile_name,
             provider="mlflow",
@@ -53,11 +60,16 @@ class MLflowLocalPyfuncAdapter:
             reason=None if available else "MLflow and pandas are not installed",
         )
 
-    def validate_deployment(self, manifest: Mapping[str, object]) -> Mapping[str, object]:
+    def validate_deployment(
+        self, manifest: Mapping[str, object]
+    ) -> Mapping[str, object]:
         """Load the pinned model and compare actual outputs with the parity fixture."""
         predictor = self.build_predictor(manifest)
         feature_batch = _parity_feature_batch(manifest)
-        output_names = tuple(str(item["name"]) for item in _sequence_of_mappings(manifest["output_contract"]))
+        output_names = tuple(
+            str(item["name"])
+            for item in _sequence_of_mappings(manifest["output_contract"])
+        )
         policy = _mapping(manifest["inference_policy"], "inference_policy")
         batch = predictor.predict(
             PredictionRequest(
@@ -73,7 +85,11 @@ class MLflowLocalPyfuncAdapter:
         actual_digest = f"sha256:{canonical_json_hash(actual)}"
         expected_digest = str(fixture["expected_outputs_digest"])
         if batch.status != "success":
-            return {"status": "blocked", "blocker": batch.error or batch.status, "latency_ms": batch.latency_ms}
+            return {
+                "status": "blocked",
+                "blocker": batch.error or batch.status,
+                "latency_ms": batch.latency_ms,
+            }
         if actual_digest != expected_digest:
             return {
                 "status": "blocked",
@@ -93,9 +109,11 @@ class MLflowLocalPyfuncAdapter:
         """Load one pinned model; optional imports occur only at this boundary."""
         profile = self.profile()
         if not profile.available:
-            raise RuntimeError(profile.reason or "MLflow inference adapter is unavailable")
-        import mlflow  # type: ignore[import-not-found]
-        import pandas as pd  # type: ignore[import-not-found]
+            raise RuntimeError(
+                profile.reason or "MLflow inference adapter is unavailable"
+            )
+        import mlflow
+        import pandas as pd  # type: ignore[import-untyped]
 
         model_payload = _mapping(
             _mapping(manifest["model_version"], "model_version")["payload"],
@@ -149,7 +167,13 @@ class MLflowPyfuncPredictor:
             )
             latency_ms = (perf_counter() - started) * 1000.0
             if latency_ms > request.timeout_ms:
-                return _failed_batch(self.identity, request, "timeout", latency_ms, "inference timeout exceeded")
+                return _failed_batch(
+                    self.identity,
+                    request,
+                    "timeout",
+                    latency_ms,
+                    "inference timeout exceeded",
+                )
             return PredictionBatch(
                 model_identity=self.identity,
                 feature_batch_hash=request.feature_batch.input_hash,
@@ -215,15 +239,17 @@ def _model_identity(
     )
 
 
-def _prediction_records(raw: object, row_count: int, output_names: Sequence[str]) -> list[dict[str, object]]:
+def _prediction_records(
+    raw: object, row_count: int, output_names: Sequence[str]
+) -> list[dict[str, object]]:
     records: object
     if hasattr(raw, "to_dict"):
         try:
-            records = raw.to_dict(orient="records")  # type: ignore[call-arg,union-attr]
+            records = raw.to_dict(orient="records")
         except TypeError:
-            records = raw.to_dict()  # type: ignore[union-attr]
+            records = raw.to_dict()
     elif hasattr(raw, "tolist"):
-        records = raw.tolist()  # type: ignore[union-attr]
+        records = raw.tolist()
     else:
         records = raw
     if isinstance(records, MappingABC):
@@ -233,7 +259,9 @@ def _prediction_records(raw: object, row_count: int, output_names: Sequence[str]
     sequence = list(records)
     if sequence and not isinstance(sequence[0], (MappingABC, SequenceABC)):
         if len(output_names) != 1:
-            raise ValueError("scalar prediction output requires exactly one requested output")
+            raise ValueError(
+                "scalar prediction output requires exactly one requested output"
+            )
         sequence = [{output_names[0]: value} for value in sequence]
     normalized: list[dict[str, object]] = []
     for item in sequence:
@@ -243,7 +271,9 @@ def _prediction_records(raw: object, row_count: int, output_names: Sequence[str]
         if isinstance(item, SequenceABC) and not isinstance(item, (str, bytes)):
             values = list(item)
             if len(values) != len(output_names):
-                raise ValueError("prediction output width does not match requested outputs")
+                raise ValueError(
+                    "prediction output width does not match requested outputs"
+                )
             normalized.append(dict(zip(output_names, values, strict=True)))
             continue
         raise ValueError("unsupported MLflow prediction output shape")
@@ -252,18 +282,24 @@ def _prediction_records(raw: object, row_count: int, output_names: Sequence[str]
     return normalized
 
 
-def _records_from_columns(value: Mapping[object, object], row_count: int) -> list[dict[str, object]]:
-    rows = [dict() for _ in range(row_count)]
+def _records_from_columns(
+    value: Mapping[object, object], row_count: int
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = [dict() for _ in range(row_count)]
     for raw_name, raw_values in value.items():
         name = str(raw_name)
         if isinstance(raw_values, MappingABC):
             values = list(raw_values.values())
-        elif isinstance(raw_values, SequenceABC) and not isinstance(raw_values, (str, bytes)):
+        elif isinstance(raw_values, SequenceABC) and not isinstance(
+            raw_values, (str, bytes)
+        ):
             values = list(raw_values)
         else:
             values = [raw_values]
         if len(values) != row_count:
-            raise ValueError("prediction output column length does not match feature rows")
+            raise ValueError(
+                "prediction output column length does not match feature rows"
+            )
         for index, item in enumerate(values):
             rows[index][name] = item
     return rows
@@ -309,7 +345,10 @@ def _failed_batch(
         observations=(),
         status=status,
         latency_ms=latency_ms,
-        coverage={"requested_rows": len(request.feature_batch.rows), "returned_rows": 0},
+        coverage={
+            "requested_rows": len(request.feature_batch.rows),
+            "returned_rows": 0,
+        },
         error=error,
     )
 
