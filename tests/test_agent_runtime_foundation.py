@@ -23,6 +23,7 @@ from trader_agents import (
     AgentPhase,
     AgentRole,
     AgentEventEmitter,
+    AgentEventLevel,
     AgentEventName,
     AgenticResearchRuntime,
     AgenticSliceResult,
@@ -63,6 +64,7 @@ from trader_agents import (
     ToolPolicy,
     TraceCorrelation,
     agent_checkpoint_digest,
+    agent_console_config,
     build_agent_checkpoint_state,
     build_specialist_checkpoint_state,
     build_delegation,
@@ -2559,8 +2561,8 @@ def test_strategy_loop_stops_after_irreparable_equivalent_admissions() -> None:
     }
 
 
-def test_coordinator_graph_selects_data_only_and_verifies_its_return() -> None:
-    """One Data handoff concludes without invoking the unselected specialist."""
+def test_runtime_data_handoff_emits_correlated_observability_trajectory() -> None:
+    """One runtime Data handoff emits a complete correlated trajectory."""
     session = replace(
         _session(session_id="session-data-only"),
         objective="Establish whether the approved multi-asset Data scope is ready.",
@@ -2659,6 +2661,8 @@ def test_coordinator_graph_selects_data_only_and_verifies_its_return() -> None:
     data_client = StaticJsonLlmClient(data_responses)
     strategy_client = StaticJsonLlmClient(())
     catalogue = first_slice_tool_catalogue()
+    programs = first_slice_programs()
+    profiles = development_model_profiles()
     coordinator_mcp = _CoordinatorMcpClient(
         session_ref=session_ref,
         artifacts={
@@ -2670,7 +2674,12 @@ def test_coordinator_graph_selects_data_only_and_verifies_its_return() -> None:
     event_sink = RecordingObservabilityEventSink()
     event_emitter = AgentEventEmitter(
         sink=CompositeObservabilityEventSink(
-            (ConsoleObservabilityEventSink(), event_sink)
+            (
+                ConsoleObservabilityEventSink(
+                    config=agent_console_config(os.environ)
+                ),
+                event_sink,
+            )
         ),
         process_instance_id="foundation-process",
     )
@@ -2699,32 +2708,26 @@ def test_coordinator_graph_selects_data_only_and_verifies_its_return() -> None:
             event_emitter=event_emitter,
         ),
         tool_catalogue=catalogue,
-        programs=first_slice_programs(),
-        model_profiles=development_model_profiles(),
+        programs=programs,
+        model_profiles=profiles,
         event_emitter=event_emitter,
     )
-    initial = build_agent_checkpoint_state(
-        session_id=session.session_id,
-        session_digest=session.session_digest,
-        branch_id="root",
-        coordinator_program_id="research-coordinator-v7",
-        model_profile_id=session.model_profile_id,
-        tool_catalog_id=catalogue.catalogue_id,
-    )
-    graph = coordinator.build_graph(
-        session=session,
+    runtime = AgenticResearchRuntime(
+        coordinator=coordinator,
         checkpointer=InMemorySaver(),
+        tool_catalogue=catalogue,
+        programs=programs,
+        model_profiles=profiles,
+        event_emitter=event_emitter,
     )
 
-    async def _run() -> Any:
-        """Run the single-delegation graph to its terminal decision."""
-        return await graph.ainvoke(
-            initial,
-            coordinator_thread_config(session.session_id),
-        )
+    async def _run() -> AgenticSliceResult:
+        """Run the single-delegation session to its terminal decision."""
+        outcome = await runtime.start(session)
+        assert isinstance(outcome, AgenticSliceResult)
+        return outcome
 
-    output = anyio.run(_run)
-    result = AgenticSliceResult.model_validate(output["terminal_result"])
+    result = anyio.run(_run)
 
     assert result.status == "completed"
     assert result.data_return is not None
@@ -2742,8 +2745,10 @@ def test_coordinator_graph_selects_data_only_and_verifies_its_return() -> None:
     assert strategy_mcp.calls == []
     assert coordinator_mcp.read_calls == 2
     assert len(coordinator_mcp.decision_payloads) == 1
-    event_names = {event.name for event in event_sink.events}
+    events = event_sink.events
+    event_names = {event.name for event in events}
     assert {
+        AgentEventName.SESSION_STARTED,
         AgentEventName.AGENDA_ACCEPTED,
         AgentEventName.SCHEDULING_COMPLETED,
         AgentEventName.DELEGATION_STARTED,
@@ -2758,10 +2763,131 @@ def test_coordinator_graph_selects_data_only_and_verifies_its_return() -> None:
         AgentEventName.EVIDENCE_REVIEW_STARTED,
         AgentEventName.EVIDENCE_REVIEW_COMPLETED,
         AgentEventName.DECISION_COMMITTED,
+        AgentEventName.SESSION_COMPLETED,
     }.issubset(event_names)
-    assert [event.sequence for event in event_sink.events] == list(
-        range(1, len(event_sink.events) + 1)
+    assert [event.sequence for event in events] == list(
+        range(1, len(events) + 1)
     )
+    assert {event.correlation.session_id for event in events} == {
+        session.session_id
+    }
+    assert {event.correlation.process_instance_id for event in events} == {
+        "foundation-process"
+    }
+    assert {event.correlation.role for event in events} == {
+        AgentRole.RESEARCH_COORDINATOR.value,
+        AgentRole.DATA_RESEARCH.value,
+    }
+    assert not {event.level for event in events}.intersection(
+        {AgentEventLevel.WARNING, AgentEventLevel.ERROR}
+    )
+    assert {event.correlation.model_profile_id for event in events} == {
+        session.model_profile_id
+    }
+    assert {event.correlation.tool_catalog_id for event in events} == {
+        catalogue.catalogue_id
+    }
+    assert {
+        event.correlation.program_id
+        for event in events
+        if event.correlation.role == AgentRole.RESEARCH_COORDINATOR.value
+    } == {programs.for_role(AgentRole.RESEARCH_COORDINATOR).program_id}
+    assert {
+        event.correlation.program_id
+        for event in events
+        if event.correlation.role == AgentRole.DATA_RESEARCH.value
+    } == {programs.for_role(AgentRole.DATA_RESEARCH).program_id}
+
+    delegation_events = [
+        event for event in events if event.correlation.delegation_id is not None
+    ]
+    assert {event.correlation.delegation_id for event in delegation_events} == {
+        data_delegation.delegation_id
+    }
+    assert {event.correlation.attempt_id for event in delegation_events} == {
+        data_delegation.attempt_id
+    }
+
+    session_started = next(
+        event for event in events if event.name is AgentEventName.SESSION_STARTED
+    )
+    delegation_started = next(
+        event for event in events if event.name is AgentEventName.DELEGATION_STARTED
+    )
+    decision_committed = next(
+        event for event in events if event.name is AgentEventName.DECISION_COMMITTED
+    )
+    session_completed = next(
+        event for event in events if event.name is AgentEventName.SESSION_COMPLETED
+    )
+    assert session_started.fields == {
+        "lifecycle_operation": "start",
+        "recovered": False,
+    }
+    assert delegation_started.fields["task_id"] == agenda_task.task_id
+    assert delegation_started.fields["join_mode"] == "hard"
+    assert (
+        decision_committed.fields["receipt_ref"]
+        == result.decision_receipt_ref.uri
+    )
+    assert session_completed.fields["status"] == "completed"
+    assert (
+        session_completed.fields["decision_receipt_ref"]
+        == result.decision_receipt_ref.uri
+    )
+
+    def _position(
+        name: AgentEventName,
+        *,
+        role: AgentRole | None = None,
+    ) -> int:
+        """Return the first matching event position in the recorded stream."""
+        return next(
+            index
+            for index, event in enumerate(events)
+            if event.name is name
+            and (role is None or event.correlation.role == role.value)
+        )
+
+    milestone_positions = [
+        _position(AgentEventName.SESSION_STARTED),
+        _position(AgentEventName.AGENDA_ACCEPTED),
+        _position(AgentEventName.DELEGATION_STARTED),
+        _position(AgentEventName.SPECIALIST_RETURNED),
+        _position(AgentEventName.JOIN_COMPLETED),
+        _position(AgentEventName.SPECIALIST_RETURN_ACCEPTED),
+        _position(AgentEventName.EVIDENCE_REVIEW_STARTED),
+        _position(AgentEventName.EVIDENCE_REVIEW_COMPLETED),
+        _position(AgentEventName.DECISION_COMMITTED),
+        _position(
+            AgentEventName.CHECKPOINT_SAVED,
+            role=AgentRole.RESEARCH_COORDINATOR,
+        ),
+        _position(AgentEventName.SESSION_COMPLETED),
+    ]
+    assert milestone_positions == sorted(milestone_positions)
+
+    for started_name, completed_name in (
+        (
+            AgentEventName.MODEL_CALL_STARTED,
+            AgentEventName.MODEL_CALL_COMPLETED,
+        ),
+        (
+            AgentEventName.TOOL_EXECUTION_STARTED,
+            AgentEventName.TOOL_EXECUTION_COMPLETED,
+        ),
+    ):
+        started_events = [event for event in events if event.name is started_name]
+        completed_events = [
+            event for event in events if event.name is completed_name
+        ]
+        assert {
+            (event.correlation.role, event.correlation.call_id)
+            for event in started_events
+        } == {
+            (event.correlation.role, event.correlation.call_id)
+            for event in completed_events
+        }
 
 
 def test_coordinator_graph_parallel_joins_verifies_and_concludes() -> None:
