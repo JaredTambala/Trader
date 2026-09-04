@@ -7,7 +7,9 @@ This document covers local operation for the research MCP server and related ver
 Knowledge-base creation, retrieval, bounded methodology extraction, and Data Agent tools remain supported operational
 surfaces. Current work is not expanding semantic extraction beyond the implemented bounded-methodology baseline. Operational changes in these
 areas should be limited to data integrity, citation correctness, security, dependency maintenance, and regression fixes
-unless the tracker explicitly reactivates composite methodology work.
+unless the
+[Trader Development Roadmap](https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84) explicitly reactivates
+composite methodology work.
 
 The implementation-to-evidence, provider-neutral parameter-optimisation, and ML deployment/runtime tools are now
 registered. ML feature/training/evaluation/registry/monitoring and broader robustness work remain planned. Use
@@ -65,6 +67,8 @@ configuration. Runtime failures belong inside the affected tool envelope.
 | `TRADER_AGENTS_MCP_ARGS` | `-m trader_mcp.server` | Arguments for each MCP stdio server. |
 | `TRADER_AGENTS_MCP_CWD` | current directory | Working directory for MCP server processes. |
 | `TRADER_AGENTS_MCP_TIMEOUT_SECONDS` | `180` | Per-call MCP transport timeout. |
+| `TRADER_AGENTS_LOG_LEVEL` | `INFO` | `INFO` operator narrative or `DEBUG` diagnostic event detail on agent `stderr`. |
+| `TRADER_AGENTS_LOG_FORMAT` | `human` | Human-readable lines or exact `json` event lines on agent `stderr`. |
 | `TRADER_AGENTS_MLFLOW_TRACKING_URI` | empty | Optional MLflow tracking URI for redacted agent traces; no trace sink is used when empty. |
 | `TRADER_AGENTS_MLFLOW_EXPERIMENT` | `trader-agentic-research` | MLflow experiment for agent trace correlation. |
 | `TRADER_MLFLOW_INFERENCE_PROFILE` | `mlflow_local_pyfunc` | Names the configured immutable local-pyfunc adapter profile. |
@@ -170,6 +174,20 @@ uv run trader-agent run --session /absolute/path/to/session.json --setup-checkpo
 either prints a grounded `AgenticSliceResult` or an `OperatorInterrupt`. A later invocation with the exact same session
 identity recovers the existing checkpoint instead of creating a second research lineage. Inspect only the redacted
 public projection with:
+
+The final result is written to `stdout`. Semantic agent events and role/process-labelled MCP lifecycle events are
+written to `stderr`, leaving child MCP JSON-RPC isolated on its protocol `stdout`. For an operator-readable terminal,
+use the default INFO/human settings. For a retained contract-test or qualification trace, put the two streams in
+separate files:
+
+```text
+uv run trader-agent --log-level DEBUG --log-format json run \
+  --session /absolute/path/to/session.json \
+  > result.json 2> agent-events.jsonl
+```
+
+The event log is redacted diagnostic evidence, not a canonical research record. Use `pytest -s` to display live logs
+during a focused test or `--capture=tee-sys` to display them while retaining pytest capture.
 
 <!-- verified: integration:postgres/local-model/provider tests/test_postgres_verification_runtime.py tests/test_postgres_agentic_acceptance.py tests/test_postgres_optimization_acceptance.py -->
 ```bash

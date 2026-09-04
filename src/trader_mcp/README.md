@@ -2,7 +2,8 @@
 
 `trader_mcp` is the Model Context Protocol transport and policy adapter for Trader research capabilities. It registers
 FastMCP tools over `trader_research` services, classifies side effects, attaches domain ownership, enforces environment
-gates, builds concrete adapters, and returns stable public envelopes.
+gates, builds concrete adapters, and returns stable public envelopes. Its standalone process emits bounded INFO or
+DEBUG lifecycle logs to `stderr`; protocol `stdout` remains exclusively JSON-RPC.
 
 It does not contain research decision logic, agent prompts/graphs, canonical artifact semantics, or live trading
 controls. A successful tool call means the declared operation succeeded; it does not mean the research conclusion is

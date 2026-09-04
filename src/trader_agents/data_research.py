@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -18,6 +18,7 @@ from .checkpointing import (
     build_specialist_checkpoint_state,
     checkpoint_safe_observation,
     checkpoint_step,
+    specialist_checkpoint_digest,
     specialist_thread_config,
     validate_specialist_checkpoint_state,
 )
@@ -39,6 +40,13 @@ from .contracts import (
 )
 from .inputs import scope_timestamps_equal
 from .mcp_runtime import RoleScopedMcpRuntime
+from .observability import AgentErrorCategory, AgentEventError, AgentEventName
+from .observability_emit import AgentEventEmitter
+from .observability_projections import (
+    project_agent_turn,
+    project_checkpoint,
+    project_specialist_return,
+)
 from .policy import BudgetLedger, PolicyContext, PolicyViolation
 from .profiles import AgentProgram, ModelProfile
 from .structured_model import StructuredModelRunner, StructuredOutputError
@@ -55,12 +63,14 @@ class DataResearchAgent:
         mcp_client: Transport used only through ``RoleScopedMcpRuntime``.
         tool_catalogue: Code-owned first-slice operation catalogue.
         trace_sink: Optional redacted trace backend.
+        event_emitter: Process-scoped semantic event stream.
     """
 
     model_runner: StructuredModelRunner
     mcp_client: McpToolClient
     tool_catalogue: ToolCatalogue
     trace_sink: TraceSink = NoOpTraceSink()
+    event_emitter: AgentEventEmitter = field(default_factory=AgentEventEmitter)
 
     async def run(
         self,
@@ -86,6 +96,13 @@ class DataResearchAgent:
             Trusted specialist return with measured usage and observed refs.
         """
         _validate_entry(session, delegation, scope, program, profile)
+        correlation = _specialist_correlation(
+            session=session,
+            delegation=delegation,
+            program=program,
+            profile=profile,
+            catalogue=self.tool_catalogue,
+        )
         graph = self._build_graph(
             session=session,
             delegation=delegation,
@@ -122,16 +139,45 @@ class DataResearchAgent:
                     profile=profile,
                     catalogue=self.tool_catalogue,
                 )
+                self.event_emitter.emit(
+                    name=AgentEventName.CHECKPOINT_RECOVERED,
+                    correlation=correlation,
+                    role=AgentRole.DATA_RESEARCH.value,
+                    transition_sequence=_checkpoint_sequence(snapshot.values),
+                    fields=_checkpoint_fields(snapshot.values),
+                )
                 terminal = _terminal_return(snapshot.values)
                 if terminal is not None:
-                    return terminal
+                    return self._emit_return(terminal, correlation=correlation)
                 output = await graph.ainvoke(None, config)
             else:
                 output = await graph.ainvoke(initial, config)
+            self.event_emitter.emit(
+                name=AgentEventName.CHECKPOINT_SAVED,
+                correlation=correlation,
+                role=AgentRole.DATA_RESEARCH.value,
+                transition_sequence=_checkpoint_sequence(output),
+                fields=_checkpoint_fields(output),
+            )
         terminal = _terminal_return(output)
         if terminal is None:
             raise RuntimeError("Data specialist graph returned no terminal result")
-        return terminal
+        return self._emit_return(terminal, correlation=correlation)
+
+    def _emit_return(
+        self,
+        result: SpecialistReturn,
+        *,
+        correlation: TraceCorrelation,
+    ) -> SpecialistReturn:
+        """Emit and return one bounded Data specialist result."""
+        self.event_emitter.emit(
+            name=AgentEventName.SPECIALIST_RETURNED,
+            correlation=correlation,
+            role=AgentRole.DATA_RESEARCH.value,
+            fields=project_specialist_return(result),
+        )
+        return result
 
     def _build_graph(
         self,
@@ -200,6 +246,7 @@ class DataResearchAgent:
                 catalogue=self.tool_catalogue,
                 ledger=ledger,
                 trace_sink=self.trace_sink,
+                event_emitter=self.event_emitter,
             )
             try:
                 if ledger.usage.model_calls >= delegation.reserved_model_calls:
@@ -253,10 +300,32 @@ class DataResearchAgent:
                     correlation=correlation,
                 )
                 turn = invocation.output
-                _validate_data_turn(
-                    turn,
-                    scope=scope,
-                    successful_steps=successful_steps,
+                try:
+                    _validate_data_turn(
+                        turn,
+                        scope=scope,
+                        successful_steps=successful_steps,
+                    )
+                except ValueError:
+                    self.event_emitter.emit(
+                        name=AgentEventName.ACTION_DOMAIN_REJECTED,
+                        correlation=correlation,
+                        role=AgentRole.DATA_RESEARCH.value,
+                        call_id=invocation.call_id,
+                        fields=project_agent_turn(turn),
+                        error=AgentEventError(
+                            code="data_action_rejected",
+                            category=AgentErrorCategory.DOMAIN_VALIDATION,
+                            message="The Data action violated its public domain constraints.",
+                        ),
+                    )
+                    raise
+                self.event_emitter.emit(
+                    name=AgentEventName.ACTION_DOMAIN_ACCEPTED,
+                    correlation=correlation,
+                    role=AgentRole.DATA_RESEARCH.value,
+                    call_id=invocation.call_id,
+                    fields=project_agent_turn(turn),
                 )
                 if turn.action == "return_result":
                     conclusion = _required_conclusion(turn)
@@ -275,6 +344,14 @@ class DataResearchAgent:
                         budget_used=ledger.usage,
                         available_evidence_refs=list(observed_refs.values()),
                     )
+                    self.event_emitter.emit_phase_change(
+                        correlation=correlation,
+                        role=AgentRole.DATA_RESEARCH.value,
+                        previous_phase=phase.value,
+                        next_phase=AgentPhase.TERMINAL.value,
+                        transition_sequence=int(state["step_sequence"]) + 1,
+                        reason="specialist_returned",
+                    )
                     return _validated_update(
                         state,
                         {
@@ -288,7 +365,16 @@ class DataResearchAgent:
                         },
                     )
                 if turn.action == "change_phase":
+                    previous_phase = phase
                     phase = _next_data_phase(phase, turn.next_phase)
+                    self.event_emitter.emit_phase_change(
+                        correlation=correlation,
+                        role=AgentRole.DATA_RESEARCH.value,
+                        previous_phase=previous_phase.value,
+                        next_phase=phase.value,
+                        transition_sequence=int(state["step_sequence"]) + 1,
+                        reason="model_phase_change",
+                    )
                     return _validated_update(
                         state,
                         {
@@ -362,6 +448,14 @@ class DataResearchAgent:
                     observed_refs=list(observed_refs.values()),
                     error=exc,
                 )
+                self.event_emitter.emit_phase_change(
+                    correlation=correlation,
+                    role=AgentRole.DATA_RESEARCH.value,
+                    previous_phase=phase.value,
+                    next_phase=AgentPhase.TERMINAL.value,
+                    transition_sequence=int(state["step_sequence"]) + 1,
+                    reason="specialist_failed",
+                )
                 return _validated_update(
                     state,
                     {
@@ -382,6 +476,47 @@ class DataResearchAgent:
             {"continue": "model_tool_step", "end": END},
         )
         return graph.compile(checkpointer=checkpointer)
+
+
+def _specialist_correlation(
+    *,
+    session: ResearchSession,
+    delegation: SpecialistDelegation,
+    program: AgentProgram,
+    profile: ModelProfile,
+    catalogue: ToolCatalogue,
+) -> TraceCorrelation:
+    """Build the stable public correlation for one Data invocation."""
+    return TraceCorrelation(
+        session_id=session.session_id,
+        branch_id=delegation.branch_id,
+        delegation_id=delegation.delegation_id,
+        attempt_id=delegation.attempt_id,
+        program_id=program.program_id,
+        model_profile_id=profile.profile_id,
+        tool_catalog_id=catalogue.catalogue_id,
+    )
+
+
+def _checkpoint_sequence(state: Mapping[str, Any]) -> int:
+    """Return the positive specialist transition represented by a checkpoint."""
+    value = state.get("step_sequence", 1)
+    return (
+        value
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0
+        else 1
+    )
+
+
+def _checkpoint_fields(state: Mapping[str, Any]) -> dict[str, Any]:
+    """Project Data checkpoint identity without copying recoverable state."""
+    sequence = _checkpoint_sequence(state)
+    return project_checkpoint(
+        checkpoint_digest=specialist_checkpoint_digest(state),
+        transition_sequence=sequence,
+        status=str(state.get("status") or "running"),
+        phase=str(state.get("phase") or AgentPhase.INVESTIGATE.value),
+    )
 
 
 def _validate_entry(
@@ -488,9 +623,7 @@ def _update_data_lifecycle(
         "request_hash": request_hash,
         "estimated_cost": float(estimated_cost),
         "cost_currency": str(plan.get("cost_currency") or ""),
-        "estimated_network_calls": int(
-            plan.get("estimated_network_calls") or 0
-        ),
+        "estimated_network_calls": int(plan.get("estimated_network_calls") or 0),
     }
     if load_result.get("dry_run") is True:
         state["acquisition_plan"] = bounded_plan
@@ -611,10 +744,7 @@ def _validate_data_turn(
     """
     if turn.action == "call_tool" and turn.tool_call is not None:
         _validate_data_tool_scope(turn.tool_call, scope)
-    if (
-        turn.action == "change_phase"
-        and turn.next_phase == AgentPhase.REMEDIATE.value
-    ):
+    if turn.action == "change_phase" and turn.next_phase == AgentPhase.REMEDIATE.value:
         _validate_data_review_evidence(scope, successful_steps)
     if turn.action == "change_phase" and turn.next_phase == AgentPhase.REVIEW.value:
         _validate_data_review_evidence(scope, successful_steps)
@@ -695,8 +825,7 @@ def _validate_data_review_evidence(
                 missing.append(f"{item.item_id}:{tool_name}")
     if missing:
         raise ValueError(
-            "Data review requires matching full-scope evidence: "
-            + ", ".join(missing)
+            "Data review requires matching full-scope evidence: " + ", ".join(missing)
         )
 
 
@@ -783,9 +912,7 @@ def _failed_return(
         unresolved_questions=[delegation.task.question],
         findings=["Data investigation did not reach a validated readiness verdict."],
         evidence_refs=observed_refs,
-        blockers=[
-            PublicIssue(code=code, message=str(error)[:1_000], details=details)
-        ],
+        blockers=[PublicIssue(code=code, message=str(error)[:1_000], details=details)],
         advisory_next_actions=["review the blocker before any new delegation"],
     )
     return build_specialist_return(

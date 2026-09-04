@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -49,6 +49,13 @@ from .inputs import (
     strategy_build_contract_from_session,
 )
 from .mcp_runtime import RoleScopedMcpRuntime
+from .observability import AgentErrorCategory, AgentEventError, AgentEventName
+from .observability_emit import AgentEventEmitter
+from .observability_projections import (
+    project_coordinator_agenda,
+    project_coordinator_decision,
+    project_specialist_return,
+)
 from .policy import BudgetLedger, PolicyContext, PolicyViolation
 from .profiles import (
     AgentProgram,
@@ -90,6 +97,7 @@ class ResearchCoordinator:
         programs: Exact versioned agent-program registry.
         model_profiles: Exact admitted model-profile registry.
         trace_sink: Optional redacted trace backend.
+        event_emitter: Process-scoped semantic event stream.
     """
 
     model_runner: StructuredModelRunner
@@ -100,6 +108,7 @@ class ResearchCoordinator:
     programs: AgentProgramRegistry
     model_profiles: ModelProfileRegistry
     trace_sink: TraceSink = NoOpTraceSink()
+    event_emitter: AgentEventEmitter = field(default_factory=AgentEventEmitter)
 
     def build_graph(
         self,
@@ -181,12 +190,22 @@ class ResearchCoordinator:
                 ledger=ledger,
                 branch_id=str(state["branch_id"]),
                 prior_agenda=dict(state.get("agenda", {})),
-                accepted_specialist_returns=list(
-                    state.get("specialist_returns", [])
-                ),
+                accepted_specialist_returns=list(state.get("specialist_returns", [])),
                 operator_response=dict(state.get("operator_response", {})),
+                event_emitter=self.event_emitter,
             )
             agenda = invocation.output
+            self.event_emitter.emit(
+                name=AgentEventName.AGENDA_ACCEPTED,
+                correlation=_correlation(
+                    session=session,
+                    branch_id=str(state["branch_id"]),
+                    program_id=coordinator_program.program_id,
+                    tool_catalog_id=self.tool_catalogue.catalogue_id,
+                ),
+                role=AgentRole.RESEARCH_COORDINATOR.value,
+                fields=project_coordinator_agenda(agenda),
+            )
             branch_by_task = {
                 task.task_id: _branch_id(session.session_id, task.task_id)
                 for task in agenda.tasks
@@ -238,6 +257,23 @@ class ResearchCoordinator:
                     budget=session.budget,
                     usage=ledger.usage,
                 )
+                self.event_emitter.emit(
+                    name=AgentEventName.SCHEDULING_COMPLETED,
+                    correlation=_correlation(
+                        session=session,
+                        branch_id=str(state["branch_id"]),
+                        program_id=coordinator_program.program_id,
+                        tool_catalog_id=self.tool_catalogue.catalogue_id,
+                    ),
+                    role=AgentRole.RESEARCH_COORDINATOR.value,
+                    fields={
+                        "ready_task_count": len(ready),
+                        "ready_task_ids": [item.task.task_id for item in ready],
+                        "completed_task_count": len(
+                            state.get("completed_task_ids", [])
+                        ),
+                    },
+                )
                 for scheduled in ready:
                     task = scheduled.task
                     attempt = int(attempts.get(task.task_id, 0)) + 1
@@ -258,11 +294,44 @@ class ResearchCoordinator:
                         attempt=attempt,
                     )
                     new_delegations.append(delegation)
+                    self.event_emitter.emit(
+                        name=AgentEventName.DELEGATION_STARTED,
+                        correlation=_delegation_correlation(
+                            session=session,
+                            delegation=delegation,
+                            programs=self.programs,
+                            tool_catalog_id=self.tool_catalogue.catalogue_id,
+                        ),
+                        role=delegation.task.role,
+                        fields={
+                            "task_id": delegation.task.task_id,
+                            "work_kind": delegation.task.work_kind,
+                            "join_mode": delegation.task.join_mode,
+                            "reserved_model_calls": delegation.reserved_model_calls,
+                            "reserved_tool_calls": delegation.reserved_tool_calls,
+                            "reserved_tokens": delegation.reserved_tokens,
+                        },
+                    )
                 active.extend(new_delegations)
             if not active:
                 if set(state.get("completed_task_ids", [])) == {
                     task.task_id for task in agenda.tasks
                 }:
+                    self.event_emitter.emit_phase_change(
+                        correlation=_correlation(
+                            session=session,
+                            branch_id=str(state["branch_id"]),
+                            program_id=coordinator_program.program_id,
+                            tool_catalog_id=self.tool_catalogue.catalogue_id,
+                        ),
+                        role=AgentRole.RESEARCH_COORDINATOR.value,
+                        previous_phase=str(
+                            state.get("phase") or AgentPhase.INTERPRET.value
+                        ),
+                        next_phase=AgentPhase.REVIEW.value,
+                        transition_sequence=int(state.get("next_sequence", 1)),
+                        reason="agenda_tasks_completed",
+                    )
                     return {"phase": AgentPhase.REVIEW.value}
                 raise SchedulingError("agenda has pending work but no legal ready task")
 
@@ -300,11 +369,63 @@ class ResearchCoordinator:
             ]
             joined_delegations = [item[0] for item in joined]
             results = [item[1] for item in joined]
-            accepted, digests = _accept_specialist_returns(
-                state,
-                delegations=joined_delegations,
-                results=results,
+            self.event_emitter.emit(
+                name=AgentEventName.JOIN_COMPLETED,
+                correlation=_correlation(
+                    session=session,
+                    branch_id=str(state["branch_id"]),
+                    program_id=coordinator_program.program_id,
+                    tool_catalog_id=self.tool_catalogue.catalogue_id,
+                ),
+                role=AgentRole.RESEARCH_COORDINATOR.value,
+                fields={
+                    "completed_delegation_ids": [
+                        item.delegation_id for item in joined_delegations
+                    ],
+                    "pending_delegation_ids": [
+                        delegation.delegation_id
+                        for delegation, task in running
+                        if task not in done
+                    ],
+                },
             )
+            try:
+                accepted, digests = _accept_specialist_returns(
+                    state,
+                    delegations=joined_delegations,
+                    results=results,
+                )
+            except ValueError:
+                for result in results:
+                    self.event_emitter.emit(
+                        name=AgentEventName.SPECIALIST_RETURN_REJECTED,
+                        correlation=_return_review_correlation(
+                            result,
+                            session=session,
+                            program_id=coordinator_program.program_id,
+                            tool_catalog_id=self.tool_catalogue.catalogue_id,
+                        ),
+                        role=AgentRole.RESEARCH_COORDINATOR.value,
+                        fields=project_specialist_return(result),
+                        error=AgentEventError(
+                            code="specialist_return_rejected",
+                            category=AgentErrorCategory.DOMAIN_VALIDATION,
+                            message="A specialist return failed coordinator admission.",
+                        ),
+                    )
+                raise
+            for result in accepted:
+                self.event_emitter.emit(
+                    name=AgentEventName.SPECIALIST_RETURN_ACCEPTED,
+                    correlation=_return_review_correlation(
+                        result,
+                        session=session,
+                        program_id=coordinator_program.program_id,
+                        tool_catalog_id=self.tool_catalogue.catalogue_id,
+                    ),
+                    role=AgentRole.RESEARCH_COORDINATOR.value,
+                    fields=project_specialist_return(result),
+                )
             completed = list(state.get("completed_task_ids", []))
             for delegation, result in joined:
                 if result.delegation_id == delegation.delegation_id:
@@ -313,6 +434,19 @@ class ResearchCoordinator:
             evidence = _merge_refs(
                 _refs_from_state(state),
                 *(result.evidence_refs for result in results),
+            )
+            self.event_emitter.emit_phase_change(
+                correlation=_correlation(
+                    session=session,
+                    branch_id=str(state["branch_id"]),
+                    program_id=coordinator_program.program_id,
+                    tool_catalog_id=self.tool_catalogue.catalogue_id,
+                ),
+                role=AgentRole.RESEARCH_COORDINATOR.value,
+                previous_phase=str(state.get("phase") or AgentPhase.INTERPRET.value),
+                next_phase=AgentPhase.REVIEW.value,
+                transition_sequence=int(state.get("next_sequence", 1)),
+                reason="specialist_join_completed",
             )
             return {
                 "delegations": [
@@ -349,19 +483,50 @@ class ResearchCoordinator:
             ]
             cursor = int(state.get("review_cursor", 0))
             new_returns = returns[cursor:]
+            coordinator_correlation = _correlation(
+                session=session,
+                branch_id=str(state["branch_id"]),
+                program_id=coordinator_program.program_id,
+                tool_catalog_id=self.tool_catalogue.catalogue_id,
+            )
+            evidence_to_review = _merge_refs(
+                (),
+                *(item.evidence_refs for item in new_returns),
+            )
+            self.event_emitter.emit(
+                name=AgentEventName.EVIDENCE_REVIEW_STARTED,
+                correlation=coordinator_correlation,
+                role=AgentRole.RESEARCH_COORDINATOR.value,
+                fields={
+                    "specialist_return_count": len(new_returns),
+                    "evidence_count": len(evidence_to_review),
+                    "evidence_types": sorted(
+                        {item.artifact_type for item in evidence_to_review}
+                    ),
+                },
+            )
             verified = await self._verify_evidence(
                 session=session,
                 state=state,
                 program_id=coordinator_program.program_id,
                 ledger=ledger,
-                references=_merge_refs(
-                    (),
-                    *(item.evidence_refs for item in new_returns),
-                ),
+                references=evidence_to_review,
+            )
+            self.event_emitter.emit(
+                name=AgentEventName.EVIDENCE_REVIEW_COMPLETED,
+                correlation=coordinator_correlation,
+                role=AgentRole.RESEARCH_COORDINATOR.value,
+                fields={
+                    "verified_evidence_count": len(verified),
+                    "verified_evidence_refs": [
+                        str(item["reference"]["uri"]) for item in verified
+                    ],
+                },
             )
             agenda = CoordinatorAgenda.model_validate(state.get("agenda", {}))
             expected_reviewed_ids = [item.delegation_id for item in new_returns]
             verified_references = [item["reference"] for item in verified]
+            decision_call_id: str | None = None
             try:
                 invocation = await self.model_runner.invoke(
                     program=coordinator_program,
@@ -383,9 +548,7 @@ class ResearchCoordinator:
                             item.model_dump(mode="json") for item in returns
                         ],
                         "verified_artifacts": verified,
-                        "operator_response": dict(
-                            state.get("operator_response", {})
-                        ),
+                        "operator_response": dict(state.get("operator_response", {})),
                         "decision_constraints": {
                             "reviewed_delegation_ids_must_equal": (
                                 expected_reviewed_ids
@@ -414,6 +577,7 @@ class ResearchCoordinator:
                     ),
                 )
                 decision = invocation.output
+                decision_call_id = invocation.call_id
                 _validate_coordinator_decision(
                     decision,
                     agenda=agenda,
@@ -423,10 +587,31 @@ class ResearchCoordinator:
                     completed_task_ids=list(state.get("completed_task_ids", [])),
                 )
             except (StructuredOutputError, ValueError) as exc:
+                if decision_call_id is not None:
+                    self.event_emitter.emit(
+                        name=AgentEventName.ACTION_DOMAIN_REJECTED,
+                        correlation=coordinator_correlation,
+                        role=AgentRole.RESEARCH_COORDINATOR.value,
+                        call_id=decision_call_id,
+                        fields=project_coordinator_decision(decision),
+                        error=AgentEventError(
+                            code="coordinator_decision_rejected",
+                            category=AgentErrorCategory.DOMAIN_VALIDATION,
+                            message="The coordinator decision violated its public domain constraints.",
+                        ),
+                    )
                 decision = _fail_closed_decision(
                     code="invalid_coordinator_decision",
                     message=str(exc),
                     reviewed_delegation_ids=expected_reviewed_ids,
+                )
+            else:
+                self.event_emitter.emit(
+                    name=AgentEventName.ACTION_DOMAIN_ACCEPTED,
+                    correlation=coordinator_correlation,
+                    role=AgentRole.RESEARCH_COORDINATOR.value,
+                    call_id=decision_call_id,
+                    fields=project_coordinator_decision(decision),
                 )
             loop_fingerprints = dict(state.get("loop_fingerprints", {}))
             decision = _apply_coordinator_loop_policy(
@@ -481,8 +666,7 @@ class ResearchCoordinator:
                 new_returns=new_returns,
                 all_returns=returns,
                 verified_refs=[
-                    item.model_dump(mode="json")
-                    for item in _refs_from_state(state)
+                    item.model_dump(mode="json") for item in _refs_from_state(state)
                 ],
                 completed_task_ids=list(state.get("completed_task_ids", [])),
             )
@@ -507,6 +691,19 @@ class ResearchCoordinator:
             updates["decision_receipt_ref"] = receipt_ref.model_dump(mode="json")
             updates["budget_usage"] = ledger.usage.model_dump(mode="json")
             updates["next_sequence"] = int(state.get("next_sequence", 1)) + 1
+            self.event_emitter.emit_phase_change(
+                correlation=_correlation(
+                    session=session,
+                    branch_id=str(state["branch_id"]),
+                    program_id=coordinator_program.program_id,
+                    tool_catalog_id=self.tool_catalogue.catalogue_id,
+                ),
+                role=AgentRole.RESEARCH_COORDINATOR.value,
+                previous_phase=str(state.get("phase") or AgentPhase.REVIEW.value),
+                next_phase=str(updates.get("phase") or AgentPhase.REVIEW.value),
+                transition_sequence=int(updates["next_sequence"]),
+                reason=f"coordinator_decision_{decision.action.value}",
+            )
             return cast(AgentCheckpointState, updates)
 
         def operator_interrupt_node(
@@ -606,9 +803,7 @@ class ResearchCoordinator:
                 ],
             }
         )
-        coordinator_program = self.programs.for_role(
-            AgentRole.RESEARCH_COORDINATOR
-        )
+        coordinator_program = self.programs.for_role(AgentRole.RESEARCH_COORDINATOR)
         receipt_ref = await self._record_decision(
             session=session,
             state=state,
@@ -649,9 +844,7 @@ class ResearchCoordinator:
             "decision": decision.model_dump(mode="json"),
             "decision_receipt_ref": receipt_ref.model_dump(mode="json"),
             "budget_usage": ledger.usage.model_dump(mode="json"),
-            "blockers": [
-                item.model_dump(mode="json") for item in decision.blockers
-            ],
+            "blockers": [item.model_dump(mode="json") for item in decision.blockers],
             "terminal_result": result.model_dump(mode="json"),
             "next_sequence": int(state.get("next_sequence", 1)) + 1,
         }
@@ -699,6 +892,7 @@ class ResearchCoordinator:
             catalogue=self.tool_catalogue,
             ledger=ledger,
             trace_sink=self.trace_sink,
+            event_emitter=self.event_emitter,
         )
 
     async def _verify_evidence(
@@ -875,6 +1069,17 @@ class ResearchCoordinator:
         )
         if reference is None:
             raise RuntimeError("decision persistence returned no canonical receipt ref")
+        self.event_emitter.emit(
+            name=AgentEventName.DECISION_COMMITTED,
+            correlation=correlation,
+            role=AgentRole.RESEARCH_COORDINATOR.value,
+            transition_sequence=receipt.sequence,
+            fields={
+                **project_coordinator_decision(decision),
+                "decision_status": status.value,
+                "receipt_ref": reference.uri,
+            },
+        )
         return reference
 
 
@@ -913,6 +1118,7 @@ async def _propose_coordinator_agenda(
     prior_agenda: Mapping[str, Any] | None = None,
     accepted_specialist_returns: Sequence[Mapping[str, Any]] = (),
     operator_response: Mapping[str, Any] | None = None,
+    event_emitter: AgentEventEmitter | None = None,
 ) -> ModelInvocationResult[CoordinatorAgenda]:
     """Invoke the production Coordinator agenda boundary in isolation.
 
@@ -932,6 +1138,7 @@ async def _propose_coordinator_agenda(
         prior_agenda: Optional previously visible agenda on resumed work.
         accepted_specialist_returns: Public specialist returns already accepted.
         operator_response: Optional public response to an earlier interrupt.
+        event_emitter: Optional semantic event stream for this isolated boundary.
 
     Returns:
         Validated agenda and bounded model-call measurements.
@@ -940,6 +1147,12 @@ async def _propose_coordinator_agenda(
     authority_facts = _coordinator_authority_facts(
         session,
         catalogue=catalogue,
+    )
+    correlation = _correlation(
+        session=session,
+        branch_id=branch_id,
+        program_id=program.program_id,
+        tool_catalog_id=catalogue.catalogue_id,
     )
     invocation = await model_runner.invoke(
         program=program,
@@ -970,14 +1183,32 @@ async def _propose_coordinator_agenda(
             },
         },
         ledger=ledger,
-        correlation=_correlation(
-            session=session,
-            branch_id=branch_id,
-            program_id=program.program_id,
-            tool_catalog_id=catalogue.catalogue_id,
-        ),
+        correlation=correlation,
     )
-    _validate_first_slice_agenda(invocation.output, data_scope=data_scope)
+    emitter = event_emitter or AgentEventEmitter()
+    try:
+        _validate_first_slice_agenda(invocation.output, data_scope=data_scope)
+    except ValueError:
+        emitter.emit(
+            name=AgentEventName.ACTION_DOMAIN_REJECTED,
+            correlation=correlation,
+            role=AgentRole.RESEARCH_COORDINATOR.value,
+            call_id=invocation.call_id,
+            fields=project_coordinator_agenda(invocation.output),
+            error=AgentEventError(
+                code="coordinator_agenda_rejected",
+                category=AgentErrorCategory.DOMAIN_VALIDATION,
+                message="The coordinator agenda violated its public domain constraints.",
+            ),
+        )
+        raise
+    emitter.emit(
+        name=AgentEventName.ACTION_DOMAIN_ACCEPTED,
+        correlation=correlation,
+        role=AgentRole.RESEARCH_COORDINATOR.value,
+        call_id=invocation.call_id,
+        fields=project_coordinator_agenda(invocation.output),
+    )
     return invocation
 
 
@@ -1054,9 +1285,7 @@ def _validate_first_slice_agenda(
         if len(data_tasks) == 1:
             task = data_tasks[0]
             if task.work_kind != "complete" or task.join_mode != "hard":
-                raise ValueError(
-                    "a single Data task must be a hard-join complete task"
-                )
+                raise ValueError("a single Data task must be a hard-join complete task")
             if task.scope_item_ids and set(task.scope_item_ids) != approved_scope_ids:
                 raise ValueError("a complete Data task must cover the full scope")
         else:
@@ -1085,9 +1314,7 @@ def _validate_decomposed_data_tasks(
             reconciliation join.
     """
     reconciliation = [task for task in data_tasks if task.work_kind == "reconcile"]
-    investigations = [
-        task for task in data_tasks if task.work_kind == "investigate"
-    ]
+    investigations = [task for task in data_tasks if task.work_kind == "investigate"]
     if len(reconciliation) != 1 or len(investigations) < 2:
         raise ValueError(
             "decomposed Data work requires independent investigations "
@@ -1102,9 +1329,7 @@ def _validate_decomposed_data_tasks(
     for task in investigations:
         scope_ids = set(task.scope_item_ids)
         if not scope_ids:
-            raise ValueError(
-                "each Data investigation must claim explicit scope items"
-            )
+            raise ValueError("each Data investigation must claim explicit scope items")
         overlap = claimed.intersection(scope_ids)
         if overlap:
             raise ValueError(
@@ -1122,10 +1347,7 @@ def _validate_decomposed_data_tasks(
         raise ValueError("Data reconciliation must use a hard join")
     if not investigation_ids.issubset(set(join_task.dependencies)):
         raise ValueError("Data reconciliation must depend on every investigation")
-    if (
-        join_task.scope_item_ids
-        and set(join_task.scope_item_ids) != approved_scope_ids
-    ):
+    if join_task.scope_item_ids and set(join_task.scope_item_ids) != approved_scope_ids:
         raise ValueError("Data reconciliation must cover the full scope")
 
 
@@ -1319,9 +1541,7 @@ def _apply_coordinator_loop_policy(
     }
     if decision.action not in guarded_actions:
         return decision
-    tasks_by_delegation = {
-        item.delegation_id: item.task for item in delegations
-    }
+    tasks_by_delegation = {item.delegation_id: item.task for item in delegations}
     return_classes = []
     for item in new_returns:
         task = tasks_by_delegation.get(item.delegation_id)
@@ -1361,8 +1581,7 @@ def _apply_coordinator_loop_policy(
                 key=lambda item: (item["task_id"], item["role"]),
             ),
             "cited_evidence_types": sorted(
-                reference.artifact_type
-                for reference in decision.cited_evidence_refs
+                reference.artifact_type for reference in decision.cited_evidence_refs
             ),
             "blocker_codes": sorted(item.code for item in decision.blockers),
         }
@@ -1375,9 +1594,7 @@ def _apply_coordinator_loop_policy(
                 "The coordinator repeated a materially equivalent transition "
                 "without a new evidence class or task structure."
             ),
-            reviewed_delegation_ids=[
-                item.delegation_id for item in new_returns
-            ],
+            reviewed_delegation_ids=[item.delegation_id for item in new_returns],
         )
     loop_fingerprints[fingerprint] = prior_count + 1
     return decision
@@ -1565,9 +1782,7 @@ def _coordinator_authority_facts(
         "specialist_delegation_authorized": True,
         "read_only_investigation_authorized": True,
         "missing_prior_evidence_disposition": "delegate_investigation",
-        "data_loading_within_scope_authorized": (
-            "data_ensure_loaded" in data_tools
-        ),
+        "data_loading_within_scope_authorized": ("data_ensure_loaded" in data_tools),
         "coding_workspace_authorized": "coding_create_workspace" in strategy_tools,
         "scope_expansion_authorized": False,
         "live_or_paper_trading_authorized": False,
@@ -1593,6 +1808,45 @@ def _correlation(
     return TraceCorrelation(
         session_id=session.session_id,
         branch_id=branch_id,
+        program_id=program_id,
+        model_profile_id=session.model_profile_id,
+        tool_catalog_id=tool_catalog_id,
+    )
+
+
+def _delegation_correlation(
+    *,
+    session: ResearchSession,
+    delegation: SpecialistDelegation,
+    programs: AgentProgramRegistry,
+    tool_catalog_id: str,
+) -> TraceCorrelation:
+    """Build exact specialist identities for a delegation event."""
+    program = programs.for_role(AgentRole(delegation.task.role))
+    return TraceCorrelation(
+        session_id=session.session_id,
+        branch_id=delegation.branch_id,
+        delegation_id=delegation.delegation_id,
+        attempt_id=delegation.attempt_id,
+        program_id=program.program_id,
+        model_profile_id=program.model_profile_id,
+        tool_catalog_id=tool_catalog_id,
+    )
+
+
+def _return_review_correlation(
+    result: SpecialistReturn,
+    *,
+    session: ResearchSession,
+    program_id: str,
+    tool_catalog_id: str,
+) -> TraceCorrelation:
+    """Build coordinator identities while retaining returned delegation lineage."""
+    return TraceCorrelation(
+        session_id=result.session_id,
+        branch_id=result.branch_id,
+        delegation_id=result.delegation_id,
+        attempt_id=result.attempt_id,
         program_id=program_id,
         model_profile_id=session.model_profile_id,
         tool_catalog_id=tool_catalog_id,

@@ -6,12 +6,12 @@ bounded-context artifact authority is registered in `src/trader_research/governa
 
 Ownership definitions do not imply that every named agent has an operational graph. See
 [Product State](../../../docs/product_state.md#agent-state) for current graph maturity and the
-[capability roadmap](../../../plans/research_capability_roadmap.md#target-agent-capability-map) for remaining agent work.
+[Trader Development Roadmap](https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84) for remaining agent work.
 
 This document is authoritative for current identities, allowlists, decision boundaries, and artifact authority. The
 accepted model-backed responsibilities are defined in [Agent Designs](../../../plans/agent_designs.md). The first
 Research Coordinator, Data Research, and Strategy Engineering loops are implemented on the agentic-build branch, but
-they remain an unqualified capability until the active roadmap's production gates pass.
+they remain an unqualified capability until the Notion roadmap's production gates pass.
 
 ## Agent Map
 
@@ -280,7 +280,8 @@ and bounded failed-admission repair is implemented. A real digest-pinned Docker 
 traces, the no-selection real-model campaign, and four bounded-scale profiles now have executable qualification
 entry points. Their controlled runs against one candidate freeze remain active work.
 Experiment Design, Knowledge Research, Quantitative Methods, Robustness/WFO, Evaluation, recommendation synthesis, and
-ML model-backed loops remain planned or parked unless the active roadmap says otherwise.
+ML model-backed loops remain planned or parked unless the
+[Trader Development Roadmap](https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84) says otherwise.
 
 ## Identity Checks
 

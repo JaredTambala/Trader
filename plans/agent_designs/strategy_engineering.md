@@ -1,13 +1,14 @@
 # Strategy Engineering Agent Design
 
-Status: architecture record accepted; first-slice implementation in progress and qualification pending.
+Design status: architecture record accepted.
 
 Last reviewed: 2026-09-01.
 
 This document is the canonical build-lifecycle architecture record for the Strategy Engineering Agent. Review status
-and shared principles are maintained in the parent [Agent Designs](../agent_designs.md) tracker. System-level direction
-remains in [Agentic Research Orchestration Redesign](../agentic_orchestration_redesign.md), and delivery status remains
-in the [Research Capability Roadmap](../research_capability_roadmap.md).
+and shared principles are maintained in the parent [Agent Designs](../agent_designs.md) workbook. System-level direction
+remains in [Agentic Research Orchestration Redesign](../agentic_orchestration_redesign.md). Work assignment and delivery
+progress are maintained in Notion's
+[Trader Work Items](https://app.notion.com/p/31131085ffc54c329f25445843e9ac52).
 
 ## Established design constraints
 

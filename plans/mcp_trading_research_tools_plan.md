@@ -12,8 +12,12 @@ Use these canonical sources instead:
 
 - [Product State](../docs/product_state.md): what works now, qualification strength,
   availability, current agent behavior and product limits.
-- [Research Capability Roadmap](research_capability_roadmap.md): active non-linear work graph, hard dependencies,
-  parallel workstreams, acceptance conditions and legacy task mapping.
+- [Trader Development Roadmap](https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84): current portfolio status
+  and capability progress.
+- [Trader Work Items](https://app.notion.com/p/31131085ffc54c329f25445843e9ac52): atomic assignments,
+  priorities, dependencies, and delivery state.
+- [Research Capability Roadmap](research_capability_roadmap.md): retained architecture, dependencies, acceptance
+  conditions, and the migration snapshot.
 - [Research Agent Architecture](../src/trader_agents/docs/architecture.md): package boundaries, authority and target
   orchestration principles.
 - [Agent Ownership](../src/trader_agents/docs/roles_and_authority.md): agent missions, artifact ownership, allowlists and handoffs.

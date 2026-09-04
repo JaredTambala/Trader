@@ -16,9 +16,15 @@ user-facing model; specialists are invoked behind its evidence-review boundary.
 ## Boundaries
 
 This package owns agent programs, model profiles, strict public contracts, role/tool policy, scheduling, LangGraph
-wiring, checkpoint projections, the MCP client/runtime, tracing, and the user-facing session lifecycle. It does not own
-research artifacts or tools, direct platform access, provider credentials, code execution, live trading, or scientific
-truth.
+wiring, checkpoint projections, the MCP client/runtime, the sink-neutral observability event contract, tracing, and the
+user-facing session lifecycle. It does not own research artifacts or tools, direct platform access, provider
+credentials, code execution, live trading, or scientific truth.
+
+The runtime emits a versioned public event stream to `stderr`. INFO gives an operator-readable narrative of sessions,
+model calls, tool execution, delegations, evidence review, decisions, and terminal outcomes; DEBUG adds schema,
+scheduling, checkpoint, and budget detail. Human-readable and JSON-lines formats use the same safe projections and
+recursive redaction rules. Final CLI results remain JSON on `stdout`, and the child MCP processes reserve `stdout`
+exclusively for JSON-RPC.
 
 ## Learning path
 

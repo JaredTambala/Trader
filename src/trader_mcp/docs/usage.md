@@ -13,6 +13,10 @@ The client owns the subprocess and MCP session. Initialize once, discover tools,
 session cleanly. The agent runtime uses a persistent stdio client so one specialist turn does not spawn a server per
 tool call.
 
+The server logs bounded lifecycle events to `stderr`. `TRADER_MCP_LOG_LEVEL` accepts `INFO` (default) or `DEBUG`, and
+`TRADER_MCP_LOG_FORMAT` accepts `human` (default) or `json`. `TRADER_MCP_SERVER_ROLE` labels concurrent subprocesses;
+the agent runtime assigns it automatically. Never redirect MCP diagnostic output into protocol `stdout`.
+
 ## Adding a tool
 
 1. Add deterministic behavior to the owning `trader_research` context.

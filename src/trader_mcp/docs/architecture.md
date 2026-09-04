@@ -11,12 +11,16 @@ model-backed role -> role-scoped MCP client -> stdio FastMCP server
 
 The stdio process is a separate trust boundary. Agent code sends only tool name plus JSON-safe arguments and receives a
 public tool envelope. It cannot import an event store, provider adapter, or research service to bypass this boundary.
+Human or JSON lifecycle records are written only to `stderr`, labelled with the assigned agent role and a unique server
+process identity. Nothing diagnostic is written to protocol `stdout`.
 
 ## Composition
 
 `create_server` receives a resolved `McpEnvironment` and optional providers for tests or controlled embedding. The
 composition root builds Postgres, knowledge, data, optimisation, tracking, inference, coding, and validation adapters,
 then registers only capabilities admitted by policy. Optional provider imports and secrets remain inside the server.
+The parent agent runtime supplies `TRADER_MCP_LOG_LEVEL`, `TRADER_MCP_LOG_FORMAT`, and
+`TRADER_MCP_SERVER_ROLE` independently to each role-scoped child process.
 
 ## Envelope
 

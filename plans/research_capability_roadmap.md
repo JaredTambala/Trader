@@ -1,8 +1,16 @@
 # Research Capability Roadmap
 
-This is the canonical active roadmap for Trader's research product. It translates the target in
+> **Planning authority cutover (2026-09-03):** Notion's
+> [Trader Development Roadmap](https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84) is authoritative for
+> portfolio status, and [Trader Work Items](https://app.notion.com/p/31131085ffc54c329f25445843e9ac52)
+> is authoritative for assignments, priorities, dependencies, and delivery progress. This repository file retains
+> architecture, dependency, acceptance, lineage, and migration-snapshot context. Do not update its tables as a live
+> work tracker.
+
+This roadmap reference translates the target in
 [Agentic Research Orchestration Redesign](agentic_orchestration_redesign.md) and the accepted per-agent records in
-[Agent Designs](agent_designs.md) into capability frontiers, dependencies, delivery status, and acceptance evidence.
+[Agent Designs](agent_designs.md) into capability frontiers, dependencies, the status captured at migration, and
+acceptance evidence.
 
 Read [Product State](../docs/product_state.md) first for what works today. Current package
 boundaries, agent allowlists, MCP registration, tool contracts, workflows, and operations remain authoritative only for
@@ -392,12 +400,13 @@ git show 577c774:plans/mcp_trading_research_tools_plan.md
 
 Before marking an active frontier complete:
 
-1. Verify every hard dependency and input artifact contract.
+1. Use the linked Notion roadmap initiative and atomic work items as the live delivery record; verify every hard
+   dependency and input artifact contract.
 2. Implement through the owning package and MCP boundary without compatibility layers unless explicitly approved.
 3. Test deterministic behavior directly, then agent trajectories, persistence, human interrupts, security, and real
    integration in proportion to the changed surface.
-4. Update product state, architecture, agent boundaries, MCP catalog, contracts, workflows, operations, and this roadmap
-   only where behavior actually changed.
+4. Update product state, architecture, agent boundaries, MCP catalog, contracts, workflows, and operations only where
+   behavior actually changed. Update delivery status in Notion rather than in this migration snapshot.
 5. Record model, agent-program, tool-catalog, evaluation-dataset, configuration, code, and environment identities for
    any agentic qualification claim.
 6. Report behavioral quality across repeated runs; do not promote one successful trajectory to controlled evidence.

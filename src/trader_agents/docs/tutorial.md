@@ -71,21 +71,40 @@ canonical research Postgres. MLflow tracing is optional when explicitly configur
 
 <!-- verified: offline-shell tests/test_package_documentation.py::test_declared_shell_examples -->
 ```bash
-trader-agent --help
+trader-agent --log-level INFO --log-format human --help
 ```
 
 Use the subcommands documented by `--help` to start an exact session reference, inspect its public state, resume an
 operator interrupt, or cancel as the owning operator. A new process may perform those lifecycle operations against the
 same checkpoints.
 
-## 6. Interpret the result honestly
+## 6. Read a run as it happens
+
+INFO mode narrates session start/recovery, model completion, accepted specialist actions, MCP execution, delegation
+joins, evidence review, committed decisions, and the terminal outcome. Every line includes session, branch, role,
+program, model profile, catalogue, and process identities. Delegated work additionally includes delegation and attempt
+identities, so concurrent Data and Strategy lines remain attributable.
+
+For a terminal and a log that can be queried afterward, use JSON mode and split the streams:
+
+```text
+uv run trader-agent --log-level DEBUG --log-format json run \
+  --session /absolute/path/to/session.json \
+  > result.json 2> agent-events.jsonl
+```
+
+The result is the public lifecycle outcome. The event file is diagnostic evidence, not a canonical research artifact.
+It never contains raw prompts, model completions, hidden reasoning, source text, credentials, or full MCP payloads.
+Warnings and failures remain visible in either threshold.
+
+## 7. Interpret the result honestly
 
 The current implementation passes scripted contract, policy, persistence, security, recovery, isolation, and focused
 graph tests. The admitted LFM profile did not pass the material-ambiguity coordinator choice gate, so controlled
 behavioral qualification has not run to acceptance. Use the runtime for bounded development/evaluation, not as a
 qualified autonomous research service. See [Qualification](qualification.md).
 
-## 7. Extend only through a complete agent boundary
+## 8. Extend only through a complete agent boundary
 
 Adding a specialist requires a model program, strict turn/result schemas, authority and tool policy, isolated state,
 evidence-return and coordinator-review behavior, termination rules, recovery, traces, and behavioral tests. Start with

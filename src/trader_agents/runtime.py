@@ -21,12 +21,15 @@ from trader_research.governance import ResearchSession
 
 from .catalogue import ToolCatalogue, first_slice_tool_catalogue
 from .checkpointing import (
+    AgentCheckpointState,
+    agent_checkpoint_digest,
     agent_public_state,
     build_agent_checkpoint_state,
     coordinator_thread_config,
     open_postgres_checkpointer,
 )
 from .contracts import (
+    AgentPhase,
     AgentRole,
     AgenticSliceResult,
     OperatorCancellation,
@@ -37,6 +40,14 @@ from .coordinator import ResearchCoordinator
 from .data_research import DataResearchAgent
 from .inputs import validate_runtime_pins
 from .llm_client import RuntimeConfiguredLlmClient
+from .observability import AgentErrorCategory, AgentEventError, AgentEventName
+from .observability_console import (
+    AgentConsoleConfig,
+    ConsoleObservabilityEventSink,
+    agent_console_config,
+)
+from .observability_emit import AgentEventEmitter
+from .observability_projections import project_checkpoint, project_terminal_result
 from .profiles import (
     DEVELOPMENT_MODEL_PROFILE_ID,
     AgentProgramRegistry,
@@ -80,6 +91,8 @@ class AgenticResearchRuntime:
         model_profiles: Exact admitted model profiles.
         trace_sink: Redacted lifecycle root-span sink shared with all runtime
             components.
+        event_emitter: Process-scoped public event stream shared with all runtime
+            components.
     """
 
     coordinator: ResearchCoordinator
@@ -88,6 +101,7 @@ class AgenticResearchRuntime:
     programs: AgentProgramRegistry
     model_profiles: ModelProfileRegistry
     trace_sink: TraceSink = field(default_factory=NoOpTraceSink)
+    event_emitter: AgentEventEmitter = field(default_factory=AgentEventEmitter)
     _active_tasks: dict[str, asyncio.Task[Any]] = field(
         default_factory=dict,
         init=False,
@@ -120,11 +134,22 @@ class AgenticResearchRuntime:
         config = coordinator_thread_config(session.session_id)
         snapshot = await graph.aget_state(config)
         if snapshot.values:
+            self._emit_checkpoint(AgentEventName.CHECKPOINT_RECOVERED, snapshot.values)
+            self.event_emitter.emit(
+                name=AgentEventName.SESSION_RESUMED,
+                correlation=self._event_correlation(session),
+                role=AgentRole.RESEARCH_COORDINATOR.value,
+                fields={"lifecycle_operation": "start", "recovered": True},
+            )
             current = _outcome_if_available(session.session_id, snapshot.values)
             if current is not None:
-                return current
+                return self._emit_outcome(session, current)
             output = await graph.ainvoke(None, config)
-            return _outcome(session.session_id, output)
+            self._emit_checkpoint(AgentEventName.CHECKPOINT_SAVED, output)
+            return self._emit_outcome(
+                session,
+                _outcome(session.session_id, output),
+            )
         coordinator_program = self.programs.for_role(AgentRole.RESEARCH_COORDINATOR)
         initial = build_agent_checkpoint_state(
             session_id=session.session_id,
@@ -134,8 +159,15 @@ class AgenticResearchRuntime:
             model_profile_id=session.model_profile_id,
             tool_catalog_id=self.tool_catalogue.catalogue_id,
         )
+        self.event_emitter.emit(
+            name=AgentEventName.SESSION_STARTED,
+            correlation=self._event_correlation(session),
+            role=AgentRole.RESEARCH_COORDINATOR.value,
+            fields={"lifecycle_operation": "start", "recovered": False},
+        )
         output = await graph.ainvoke(initial, config)
-        return _outcome(session.session_id, output)
+        self._emit_checkpoint(AgentEventName.CHECKPOINT_SAVED, output)
+        return self._emit_outcome(session, _outcome(session.session_id, output))
 
     async def resume(
         self,
@@ -172,16 +204,24 @@ class AgenticResearchRuntime:
         snapshot = await graph.aget_state(config)
         if not snapshot.values:
             raise ValueError("research session has no operational checkpoint")
+        self._emit_checkpoint(AgentEventName.CHECKPOINT_RECOVERED, snapshot.values)
+        self.event_emitter.emit(
+            name=AgentEventName.SESSION_RESUMED,
+            correlation=self._event_correlation(session),
+            role=AgentRole.RESEARCH_COORDINATOR.value,
+            fields={"lifecycle_operation": "resume", "recovered": True},
+        )
         current = _outcome_if_available(session.session_id, snapshot.values)
         if current is not None:
-            return current
+            return self._emit_outcome(session, current)
         if not snapshot.interrupts:
             raise ValueError("research session is not awaiting operator input")
         output = await graph.ainvoke(
             Command(resume=response.model_dump(mode="json")),
             config,
         )
-        return _outcome(session.session_id, output)
+        self._emit_checkpoint(AgentEventName.CHECKPOINT_SAVED, output)
+        return self._emit_outcome(session, _outcome(session.session_id, output))
 
     async def cancel(
         self,
@@ -251,7 +291,11 @@ class AgenticResearchRuntime:
         )
         if not isinstance(terminal, AgenticSliceResult):
             raise RuntimeError("cancellation did not produce a terminal result")
-        return terminal
+        self._emit_checkpoint(
+            AgentEventName.CHECKPOINT_SAVED,
+            terminal_snapshot.values,
+        )
+        return self._emit_outcome(session, terminal)
 
     async def inspect(self, session: ResearchSession) -> dict[str, Any]:
         """Return the redacted operator-visible checkpoint projection."""
@@ -266,7 +310,18 @@ class AgenticResearchRuntime:
             )
             if not snapshot.values:
                 raise ValueError("research session has no operational checkpoint")
-            return agent_public_state(snapshot.values)
+            public_state = agent_public_state(snapshot.values)
+            self.event_emitter.emit(
+                name=AgentEventName.SESSION_INSPECTED,
+                correlation=self._event_correlation(session),
+                role=AgentRole.RESEARCH_COORDINATOR.value,
+                fields={
+                    "status": str(public_state.get("status") or "unknown"),
+                    "phase": str(public_state.get("phase") or "unknown"),
+                    "next_sequence": int(public_state.get("next_sequence") or 1),
+                },
+            )
+            return public_state
 
     def _validate_session(self, session: ResearchSession) -> None:
         """Validate all immutable runtime pins before touching checkpoints."""
@@ -299,6 +354,124 @@ class AgenticResearchRuntime:
             ),
         )
 
+    def _event_correlation(self, session: ResearchSession) -> TraceCorrelation:
+        """Return the stable coordinator correlation for console events."""
+        program = self.programs.for_role(AgentRole.RESEARCH_COORDINATOR)
+        return TraceCorrelation(
+            session_id=session.session_id,
+            branch_id=_root_branch_id(session.session_id),
+            program_id=program.program_id,
+            model_profile_id=session.model_profile_id,
+            tool_catalog_id=self.tool_catalogue.catalogue_id,
+        )
+
+    def _emit_checkpoint(
+        self,
+        name: AgentEventName,
+        state: Mapping[str, Any],
+    ) -> None:
+        """Emit one coordinator checkpoint identity without its state payload."""
+        checkpoint_state = {
+            key: value
+            for key, value in state.items()
+            if key in AgentCheckpointState.__annotations__
+        }
+        session_id = str(checkpoint_state.get("session_id") or "")
+        if not session_id:
+            raise ValueError("checkpoint event requires session_id")
+        sequence = _checkpoint_sequence(state)
+        correlation = TraceCorrelation(
+            session_id=session_id,
+            branch_id=str(
+                checkpoint_state.get("branch_id") or _root_branch_id(session_id)
+            ),
+            program_id=str(
+                checkpoint_state.get("coordinator_program_id") or "unknown-program"
+            ),
+            model_profile_id=str(
+                checkpoint_state.get("model_profile_id") or "unknown-profile"
+            ),
+            tool_catalog_id=str(
+                checkpoint_state.get("tool_catalog_id") or "unknown-catalogue"
+            ),
+        )
+        self.event_emitter.emit(
+            name=name,
+            correlation=correlation,
+            role=AgentRole.RESEARCH_COORDINATOR.value,
+            transition_sequence=sequence,
+            fields=project_checkpoint(
+                checkpoint_digest=agent_checkpoint_digest(checkpoint_state),
+                transition_sequence=sequence,
+                status=str(checkpoint_state.get("status") or "running"),
+                phase=str(checkpoint_state.get("phase") or AgentPhase.INTERPRET.value),
+            ),
+        )
+
+    def _emit_outcome(
+        self,
+        session: ResearchSession,
+        outcome: AgentRunOutcome,
+    ) -> AgentRunOutcome:
+        """Emit the public result or operator interrupt returned by the runtime."""
+        correlation = self._event_correlation(session)
+        if isinstance(outcome, OperatorInterrupt):
+            self.event_emitter.emit(
+                name=AgentEventName.SESSION_INTERRUPTED,
+                correlation=correlation,
+                role=AgentRole.RESEARCH_COORDINATOR.value,
+                fields={
+                    "kind": outcome.kind,
+                    "question": outcome.question,
+                    "requested_action": outcome.requested_action,
+                },
+            )
+            return outcome
+        if outcome.status in {"failed", "blocked"}:
+            self.event_emitter.emit(
+                name=AgentEventName.SESSION_FAILED,
+                correlation=correlation,
+                role=AgentRole.RESEARCH_COORDINATOR.value,
+                fields=project_terminal_result(outcome),
+                error=AgentEventError(
+                    code=(
+                        "research_session_blocked"
+                        if outcome.status == "blocked"
+                        else "research_session_failed"
+                    ),
+                    category=(
+                        AgentErrorCategory.DOMAIN_VALIDATION
+                        if outcome.status == "blocked"
+                        else AgentErrorCategory.INTERNAL
+                    ),
+                    message=(
+                        "The research session reached a fail-closed blocker."
+                        if outcome.status == "blocked"
+                        else "The research session failed before a usable conclusion."
+                    ),
+                ),
+            )
+        elif outcome.status == "awaiting_operator":
+            self.event_emitter.emit(
+                name=AgentEventName.SESSION_INTERRUPTED,
+                correlation=correlation,
+                role=AgentRole.RESEARCH_COORDINATOR.value,
+                fields=project_terminal_result(outcome),
+            )
+        else:
+            name = (
+                AgentEventName.SESSION_CANCELLED
+                if outcome.status == "cancelled"
+                else AgentEventName.SESSION_COMPLETED
+            )
+            self.event_emitter.emit(
+                name=name,
+                correlation=correlation,
+                role=AgentRole.RESEARCH_COORDINATOR.value,
+                fields=project_terminal_result(outcome),
+            )
+        return outcome
+
     @asynccontextmanager
     async def _active_session(
         self,
@@ -325,6 +498,7 @@ async def runtime_from_environment(
     *,
     setup_checkpoint_schema: bool = False,
     mcp_client_decorator: McpClientDecorator | None = None,
+    console_config: AgentConsoleConfig | None = None,
 ) -> AsyncIterator[AgenticResearchRuntime]:
     """Open the production model, MCP, trace, and Postgres runtime.
 
@@ -339,6 +513,8 @@ async def runtime_from_environment(
             each role-labelled client after its persistent transport opens.
             Normal production callers omit it; controlled recovery tests may
             use it to inject a process-ending transport fault.
+        console_config: Optional already-validated console override. Normal CLI
+            composition supplies this after applying command-line precedence.
 
     Yields:
         Ready user-facing runtime. Closing the context stops MCP subprocesses
@@ -347,6 +523,9 @@ async def runtime_from_environment(
     values = dict(os.environ)
     if environ is not None:
         values.update(environ)
+    resolved_console_config = console_config or agent_console_config(values)
+    values["TRADER_MCP_LOG_LEVEL"] = resolved_console_config.level.value
+    values["TRADER_MCP_LOG_FORMAT"] = resolved_console_config.format.value
     catalogue = first_slice_tool_catalogue()
     programs = first_slice_programs()
     profiles = development_model_profiles()
@@ -358,6 +537,10 @@ async def runtime_from_environment(
     model_env = {**values, **profile_environment(profile)}
     llm_client = RuntimeConfiguredLlmClient(env=model_env)
     trace_sink = _trace_sink(values)
+    event_emitter = AgentEventEmitter(
+        sink=ConsoleObservabilityEventSink(config=resolved_console_config),
+        process_instance_id=_PROCESS_INSTANCE_ID,
+    )
     server_command = values.get("TRADER_AGENTS_MCP_COMMAND", sys.executable)
     server_args = tuple(
         shlex.split(
@@ -373,6 +556,7 @@ async def runtime_from_environment(
     async with AsyncExitStack() as stack:
         coordinator_transport = await stack.enter_async_context(
             _mcp_client(
+                role=AgentRole.RESEARCH_COORDINATOR,
                 command=server_command,
                 args=server_args,
                 cwd=server_cwd,
@@ -382,6 +566,7 @@ async def runtime_from_environment(
         )
         data_transport = await stack.enter_async_context(
             _mcp_client(
+                role=AgentRole.DATA_RESEARCH,
                 command=server_command,
                 args=server_args,
                 cwd=server_cwd,
@@ -391,6 +576,7 @@ async def runtime_from_environment(
         )
         strategy_transport = await stack.enter_async_context(
             _mcp_client(
+                role=AgentRole.STRATEGY_ENGINEERING,
                 command=server_command,
                 args=server_args,
                 cwd=server_cwd,
@@ -424,30 +610,36 @@ async def runtime_from_environment(
             model_runner=StructuredModelRunner(
                 llm_client,
                 trace_sink=trace_sink,
+                event_emitter=event_emitter,
             ),
             mcp_client=coordinator_client,
             data_agent=DataResearchAgent(
                 model_runner=StructuredModelRunner(
                     llm_client,
                     trace_sink=trace_sink,
+                    event_emitter=event_emitter,
                 ),
                 mcp_client=data_client,
                 tool_catalogue=catalogue,
                 trace_sink=trace_sink,
+                event_emitter=event_emitter,
             ),
             strategy_agent=StrategyEngineeringAgent(
                 model_runner=StructuredModelRunner(
                     llm_client,
                     trace_sink=trace_sink,
+                    event_emitter=event_emitter,
                 ),
                 mcp_client=strategy_client,
                 tool_catalogue=catalogue,
                 trace_sink=trace_sink,
+                event_emitter=event_emitter,
             ),
             tool_catalogue=catalogue,
             programs=programs,
             model_profiles=profiles,
             trace_sink=trace_sink,
+            event_emitter=event_emitter,
         )
         yield AgenticResearchRuntime(
             coordinator=coordinator,
@@ -456,6 +648,7 @@ async def runtime_from_environment(
             programs=programs,
             model_profiles=profiles,
             trace_sink=trace_sink,
+            event_emitter=event_emitter,
         )
 
 
@@ -474,6 +667,7 @@ def runtime_manifest() -> dict[str, Any]:
 
 def _mcp_client(
     *,
+    role: AgentRole,
     command: str,
     args: tuple[str, ...],
     cwd: Path,
@@ -481,11 +675,13 @@ def _mcp_client(
     timeout_seconds: int,
 ) -> PersistentStdioMcpToolClient:
     """Build one isolated persistent MCP transport client."""
+    client_environment = dict(environ)
+    client_environment["TRADER_MCP_SERVER_ROLE"] = role.value
     return PersistentStdioMcpToolClient(
         command=command,
         args=args,
         cwd=cwd,
-        env=environ,
+        env=client_environment,
         read_timeout_seconds=timeout_seconds,
     )
 
@@ -543,4 +739,14 @@ def _root_branch_id(session_id: str) -> str:
     return stable_research_id(
         "agent_root_branch",
         {"session_id": session_id},
+    )
+
+
+def _checkpoint_sequence(state: Mapping[str, Any]) -> int:
+    """Return the positive coordinator transition represented by a checkpoint."""
+    value = state.get("next_sequence", 1)
+    return (
+        value
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0
+        else 1
     )

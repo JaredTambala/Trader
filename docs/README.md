@@ -3,6 +3,19 @@
 Documentation is owned at the same boundary as the code it explains. Package internals live beside and ship with their
 package; repository docs cover only relationships and workflows that cross package boundaries.
 
+## Planning and delivery
+
+Notion is the source of truth for development work intake, assignment, priority, dependencies, and progress. Trader
+uses continuous flow rather than required sprints:
+
+- [Trader Development Hub](https://app.notion.com/p/3d0e5fade83181129bdcd5d08f1e3e1b)
+- [Trader Development Roadmap](https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84)
+- [Trader Work Items](https://app.notion.com/p/31131085ffc54c329f25445843e9ac52)
+
+The repository remains authoritative for architecture, technical design, functional behavior, contracts,
+implementation documentation, tests, and executable evidence. Notion records the work and its delivery state without
+replacing those technical sources.
+
 ## Package documentation
 
 - [`trader`](../src/trader/README.md): core platform and runtime

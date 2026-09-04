@@ -26,7 +26,8 @@ claims can be tied to local or deliberately assembled source spans.
 The subsystem does not yet infer arbitrary source ontologies or faithfully represent every book-scale composite
 framework. The Carver *Systematic Trading* diagnostic found substantive evidence for individual framework stages but
 could not preserve those stages as one correctly classified composite methodology. Composite claim graphs and inferred
-atomic/component boundaries remain on the capability roadmap. Until that work is implemented, a blocked candidate
+atomic/component boundaries remain in Notion's
+[Trader Development Roadmap](https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84). Until that work is implemented, a blocked candidate
 or absent card is the correct result when the implemented evidence model cannot represent the source faithfully.
 
 The active agentic redesign now includes a planning-only research-backed implementation path for this limitation. It
@@ -309,9 +310,10 @@ Engineering sees that accepted brief and bounded supporting resources, authors c
 submits it to ordinary independent admission. Source fidelity does not imply trading efficacy: backtests, prospective
 comparison, robustness, walk-forward analysis, and Evaluation remain separate downstream evidence.
 
-The capability roadmap treats structure-aware ingestion, multi-source dossier research, brief validation, and
-research-backed implementation qualification as separate frontiers. Exact MCP requests, persistence, and artifact
-schemas will be added to current contract documents only when implementation begins.
+Notion's [Trader Development Roadmap](https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84)
+treats structure-aware ingestion, multi-source dossier research, brief validation, and research-backed implementation
+qualification as separate frontiers. Exact MCP requests, persistence, and artifact schemas will be added to current
+contract documents only when implementation begins.
 
 ## Persistence And Observability
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import time
 from typing import Any, Generic, TypeVar
@@ -18,6 +18,13 @@ from .llm_client import (
     LlmMessage,
     LlmTokenUsage,
 )
+from .observability_emit import AgentEventEmitter
+from .observability import (
+    AgentErrorCategory,
+    AgentEventError,
+    AgentEventName,
+)
+from .observability_projections import project_budget_usage
 from .policy import BudgetLedger
 from .profiles import AgentProgram, ModelProfile
 from .tracing import (
@@ -51,6 +58,7 @@ class ModelInvocationResult(Generic[OutputT]):
     """Validated public output and bounded invocation measurements."""
 
     output: OutputT
+    call_id: str
     provider: str
     model: str
     input_tokens: int
@@ -86,10 +94,12 @@ class StructuredModelRunner:
     Attributes:
         client: Provider-neutral structured JSON model client.
         trace_sink: Optional redacted observability sink.
+        event_emitter: Process-scoped semantic event stream.
     """
 
     client: LlmClient
     trace_sink: TraceSink = NoOpTraceSink()
+    event_emitter: AgentEventEmitter = field(default_factory=AgentEventEmitter)
 
     async def invoke(
         self,
@@ -172,6 +182,20 @@ class StructuredModelRunner:
                 max_tokens=profile.max_output_tokens,
                 thinking=profile.thinking,
             )
+            event_fields = {
+                "role": program.role.value,
+                "output_contract": output_type.__name__,
+                "schema_repair": repair,
+                "model_provider": profile.provider,
+                "model_name": profile.model,
+            }
+            self.event_emitter.emit(
+                name=AgentEventName.MODEL_CALL_STARTED,
+                correlation=correlation,
+                role=program.role.value,
+                call_id=trace_identity.call_id,
+                fields=event_fields,
+            )
             started = time.perf_counter()
             try:
                 with self.trace_sink.span(
@@ -207,6 +231,18 @@ class StructuredModelRunner:
                     # usable result; the public result span still accounts for
                     # the attempted call during qualification.
                     pass
+                self.event_emitter.emit(
+                    name=AgentEventName.MODEL_CALL_FAILED,
+                    correlation=correlation,
+                    role=program.role.value,
+                    call_id=trace_identity.call_id,
+                    fields={**event_fields, "duration_ms": duration_ms},
+                    error=AgentEventError(
+                        code="model_provider_failed",
+                        category=AgentErrorCategory.MODEL_PROVIDER,
+                        message="The configured model provider call failed.",
+                    ),
+                )
                 raise
             duration_ms = _elapsed_milliseconds(started)
             _trace_model_result(
@@ -228,6 +264,33 @@ class StructuredModelRunner:
             total_input_tokens += completion.usage.input_tokens
             total_output_tokens += completion.usage.output_tokens
             total_duration_ms += duration_ms
+            response_fields = {
+                **event_fields,
+                "input_tokens": completion.usage.input_tokens,
+                "output_tokens": completion.usage.output_tokens,
+                "duration_ms": duration_ms,
+            }
+            self.event_emitter.emit(
+                name=AgentEventName.MODEL_RESPONSE_RECEIVED,
+                correlation=correlation,
+                role=program.role.value,
+                call_id=trace_identity.call_id,
+                fields=response_fields,
+            )
+            self.event_emitter.emit(
+                name=AgentEventName.MODEL_CALL_COMPLETED,
+                correlation=correlation,
+                role=program.role.value,
+                call_id=trace_identity.call_id,
+                fields=response_fields,
+            )
+            self.event_emitter.emit(
+                name=AgentEventName.BUDGET_UPDATED,
+                correlation=correlation,
+                role=program.role.value,
+                call_id=trace_identity.call_id,
+                fields=project_budget_usage(ledger.usage),
+            )
             try:
                 output = output_type.model_validate(completion.payload)
             except ValidationError as exc:
@@ -238,6 +301,28 @@ class StructuredModelRunner:
                     identity=trace_identity,
                     schema_valid=False,
                     validation_error_count=len(last_errors),
+                )
+                self.event_emitter.emit(
+                    name=AgentEventName.MODEL_SCHEMA_REJECTED,
+                    correlation=correlation,
+                    role=program.role.value,
+                    call_id=trace_identity.call_id,
+                    fields={
+                        "output_contract": output_type.__name__,
+                        "schema_repair": repair,
+                        "validation_error_count": len(last_errors),
+                        "validation_error_locations": [
+                            item["location"] for item in last_errors[:8]
+                        ],
+                    },
+                    error=AgentEventError(
+                        code="model_schema_invalid",
+                        category=AgentErrorCategory.SCHEMA_VALIDATION,
+                        message=(
+                            "The model response did not match its public output schema."
+                        ),
+                        retryable=repair < program.max_schema_repairs,
+                    ),
                 )
                 if repair >= program.max_schema_repairs:
                     raise StructuredOutputError(
@@ -252,8 +337,19 @@ class StructuredModelRunner:
                 schema_valid=True,
                 validation_error_count=0,
             )
+            self.event_emitter.emit(
+                name=AgentEventName.MODEL_SCHEMA_ACCEPTED,
+                correlation=correlation,
+                role=program.role.value,
+                call_id=trace_identity.call_id,
+                fields={
+                    "output_contract": output_type.__name__,
+                    "schema_repair": repair,
+                },
+            )
             return ModelInvocationResult(
                 output=output,
+                call_id=trace_identity.call_id,
                 provider=completion.provider,
                 model=completion.model,
                 input_tokens=total_input_tokens,

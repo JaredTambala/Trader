@@ -1,6 +1,9 @@
 # Agentic Research Orchestration Redesign
 
-Status: design review; no implementation is authorized by this document.
+Design status: architecture and design authority for the target agentic research system. Work authorization,
+assignment, and delivery progress are maintained in Notion's
+[Trader Development Roadmap](https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84) and
+[Trader Work Items](https://app.notion.com/p/31131085ffc54c329f25445843e9ac52).
 
 Last reviewed: 2026-08-28.
 
@@ -997,5 +1000,6 @@ The following must be resolved during design review or the framework spike:
 
 Until implementation starts, current-state documents continue to describe the frozen deterministic surface and link to
 this plan as the target. During implementation, target behavior becomes current documentation only when it exists and
-has direct evidence. The active roadmap must mark old deterministic agent expansion as superseded, while preserving
-the controlled freeze as historical evidence.
+has direct evidence. The
+[Trader Development Roadmap](https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84) must mark old deterministic
+agent expansion as superseded, while the repository preserves the controlled freeze as historical evidence.

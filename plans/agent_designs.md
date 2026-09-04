@@ -1,6 +1,6 @@
 # Agent Designs
 
-Status: active design workbook; no implementation is authorized by this document.
+Design status: active design workbook; no implementation is authorized by this document.
 
 Last reviewed: 2026-09-03.
 
@@ -12,7 +12,11 @@ claim.
 
 The overall control-plane direction remains in
 [Agentic Research Orchestration Redesign](agentic_orchestration_redesign.md); capability status and dependencies remain
-in [Research Capability Roadmap](research_capability_roadmap.md).
+available as migration context in [Research Capability Roadmap](research_capability_roadmap.md). Live work assignment,
+priority, dependency, and delivery progress are maintained in Notion's
+[Trader Development Roadmap](https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84) and
+[Trader Work Items](https://app.notion.com/p/31131085ffc54c329f25445843e9ac52). Architecture and design decisions remain
+authoritative in this workbook and its owning records.
 
 ## Active implementation-slice review
 

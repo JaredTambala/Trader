@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import time
 from typing import Any, Literal
@@ -18,7 +18,21 @@ from .contracts import (
     ToolCallProposal,
     ToolObservation,
 )
-from .policy import AuthorizedToolCall, BudgetLedger, PolicyContext, ToolPolicy
+from .observability import AgentErrorCategory, AgentEventError, AgentEventName
+from .observability_emit import AgentEventEmitter
+from .observability_projections import (
+    project_budget_usage,
+    project_policy_result,
+    project_tool_call_proposal,
+    project_tool_observation,
+)
+from .policy import (
+    AuthorizedToolCall,
+    BudgetLedger,
+    PolicyContext,
+    PolicyViolation,
+    ToolPolicy,
+)
 from .tool_client import McpToolClient, McpToolDescription
 from .tracing import (
     NoOpTraceSink,
@@ -57,6 +71,7 @@ class RoleScopedMcpRuntime:
         ledger: Mutable session resource ledger.
         policy: Deterministic proposal authorizer.
         trace_sink: Optional redacted trace backend.
+        event_emitter: Process-scoped semantic event stream.
         max_observation_bytes: Maximum public data returned to a model.
     """
 
@@ -65,6 +80,7 @@ class RoleScopedMcpRuntime:
     ledger: BudgetLedger
     policy: ToolPolicy = ToolPolicy()
     trace_sink: TraceSink = NoOpTraceSink()
+    event_emitter: AgentEventEmitter = field(default_factory=AgentEventEmitter)
     max_observation_bytes: int = 32_000
 
     def __post_init__(self) -> None:
@@ -127,15 +143,59 @@ class RoleScopedMcpRuntime:
         """
         await self._ensure_transport_catalogue()
         proposal = _bind_runtime_operation(proposal, context)
-        authorized = self.policy.authorize(proposal, context)
+        try:
+            authorized = self.policy.authorize(proposal, context)
+        except PolicyViolation as exc:
+            self.event_emitter.emit(
+                name=AgentEventName.TOOL_POLICY_DENIED,
+                correlation=correlation,
+                role=context.role.value,
+                call_id=proposal.call_id,
+                fields=project_policy_result(
+                    proposal,
+                    authorized=False,
+                    denial_code=exc.code,
+                    denial_message=str(exc),
+                ),
+                error=AgentEventError(
+                    code=exc.code,
+                    category=AgentErrorCategory.POLICY,
+                    message=str(exc),
+                ),
+            )
+            raise
+        self.event_emitter.emit(
+            name=AgentEventName.TOOL_POLICY_AUTHORIZED,
+            correlation=correlation,
+            role=context.role.value,
+            call_id=proposal.call_id,
+            fields=project_policy_result(
+                proposal,
+                authorized=True,
+                side_effect=authorized.definition.side_effect.value,
+                fingerprint=authorized.fingerprint,
+            ),
+        )
         transport_tool = self._transport_tools.get(proposal.tool_name)
         if transport_tool is None:
             raise RuntimeError(
                 f"MCP tool disappeared after catalogue refresh: {proposal.tool_name}"
             )
-        _validate_shallow_arguments(proposal.arguments, transport_tool.input_schema)
+        self.event_emitter.emit(
+            name=AgentEventName.TOOL_EXECUTION_STARTED,
+            correlation=correlation,
+            role=context.role.value,
+            call_id=proposal.call_id,
+            fields={
+                **project_tool_call_proposal(proposal),
+                "side_effect": authorized.definition.side_effect.value,
+            },
+        )
         started = time.perf_counter()
+        stage = "arguments"
         try:
+            _validate_shallow_arguments(proposal.arguments, transport_tool.input_schema)
+            stage = "transport"
             with self.trace_sink.span(
                 f"agent.mcp.{proposal.tool_name}",
                 span_type="TOOL",
@@ -153,18 +213,48 @@ class RoleScopedMcpRuntime:
                     proposal.tool_name,
                     proposal.arguments,
                 )
-                observation = _normalize_response(
-                    response,
-                    proposal=proposal,
-                    definition=authorized.definition,
-                    max_observation_bytes=self.max_observation_bytes,
-                )
+            stage = "envelope"
+            observation = _normalize_response(
+                response,
+                proposal=proposal,
+                definition=authorized.definition,
+                max_observation_bytes=self.max_observation_bytes,
+            )
         except BaseException:
             _trace_result(
                 self.trace_sink,
                 correlation=correlation,
                 proposal=proposal,
                 observation=None,
+            )
+            is_transport_failure = stage == "transport"
+            self.event_emitter.emit(
+                name=AgentEventName.TOOL_EXECUTION_FAILED,
+                correlation=correlation,
+                role=context.role.value,
+                call_id=proposal.call_id,
+                fields={
+                    **project_tool_call_proposal(proposal),
+                    "side_effect": authorized.definition.side_effect.value,
+                },
+                error=AgentEventError(
+                    code=(
+                        "mcp_transport_interrupted"
+                        if is_transport_failure
+                        else "mcp_envelope_invalid"
+                    ),
+                    category=(
+                        AgentErrorCategory.MCP_TRANSPORT
+                        if is_transport_failure
+                        else AgentErrorCategory.MCP_APPLICATION
+                    ),
+                    message=(
+                        "The MCP transport did not return a usable response."
+                        if is_transport_failure
+                        else "The MCP request or response violated its public contract."
+                    ),
+                    retryable=is_transport_failure,
+                ),
             )
             raise
         finally:
@@ -176,12 +266,46 @@ class RoleScopedMcpRuntime:
                 side_effect=authorized.definition.side_effect,
                 duration_ms=duration_ms,
             )
+            self.event_emitter.emit(
+                name=AgentEventName.BUDGET_UPDATED,
+                correlation=correlation,
+                role=context.role.value,
+                call_id=proposal.call_id,
+                fields=project_budget_usage(self.ledger.usage),
+            )
         _trace_result(
             self.trace_sink,
             correlation=correlation,
             proposal=proposal,
             observation=observation,
         )
+        if observation.ok:
+            self.event_emitter.emit(
+                name=AgentEventName.TOOL_EXECUTION_COMPLETED,
+                correlation=correlation,
+                role=context.role.value,
+                call_id=proposal.call_id,
+                fields={
+                    **project_tool_observation(observation),
+                    "duration_ms": duration_ms,
+                },
+            )
+        else:
+            self.event_emitter.emit(
+                name=AgentEventName.TOOL_EXECUTION_FAILED,
+                correlation=correlation,
+                role=context.role.value,
+                call_id=proposal.call_id,
+                fields={
+                    **project_tool_observation(observation),
+                    "duration_ms": duration_ms,
+                },
+                error=AgentEventError(
+                    code="mcp_application_failed",
+                    category=AgentErrorCategory.MCP_APPLICATION,
+                    message="The MCP tool returned a failed public envelope.",
+                ),
+            )
         return McpExecutionResult(
             authorized_call=authorized,
             observation=observation,

@@ -33,7 +33,8 @@ holdout Evaluation, variant execution, and Adversarial audit also reload the sea
 trial ledger, objective values, deterministic selection, and selected child refs before consuming a run.
 
 Knowledge-base and bounded methodology contracts remain implemented and maintained. Composite methodology expansion
-remains on the capability roadmap.
+remains in Notion's
+[Trader Development Roadmap](https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84).
 
 ### MLflow Contract Invariants
 

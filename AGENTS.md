@@ -21,8 +21,18 @@ Use the existing documentation as the source of truth:
 - Agent identities and authority: [src/trader_agents/docs/roles_and_authority.md](src/trader_agents/docs/roles_and_authority.md)
 - Current MCP tool catalog: [src/trader_mcp/docs/tools.md](src/trader_mcp/docs/tools.md)
 - MCP/tool envelope contracts: [src/trader_mcp/docs/contracts.md](src/trader_mcp/docs/contracts.md)
-- Active research capability roadmap: [plans/research_capability_roadmap.md](plans/research_capability_roadmap.md)
+- Research capability architecture and migration snapshot:
+  [plans/research_capability_roadmap.md](plans/research_capability_roadmap.md)
 - Python contributor standard: [docs/python_code_quality.md](docs/python_code_quality.md)
+
+Use Notion as the source of truth for development planning and progress:
+
+- Portfolio initiatives and capability status:
+  [Trader Development Roadmap](https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84)
+- Atomic tasks, bugs, issues, spikes, chores, assignment, priority, and dependency state:
+  [Trader Work Items](https://app.notion.com/p/31131085ffc54c329f25445843e9ac52)
+- Planning entry point and operating policy:
+  [Trader Development Hub](https://app.notion.com/p/3d0e5fade83181129bdcd5d08f1e3e1b)
 
 ## Package Architecture
 
@@ -56,27 +66,48 @@ Follow [roles_and_authority.md](src/trader_agents/docs/roles_and_authority.md) f
 No research agent may control live trading, broker mutation, halt clearing, order reconciliation, direct SQL writes, or
 raw hidden scratchpad persistence.
 
+## Planning And Delivery Authority
+
+- Notion is authoritative for work intake, assignment, priority, status, dependencies, and delivery progress.
+- The Git repository is authoritative for architecture, technical design, functional behavior, contracts,
+  implementation documentation, tests, and executable evidence.
+- Trader uses continuous flow. Do not require a sprint or iteration assignment before work can proceed.
+- Every independently assignable task, bug, issue, spike, or chore has its own Trader Work Item. Link it to the Trader
+  project and the narrowest applicable roadmap initiative.
+- Before implementation, find the applicable work item. If the requested repository change is not represented, create
+  a work item before editing. Move it to `In progress` only when work begins, to `Blocked` only with a named blocker or
+  dependency, and to `Done` only after implementation, documentation, and required verification are complete.
+- Architecture and design decisions remain in their canonical repository documents. Reflect their implementation work
+  and progress in Notion without moving the technical authority into a ticket description.
+- If Notion is unavailable, do not substitute a repository planning file as the live tracker. Report the access
+  problem and keep the work item status unchanged until it can be reconciled.
+
 ## Mandatory SDLC Loop
 
 For every task, do this in order:
 
-1. Read the relevant tracker entry first. For research-agent/MCP work, start with
-   [plans/research_capability_roadmap.md](plans/research_capability_roadmap.md) and confirm the current baseline in
-   [docs/product_state.md](docs/product_state.md).
-2. Identify current status, acceptance criteria, evidence, and active docs before editing.
+1. Read the relevant Trader Work Item and linked roadmap initiative in Notion first. Create an atomic work item when the
+   requested change is not represented, then set it to `In progress` when implementation begins.
+2. Identify its acceptance criteria, dependencies, current status, and repository documentation authority. For
+   research-agent/MCP work, confirm the implemented baseline in [docs/product_state.md](docs/product_state.md) and use
+   [plans/research_capability_roadmap.md](plans/research_capability_roadmap.md) only as an architecture and migration
+   reference.
 3. Inspect the change surface with repo searches and nearby code reads. Prefer `rg` and targeted file reads.
 4. Plan narrowly around the package boundary and existing patterns.
-5. Implement the smallest coherent change. Do not create compatibility layers unless the tracker or user explicitly
-   requires them.
+5. Implement the smallest coherent change. Do not create compatibility layers unless the Notion work item, canonical
+   technical design, or user explicitly requires them.
 6. Test the direct behavior first, then broaden tests when touching shared contracts, MCP registration, agent identity,
    persistence, or package boundaries.
-7. Update active documentation and the tracker in the same change when behavior, APIs, artifacts, or status change.
+7. Update active repository documentation when behavior, APIs, artifacts, architecture, or design changes. Update the
+   Notion work item and roadmap initiative when assignment, dependencies, progress, or delivery status changes.
 8. Treat package documentation as part of feature completion: update usage and executable examples when a public
    surface changes, extend the tutorial when the normal user journey changes, and update architecture when boundaries,
    dependencies, state, persistence, or control flow change. If none applies, state why in the final response.
 9. Run the owning package's documentation and example checks before completion.
-10. Review `git status --short` before staging. Stage only intended files.
-11. Commit only when the user asks for a commit, or when an agreed workflow explicitly requires one.
+10. Reconcile the Notion work item with the delivered evidence and mark it `Done` only when its acceptance criteria are
+    satisfied.
+11. Review `git status --short` before staging. Stage only intended files.
+12. Commit only when the user asks for a commit, or when an agreed workflow explicitly requires one.
 
 ## Python Code Quality
 
@@ -94,9 +125,10 @@ Apply [docs/python_code_quality.md](docs/python_code_quality.md) to all Python c
 - Scale tests to risk: focused tests for narrow changes; broader suites for shared contracts, package boundaries, MCP,
   persistence, or runtime behavior.
 
-## Documentation And Tracker Rules
+## Documentation And Planning Rules
 
-- Feature work is not complete until active docs and the active capability roadmap reflect the implementation.
+- Feature work is not complete until active repository docs reflect the implementation and the Notion work item
+  reflects its verified delivery state.
 - Before implementing a feature, read the owning package's `README.md` and relevant documents in its `docs/`
   directory.
 - Public features must update their usage reference and executable examples. Extend a package tutorial whenever the
@@ -108,11 +140,13 @@ Apply [docs/python_code_quality.md](docs/python_code_quality.md) to all Python c
 - Package internals have one canonical owner under that package. Root documentation describes only cross-package
   architecture, product state, environment, end-to-end workflows, contributor standards, and history.
 - Never name an architectural element after an implementation checkpoint code.
-- For research-agent and MCP work, update [plans/research_capability_roadmap.md](plans/research_capability_roadmap.md)
-  whenever status, scope, evidence, or follow-on work changes.
-- Update the tracker and general principles in [plans/agent_designs.md](plans/agent_designs.md), plus the owning record
-  under `plans/agent_designs/`, when a target model-backed agent's mission, authority, entry or context boundary,
-  model/tool loop, state, evidence return, termination, evaluation, concurrency, or review status changes.
+- Do not use [plans/research_capability_roadmap.md](plans/research_capability_roadmap.md) for live work status or
+  assignments. It retains technical dependencies, acceptance concepts, and the 2026-09-03 migration snapshot; Notion
+  owns subsequent delivery state.
+- Update the general principles in [plans/agent_designs.md](plans/agent_designs.md), plus the owning record under
+  `plans/agent_designs/`, when a target model-backed agent's mission, authority, entry or context boundary, model/tool
+  loop, state, evidence return, termination, evaluation, concurrency, or design-review decision changes. Track the
+  work and its delivery status in Notion.
 - Update [src/trader_mcp/docs/contracts.md](src/trader_mcp/docs/contracts.md) when tool inputs, outputs,
   envelopes, side effects, or artifact contracts change.
 - Update [src/trader_agents/docs/roles_and_authority.md](src/trader_agents/docs/roles_and_authority.md) when agent ownership, boundaries, or
@@ -139,9 +173,9 @@ Use the narrowest checks that prove the change, then broaden when shared surface
 
 ## Do Not
 
-- Do not implement before checking the tracker and nearby docs.
-- Do not commit feature work without docs and tracker updates, unless the final response explicitly explains why no docs
-  or tracker change was needed.
+- Do not implement before checking or creating the atomic Notion work item and reading nearby repository docs.
+- Do not commit feature work without required repository documentation and Notion status updates, unless the final
+  response explicitly explains why one of them was not applicable or could not be reached.
 - Do not create legacy compatibility imports, shims, or aliases unless explicitly planned.
 - Do not bypass MCP/tool boundaries from agent code when a tool exists.
 - Do not give agents direct SQL write access, broker mutation, live trading controls, or raw scratchpad persistence.
@@ -153,7 +187,7 @@ Use the narrowest checks that prove the change, then broaden when shared surface
 
 Confirm and report:
 
-- The tracker was checked and updated, or why it was not applicable.
+- The Notion work item and roadmap initiative were checked and updated, or why that was not applicable or possible.
 - Active docs were updated, or why no docs change was needed.
 - Tests/checks were run with exact commands and results.
 - `git status --short` was reviewed.

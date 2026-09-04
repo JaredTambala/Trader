@@ -454,7 +454,8 @@ def test_docs_define_cross_cutting_agent_orchestration() -> None:
 
     assert "Ownership definitions do not imply that every named agent has an operational graph" in agents
     assert "Product State" in agents
-    assert "capability roadmap" in agents
+    assert "Trader Development Roadmap" in agents
+    assert "https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84" in agents
 
 
 def test_docs_define_non_overlapping_experiment_research_decisions() -> None:

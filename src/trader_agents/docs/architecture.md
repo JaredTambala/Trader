@@ -26,6 +26,7 @@ The primary graph implementation is `coordinator.py`; Data and Strategy own thei
 - the Research Coordinator graph
 - a dedicated Postgres LangGraph checkpointer
 - an optional redacted MLflow trace sink
+- one process-scoped semantic event emitter and configurable `stderr` console sink
 
 These objects are injected into `AgenticResearchRuntime`, which exposes only start, resume, inspect, and cancel lifecycle
 operations.
@@ -42,6 +43,7 @@ operator / CLI
        -> RoleScopedMcpRuntime -> stdio MCP client -> trader_mcp
        -> LangGraph Postgres checkpointer
        -> redacted trace sink
+       -> redacted semantic event sink -> operator stderr
 
 trader_mcp -> trader_research -> trader / trader_standard / provider adapters
 ```
@@ -117,6 +119,49 @@ selected return.
 5. MCP envelopes are normalized into bounded `ToolObservation`; raw output and credentials are excluded.
 6. Specialist references are re-read from the canonical store by the coordinator.
 7. A coordinator decision is checkpointed and recorded canonically before its transition is considered accepted.
+
+## Observability contract
+
+`AgentObservabilityEvent` is the versioned, sink-neutral description of public runtime activity. Event names are a
+closed semantic vocabulary, and each name fixes its minimum visibility and authority classification. An adapter cannot
+turn a DEBUG event into INFO or label diagnostic activity as a canonical product record. The authority value describes
+the state projected by the event—diagnostic activity, recoverable checkpoint state, or an already accepted canonical
+record. The event itself is never product truth.
+
+Every event carries session, branch, role, agent-program, model-profile, tool-catalogue, and process identities. Delegation
+and attempt identities occur as a pair; model and MCP stages require a call identity; checkpoint, phase, and committed
+decision events require the accepted transition sequence. Event sequence is strictly increasing within one process.
+Fresh processes may start their own sequence, so cross-process lineage uses stable correlation identities and canonical
+transition sequence instead of inventing a global log order.
+
+The vocabulary deliberately separates these trust stages:
+
+1. a provider response was received;
+2. its declared output schema was accepted or rejected;
+3. the typed action passed or failed domain admission;
+4. a tool proposal passed or failed deterministic policy authorization;
+5. the authorized tool execution started and completed or failed;
+6. a terminal coordinator outcome was accepted.
+
+This distinction prevents a model response, a schema-valid action, and an authorized side effect from appearing to be
+the same fact in logs or traces.
+
+Event fields do not come from generic object dumps. Named projectors expose bounded public summaries for agendas,
+specialist turns and returns, MCP proposals and observations, policy outcomes, budgets, checkpoints, coordinator
+decisions, and terminal results. Arbitrary tool arguments and observations contribute only allowlisted scalar facts,
+identities, counts, and deterministic digests. Recursive validation rejects non-JSON values, oversized values, and
+unsafe fields including raw prompts or completions, hidden reasoning, credentials, source text, retrieved chunks, and
+raw MCP payloads. Sinks revalidate and detach events at their boundary, and the legacy trace API now uses the same
+recursive field validator.
+
+The production composition shares one emitter across the runtime, Coordinator, specialists, structured-model runners,
+and role-scoped MCP runtimes. This gives every event a monotonically increasing process-local sequence. The console
+sink writes either a concise human line or the exact event JSON to `stderr`; INFO filters DEBUG events but never hides
+warnings or errors. No-op and recording sinks remain available for isolated embedding and contract tests. Legacy
+MLflow spans continue alongside the semantic stream until approved durable event persistence is implemented.
+
+The three child MCP processes also log their own bounded lifecycle events to inherited `stderr`. Each line carries the
+specialist role and a distinct MCP process identity, while MCP protocol JSON-RPC remains isolated on child `stdout`.
 
 ## Failure and termination
 

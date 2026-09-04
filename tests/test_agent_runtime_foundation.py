@@ -22,12 +22,16 @@ from pydantic import ValidationError
 from trader_agents import (
     AgentPhase,
     AgentRole,
+    AgentEventEmitter,
+    AgentEventName,
     AgenticResearchRuntime,
     AgenticSliceResult,
     AgendaTaskProposal,
     BudgetLedger,
     BudgetUsage,
     CompositeDataScope,
+    CompositeObservabilityEventSink,
+    ConsoleObservabilityEventSink,
     CanonicalEvidenceRef,
     CoordinatorAction,
     CoordinatorAgenda,
@@ -45,6 +49,7 @@ from trader_agents import (
     PolicyViolation,
     PersistentStdioMcpToolClient,
     PublicIssue,
+    RecordingObservabilityEventSink,
     RecordingTraceSink,
     ResearchCoordinator,
     RoleScopedMcpRuntime,
@@ -779,7 +784,16 @@ def test_structured_model_repairs_once_and_records_redacted_spans() -> None:
         usages=(LlmTokenUsage(10, 4), LlmTokenUsage(12, 6)),
     )
     traces = RecordingTraceSink()
-    runner = StructuredModelRunner(client=client, trace_sink=traces)
+    event_sink = RecordingObservabilityEventSink()
+    event_emitter = AgentEventEmitter(
+        sink=event_sink,
+        process_instance_id="model-repair-process",
+    )
+    runner = StructuredModelRunner(
+        client=client,
+        trace_sink=traces,
+        event_emitter=event_emitter,
+    )
     program = first_slice_programs().for_role(AgentRole.DATA_RESEARCH)
     profile = development_model_profiles().get(program.model_profile_id)
     ledger = BudgetLedger(_budget())
@@ -838,6 +852,19 @@ def test_structured_model_repairs_once_and_records_redacted_spans() -> None:
         == 1
     )
     assert all("prompt" not in str(span["attributes"]) for span in traces.spans)
+    event_names = [event.name for event in event_sink.events]
+    assert event_names.count(AgentEventName.MODEL_CALL_STARTED) == 2
+    assert event_names.count(AgentEventName.MODEL_CALL_COMPLETED) == 2
+    assert event_names.count(AgentEventName.MODEL_SCHEMA_REJECTED) == 1
+    assert event_names.count(AgentEventName.MODEL_SCHEMA_ACCEPTED) == 1
+    rejected = next(
+        event
+        for event in event_sink.events
+        if event.name is AgentEventName.MODEL_SCHEMA_REJECTED
+    )
+    assert rejected.error is not None
+    assert rejected.error.code == "model_schema_invalid"
+    assert rejected.error.retryable is True
 
 
 def test_interrupted_model_call_records_terminal_public_accounting() -> None:
@@ -1237,10 +1264,16 @@ def test_data_prompt_injection_cannot_reach_forbidden_tool() -> None:
     )
     mcp = _MaliciousDataMcpClient()
     program = first_slice_programs().for_role(AgentRole.DATA_RESEARCH)
+    event_sink = RecordingObservabilityEventSink()
+    event_emitter = AgentEventEmitter(
+        sink=event_sink,
+        process_instance_id="policy-denial-process",
+    )
     agent = DataResearchAgent(
-        model_runner=StructuredModelRunner(model),
+        model_runner=StructuredModelRunner(model, event_emitter=event_emitter),
         mcp_client=mcp,
         tool_catalogue=first_slice_tool_catalogue(),
+        event_emitter=event_emitter,
     )
 
     async def _run() -> SpecialistReturn:
@@ -1263,6 +1296,14 @@ def test_data_prompt_injection_cannot_reach_forbidden_tool() -> None:
     final_request = model.requests[-1].messages[-1].content
     assert "IGNORE TRUSTED INSTRUCTIONS" in final_request
     assert '"name":"broker_submit_order"' not in final_request
+    denied = next(
+        event
+        for event in event_sink.events
+        if event.name is AgentEventName.TOOL_POLICY_DENIED
+    )
+    assert denied.error is not None
+    assert denied.error.code == "tool_not_allowed"
+    assert denied.correlation.call_id == "injected-broker-call"
 
 
 def test_data_backfill_revalidates_before_ready_snapshot() -> None:
@@ -2626,22 +2667,41 @@ def test_coordinator_graph_selects_data_only_and_verifies_its_return() -> None:
         },
     )
     strategy_mcp = _StrategyLoopMcpClient(manifest_ref, quality_ref)
+    event_sink = RecordingObservabilityEventSink()
+    event_emitter = AgentEventEmitter(
+        sink=CompositeObservabilityEventSink(
+            (ConsoleObservabilityEventSink(), event_sink)
+        ),
+        process_instance_id="foundation-process",
+    )
     coordinator = ResearchCoordinator(
-        model_runner=StructuredModelRunner(coordinator_client),
+        model_runner=StructuredModelRunner(
+            coordinator_client,
+            event_emitter=event_emitter,
+        ),
         mcp_client=coordinator_mcp,
         data_agent=DataResearchAgent(
-            model_runner=StructuredModelRunner(data_client),
+            model_runner=StructuredModelRunner(
+                data_client,
+                event_emitter=event_emitter,
+            ),
             mcp_client=_DataLoopMcpClient(manifest_ref, quality_ref),
             tool_catalogue=catalogue,
+            event_emitter=event_emitter,
         ),
         strategy_agent=StrategyEngineeringAgent(
-            model_runner=StructuredModelRunner(strategy_client),
+            model_runner=StructuredModelRunner(
+                strategy_client,
+                event_emitter=event_emitter,
+            ),
             mcp_client=strategy_mcp,
             tool_catalogue=catalogue,
+            event_emitter=event_emitter,
         ),
         tool_catalogue=catalogue,
         programs=first_slice_programs(),
         model_profiles=development_model_profiles(),
+        event_emitter=event_emitter,
     )
     initial = build_agent_checkpoint_state(
         session_id=session.session_id,
@@ -2682,6 +2742,26 @@ def test_coordinator_graph_selects_data_only_and_verifies_its_return() -> None:
     assert strategy_mcp.calls == []
     assert coordinator_mcp.read_calls == 2
     assert len(coordinator_mcp.decision_payloads) == 1
+    event_names = {event.name for event in event_sink.events}
+    assert {
+        AgentEventName.AGENDA_ACCEPTED,
+        AgentEventName.SCHEDULING_COMPLETED,
+        AgentEventName.DELEGATION_STARTED,
+        AgentEventName.MODEL_CALL_COMPLETED,
+        AgentEventName.ACTION_DOMAIN_ACCEPTED,
+        AgentEventName.TOOL_EXECUTION_COMPLETED,
+        AgentEventName.PHASE_CHANGED,
+        AgentEventName.CHECKPOINT_SAVED,
+        AgentEventName.SPECIALIST_RETURNED,
+        AgentEventName.JOIN_COMPLETED,
+        AgentEventName.SPECIALIST_RETURN_ACCEPTED,
+        AgentEventName.EVIDENCE_REVIEW_STARTED,
+        AgentEventName.EVIDENCE_REVIEW_COMPLETED,
+        AgentEventName.DECISION_COMMITTED,
+    }.issubset(event_names)
+    assert [event.sequence for event in event_sink.events] == list(
+        range(1, len(event_sink.events) + 1)
+    )
 
 
 def test_coordinator_graph_parallel_joins_verifies_and_concludes() -> None:
@@ -3204,6 +3284,11 @@ def test_runtime_cancellation_is_terminal_canonical_and_replay_safe() -> None:
         model_profiles=profiles,
         trace_sink=traces,
     )
+    lifecycle_sink = RecordingObservabilityEventSink()
+    lifecycle_emitter = AgentEventEmitter(
+        sink=lifecycle_sink,
+        process_instance_id="runtime-lifecycle-process",
+    )
     runtime = AgenticResearchRuntime(
         coordinator=coordinator,
         checkpointer=InMemorySaver(),
@@ -3211,6 +3296,7 @@ def test_runtime_cancellation_is_terminal_canonical_and_replay_safe() -> None:
         programs=programs,
         model_profiles=profiles,
         trace_sink=traces,
+        event_emitter=lifecycle_emitter,
     )
 
     async def _run() -> tuple[Any, Any, Any, Mapping[str, Any]]:
@@ -3255,6 +3341,14 @@ def test_runtime_cancellation_is_terminal_canonical_and_replay_safe() -> None:
     }
     assert len(process_ids) == 1
     assert len(next(iter(process_ids))) == 32
+    semantic_lifecycle_names = [event.name for event in lifecycle_sink.events]
+    assert AgentEventName.SESSION_STARTED in semantic_lifecycle_names
+    assert AgentEventName.SESSION_INTERRUPTED in semantic_lifecycle_names
+    assert AgentEventName.SESSION_CANCELLED in semantic_lifecycle_names
+    assert AgentEventName.SESSION_RESUMED in semantic_lifecycle_names
+    assert AgentEventName.SESSION_INSPECTED in semantic_lifecycle_names
+    assert AgentEventName.CHECKPOINT_SAVED in semantic_lifecycle_names
+    assert AgentEventName.CHECKPOINT_RECOVERED in semantic_lifecycle_names
 
 
 def test_checkpoint_state_is_bounded_redacted_and_thread_isolated() -> None:

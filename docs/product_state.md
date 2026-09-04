@@ -1,13 +1,18 @@
 # Trader Product State
 
 This document is the canonical current-state description of Trader's research product. It explains what the product
-can do, how strongly each capability has been qualified, which agent behavior exists today, and which target
-capabilities remain open.
+can do, how strongly each capability has been qualified, which agent behavior exists today, and which functional
+limits remain.
 
 It does not define request schemas, repeat historical implementation narratives, or prescribe one linear delivery
-sequence. Use the [capability roadmap](../plans/research_capability_roadmap.md) for remaining work and dependencies.
+sequence. Notion's
+[Trader Development Roadmap](https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84) and
+[Trader Work Items](https://app.notion.com/p/31131085ffc54c329f25445843e9ac52) are authoritative for work assignments,
+dependencies, and delivery progress. Use the repository
+[capability roadmap](../plans/research_capability_roadmap.md) only for its retained architecture, dependency,
+acceptance, and migration context.
 
-Last reviewed: 2026-09-03.
+Last reviewed: 2026-09-04.
 
 ## How To Read Capability State
 
@@ -93,6 +98,15 @@ There is no post-generation field rewriting, permissive fenced-JSON parsing, sem
 rewriting, or code-selected research route. Domain and policy violations fail closed. DSPy remains reserved for later
 evaluation-driven program optimization, MCP is the capability boundary, and MLflow covers complex-signal plus agent
 trace/evaluation lifecycle without becoming product authority.
+
+The package now defines and emits a versioned, sink-neutral public event vocabulary. It fixes INFO/DEBUG visibility,
+correlation and ordering identities, trust-stage names, state-authority classification, schema-specific safe
+projections, and recursive redaction. The CLI provides human or JSON-lines diagnostic output on `stderr` while keeping
+its final public result on `stdout`; every child MCP process keeps JSON-RPC on `stdout` and emits role/process-labelled
+lifecycle logs on `stderr`. Model/schema/domain boundaries, MCP policy and execution, scheduling and joins,
+checkpoint/recovery, specialist returns, evidence review, decision commit, interruption, cancellation, and terminal
+outcomes are instrumented. Approved durable event persistence and retention remain separate follow-on work; canonical
+research artifacts and decision receipts remain authoritative.
 
 Every specialist return rejoins the coordinator. The coordinator inspects its canonical evidence and
 chooses explicitly whether to advance, request revision, revisit an earlier responsibility, create a separately tracked
@@ -586,8 +600,9 @@ parallel scheduling, canonical evidence review, interrupts, and the runtime/CLI 
 tests trace every case in the 12-scenario fixture to executable evidence and include fresh-process Postgres recovery,
 redacted MLflow, process cancellation, adversarial policy cases, and real Docker isolation. The no-selection 36-run
 campaign and four bounded-scale profiles are composed, but neither has been retained against a candidate freeze. The
-operation inventory, versioned evaluation cases, phase entry points, and acceptance verifier are complete; active
-status and gates are recorded in the capability roadmap.
+operation inventory, versioned evaluation cases, phase entry points, and acceptance verifier are complete; live status
+and gates are recorded in the
+[Trader Development Roadmap](https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84).
 
 ## Qualification Baselines
 
@@ -643,7 +658,10 @@ trading and live trading. This evidence does not apply to the model-backed repla
 ## Canonical References
 
 - Target agent control-plane design: [Agentic Research Orchestration Redesign](../plans/agentic_orchestration_redesign.md)
-- Remaining work and dependency graph: [research capability roadmap](../plans/research_capability_roadmap.md)
+- Work assignments and delivery dependencies:
+  [Trader Development Roadmap](https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84) and
+  [Trader Work Items](https://app.notion.com/p/31131085ffc54c329f25445843e9ac52)
+- Capability architecture and migration snapshot: [research capability roadmap](../plans/research_capability_roadmap.md)
 - Cross-package architecture: [System Architecture](system_architecture.md)
 - Agent identities, decision boundaries, and runtime: [`trader_agents`](../src/trader_agents/README.md)
 - Callable MCP surface and contracts: [`trader_mcp`](../src/trader_mcp/README.md)

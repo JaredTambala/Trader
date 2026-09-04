@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -18,6 +18,7 @@ from .checkpointing import (
     build_specialist_checkpoint_state,
     checkpoint_safe_observation,
     checkpoint_step,
+    specialist_checkpoint_digest,
     specialist_thread_config,
     validate_specialist_checkpoint_state,
 )
@@ -38,6 +39,13 @@ from .contracts import (
     build_specialist_return,
 )
 from .mcp_runtime import RoleScopedMcpRuntime
+from .observability import AgentErrorCategory, AgentEventError, AgentEventName
+from .observability_emit import AgentEventEmitter
+from .observability_projections import (
+    project_agent_turn,
+    project_checkpoint,
+    project_specialist_return,
+)
 from .policy import BudgetLedger, PolicyContext, PolicyViolation
 from .profiles import AgentProgram, ModelProfile
 from .structured_model import StructuredModelRunner, StructuredOutputError
@@ -54,12 +62,14 @@ class StrategyEngineeringAgent:
         mcp_client: Transport used only through the role-scoped MCP runtime.
         tool_catalogue: Code-owned first-slice operation catalogue.
         trace_sink: Optional redacted trace backend.
+        event_emitter: Process-scoped semantic event stream.
     """
 
     model_runner: StructuredModelRunner
     mcp_client: McpToolClient
     tool_catalogue: ToolCatalogue
     trace_sink: TraceSink = NoOpTraceSink()
+    event_emitter: AgentEventEmitter = field(default_factory=AgentEventEmitter)
 
     async def run(
         self,
@@ -85,6 +95,13 @@ class StrategyEngineeringAgent:
             Trusted specialist return with immutable evidence and measured use.
         """
         _validate_entry(session, delegation, build_contract, program, profile)
+        correlation = _specialist_correlation(
+            session=session,
+            delegation=delegation,
+            program=program,
+            profile=profile,
+            catalogue=self.tool_catalogue,
+        )
         graph = self._build_graph(
             session=session,
             delegation=delegation,
@@ -121,16 +138,45 @@ class StrategyEngineeringAgent:
                     profile=profile,
                     catalogue=self.tool_catalogue,
                 )
+                self.event_emitter.emit(
+                    name=AgentEventName.CHECKPOINT_RECOVERED,
+                    correlation=correlation,
+                    role=AgentRole.STRATEGY_ENGINEERING.value,
+                    transition_sequence=_checkpoint_sequence(snapshot.values),
+                    fields=_checkpoint_fields(snapshot.values),
+                )
                 terminal = _terminal_return(snapshot.values)
                 if terminal is not None:
-                    return terminal
+                    return self._emit_return(terminal, correlation=correlation)
                 output = await graph.ainvoke(None, config)
             else:
                 output = await graph.ainvoke(initial, config)
+            self.event_emitter.emit(
+                name=AgentEventName.CHECKPOINT_SAVED,
+                correlation=correlation,
+                role=AgentRole.STRATEGY_ENGINEERING.value,
+                transition_sequence=_checkpoint_sequence(output),
+                fields=_checkpoint_fields(output),
+            )
         terminal = _terminal_return(output)
         if terminal is None:
             raise RuntimeError("Strategy specialist graph returned no terminal result")
-        return terminal
+        return self._emit_return(terminal, correlation=correlation)
+
+    def _emit_return(
+        self,
+        result: SpecialistReturn,
+        *,
+        correlation: TraceCorrelation,
+    ) -> SpecialistReturn:
+        """Emit and return one bounded Strategy specialist result."""
+        self.event_emitter.emit(
+            name=AgentEventName.SPECIALIST_RETURNED,
+            correlation=correlation,
+            role=AgentRole.STRATEGY_ENGINEERING.value,
+            fields=project_specialist_return(result),
+        )
+        return result
 
     def _build_graph(
         self,
@@ -180,6 +226,7 @@ class StrategyEngineeringAgent:
                 catalogue=self.tool_catalogue,
                 ledger=ledger,
                 trace_sink=self.trace_sink,
+                event_emitter=self.event_emitter,
             )
             phase = AgentPhase(str(checkpoint["phase"]))
             observations = [
@@ -246,9 +293,31 @@ class StrategyEngineeringAgent:
                     correlation=correlation,
                 )
                 turn = invocation.output
-                _validate_strategy_turn(
-                    turn,
-                    successful_steps=successful_steps,
+                try:
+                    _validate_strategy_turn(
+                        turn,
+                        successful_steps=successful_steps,
+                    )
+                except ValueError:
+                    self.event_emitter.emit(
+                        name=AgentEventName.ACTION_DOMAIN_REJECTED,
+                        correlation=correlation,
+                        role=AgentRole.STRATEGY_ENGINEERING.value,
+                        call_id=invocation.call_id,
+                        fields=project_agent_turn(turn),
+                        error=AgentEventError(
+                            code="strategy_action_rejected",
+                            category=AgentErrorCategory.DOMAIN_VALIDATION,
+                            message="The Strategy action violated its public domain constraints.",
+                        ),
+                    )
+                    raise
+                self.event_emitter.emit(
+                    name=AgentEventName.ACTION_DOMAIN_ACCEPTED,
+                    correlation=correlation,
+                    role=AgentRole.STRATEGY_ENGINEERING.value,
+                    call_id=invocation.call_id,
+                    fields=project_agent_turn(turn),
                 )
                 if turn.action == "return_result":
                     conclusion = _required_conclusion(turn)
@@ -278,6 +347,14 @@ class StrategyEngineeringAgent:
                         budget_used=ledger.usage,
                         available_evidence_refs=list(observed_refs.values()),
                     )
+                    self.event_emitter.emit_phase_change(
+                        correlation=correlation,
+                        role=AgentRole.STRATEGY_ENGINEERING.value,
+                        previous_phase=phase.value,
+                        next_phase=AgentPhase.TERMINAL.value,
+                        transition_sequence=int(checkpoint["step_sequence"]) + 1,
+                        reason="specialist_returned",
+                    )
                     return _validated_update(
                         checkpoint,
                         {
@@ -292,7 +369,16 @@ class StrategyEngineeringAgent:
                         },
                     )
                 if turn.action == "choose_build":
+                    previous_phase = phase
                     phase = _accept_build_decision(turn, lifecycle)
+                    self.event_emitter.emit_phase_change(
+                        correlation=correlation,
+                        role=AgentRole.STRATEGY_ENGINEERING.value,
+                        previous_phase=previous_phase.value,
+                        next_phase=phase.value,
+                        transition_sequence=int(checkpoint["step_sequence"]) + 1,
+                        reason="build_approach_selected",
+                    )
                     return _validated_update(
                         checkpoint,
                         {
@@ -303,6 +389,7 @@ class StrategyEngineeringAgent:
                         },
                     )
                 if turn.action == "change_phase":
+                    previous_phase = phase
                     phase = _next_strategy_phase(
                         phase,
                         turn.next_phase,
@@ -310,6 +397,14 @@ class StrategyEngineeringAgent:
                         contract=build_contract,
                         ledger=ledger,
                         delegation=delegation,
+                    )
+                    self.event_emitter.emit_phase_change(
+                        correlation=correlation,
+                        role=AgentRole.STRATEGY_ENGINEERING.value,
+                        previous_phase=previous_phase.value,
+                        next_phase=phase.value,
+                        transition_sequence=int(checkpoint["step_sequence"]) + 1,
+                        reason="model_phase_change",
                     )
                     return _validated_update(
                         checkpoint,
@@ -372,7 +467,16 @@ class StrategyEngineeringAgent:
                     execution.observation.ok
                     and proposal.tool_name == "coding_package_candidate"
                 ):
+                    previous_phase = phase
                     phase = AgentPhase.ADMIT
+                    self.event_emitter.emit_phase_change(
+                        correlation=correlation,
+                        role=AgentRole.STRATEGY_ENGINEERING.value,
+                        previous_phase=previous_phase.value,
+                        next_phase=phase.value,
+                        transition_sequence=int(checkpoint["step_sequence"]) + 1,
+                        reason="candidate_packaged",
+                    )
                 return _validated_update(
                     checkpoint,
                     {
@@ -422,6 +526,14 @@ class StrategyEngineeringAgent:
                     observed_refs=list(observed_refs.values()),
                     error=cleanup_error or exc,
                 )
+                self.event_emitter.emit_phase_change(
+                    correlation=correlation,
+                    role=AgentRole.STRATEGY_ENGINEERING.value,
+                    previous_phase=phase.value,
+                    next_phase=AgentPhase.TERMINAL.value,
+                    transition_sequence=int(checkpoint["step_sequence"]) + 1,
+                    reason="specialist_failed",
+                )
                 return _validated_update(
                     checkpoint,
                     {
@@ -443,6 +555,47 @@ class StrategyEngineeringAgent:
             {"continue": "model_tool_step", "end": END},
         )
         return graph.compile(checkpointer=checkpointer)
+
+
+def _specialist_correlation(
+    *,
+    session: ResearchSession,
+    delegation: SpecialistDelegation,
+    program: AgentProgram,
+    profile: ModelProfile,
+    catalogue: ToolCatalogue,
+) -> TraceCorrelation:
+    """Build the stable public correlation for one Strategy invocation."""
+    return TraceCorrelation(
+        session_id=session.session_id,
+        branch_id=delegation.branch_id,
+        delegation_id=delegation.delegation_id,
+        attempt_id=delegation.attempt_id,
+        program_id=program.program_id,
+        model_profile_id=profile.profile_id,
+        tool_catalog_id=catalogue.catalogue_id,
+    )
+
+
+def _checkpoint_sequence(state: Mapping[str, Any]) -> int:
+    """Return the positive specialist transition represented by a checkpoint."""
+    value = state.get("step_sequence", 1)
+    return (
+        value
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0
+        else 1
+    )
+
+
+def _checkpoint_fields(state: Mapping[str, Any]) -> dict[str, Any]:
+    """Project Strategy checkpoint identity without copying recoverable state."""
+    sequence = _checkpoint_sequence(state)
+    return project_checkpoint(
+        checkpoint_digest=specialist_checkpoint_digest(state),
+        transition_sequence=sequence,
+        status=str(state.get("status") or "running"),
+        phase=str(state.get("phase") or AgentPhase.INVESTIGATE.value),
+    )
 
 
 def _validate_entry(
@@ -895,9 +1048,7 @@ def _failed_return(
         unresolved_questions=[delegation.task.question],
         findings=["Strategy Engineering did not reach a validated admission verdict."],
         evidence_refs=observed_refs,
-        blockers=[
-            PublicIssue(code=code, message=str(error)[:1_000], details=details)
-        ],
+        blockers=[PublicIssue(code=code, message=str(error)[:1_000], details=details)],
         advisory_next_actions=["review the blocker before any new candidate attempt"],
     )
     return build_specialist_return(

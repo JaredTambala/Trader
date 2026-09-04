@@ -6,24 +6,13 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-import json
 from threading import Lock
 from typing import Any, Protocol
 import warnings
 
+from .observability import validate_observability_fields
 
-_FORBIDDEN_ATTRIBUTE_PARTS = (
-    "prompt",
-    "reasoning",
-    "scratchpad",
-    "credential",
-    "secret",
-    "api_key",
-    "raw_message",
-    "raw_tool",
-    "source_code",
-    "content",
-)
+
 _MAX_TRACE_ATTRIBUTE_BYTES = 16_000
 
 
@@ -246,18 +235,8 @@ def _validate_span(
 
 def _validate_attributes(attributes: Mapping[str, Any]) -> None:
     """Reject secret/raw-content keys and unbounded or non-JSON values."""
-    for key in attributes:
-        normalized = str(key).lower()
-        if any(part in normalized for part in _FORBIDDEN_ATTRIBUTE_PARTS):
-            raise ValueError(f"trace attribute key is not allowed: {key}")
-    try:
-        encoded = json.dumps(
-            dict(attributes),
-            sort_keys=True,
-            separators=(",", ":"),
-            allow_nan=False,
-        ).encode("utf-8")
-    except (TypeError, ValueError) as exc:
-        raise ValueError("trace attributes must be JSON-native") from exc
-    if len(encoded) > _MAX_TRACE_ATTRIBUTE_BYTES:
-        raise ValueError("trace attributes exceed the 16000-byte limit")
+    validate_observability_fields(
+        attributes,
+        label="trace attributes",
+        max_bytes=_MAX_TRACE_ATTRIBUTE_BYTES,
+    )

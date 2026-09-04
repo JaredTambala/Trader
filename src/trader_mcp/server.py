@@ -72,6 +72,7 @@ from trader_mcp.constants import (
     SERVER_NAME,
     SUPPORT_TOOL_DESCRIPTIONS,
 )
+from trader_mcp.console_logging import McpConsoleLogger, mcp_console_config
 from trader_mcp.environment import McpEnvironment, load_local_environment
 from trader_mcp.evaluation_tools import register_evaluation_tools
 from trader_mcp.knowledge_tools import register_quant_methods_tools
@@ -1798,9 +1799,29 @@ def _parse_iso_datetime(value: str, *, field_name: str) -> datetime:
 
 
 def main() -> None:
-    """Run the MCP server over stdio transport."""
+    """Run the MCP server with protocol-safe stderr lifecycle logging."""
     local_env = load_local_environment()
-    create_server(local_env).run(transport=local_env.transport)
+    console = McpConsoleLogger(mcp_console_config())
+    console.info(
+        "trader.mcp.server.started",
+        server=SERVER_NAME,
+        transport=local_env.transport,
+        tool_count=len(REGISTERED_TOOL_NAMES),
+    )
+    console.debug(
+        "trader.mcp.server.configured",
+        environment=local_env.environment,
+        server=SERVER_NAME,
+        transport=local_env.transport,
+    )
+    try:
+        create_server(local_env).run(transport=local_env.transport)
+    finally:
+        console.info(
+            "trader.mcp.server.stopped",
+            server=SERVER_NAME,
+            transport=local_env.transport,
+        )
 
 
 if __name__ == "__main__":

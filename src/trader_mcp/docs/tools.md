@@ -135,8 +135,10 @@ knowledge base. They are not currently being expanded toward autonomous book-sca
   frameworks spanning multiple chapters, method families, or ordered components remain a documented limitation.
 - Blocked extraction is valid output. Operators must not repair missing evidence through title overrides, invented
   fields, publication, or generated code.
-- Composite claim-graph methodology work remains on the capability roadmap. Maintenance continues for correctness,
-  persistence integrity, citation validity, security, and regressions affecting existing supported workflows.
+- Composite claim-graph methodology work remains in Notion's
+  [Trader Development Roadmap](https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84). Maintenance continues for
+  correctness, persistence integrity, citation validity, security, and regressions affecting existing supported
+  workflows.
 
 ## ML Agent Tools
 
@@ -270,9 +272,10 @@ The next planned tool work is not additional knowledge extraction. It is:
 
 Higher-level orchestration composes the registered tools in this catalog through a fixed compiler/executor; it is not a
 new generic MCP tool that bypasses their contracts. The Experiment Design operation persists proposal evidence; the
-two workflow MCP tools persist approved governance records and do not execute the graph. Current orchestration state and remaining dependencies are recorded in
-[Product State](../../../docs/product_state.md#implemented-orchestration-at-a-glance) and the
-[capability roadmap](../../../plans/research_capability_roadmap.md#orchestration).
+two workflow MCP tools persist approved governance records and do not execute the graph. Current implemented
+orchestration state is recorded in [Product State](../../../docs/product_state.md#implemented-orchestration-at-a-glance);
+remaining delivery dependencies are recorded in Notion's
+[Trader Development Roadmap](https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84).
 
 None of those future surfaces should execute prompt text directly. AI-produced code is supplied as an explicit source
 artifact and passes the same validation and backtest-only restrictions as handwritten code.

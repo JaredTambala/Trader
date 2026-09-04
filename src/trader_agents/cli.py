@@ -19,6 +19,7 @@ from .inputs import (
     strategy_build_contract_from_session,
     validate_runtime_pins,
 )
+from .observability_console import AgentConsoleConfig, agent_console_config
 from .profiles import development_model_profiles
 from .programs import first_slice_programs
 from .catalogue import first_slice_tool_catalogue
@@ -30,6 +31,10 @@ def main() -> None:
     parser = _parser()
     args = parser.parse_args()
     try:
+        console_config = agent_console_config(
+            level_override=args.log_level,
+            format_override=args.log_format,
+        )
         if args.command == "manifest":
             _print_json(runtime_manifest())
             return
@@ -44,7 +49,7 @@ def main() -> None:
                 }
             )
             return
-        outcome = anyio.run(_run_command, args, session)
+        outcome = anyio.run(_run_command, args, session, console_config)
         _print_json(outcome.model_dump(mode="json"))
     except (OSError, RuntimeError, ValueError) as exc:
         _print_json(
@@ -63,10 +68,12 @@ def main() -> None:
 async def _run_command(
     args: argparse.Namespace,
     session: ResearchSession,
+    console_config: AgentConsoleConfig,
 ) -> Any:
     """Open runtime resources and execute the selected lifecycle operation."""
     async with runtime_from_environment(
         setup_checkpoint_schema=bool(args.setup_checkpoint_schema),
+        console_config=console_config,
     ) as runtime:
         if args.command == "run":
             return await runtime.start(session)
@@ -111,6 +118,20 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="trader-agent",
         description="Run the first-slice Trader research-agent system.",
+    )
+    parser.add_argument(
+        "--log-level",
+        type=str.upper,
+        choices=("DEBUG", "INFO"),
+        default=None,
+        help="stderr event threshold; overrides TRADER_AGENTS_LOG_LEVEL",
+    )
+    parser.add_argument(
+        "--log-format",
+        type=str.lower,
+        choices=("human", "json"),
+        default=None,
+        help="stderr event format; overrides TRADER_AGENTS_LOG_FORMAT",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser(

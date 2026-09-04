@@ -1,13 +1,14 @@
 # Knowledge Research Agent Design
 
-Status: architecture review in progress; no implementation is authorized by this document.
+Design status: architecture review in progress; this document does not authorize implementation.
 
 Last reviewed: 2026-08-24.
 
 This document is the canonical build-lifecycle architecture record for the Knowledge Research Agent. Review status and
-shared principles are maintained in the parent [Agent Designs](../agent_designs.md) tracker. System-level direction
-remains in [Agentic Research Orchestration Redesign](../agentic_orchestration_redesign.md), and delivery status remains
-in the [Research Capability Roadmap](../research_capability_roadmap.md).
+shared principles are maintained in the parent [Agent Designs](../agent_designs.md) workbook. System-level direction
+remains in [Agentic Research Orchestration Redesign](../agentic_orchestration_redesign.md). Work assignment and delivery
+progress are maintained in Notion's
+[Trader Work Items](https://app.notion.com/p/31131085ffc54c329f25445843e9ac52).
 
 ## Established design constraints
 
