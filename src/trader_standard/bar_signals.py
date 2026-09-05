@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from typing import Sequence
 
-from trader.data import EventStore
+from trader.event_store import EventStore
 from trader.indicators import IndicatorObservation
 from trader.signals import Bar, Signal
 
@@ -16,12 +16,16 @@ logger = logging.getLogger(__name__)
 
 
 def table_for_asset_class(asset_class: str) -> str:
-    """Return the bar table name for an asset class."""
+    """Return the event-store bar table used for an asset class.
+
+    Crypto-like asset classes map to `crypto_bar_events`; everything else uses
+    stock bars so callers can build SQL without duplicating routing logic.
+    """
     return "crypto_bar_events" if asset_class.lower() in {"crypto", "cryptocurrency"} else "stock_bar_events"
 
 
 def max_window_for_signals(signals: Sequence[Signal]) -> int:
-    """Return the largest lookback window required by the signal set."""
+    """Return the largest bar lookback required by a non-empty signal set."""
     if not signals:
         raise ValueError("At least one Signal must be provided")
     return max(signal.window for signal in signals)
@@ -36,28 +40,35 @@ def fetch_recent_bars(
     limit: int,
     as_of_ts: datetime | None = None,
 ) -> list[Bar]:
-    """Fetch recent OHLCV bars for a symbol/timeframe (latest first)."""
+    """Fetch recent OHLCV bars for a symbol/timeframe in latest-first order.
+
+    `as_of_ts` bounds historical/backtest reads so signals do not see bars after
+    the decision timestamp.
+    """
     connection = getattr(event_store, "connection", lambda: None)()
     if connection is None:
         return []
 
     if hasattr(connection, "cursor"):
         with connection.cursor() as cursor:
+            placeholder = "?" if connection.__class__.__module__.startswith("_duckdb") else "%s"
             query = f"""
                     SELECT ts, open, high, low, close, volume, vwap, trade_count
                     FROM {table}
-                    WHERE symbol = %s AND COALESCE(timeframe, '1Min') = %s
+                    WHERE symbol = {placeholder} AND COALESCE(timeframe, '1Min') = {placeholder}
                     ORDER BY ts DESC
-                    LIMIT %s
+                    LIMIT {placeholder}
                 """
             params = [symbol.upper(), timeframe, limit]
             if as_of_ts is not None:
                 query = f"""
                         SELECT ts, open, high, low, close, volume, vwap, trade_count
                         FROM {table}
-                        WHERE symbol = %s AND COALESCE(timeframe, '1Min') = %s AND ts <= %s
+                        WHERE symbol = {placeholder}
+                          AND COALESCE(timeframe, '1Min') = {placeholder}
+                          AND ts <= {placeholder}
                         ORDER BY ts DESC
-                        LIMIT %s
+                        LIMIT {placeholder}
                     """
                 params = [symbol.upper(), timeframe, as_of_ts, limit]
             cursor.execute(query, params)
@@ -76,7 +87,11 @@ def compute_signal_map(
     cycle_id: str | None = None,
     symbol: str | None = None,
 ) -> dict[str, float]:
-    """Compute signal values from a latest-first bar window."""
+    """Compute signal values and persist indicator audit events when possible.
+
+    Individual signal failures are logged and skipped so one bad signal does not
+    prevent the strategy from using other available signals.
+    """
     output: dict[str, float] = {}
     for signal in signals:
         try:
@@ -109,7 +124,11 @@ def record_indicator_events(
     signal: Signal,
     bars: Sequence[Bar],
 ) -> None:
-    """Persist indicator telemetry events for a signal evaluation."""
+    """Persist normalized indicator telemetry for one signal evaluation.
+
+    Missing event-store or correlation identifiers make telemetry optional; the
+    function returns without writing so signal computation can still proceed.
+    """
     if event_store is None or not run_id or not cycle_id or not symbol:
         return
     try:

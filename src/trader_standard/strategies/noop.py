@@ -5,23 +5,27 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Mapping, Sequence
 
-from trader.data import EventStore
+from trader.event_store import EventStore
 from trader.portfolio import Portfolio
 from trader.strategies import Strategy
 from trader.strategy_metadata import StrategyInfo
 
 
 class NoOpStrategy(Strategy):
-    """Strategy that produces no signals."""
+    """Strategy implementation that intentionally emits no orders.
+
+    It is used for infrastructure tests, dry runs, and backtests where the
+    surrounding runtime behavior is under test instead of strategy logic.
+    """
 
     @property
     def strategy_id(self) -> str:
-        """Return the strategy identifier."""
+        """Return the stable no-op strategy identifier stored in run metadata and artifacts."""
         return "noop"
 
     @property
     def strategy_info(self) -> StrategyInfo:
-        """Return structured strategy metadata."""
+        """Return structured no-op strategy metadata for run persistence and artifact exports."""
         return StrategyInfo(
             strategy_id="noop",
             name="noop",
@@ -41,5 +45,5 @@ class NoOpStrategy(Strategy):
         event_store: EventStore,
         portfolio: Portfolio,
     ) -> Sequence[Mapping[str, object]]:
-        """Generate candidate orders for the current data."""
+        """Return no candidate orders for every decision point and portfolio state."""
         return []

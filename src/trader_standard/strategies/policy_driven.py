@@ -6,9 +6,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import logging
+import math
 from typing import AsyncIterator, Mapping, Sequence
 
-from trader.data import EventStore
+from trader.event_store import EventStore
 from trader.portfolio import Portfolio, Position
 from trader.signals import Signal
 from trader.strategies import Strategy
@@ -35,7 +36,11 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class StrategySnapshot:
-    """Per-symbol state used by entry, exit, and stop policies."""
+    """Per-symbol decision state supplied to entry, exit, and stop policies.
+
+    The snapshot combines current position state, latest price, and signal map
+    so policies can remain deterministic and side-effect free.
+    """
 
     symbol: str
     decision_ts: datetime
@@ -46,46 +51,58 @@ class StrategySnapshot:
 
     @property
     def is_long(self) -> bool:
+        """Return whether the current position quantity represents long exposure for policy decisions."""
         return self.position_qty > 0.0
 
     @property
     def is_flat(self) -> bool:
+        """Return whether entry policies may treat the symbol as flat for new entries."""
         return not self.is_long
 
 
 class EntryPolicy(ABC):
-    """Decide whether a long entry should be opened."""
+    """Policy interface that decides whether a flat symbol should open long."""
 
     @abstractmethod
     def should_enter(self, snapshot: StrategySnapshot) -> bool:
-        """Return True when the strategy should enter a long."""
+        """Return true when a flat symbol should transition into long exposure now."""
 
 
 class ExitPolicy(ABC):
-    """Decide whether a long position should be flattened."""
+    """Policy interface that decides whether an existing long should flatten.
+
+    Implementations inspect a side-effect-free `StrategySnapshot`.
+    """
 
     @abstractmethod
     def should_exit(self, snapshot: StrategySnapshot) -> bool:
-        """Return True when the strategy should flatten a long."""
+        """Return true when an existing long should be flattened by signal state now."""
 
 
 class StopPolicy(ABC):
-    """Protective exit policy with optional internal symbol state."""
+    """Protective exit policy that may retain per-symbol trailing state.
+
+    Stop policies observe each snapshot before they are asked whether to exit.
+    """
 
     def observe(self, snapshot: StrategySnapshot) -> None:
-        """Update any internal state from the latest portfolio snapshot."""
+        """Update internal stop state from the latest symbol snapshot before exit checks run."""
 
     @abstractmethod
     def should_exit(self, snapshot: StrategySnapshot) -> bool:
-        """Return True when the stop is hit."""
+        """Return true when protective stop state requires flattening the current position."""
 
     def reset(self, symbol: str) -> None:
-        """Clear any internal state for the symbol."""
+        """Clear any retained protective stop state associated with the named symbol."""
 
 
 @dataclass(frozen=True)
 class SignalThresholdEntryPolicy(EntryPolicy):
-    """Enter when configured signals cross the required threshold."""
+    """Enter when configured signal values satisfy a threshold rule.
+
+    The policy can require every named signal or any named signal, and can test
+    positive or negative threshold direction.
+    """
 
     signal_names: tuple[str, ...]
     require_all: bool = True
@@ -93,6 +110,7 @@ class SignalThresholdEntryPolicy(EntryPolicy):
     threshold: float = 0.0
 
     def should_enter(self, snapshot: StrategySnapshot) -> bool:
+        """Evaluate configured signal thresholds to decide whether to open long exposure."""
         return _evaluate_signal_set(
             snapshot.signals,
             signal_names=self.signal_names,
@@ -104,7 +122,10 @@ class SignalThresholdEntryPolicy(EntryPolicy):
 
 @dataclass(frozen=True)
 class SignalThresholdExitPolicy(ExitPolicy):
-    """Exit when configured signals cross the required threshold."""
+    """Exit when configured signal values satisfy a threshold rule.
+
+    This mirrors the entry threshold policy but defaults to negative direction.
+    """
 
     signal_names: tuple[str, ...]
     require_all: bool = False
@@ -112,6 +133,7 @@ class SignalThresholdExitPolicy(ExitPolicy):
     threshold: float = 0.0
 
     def should_exit(self, snapshot: StrategySnapshot) -> bool:
+        """Evaluate configured signal thresholds to decide whether to flatten long exposure."""
         return _evaluate_signal_set(
             snapshot.signals,
             signal_names=self.signal_names,
@@ -122,15 +144,22 @@ class SignalThresholdExitPolicy(ExitPolicy):
 
 
 class NoOpStopPolicy(StopPolicy):
-    """Stop policy that never exits."""
+    """Stop policy implementation that never triggers a protective exit.
+
+    It is the default when no explicit stop policy is configured.
+    """
 
     def should_exit(self, snapshot: StrategySnapshot) -> bool:
+        """Always return false so no protective stop exit is generated by default."""
         return False
 
 
 @dataclass
 class FixedStopLossPolicy(StopPolicy):
-    """Exit when price falls below the configured loss threshold."""
+    """Exit longs when price falls below entry/reference by loss percentage.
+
+    Missing average price falls back to the latest price as the reference.
+    """
 
     stop_loss_pct: float
 
@@ -138,6 +167,7 @@ class FixedStopLossPolicy(StopPolicy):
         self.stop_loss_pct = max(0.0, float(self.stop_loss_pct))
 
     def should_exit(self, snapshot: StrategySnapshot) -> bool:
+        """Return true when long price falls below the configured fixed loss threshold."""
         if not snapshot.is_long:
             return False
         reference_price = snapshot.avg_price if snapshot.avg_price is not None else snapshot.last_price
@@ -146,7 +176,10 @@ class FixedStopLossPolicy(StopPolicy):
 
 @dataclass
 class TrailingStopPolicy(StopPolicy):
-    """Exit when price falls below a symbol high-water mark."""
+    """Exit longs when price falls below a tracked high-water mark.
+
+    The high-water mark resets when the symbol is no longer long.
+    """
 
     trailing_stop_pct: float
 
@@ -155,6 +188,7 @@ class TrailingStopPolicy(StopPolicy):
         self._high_water_by_symbol: dict[str, float] = {}
 
     def observe(self, snapshot: StrategySnapshot) -> None:
+        """Update or clear the per-symbol high-water mark from the latest snapshot before checks."""
         if not snapshot.is_long:
             self.reset(snapshot.symbol)
             return
@@ -163,6 +197,7 @@ class TrailingStopPolicy(StopPolicy):
         self._high_water_by_symbol[snapshot.symbol] = max(current_high_water, float(snapshot.last_price), float(baseline))
 
     def should_exit(self, snapshot: StrategySnapshot) -> bool:
+        """Return true when price breaches the trailing high-water stop threshold for exit."""
         if not snapshot.is_long:
             return False
         high_water = self._high_water_by_symbol.get(
@@ -172,29 +207,41 @@ class TrailingStopPolicy(StopPolicy):
         return snapshot.last_price <= float(high_water) * (1.0 - self.trailing_stop_pct)
 
     def reset(self, symbol: str) -> None:
+        """Forget the high-water mark retained for a symbol that left long state."""
         self._high_water_by_symbol.pop(symbol, None)
 
 
 @dataclass
 class CompositeStopPolicy(StopPolicy):
-    """Exit when any child stop policy fires."""
+    """Stop policy that exits when any child policy triggers.
+
+    Observation and reset calls are delegated to every child policy.
+    """
 
     policies: Sequence[StopPolicy]
 
     def observe(self, snapshot: StrategySnapshot) -> None:
+        """Forward snapshot observation to every child stop policy in configured order."""
         for policy in self.policies:
             policy.observe(snapshot)
 
     def should_exit(self, snapshot: StrategySnapshot) -> bool:
+        """Return true when any child stop policy requires a protective exit now."""
         return any(policy.should_exit(snapshot) for policy in self.policies)
 
     def reset(self, symbol: str) -> None:
+        """Reset retained state for the symbol across every configured child policy."""
         for policy in self.policies:
             policy.reset(symbol)
 
 
 class LongFlatSignalStrategy(Strategy):
-    """Generic long/flat strategy driven by bar-backed signals and policies."""
+    """Reusable long/flat strategy driven by bar-backed signals and policies.
+
+    The strategy fetches signal windows, builds a snapshot per symbol, applies
+    stop/exit/entry policies, and emits only market orders needed to transition
+    between flat and long states.
+    """
 
     def __init__(
         self,
@@ -225,11 +272,12 @@ class LongFlatSignalStrategy(Strategy):
 
     @property
     def strategy_id(self) -> str:
+        """Return the configured strategy identifier used in run metadata and artifacts."""
         return self._strategy_id
 
     @property
     def strategy_info(self) -> StrategyInfo:
-        """Return structured strategy metadata for research runs."""
+        """Return structured strategy metadata for research runs and artifact export payloads."""
         return StrategyInfo(
             strategy_id=self._strategy_id,
             name=self._strategy_id,
@@ -256,6 +304,12 @@ class LongFlatSignalStrategy(Strategy):
         event_store: EventStore,
         portfolio: Portfolio,
     ) -> Sequence[Mapping[str, object]]:
+        """Generate long/flat transition orders for every configured symbol.
+
+        Each symbol is evaluated independently from latest event-store bars,
+        portfolio state, computed signals, and stop/exit/entry policies. Only
+        required buy or flattening market orders are emitted.
+        """
         logger.info(
             "Generating policy-driven orders strategy=%s run_id=%s symbols=%s",
             self.strategy_id,
@@ -287,6 +341,7 @@ class LongFlatSignalStrategy(Strategy):
         event_store: EventStore,
         portfolio: Portfolio,
     ) -> Sequence[Mapping[str, object]]:
+        """Generate long/flat transition orders for one canonical symbol only in streaming mode."""
         return self._generate_orders_for_symbol(
             symbol.strip().upper(),
             run_id=run_id,
@@ -305,6 +360,7 @@ class LongFlatSignalStrategy(Strategy):
         event_store: EventStore,
         portfolio: Portfolio,
     ) -> AsyncIterator[Mapping[str, object]]:
+        """Yield generated orders symbol by symbol through the async strategy interface."""
         for symbol in self._symbols:
             for order in self._generate_orders_for_symbol(
                 symbol,
@@ -394,6 +450,381 @@ class LongFlatSignalStrategy(Strategy):
         return [order] if order is not None else []
 
 
+class CrossSectionalMomentumStrategy(Strategy):
+    """Long-only cross-sectional momentum strategy over a supplied universe.
+
+    The strategy ranks configured symbols by simple lookback return, buys the
+    top-ranked symbols up to `top_n`, and flattens held symbols that fall out of
+    the selected set. It is intentionally deterministic and backtest-friendly.
+    """
+
+    def __init__(
+        self,
+        *,
+        strategy_id: str,
+        symbols: Sequence[str],
+        asset_class: str,
+        timeframe: str,
+        lookback_period: int = 20,
+        top_n: int = 2,
+        target_qty_when_long: float = 1.0,
+        rebalance_cadence: str = "every_bar",
+    ) -> None:
+        self._strategy_id = str(strategy_id).strip() or "cross_sectional_momentum"
+        self._symbols = tuple(symbol.strip().upper() for symbol in symbols if str(symbol).strip())
+        self._asset_class = asset_class
+        self._timeframe = timeframe
+        self._lookback_period = max(1, int(lookback_period))
+        self._top_n = max(1, int(top_n))
+        self._target_qty_when_long = max(0.0, float(target_qty_when_long))
+        self._rebalance_cadence = str(rebalance_cadence or "every_bar")
+
+    @property
+    def decision_scope(self) -> str:
+        """Require one synchronized decision over the configured universe."""
+        return "universe_snapshot"
+
+    @property
+    def required_lookback(self) -> int:
+        """Return the bars required for the declared return lookback."""
+        return self._lookback_period + 1
+
+    @property
+    def strategy_id(self) -> str:
+        """Return the configured strategy identifier used in run metadata and artifacts."""
+        return self._strategy_id
+
+    @property
+    def strategy_info(self) -> StrategyInfo:
+        """Return structured strategy metadata for research runs and artifact export payloads."""
+        return StrategyInfo(
+            strategy_id=self._strategy_id,
+            name=self._strategy_id,
+            version="1",
+            description="Long-only cross-sectional momentum strategy from trader_standard.",
+            parameters={
+                "symbols": list(self._symbols),
+                "asset_class": self._asset_class,
+                "timeframe": self._timeframe,
+                "lookback_period": self._lookback_period,
+                "top_n": self._top_n,
+                "target_qty_when_long": self._target_qty_when_long,
+                "rebalance_cadence": self._rebalance_cadence,
+            },
+            author="trader_standard",
+            source=f"{self.__class__.__module__}.{self.__class__.__qualname__}",
+        )
+
+    def generate_orders(
+        self,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+    ) -> Sequence[Mapping[str, object]]:
+        """Generate rebalance orders for the top-ranked symbols."""
+        table = table_for_asset_class(self._asset_class)
+        scores: list[tuple[float, str, float]] = []
+        for symbol in self._symbols:
+            bars = fetch_recent_bars(
+                event_store,
+                table=table,
+                symbol=symbol,
+                timeframe=self._timeframe,
+                limit=self._lookback_period + 1,
+                as_of_ts=decision_ts,
+            )
+            if len(bars) < self._lookback_period + 1:
+                logger.warning(
+                    "Skipping cross-sectional score due to insufficient bars symbol=%s have=%s need=%s",
+                    symbol,
+                    len(bars),
+                    self._lookback_period + 1,
+                )
+                continue
+            latest_close = float(bars[0].close)
+            lookback_close = float(bars[-1].close)
+            if lookback_close <= 0.0:
+                continue
+            scores.append(((latest_close / lookback_close) - 1.0, symbol, latest_close))
+
+        ranked = sorted(scores, key=lambda item: (item[0], item[1]), reverse=True)
+        selected = {symbol for _, symbol, _ in ranked[: self._top_n]}
+        orders: list[Mapping[str, object]] = []
+        for _, symbol, latest_close in ranked:
+            position = portfolio.positions.get(symbol, Position(symbol=symbol, qty=0.0, avg_price=None))
+            if symbol in selected and position.qty <= 0.0 and self._target_qty_when_long > 0.0:
+                orders.append(
+                    {
+                        "symbol": symbol,
+                        "side": "buy",
+                        "qty": float(self._target_qty_when_long),
+                        "order_type": "market",
+                    }
+                )
+            elif symbol not in selected and position.qty > 0.0:
+                orders.append(_flatten_order(symbol, position.qty))
+            _record_signal_event(
+                event_store,
+                run_id=run_id,
+                cycle_id=cycle_id,
+                symbol=symbol,
+                signal_value=float(next(score for score, ranked_symbol, _ in ranked if ranked_symbol == symbol)),
+                target_qty=float(self._target_qty_when_long if symbol in selected else 0.0),
+            )
+            del latest_close
+        return orders
+
+
+class PairsMeanReversionStrategy(Strategy):
+    """Long/short pairs spread strategy over deterministic disjoint symbol pairs."""
+
+    def __init__(
+        self,
+        *,
+        strategy_id: str,
+        symbols: Sequence[str],
+        asset_class: str,
+        timeframe: str,
+        lookback_period: int = 60,
+        entry_zscore: float = 2.0,
+        exit_zscore: float = 0.5,
+        hedge_ratio: float = 1.0,
+        target_qty_when_long: float = 1.0,
+        max_pairs: int = 1,
+        pair_mode: str = "disjoint_sorted",
+    ) -> None:
+        if pair_mode != "disjoint_sorted":
+            raise ValueError("pairs mean-reversion strategy only supports pair_mode=disjoint_sorted")
+        self._strategy_id = str(strategy_id).strip() or "pairs_mean_reversion"
+        self._symbols = tuple(symbol.strip().upper() for symbol in symbols if str(symbol).strip())
+        self._asset_class = asset_class
+        self._timeframe = timeframe
+        self._lookback_period = max(2, int(lookback_period))
+        self._entry_zscore = max(0.0, float(entry_zscore))
+        self._exit_zscore = max(0.0, float(exit_zscore))
+        self._hedge_ratio = max(0.0, float(hedge_ratio))
+        self._target_qty_when_long = max(0.0, float(target_qty_when_long))
+        self._max_pairs = max(1, int(max_pairs))
+        self._pair_mode = pair_mode
+        self._pairs = _disjoint_sorted_pairs(self._symbols, self._max_pairs)
+
+    @property
+    def decision_scope(self) -> str:
+        """Require one synchronized decision over every pair leg."""
+        return "universe_snapshot"
+
+    @property
+    def required_lookback(self) -> int:
+        """Return the bars required for spread estimation."""
+        return self._lookback_period
+
+    @property
+    def strategy_id(self) -> str:
+        """Return the configured strategy identifier used in run metadata and artifacts."""
+        return self._strategy_id
+
+    @property
+    def strategy_info(self) -> StrategyInfo:
+        """Return structured strategy metadata for research runs and artifact export payloads."""
+        return StrategyInfo(
+            strategy_id=self._strategy_id,
+            name=self._strategy_id,
+            version="1",
+            description="Long/short pairs mean-reversion strategy from trader_standard.",
+            parameters={
+                "symbols": list(self._symbols),
+                "asset_class": self._asset_class,
+                "timeframe": self._timeframe,
+                "lookback_period": self._lookback_period,
+                "entry_zscore": self._entry_zscore,
+                "exit_zscore": self._exit_zscore,
+                "hedge_ratio": self._hedge_ratio,
+                "target_qty_when_long": self._target_qty_when_long,
+                "max_pairs": self._max_pairs,
+                "pair_mode": self._pair_mode,
+                "pairs": [list(pair) for pair in self._pairs],
+            },
+            author="trader_standard",
+            source=f"{self.__class__.__module__}.{self.__class__.__qualname__}",
+        )
+
+    def generate_orders(
+        self,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+    ) -> Sequence[Mapping[str, object]]:
+        """Generate pair-entry and pair-exit orders from current spread z-scores."""
+        table = table_for_asset_class(self._asset_class)
+        orders: list[Mapping[str, object]] = []
+        for symbol_a, symbol_b in self._pairs:
+            zscore = self._pair_zscore(
+                event_store=event_store,
+                table=table,
+                symbol_a=symbol_a,
+                symbol_b=symbol_b,
+                decision_ts=decision_ts,
+            )
+            if zscore is None:
+                continue
+
+            position_a = portfolio.positions.get(symbol_a, Position(symbol=symbol_a, qty=0.0, avg_price=None))
+            position_b = portfolio.positions.get(symbol_b, Position(symbol=symbol_b, qty=0.0, avg_price=None))
+            target_a, target_b = self._pair_targets(zscore, position_a, position_b)
+            orders.extend(_orders_to_target(position_a, target_a))
+            orders.extend(_orders_to_target(position_b, target_b))
+
+            _record_signal_event(
+                event_store,
+                run_id=run_id,
+                cycle_id=cycle_id,
+                symbol=symbol_a,
+                signal_value=float(zscore),
+                target_qty=target_a,
+            )
+            _record_signal_event(
+                event_store,
+                run_id=run_id,
+                cycle_id=cycle_id,
+                symbol=symbol_b,
+                signal_value=float(-zscore),
+                target_qty=target_b,
+            )
+        return orders
+
+    def generate_orders_for_symbol(
+        self,
+        symbol: str,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+    ) -> Sequence[Mapping[str, object]]:
+        """Generate only the requested pair leg for per-symbol cycle execution."""
+        requested = symbol.strip().upper()
+        table = table_for_asset_class(self._asset_class)
+        for symbol_a, symbol_b in self._pairs:
+            if requested not in {symbol_a, symbol_b}:
+                continue
+            zscore = self._pair_zscore(
+                event_store=event_store,
+                table=table,
+                symbol_a=symbol_a,
+                symbol_b=symbol_b,
+                decision_ts=decision_ts,
+            )
+            if zscore is None:
+                return ()
+            position_a = portfolio.positions.get(symbol_a, Position(symbol=symbol_a, qty=0.0, avg_price=None))
+            position_b = portfolio.positions.get(symbol_b, Position(symbol=symbol_b, qty=0.0, avg_price=None))
+            target_a, target_b = self._pair_targets(zscore, position_a, position_b)
+            if requested == symbol_a:
+                _record_signal_event(
+                    event_store,
+                    run_id=run_id,
+                    cycle_id=cycle_id,
+                    symbol=symbol_a,
+                    signal_value=float(zscore),
+                    target_qty=target_a,
+                )
+                return tuple(_orders_to_target(position_a, target_a))
+            _record_signal_event(
+                event_store,
+                run_id=run_id,
+                cycle_id=cycle_id,
+                symbol=symbol_b,
+                signal_value=float(-zscore),
+                target_qty=target_b,
+            )
+            return tuple(_orders_to_target(position_b, target_b))
+        return ()
+
+    def _pair_zscore(
+        self,
+        *,
+        event_store: EventStore,
+        table: str,
+        symbol_a: str,
+        symbol_b: str,
+        decision_ts: datetime,
+    ) -> float | None:
+        bars_a = fetch_recent_bars(
+            event_store,
+            table=table,
+            symbol=symbol_a,
+            timeframe=self._timeframe,
+            limit=self._lookback_period,
+            as_of_ts=decision_ts,
+        )
+        bars_b = fetch_recent_bars(
+            event_store,
+            table=table,
+            symbol=symbol_b,
+            timeframe=self._timeframe,
+            limit=self._lookback_period,
+            as_of_ts=decision_ts,
+        )
+        if len(bars_a) < self._lookback_period or len(bars_b) < self._lookback_period:
+            logger.warning(
+                "Skipping pairs score due to insufficient bars pair=%s/%s have=%s/%s need=%s",
+                symbol_a,
+                symbol_b,
+                len(bars_a),
+                len(bars_b),
+                self._lookback_period,
+            )
+            return None
+        spreads = [
+            float(bar_a.close) - self._hedge_ratio * float(bar_b.close)
+            for bar_a, bar_b in zip(bars_a, bars_b, strict=False)
+        ]
+        return _latest_zscore(spreads)
+
+    def _pair_targets(self, zscore: float, position_a: Position, position_b: Position) -> tuple[float, float]:
+        target_qty = self._target_qty_when_long
+        hedge_qty = self._target_qty_when_long * self._hedge_ratio
+        open_a = abs(position_a.qty) > 1e-12
+        open_b = abs(position_b.qty) > 1e-12
+        pair_open = open_a or open_b
+        if pair_open and abs(zscore) <= self._exit_zscore:
+            return (0.0, 0.0)
+        if pair_open:
+            partial_target = self._partial_pair_targets(position_a, position_b)
+            if partial_target is not None:
+                return partial_target
+            return (float(position_a.qty), float(position_b.qty))
+        if zscore >= self._entry_zscore and target_qty > 0.0:
+            return (-target_qty, hedge_qty)
+        if zscore <= -self._entry_zscore and target_qty > 0.0:
+            return (target_qty, -hedge_qty)
+        return (float(position_a.qty), float(position_b.qty))
+
+    def _partial_pair_targets(self, position_a: Position, position_b: Position) -> tuple[float, float] | None:
+        target_qty = self._target_qty_when_long
+        hedge_qty = self._target_qty_when_long * self._hedge_ratio
+        if target_qty <= 0.0 or hedge_qty <= 0.0:
+            return None
+        open_a = abs(position_a.qty) > 1e-12
+        open_b = abs(position_b.qty) > 1e-12
+        if open_a and open_b:
+            return None
+        if open_a:
+            if position_a.qty < 0.0:
+                return (-target_qty, hedge_qty)
+            return (target_qty, -hedge_qty)
+        if position_b.qty > 0.0:
+            return (-target_qty, hedge_qty)
+        return (target_qty, -hedge_qty)
+
+
 def build_trend_following_strategy(
     *,
     symbols: Sequence[str],
@@ -407,7 +838,11 @@ def build_trend_following_strategy(
     macd_slow_period: int = 26,
     macd_signal_period: int = 9,
 ) -> LongFlatSignalStrategy:
-    """Build a trend-following composition over the generic strategy engine."""
+    """Build a trend-following strategy using EMA and MACD crossover signals.
+
+    Either positive signal can open a long; either negative signal can flatten
+    it. The optional stop policy is layered on top of those signal exits.
+    """
     ema_signal = EmaCrossoverSignal(
         fast=EmaIndicator(period=ema_fast_period),
         slow=EmaIndicator(period=ema_slow_period),
@@ -441,6 +876,58 @@ def build_trend_following_strategy(
     )
 
 
+def build_cross_sectional_momentum_strategy(
+    *,
+    symbols: Sequence[str],
+    asset_class: str,
+    timeframe: str,
+    target_qty_when_long: float = 1.0,
+    lookback_period: int = 20,
+    top_n: int = 2,
+    rebalance_cadence: str = "every_bar",
+) -> CrossSectionalMomentumStrategy:
+    """Build a long-only cross-sectional momentum allocation strategy."""
+    return CrossSectionalMomentumStrategy(
+        strategy_id="cross_sectional_momentum",
+        symbols=symbols,
+        asset_class=asset_class,
+        timeframe=timeframe,
+        lookback_period=lookback_period,
+        top_n=top_n,
+        target_qty_when_long=target_qty_when_long,
+        rebalance_cadence=rebalance_cadence,
+    )
+
+
+def build_pairs_mean_reversion_strategy(
+    *,
+    symbols: Sequence[str],
+    asset_class: str,
+    timeframe: str,
+    target_qty_when_long: float = 1.0,
+    lookback_period: int = 60,
+    entry_zscore: float = 2.0,
+    exit_zscore: float = 0.5,
+    hedge_ratio: float = 1.0,
+    max_pairs: int = 1,
+    pair_mode: str = "disjoint_sorted",
+) -> PairsMeanReversionStrategy:
+    """Build a long/short pairs mean-reversion strategy over deterministic pairs."""
+    return PairsMeanReversionStrategy(
+        strategy_id="pairs_mean_reversion",
+        symbols=symbols,
+        asset_class=asset_class,
+        timeframe=timeframe,
+        target_qty_when_long=target_qty_when_long,
+        lookback_period=lookback_period,
+        entry_zscore=entry_zscore,
+        exit_zscore=exit_zscore,
+        hedge_ratio=hedge_ratio,
+        max_pairs=max_pairs,
+        pair_mode=pair_mode,
+    )
+
+
 def build_mean_reversion_strategy(
     *,
     symbols: Sequence[str],
@@ -454,7 +941,11 @@ def build_mean_reversion_strategy(
     mean_period: int = 20,
     stretch_pct: float = 0.02,
 ) -> LongFlatSignalStrategy:
-    """Build a mean-reversion composition over the generic strategy engine."""
+    """Build a mean-reversion strategy using RSI recovery and SMA stretch.
+
+    Entry requires both oversold RSI and price stretch; exit can occur through
+    RSI recovery, stretch reversal, or the optional stop policy.
+    """
     rsi_indicator = RsiIndicator(period=rsi_period)
     rsi_entry = RsiThresholdSignal(indicator=rsi_indicator, oversold=oversold, overbought=70.0)
     rsi_recovery = RsiThresholdSignal(
@@ -500,7 +991,11 @@ def build_bollinger_band_strategy(
     period: int = 20,
     stddev_multiplier: float = 2.0,
 ) -> LongFlatSignalStrategy:
-    """Build a Bollinger Band composition over the generic strategy engine."""
+    """Build a Bollinger Band re-entry strategy over the generic engine.
+
+    The single Bollinger signal opens longs on lower-band re-entry and exits on
+    middle-band reversion or an optional stop policy.
+    """
     band_signal = BollingerBandSignal(
         indicator=BollingerBandsIndicator(period=period, stddev_multiplier=stddev_multiplier)
     )
@@ -545,13 +1040,47 @@ def _evaluate_signal_set(
     return all(matches) if require_all else any(matches)
 
 
-def _flatten_order(symbol: str, qty: float) -> Mapping[str, object]:
+def _latest_zscore(latest_first_values: Sequence[float]) -> float | None:
+    if len(latest_first_values) < 2:
+        return None
+    mean = sum(latest_first_values) / len(latest_first_values)
+    variance = sum((value - mean) ** 2 for value in latest_first_values) / len(latest_first_values)
+    stddev = math.sqrt(variance)
+    if stddev <= 0.0:
+        return None
+    return (latest_first_values[0] - mean) / stddev
+
+
+def _disjoint_sorted_pairs(symbols: Sequence[str], max_pairs: int) -> tuple[tuple[str, str], ...]:
+    ordered = tuple(sorted(dict.fromkeys(symbols)))
+    pairs = []
+    for index in range(0, len(ordered) - 1, 2):
+        if len(pairs) >= max_pairs:
+            break
+        pairs.append((ordered[index], ordered[index + 1]))
+    return tuple(pairs)
+
+
+def _market_order(symbol: str, side: str, qty: float) -> Mapping[str, object]:
     return {
         "symbol": symbol,
-        "side": "sell",
-        "qty": float(qty),
+        "side": side,
+        "qty": abs(float(qty)),
         "order_type": "market",
     }
+
+
+def _orders_to_target(position: Position, target_qty: float) -> list[Mapping[str, object]]:
+    delta = float(target_qty) - float(position.qty)
+    if abs(delta) <= 1e-12:
+        return []
+    side = "buy" if delta > 0.0 else "sell"
+    return [_market_order(position.symbol, side, delta)]
+
+
+def _flatten_order(symbol: str, qty: float) -> Mapping[str, object]:
+    side = "sell" if qty > 0.0 else "buy"
+    return _market_order(symbol, side, qty)
 
 
 def _record_signal_event(

@@ -11,17 +11,31 @@ requires-python = ">=3.12,<3.13"
 license = {text = "MIT"}
 authors = [{name = "Trader"}]
 dependencies = [
-    "alpaca-py>=0.31.0",
+    "alpaca-py>=0.43.5",
     "dotenv>=0.9.9",
     "fastapi>=0.128.0",
+    "langgraph>=1.2.2",
+    "langgraph-checkpoint-postgres>=3.1,<4",
+    "mcp>=1.27.1,<2",
     "psycopg[binary]>=3.2.1",
+    "pydantic>=2.12,<3",
+    "pypdf>=6.4.0",
     "pyyaml>=6.0.2",
     "uvicorn>=0.40.0",
 ]
 
+[project.urls]
+Repository = "https://github.com/JaredTambala/Trader"
+Documentation = "https://github.com/JaredTambala/Trader/tree/main/docs"
+
+[project.scripts]
+trader-agent = "trader_agents.application.cli:main"
+
 [project.optional-dependencies]
 test = ["pytest>=7.4"]
 ui = ["reflex", "plotly>=5.20.0"]
+optimization = ["optuna>=4,<5"]
+ml = ["mlflow>=3,<4"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -29,10 +43,20 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+trader = ["README.md", "docs/*.md", "docs/*.ipynb"]
+trader_standard = ["README.md", "docs/*.md", "docs/*.ipynb"]
+trader_research = ["README.md", "docs/*.md", "docs/*.ipynb", "method_contracts_seed.json"]
+trader_mcp = ["README.md", "docs/*.md", "docs/*.ipynb"]
+trader_agents = ["README.md", "docs/*.md", "docs/*.ipynb"]
+trader_mlflow = ["README.md", "docs/*.md", "docs/*.ipynb"]
+"trader_standard.indicators" = ["cpp/*.cpp.template", "bindings/*.json"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 addopts = "-q"
 markers = [
+    "local_model: opt-in contract tests requiring the admitted local LLM",
     "postgres: integration tests requiring a live Postgres instance",
 ]
 
@@ -46,18 +70,21 @@ ignore = ["E501"]
 [tool.mypy]
 python_version = "3.12"
 files = [
-    "src/trader/config.py",
-    "src/trader/risk.py",
+    "src/trader/config/core.py",
+    "src/trader/risk/context.py",
+    "src/trader/risk/manager.py",
+    "src/trader/risk/pipeline.py",
     "src/trader/strategies/base.py",
-    "src/trader/broker.py",
-    "src/trader/strategy_metadata.py",
-    "src/trader/research.py",
-    "src/trader/runtime_status.py",
-    "src/trader/tools",
+    "src/trader/broker/contracts.py",
+    "src/trader/broker/core.py",
+    "src/trader/broker/helpers.py",
+    "src/trader/broker/internal.py",
+    "src/trader/strategy_metadata/resolution.py",
+    "src/trader_research",
+    "src/trader_mcp",
+    "src/trader_agents",
+    "src/trader/runtime/status.py",
     "run_operator.py",
-    "run_research_discovery.py",
-    "run_research_recommendations.py",
-    "run_prepare_paper_promotion.py",
 ]
 check_untyped_defs = true
 follow_imports = "silent"
@@ -80,5 +107,10 @@ dev = [
     "pytest-mock>=3.15.1",
     "ruff>=0.13.1",
     "types-pyyaml>=6.0.12.20250915",
+]
+docs = [
+    "ipykernel>=6,<8",
+    "nbclient>=0.10,<1",
+    "nbformat>=5.10,<6",
 ]
 ui = ["reflex", "plotly>=5.20.0"]

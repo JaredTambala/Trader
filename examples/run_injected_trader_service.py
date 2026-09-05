@@ -9,7 +9,7 @@ from typing import Mapping
 from dotenv import load_dotenv
 
 from trader.config import build_config, load_yaml_config, resolve_log_level
-from trader.trader_service import TraderService
+from trader.runtime.service import TraderService
 from trader.risk import RiskManager, RiskPipeline
 from trader_standard.risk import (
     HaltRiskManager,

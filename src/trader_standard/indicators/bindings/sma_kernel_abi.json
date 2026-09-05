@@ -1,0 +1,10 @@
+{
+  "abi": "extern_c",
+  "binding": "ctypes_ready",
+  "function": "trader_sma_kernel_v1",
+  "input_order": "latest_first",
+  "method_id": "sma",
+  "output_order": "latest_first",
+  "return": "non-negative output count or negative error code",
+  "template_id": "sma_scalar_series_v1"
+}

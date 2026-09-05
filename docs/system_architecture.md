@@ -1,326 +1,69 @@
-# System Architecture (Phase 1)
-
-This document describes the Phase 1 trading engine as a reviewable software system rather than as a user guide.
-It focuses on component boundaries, runtime contracts, state ownership, and the reasoning behind the current
-architecture.
-
-## Purpose and Phase Boundary
-
-Phase 1 is a **core trading engine**. It is intentionally narrower than a full product platform.
-
-The system must be understandable and operable without:
-
-- a dedicated client application
-- a frontend control surface
-- a deployment productization layer
-
-The active system is therefore defined around:
-
-- market-data ingestion
-- event persistence
-- strategy execution
-- risk filtering
-- broker execution
-- backtesting
-- live paper execution through Alpaca
-- runtime observability and operator recovery
-
-The runtime is **Postgres-first**.
-
-## System Principles
-
-### Safety First
-
-The system defaults to not trading when runtime truth is ambiguous. This is visible in several design choices:
-
-- stale or missing market data causes cycle skip
-- broker/account mismatches cause fail-closed startup or cycle abort
-- uncertain broker outcomes remain explicit `error` states
-- startup recovery repairs local state before the service begins normal execution
-
-### Explicit State Transitions
-
-The engine does not treat trading as an opaque side effect. Order, fill, run, cycle, and position state are
-persisted as explicit, append-only event records. This supports reconstruction, audit, and post-hoc diagnosis.
-
-### Injection-First Composition
-
-Strategies and risk managers are constructed in user code and injected into the runtime. The engine does not own
-user-code loading as a primary concern. This keeps the platform behaving like a normal Python library rather than
-like a plugin host.
-
-### Core / Standard Boundary
-
-The codebase now enforces a strict package boundary:
-
-- `trader` contains immutable contracts, orchestration, state models, and runtime primitives
-- `trader_standard` contains the project-maintained concrete indicators, signals, strategies, and risk managers
-
-Dependency direction is one-way. `trader_standard` depends on `trader`; core runtime code does not import
-`trader_standard`.
-
-### Broker-Truth for Live Portfolio State
-
-For Alpaca-backed live trading, the broker account is the source of truth for:
-
-- current positions
-- cash balance
-- open orders
-
-Local state is preserved as an audit trail and for runtime reasoning, but it is reconciled against the broker rather
-than treated as authoritative for live account state.
-
-### Append-Only Auditability
-
-The runtime repairs history by appending new events, not by mutating earlier records in place. Reconciliation,
-recovery, and cleanup therefore preserve operator visibility into what the system previously believed and how that
-belief changed.
-
-## Logical Components
-
-### 1. Market-Data Ingestion and Replay
-
-This subsystem is responsible for producing bar events and triggers for runtime execution.
-
-Primary responsibilities:
-
-- subscribe to Alpaca websocket feeds
-- backfill historical bars
-- persist normalized bar events
-- emit Postgres notifications for newly persisted bars
-- replay stored bars back into the realtime path for deterministic testing or operational workflows
-
-Representative runtime objects:
-
-- `MarketDataStreamRunner`
-- `MarketDataIngestor`
-- `AlpacaMarketDataSource`
-- replay and backfill runners
-
-### 2. Event Store and Schema Layer
-
-The event store provides the runtime’s persistence, transaction boundary, and queryable audit trail.
-
-Primary responsibilities:
-
-- bootstrap schema
-- persist append-only market, signal, order, fill, run, session, metrics, and portfolio events
-- expose transactional writes and query access
-- support filtered writes based on runtime logging configuration
-
-Representative runtime objects:
-
-- `EventStore`
-- `FilteredEventStore`
-
-### 3. Strategy Layer
-
-The strategy layer consumes market-data context and emits candidate orders. It is intentionally narrow: it should
-not own broker-side recovery, portfolio reconciliation, or runtime orchestration.
-
-Primary responsibilities:
-
-- transform market information into trading intent
-- encapsulate strategy-specific signal usage
-- preserve any necessary strategy-local state across cycles via long-lived injected objects
-
-Representative runtime objects:
-
-- `Strategy`
-
-Representative standard implementations outside core:
-
-- `trader_standard.ToggleUnitStrategy`
-- `trader_standard.LongFlatSignalStrategy`
-- `trader_standard.build_trend_following_strategy(...)`
-- `trader_standard.build_mean_reversion_strategy(...)`
-- `trader_standard.build_bollinger_band_strategy(...)`
-
-### 4. Risk Layer
-
-The risk layer filters candidate orders before broker submission. It exists as a separate composition layer so that
-order-generation logic and order-authorization logic remain distinct.
-
-Primary responsibilities:
-
-- inspect candidate orders against runtime context
-- reject unsafe or inconsistent orders
-- provide explicit rejection reasons
-- support composition through ordered pipelines
-
-Representative runtime objects:
-
-- `RiskManager`
-- `RiskPipeline`
-- `RiskContext`
-
-Representative standard implementations outside core:
-
-- `trader_standard.OpenBuyOrderLimitRiskManager`
-
-Protective exits such as fixed stop-loss and trailing-stop behavior are intentionally implemented in strategy-space
-for the standard policy-driven strategies, so the risk layer remains an order-validation layer rather than an
-order-generation layer.
-
-### 5. Broker Layer
-
-The broker layer translates engine order intents into venue-specific submission and state lookup behavior.
-
-Primary responsibilities:
-
-- submit orders
-- normalize venue-specific status and symbol formats
-- normalize fill payloads into audit/accounting fields
-- expose positions, account, and order state
-- reconcile local audit state against broker reality
-
-Representative runtime objects:
-
-- `Broker`
-- `AlpacaPaperBroker`
-- `InternalPaperBroker`
-- `NoOpBroker`
-
-### 6. Runtime Orchestration
-
-`TraderService` owns long-lived runtime behavior. It is responsible for starting a trading run, performing startup
-recovery, selecting loop vs realtime execution, and ensuring the cycle engine is invoked with stable runtime objects.
-
-Primary responsibilities:
-
-- own injected strategy and risk manager instances
-- own a persistent broker instance
-- run startup recovery before trading
-- reset local Alpaca portfolio snapshots from broker state
-- listen for market-data notifications in realtime mode
-- avoid overlapping execution through a coalesced single-flight loop
-
-Representative runtime object:
-
-- `TraderService`
-
-### 7. Portfolio, Metrics, and Sessions
-
-This subsystem turns event history and broker state into operational state and review artifacts.
-
-Primary responsibilities:
-
-- represent current portfolio state
-- persist portfolio snapshots
-- record metrics samples and trading-session metadata
-- provide the audit trail for later analysis
-
-Representative runtime objects:
-
-- `Portfolio`
-- `MetricsWorker`
-- run/session event recording in the event store
-
-### 8. Operator Recovery Tooling
-
-Recovery tooling is intentionally separate from the trading entrypoint. Its purpose is to repair or inspect local
-runtime state, not to act as another execution modality.
-
-Primary responsibilities:
-
-- inspect local and broker open-order state
-- reconcile local order history from broker reality
-- perform local-only cleanup of open order state before a fresh run
-
-Representative runtime surface:
-
-- `run_order_recovery.py`
-- startup recovery helpers in `order_recovery.py`
-
-## Key Classes and Responsibilities
-
-| Class / Function | Responsibility |
-| --- | --- |
-| `TraderService` | Owns long-lived runtime execution, startup recovery, broker reuse, and loop/realtime orchestration |
-| `run_cycle(...)` | Executes one decision cycle from data availability through persistence and broker interaction |
-| `Strategy` | Produces candidate orders from market context |
-| `RiskManager` / `RiskPipeline` / `RiskContext` | Filters candidate orders using portfolio, order, price, and runtime metadata |
-| `Broker` / `AlpacaPaperBroker` / `InternalPaperBroker` | Executes or simulates order submission and exposes broker state |
-| `MarketDataIngestor` / `MarketDataStreamRunner` | Persist bar events and emit runtime triggers |
-| `Portfolio` | Represents current positions and cash and persists snapshots |
-| `EventStore` | Persists and queries the append-only runtime record |
-
-## Component Diagram
-
-```mermaid
-flowchart LR
-    Streamer[MarketData Stream / Backfill / Replay] -->|persist bars + NOTIFY| PG[(Postgres Event Store)]
-    PG -->|LISTEN/NOTIFY + queries| Service[TraderService]
-    Service -->|run_cycle(...)| Cycle[Cycle Engine]
-    Cycle --> Strategy[Injected Strategy]
-    Cycle --> Risk[Injected RiskPipeline]
-    Cycle --> Broker[Broker Adapter]
-    Broker --> Alpaca[Alpaca Paper API]
-    Broker --> PG
-    Cycle --> PG
-    Service --> Recovery[Startup Recovery / Order Recovery]
-    Recovery --> PG
-    Recovery --> Broker
-    Service --> Metrics[Metrics Worker]
-    Metrics --> Broker
-    Metrics --> PG
+# Trader System Architecture
+
+Trader is one Python distribution containing six bounded packages and repository-level application entrypoints.
+
+## Dependency map
+
+```text
+trader_standard -----> trader <----- trader_mlflow
+       ^                 ^                 ^
+       |                 |                 |
+       +------ trader_research ------------+
+                       ^
+                       |
+                   trader_mcp
+                       ^
+                       |
+                  trader_agents
 ```
 
-## State Model and Source of Truth
+`trader` is the core dependency root. `trader_standard` implements its extension contracts. `trader_research` composes
+core and maintained behavior into deterministic evidence-producing services. `trader_mcp` adapts those services to a
+policy-aware protocol boundary. `trader_agents` reaches platform capabilities only through MCP. `trader_mlflow` bridges
+MLflow pyfunc inference into core prediction contracts and may be composed by research infrastructure. Its adapter
+profile is also core-owned, so `trader_mlflow` never imports `trader_research` merely to describe itself.
 
-### Event-Store Truth
+The one deliberate outer dependency exception is `trader_mcp.runtime.composition`: it constructs the MCP process's
+concrete stores, providers, optional adapters, and maintained implementations. Protocol registration and capability
+adapters consume its typed dependency bundle and cannot import those concrete surfaces directly.
 
-The event store is the source of truth for the engine’s **audit history**:
+## State authorities
 
-- market bars
-- run and cycle lifecycle
-- signal emissions
-- order lifecycle events
-- fill records
-- position snapshots
-- metrics snapshots
-- session tagging
+| State | Authority |
+| --- | --- |
+| Runtime bars, runs, cycles, orders, fills, positions, metrics, and halts | Trader Postgres event store and broker truth where explicitly defined |
+| Research artifacts, sessions, evidence, and accepted public decisions | canonical research Postgres store |
+| In-progress agent execution position | separate LangGraph Postgres checkpoint store |
+| Model and agent observation/evaluation projections | MLflow, non-authoritative unless a specific artifact contract says otherwise |
+| Candidate source under construction | isolated disposable coding workspace until packaged/admitted |
 
-This is the record used to explain what the engine believed and did.
+An agent checkpoint is not research evidence. An MLflow trace is not a canonical decision. A filesystem export is not
+the canonical backtest record. Every transition between these stores uses a typed identity and validation boundary.
 
-### Broker Truth
+## Execution paths
 
-For live Alpaca trading, the broker is the source of truth for **current account state**:
+The trading hot path is market data to strategy, risk, broker, portfolio, and event evidence. It contains no LLM or
+research agent. The research capability path may invoke deterministic backtests but cannot mutate a live/paper broker.
+The agent path adds model interpretation and routing above role-scoped MCP tools; it never imports runtime internals.
 
-- current open positions
-- cash balance
-- live open-order state
+## Safety and evidence principles
 
-This distinction is deliberate. The engine does not assume that its own prior intent history is sufficient to infer
-the current broker account state safely.
+- Normalize configuration, provider payloads, database rows, MCP envelopes, and model JSON at their boundary.
+- Keep deterministic decisions separate from effects such as clocks, persistence, network calls, Docker, and models.
+- Preserve immutable input/output identity and append-only lineage.
+- Fail closed on missing authority, evidence, state reconciliation, model validity, or budget.
+- Keep protected evaluation data out of authoring and tuning context.
+- Require operator action for scope expansion, approvals, and any future paper-candidate promotion.
 
-### Reconciled Truth
+For internal topology, use the owning package's architecture page. For what is currently implemented and qualified, use
+[Product State](product_state.md).
 
-The runtime’s stable operational model is therefore:
+## Repository And Test Ownership
 
-- local state is authoritative for history
-- broker state is authoritative for live account status
-- reconciliation joins those two worlds without overwriting the audit trail
+Source directories follow package ownership, then bounded context or control responsibility, then cohesive component.
+Tests follow the package and context whose behavior they assert; execution requirements such as Postgres and local
+models are markers rather than directory axes. Genuine dependency seams, system workflows, documentation validation,
+and release qualification live under the cross-package test boundary.
 
-## Architectural Rationale
-
-### Why runtime objects are injected rather than config-loaded
-
-The engine’s extension points are strategies and risk managers. Those are user code, not platform-owned configuration.
-Direct injection keeps the system simple, Python-native, and externally extensible without central registration.
-
-### Why live portfolio state is broker-sourced
-
-Local intent is not enough to represent live truth. Orders can remain open, fill partially, or be affected by broker
-state the engine did not create during the current process lifetime. Pulling portfolio truth from Alpaca is therefore
-safer than deriving it solely from local order intent.
-
-### Why recovery is local-state reconciliation, not broker execution
-
-Recovery exists to repair or align the engine’s internal view of the world. It is intentionally separated from trade
-execution so operators can reason about state repair without implicitly sending broker-side actions.
-
-### Why UI and client concerns are out of phase
-
-The current phase proves engine correctness, safety, and auditability. Human-facing control surfaces are later-phase
-consumers of the engine, not part of its core architectural boundary.
+The complete placement rules, narrative contract, dependency exceptions, and staged migration protocol are defined in
+[Repository and Test Architecture](test_architecture.md).

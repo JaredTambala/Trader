@@ -9,6 +9,8 @@ __pycache__/
 # Distribution / packaging
 .Python
 artifacts/
+!src/trader_research/foundation/artifacts/
+!src/trader_research/foundation/artifacts/*.py
 build/
 develop-eggs/
 dist/
@@ -139,6 +141,7 @@ celerybeat.pid
 # Environments
 .env
 .envrc
+local.env
 .venv
 env/
 venv/

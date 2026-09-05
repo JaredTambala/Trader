@@ -12,7 +12,7 @@ from typing import Any, Mapping, Sequence
 from dotenv import load_dotenv
 
 from trader.config import build_config, load_yaml_config, resolve_log_level
-from trader.market_data_backfill import (
+from trader.market_data.backfill import (
     BackfillSpec,
     MarketDataBackfillRunner,
     _parse_datetime,
@@ -21,7 +21,7 @@ from trader.market_data_backfill import (
     _resolve_since,
     _resolve_window_from_config,
 )
-from trader.tools.contracts import SideEffect, envelope_json, success_envelope
+from trader_research.contracts import SideEffect, envelope_json, success_envelope
 
 
 logger = logging.getLogger(__name__)
@@ -107,6 +107,7 @@ def run_backfill_command(config_data: Mapping[str, Any], args: argparse.Namespac
     if args.dry_run:
         return success_envelope(
             command="market_data_backfill",
+            agent_owner="Data Agent",
             side_effect=SideEffect.READ_ONLY,
             data=metadata,
             warnings=(),
@@ -122,6 +123,7 @@ def run_backfill_command(config_data: Mapping[str, Any], args: argparse.Namespac
     metadata["rows_written"] = rows_written
     return success_envelope(
         command="market_data_backfill",
+        agent_owner="Data Agent",
         side_effect=SideEffect.LOCAL_MUTATING,
         data=metadata,
         warnings=(),

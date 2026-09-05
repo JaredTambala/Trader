@@ -14,7 +14,10 @@ from .ema_indicator import EmaIndicator
 
 @dataclass(frozen=True)
 class MacdValue:
-    """Single aligned MACD observation."""
+    """Aligned MACD components for one completed signal-window observation.
+
+    The histogram is stored alongside both source lines for audit payloads.
+    """
 
     macd_line: float
     signal_line: float
@@ -23,7 +26,10 @@ class MacdValue:
 
 @dataclass(frozen=True)
 class MacdIndicator(Indicator):
-    """Compute MACD component series from OHLCV bars."""
+    """Compute MACD line, signal line, and histogram from latest-first bars.
+
+    The indicator composes EMA calculations and preserves latest-first output.
+    """
 
     fast_period: int = 12
     slow_period: int = 26
@@ -31,13 +37,21 @@ class MacdIndicator(Indicator):
 
     @property
     def name(self) -> str:
+        """Return the registry method name used for MACD audit and manifest metadata."""
         return "macd"
 
     @property
     def window(self) -> int:
+        """Return the slow EMA plus signal warmup length required for MACD output."""
         return int(self.slow_period) + int(self.signal_period) - 1
 
     def compute_series(self, bars: Sequence[Bar]) -> Sequence[MacdValue]:
+        """Compute latest-first MACD line, signal line, and histogram values.
+
+        The method composes fast and slow EMA series, aligns them to the slow
+        series, computes the MACD line, then applies the signal EMA and returns
+        only fully warmed observations in latest-first order.
+        """
         if len(bars) < self.window:
             raise ValueError("Insufficient bars for MACD computation")
         fast_series = list(EmaIndicator(period=self.fast_period).compute_series(bars))

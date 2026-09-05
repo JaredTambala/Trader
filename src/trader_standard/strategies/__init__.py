@@ -1,20 +1,25 @@
 """Standard strategy implementations."""
 
 from .noop import NoOpStrategy
+from .model_prediction import PredictionDrivenStrategy, build_prediction_driven_strategy
 from .policy_driven import (
     CompositeStopPolicy,
     EntryPolicy,
     ExitPolicy,
     FixedStopLossPolicy,
+    CrossSectionalMomentumStrategy,
     LongFlatSignalStrategy,
     NoOpStopPolicy,
+    PairsMeanReversionStrategy,
     SignalThresholdEntryPolicy,
     SignalThresholdExitPolicy,
     StopPolicy,
     StrategySnapshot,
     TrailingStopPolicy,
     build_bollinger_band_strategy,
+    build_cross_sectional_momentum_strategy,
     build_mean_reversion_strategy,
+    build_pairs_mean_reversion_strategy,
     build_trend_following_strategy,
 )
 from .random import RandomStrategy
@@ -23,6 +28,7 @@ from .toggle import ToggleUnitStrategy
 
 __all__ = [
     "NoOpStrategy",
+    "PredictionDrivenStrategy",
     "SimpleStrategy",
     "RandomStrategy",
     "ToggleUnitStrategy",
@@ -32,6 +38,8 @@ __all__ = [
     "StopPolicy",
     "NoOpStopPolicy",
     "FixedStopLossPolicy",
+    "CrossSectionalMomentumStrategy",
+    "PairsMeanReversionStrategy",
     "TrailingStopPolicy",
     "CompositeStopPolicy",
     "SignalThresholdEntryPolicy",
@@ -39,5 +47,8 @@ __all__ = [
     "LongFlatSignalStrategy",
     "build_trend_following_strategy",
     "build_mean_reversion_strategy",
+    "build_pairs_mean_reversion_strategy",
     "build_bollinger_band_strategy",
+    "build_cross_sectional_momentum_strategy",
+    "build_prediction_driven_strategy",
 ]

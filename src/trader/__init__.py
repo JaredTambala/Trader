@@ -1,9 +1,15 @@
-"""Core trading engine package."""
+"""Stable public surface for the core trading engine.
+
+The package root re-exports the contracts most external strategies, examples,
+and operator scripts use directly. Implementation modules are grouped by
+responsibility under subpackages such as ``broker``, ``event_store``,
+``market_data``, ``runtime``, and ``tools``.
+"""
 
 from .broker import AlpacaPaperBroker, Broker, InternalPaperBroker, NoOpBroker
 from .config import Config, build_config, load_yaml_config, resolve_log_level
-from .alpaca_market_data import AlpacaMarketDataSource
-from .data import EventStore, NoOpEventStore, PostgresEventStore
+from .market_data.alpaca import AlpacaMarketDataSource
+from .event_store import EventStore, NoOpEventStore, PostgresEventStore
 from .identifiers import (
     deterministic_client_order_id,
     deterministic_cycle_id,
@@ -19,8 +25,7 @@ from .market_data import (
     StockBarEvent,
     StaticMarketDataSource,
 )
-from .market_data_stream import MarketDataStreamRunner
-from .market_data_backfill import MarketDataBackfillRunner
+from .market_data.backfill import MarketDataBackfillRunner
 from .backtest import (
     BacktestAssumptions,
     BacktestResult,
@@ -39,12 +44,12 @@ from .backtest import (
 from .indicators import Indicator, IndicatorObservation
 from .portfolio import Portfolio, PortfolioSnapshot, Position
 from .risk import RiskContext, RiskManager, RiskPipeline
-from .sample_data import load_sample_market_data_csv
+from .market_data.sample import load_sample_market_data_csv
 from .signal_generators import SignalGenerator
 from .signals import Bar, Signal
 from .strategies import Strategy
 from .strategy_metadata import StrategyInfo, resolve_strategy_info
-from .trader_service import TraderService
+from .runtime.service import TraderService
 
 __all__ = [
     "Broker",
@@ -102,3 +107,12 @@ __all__ = [
     "TraderService",
     "load_sample_market_data_csv",
 ]
+
+
+def __getattr__(name: str) -> object:
+    """Load the optional live-stream adapter only when explicitly requested."""
+    if name == "MarketDataStreamRunner":
+        from .market_data.stream import MarketDataStreamRunner
+
+        return MarketDataStreamRunner
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -7,7 +7,7 @@ import logging
 import random
 from typing import Mapping, Sequence
 
-from trader.data import EventStore
+from trader.event_store import EventStore
 from trader.portfolio import Portfolio
 from trader.strategies import Strategy
 from trader.strategy_metadata import StrategyInfo
@@ -17,7 +17,11 @@ logger = logging.getLogger(__name__)
 
 
 class RandomStrategy(Strategy):
-    """Strategy that emits small random buy/sell orders for connectivity tests."""
+    """Connectivity-test strategy that emits bounded random market orders.
+
+    Probabilities are normalized when they sum above one, and an optional RNG
+    seed makes smoke tests reproducible.
+    """
 
     def __init__(
         self,
@@ -45,12 +49,12 @@ class RandomStrategy(Strategy):
 
     @property
     def strategy_id(self) -> str:
-        """Return the strategy identifier."""
+        """Return the stable random strategy identifier stored in run metadata and artifacts."""
         return "random"
 
     @property
     def strategy_info(self) -> StrategyInfo:
-        """Return structured strategy metadata."""
+        """Return randomized strategy metadata, probabilities, and configured symbols for run artifacts."""
         return StrategyInfo(
             strategy_id="random",
             name="random",
@@ -75,7 +79,12 @@ class RandomStrategy(Strategy):
         event_store: EventStore,
         portfolio: Portfolio,
     ) -> Sequence[Mapping[str, object]]:
-        """Generate random small orders for smoke testing."""
+        """Generate bounded random buy/sell market-order intents for configured symbols.
+
+        Each symbol draws once from the configured RNG; buy and sell probabilities
+        decide whether to emit a market order, and no order is emitted when the
+        roll falls outside both probabilities.
+        """
         if not self._symbols or self._order_qty <= 0:
             return []
         orders: list[Mapping[str, object]] = []

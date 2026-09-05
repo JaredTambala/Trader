@@ -34,7 +34,12 @@ class IndicatorObservation:
         return None
 
     def to_payload(self) -> dict[str, object]:
-        """Return a JSON-serializable audit payload."""
+        """Serialize the observation into the stable shape used by event logs.
+
+        The timestamp is converted to ISO-8601 text and both scalar or structured
+        indicator values are recursively normalized so dataclasses, mappings, and
+        sequences can be persisted without leaking runtime-only objects.
+        """
         return {
             "indicator_name": self.indicator_name,
             "ts": self.ts.isoformat(),
@@ -44,17 +49,22 @@ class IndicatorObservation:
 
 
 class Indicator(ABC):
-    """Compute derived values from a sequence of bars."""
+    """Contract for computing auditable values from latest-first bar windows.
+
+    Implementations return series aligned with the input bar order. The base
+    `compute()` helper packages the latest value with timestamp and metadata so
+    indicator events can be persisted consistently.
+    """
 
     @property
     @abstractmethod
     def name(self) -> str:
-        """Human-readable indicator name."""
+        """Return the stable display name stored in indicator audit payloads and metadata."""
 
     @property
     @abstractmethod
     def window(self) -> int:
-        """Number of bars required to compute the indicator."""
+        """Return the minimum latest-first bar count required before computation is valid."""
 
     @abstractmethod
     def compute_series(self, bars: Sequence[Bar]) -> Sequence[object]:
@@ -68,7 +78,12 @@ class Indicator(ABC):
         """
 
     def compute(self, bars: Sequence[Bar]) -> IndicatorObservation | None:
-        """Compute the latest auditable observation from a latest-first bar window."""
+        """Compute and package the latest indicator observation for persistence.
+
+        The helper delegates series math to `compute_series`, ignores empty inputs
+        or empty result series, and wraps the newest value with timestamp, window,
+        and bars-used metadata so all indicators emit a consistent audit record.
+        """
         if not bars:
             return None
         series = self.compute_series(bars)

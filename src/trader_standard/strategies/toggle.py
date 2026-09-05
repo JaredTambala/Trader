@@ -6,7 +6,7 @@ from datetime import datetime
 import logging
 from typing import Mapping, Sequence
 
-from trader.data import EventStore
+from trader.event_store import EventStore
 from trader.portfolio import Portfolio
 from trader.strategies import Strategy
 from trader.strategy_metadata import StrategyInfo
@@ -16,7 +16,11 @@ logger = logging.getLogger(__name__)
 
 
 class ToggleUnitStrategy(Strategy):
-    """Buy one unit when flat, sell one unit when long."""
+    """Smoke-test strategy that toggles each symbol between flat and long.
+
+    A flat or short symbol receives a buy for the configured unit size; a long
+    symbol receives a sell for the current position quantity.
+    """
 
     def __init__(
         self,
@@ -29,12 +33,12 @@ class ToggleUnitStrategy(Strategy):
 
     @property
     def strategy_id(self) -> str:
-        """Return the strategy identifier."""
+        """Return the stable toggle strategy identifier stored in run metadata and artifacts."""
         return "toggle"
 
     @property
     def strategy_info(self) -> StrategyInfo:
-        """Return structured strategy metadata."""
+        """Return toggle strategy metadata, symbols, and unit order sizing for artifacts."""
         return StrategyInfo(
             strategy_id="toggle",
             name="toggle",
@@ -54,7 +58,12 @@ class ToggleUnitStrategy(Strategy):
         event_store: EventStore,
         portfolio: Portfolio,
     ) -> Sequence[Mapping[str, object]]:
-        """Generate toggle orders based on current position state."""
+        """Generate one market order per symbol based on current position state.
+
+        Flat or short symbols receive a configured buy quantity, while long symbols
+        receive a sell for the current position quantity so repeated cycles toggle
+        between flat and long exposure.
+        """
         if not self._symbols or self._order_qty <= 0:
             return []
         orders: list[Mapping[str, object]] = []

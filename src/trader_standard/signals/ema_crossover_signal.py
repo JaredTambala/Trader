@@ -13,20 +13,31 @@ from trader_standard.indicators import EmaIndicator
 
 @dataclass(frozen=True)
 class EmaCrossoverSignal(Signal):
-    """Signal that fires when short/long EMA cross."""
+    """Emit actions when fast and slow EMA series cross.
+
+    Crosses above return `1.0`, crosses below return `-1.0`, and unchanged
+    ordering returns `0.0`.
+    """
 
     fast: EmaIndicator
     slow: EmaIndicator
 
     @property
     def name(self) -> str:
+        """Return a parameterized signal name for audit, strategy, and metadata payloads."""
         return f"ema_crossover_{self.fast.period}_{self.slow.period}"
 
     @property
     def window(self) -> int:
+        """Return the larger EMA window plus one bar needed to detect a crossover."""
         return max(self.fast.window, self.slow.window) + 1
 
     def compute(self, bars: Sequence[Bar]) -> float:
+        """Return the latest EMA crossover action from current and previous values.
+
+        A fast EMA cross above the slow EMA returns `1.0`, a cross below returns
+        `-1.0`, and unchanged ordering returns `0.0`.
+        """
         fast_series = self.fast.compute_series(bars)
         slow_series = self.slow.compute_series(bars)
         if len(fast_series) < 2 or len(slow_series) < 2:
@@ -42,6 +53,7 @@ class EmaCrossoverSignal(Signal):
         return 0.0
 
     def indicator_values(self, bars: Sequence[Bar]) -> Sequence[IndicatorObservation]:
+        """Return current fast and slow EMA observations for signal audit payloads."""
         fast_series = self.fast.compute_series(bars)
         slow_series = self.slow.compute_series(bars)
         if not fast_series or not slow_series:

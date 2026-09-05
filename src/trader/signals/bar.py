@@ -8,7 +8,12 @@ from datetime import datetime
 
 @dataclass(frozen=True)
 class Bar:
-    """Normalized OHLCV bar used by bar-based signals."""
+    """Normalized OHLCV input consumed by indicators and strategies.
+
+    Bars are generally passed latest-first. Optional `vwap` and `trade_count`
+    fields preserve provider details when available without forcing every data
+    source to supply them.
+    """
 
     ts: datetime
     open: float
@@ -18,4 +23,3 @@ class Bar:
     volume: float
     vwap: float | None
     trade_count: float | None
-

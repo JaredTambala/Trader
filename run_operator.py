@@ -13,16 +13,16 @@ from typing import Any, Mapping, NoReturn
 from dotenv import load_dotenv
 
 from trader.config import Config, build_config, load_yaml_config, resolve_log_level
-from trader.data import EventStore, build_event_store
-from trader.order_recovery import run_startup_recovery
-from trader.runtime_status import (
+from trader.event_store import EventStore, build_event_store
+from trader.runtime.broker_factory import build_runtime_broker
+from trader.runtime.orders import run_startup_recovery
+from trader.runtime.status import (
     get_halt_state,
     latest_open_orders,
     latest_portfolio_status,
     runtime_status,
     set_halt_state,
 )
-from trader.trader_service import _build_runtime_broker
 
 
 logger = logging.getLogger(__name__)
@@ -87,7 +87,7 @@ def _run_command(args: argparse.Namespace, *, config: Config, event_store: Event
     if args.command == "halt":
         return _run_halt_command(args, event_store=event_store)
     if args.command == "reconcile":
-        broker = _build_runtime_broker(config, event_store)
+        broker = build_runtime_broker(config, event_store)
         report = run_startup_recovery(
             event_store=event_store,
             broker=broker,

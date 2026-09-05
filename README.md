@@ -1,527 +1,62 @@
 # Trader
 
-`Trader` is a **core trading engine** focused on:
+Trader is a Postgres-first Python platform for market-data ingestion, strategy/risk execution, historical backtesting,
+research evidence, model-facing tools, model-backed research coordination, MLflow inference, and Alpaca paper trading.
 
-- market data ingestion
-- importable strategy extension
-- risk management
-- backtesting
-- AI/tool-facing signal discovery workflows
-- live paper execution through Alpaca
-- runtime orchestration and event persistence
+It is distributed as one project but organized into packages with explicit dependency and documentation ownership:
 
-The repository now has a strict package boundary:
-
-- `trader`: core contracts, orchestration, state models, and runtime primitives
-- `trader_standard`: maintained first-party indicators, signals, strategies, and concrete risk managers
-
-The active runtime architecture is **Postgres-first**.
-
-## Current Phase 1 Scope
-
-In scope:
-
-- market data stream, backfill, replay, and data quality checks
-- direct strategy and risk-manager injection from user code
-- composable risk pipeline via injected `RiskManager` objects
-- backtesting
-- experiment-backed research, comparison, recommendations, and dry-run paper-promotion packets
-- trader service / realtime orchestration
-- Alpaca paper execution
-- metrics snapshots and trading-session tagging
-
-Deferred beyond the current phase:
-
-- the Reflex frontend in `src/ui/`
-- the UI backtest workflow
-- Apache Superset analytics
-- splitting the repo into `trader-core` and `trader-ui`
-- deployment packaging and VPS/runtime productization
+| Package | Responsibility | Start here |
+| --- | --- | --- |
+| `trader` | Core contracts, runtime, persistence, brokers, portfolios, backtesting, and predictions | [`src/trader/README.md`](src/trader/README.md) |
+| `trader_standard` | Maintained indicators, signals, strategies, risk managers, and prediction mappings | [`src/trader_standard/README.md`](src/trader_standard/README.md) |
+| `trader_research` | Deterministic research services and canonical evidence | [`src/trader_research/README.md`](src/trader_research/README.md) |
+| `trader_mcp` | MCP transport, tool registration, policy gates, and envelopes | [`src/trader_mcp/README.md`](src/trader_mcp/README.md) |
+| `trader_agents` | Model-backed coordinator/specialist graphs over role-scoped MCP | [`src/trader_agents/README.md`](src/trader_agents/README.md) |
+| `trader_mlflow` | Optional MLflow pyfunc inference adapter | [`src/trader_mlflow/README.md`](src/trader_mlflow/README.md) |
 
 ## Setup
 
+Python 3.12 and `uv` are required.
+
+<!-- verified: integration:postgres tests/cross_package/documentation/test_package_documentation.py tests/trader/event_store/test_postgres_event_store_schema.py -->
 ```bash
-uv venv
-uv sync --dev
-```
-
-`uv sync --dev` is the canonical local setup for core development and test work.
-UI dependencies remain optional and can be installed separately with:
-
-```bash
-uv sync --group ui
-```
-
-For local Postgres development:
-
-```bash
+uv sync --dev --group docs
 docker compose -f docker-compose.postgres.yml up -d
 ```
 
-## Getting Started
+Copy `env.template` to ignored `local.env` for MCP/agent control-plane configuration. Runtime YAML may expand values
+from a separate ignored `.env`. See [Environment and local services](docs/environment.md) before enabling provider or
+mutation capabilities.
 
-Use this flow if you want to get the engine running from scratch and kick off trading with a strategy.
+## Choose a learning path
 
-1. Create and populate `.env`.
-   Required values usually include:
-   - `PG_HOST`, `PG_PORT`, `PG_DB`, `PG_USER`, `PG_PASSWORD`
-   - `ALPACA_API_KEY`, `ALPACA_SECRET_KEY`, `ALPACA_BASE_URL`
-2. Start Postgres.
-   ```bash
-   docker compose -f docker-compose.postgres.yml up -d
-   ```
-3. Review [configs/example.yaml](configs/example.yaml).
-   The important sections are:
-   - `market_data`: what symbols and asset class you trade
-   - `broker`: how orders are executed
-   - `trader_service`: how the live engine runs
-   - `strategy`: strategy metadata and strategy-specific settings
-4. Ingest data.
-   For a historical seed:
-   ```bash
-   uv run python run_market_data_backfill.py configs/example.yaml
-   ```
-   For live bars:
-   ```bash
-   uv run python run_market_data_stream.py configs/example.yaml
-   ```
-5. Build or choose a strategy and risk pipeline in Python and inject them into the runtime.
-   The reference implementation is [examples/run_injected_trader_service.py](examples/run_injected_trader_service.py), which constructs a `trader_standard.ToggleUnitStrategy`, builds a risk manager, and starts `TraderService`.
-   If you want the maintained standard trend-following, mean-reversion, or Bollinger Band compositions, use
-   [examples/run_library_trader_service.py](examples/run_library_trader_service.py).
-6. Start trading from your wrapper script.
-   ```bash
-   uv run python examples/run_injected_trader_service.py
-   ```
-7. Inspect the runtime from the operator CLI.
-   ```bash
-   uv run python run_operator.py configs/example.yaml status --json
-   uv run python run_operator.py configs/example.yaml health --json
-   ```
+- Core and backtesting: [`trader` tutorial](src/trader/docs/tutorial.md)
+- Maintained strategy composition: [`trader_standard` tutorial](src/trader_standard/docs/tutorial.md)
+- Research evidence: [`trader_research` tutorial](src/trader_research/docs/tutorial.md)
+- MCP tool operation: [`trader_mcp` tutorial](src/trader_mcp/docs/tutorial.md)
+- Multi-agent architecture and use: [`trader_agents` tutorial](src/trader_agents/docs/tutorial.md)
+- MLflow prediction: [`trader_mlflow` tutorial](src/trader_mlflow/docs/tutorial.md)
 
-Typical workflow:
-- run a backfill first so the strategy has bar history
-- start the market-data stream in one terminal
-- start your injected trader-service wrapper in another terminal
-- let `TraderService` react to incoming bars and execute the injected strategy
+The [documentation index](docs/README.md) owns cross-package architecture, current product state, environment, complete
+workflows, contributor standards, and history.
 
-If you want a minimal example of external strategy authoring, use [external_strategy_demo.py](external_strategy_demo.py).
+## Safety
 
-## Documentation Map
+Live integration is Alpaca paper trading only. Research agents are outside the trading hot path and cannot submit
+orders, mutate brokers, clear halts, or perform direct SQL writes. Backtests, optimisation results, citations, and model
+recommendations are inspectable research evidence—not authorization to trade and not proof of future performance.
 
-Start with the component-oriented operations docs when you want to understand how the system is run:
+The model-backed agent slice is under development qualification. Its implementation is testable, but the pinned local
+model has not passed the complete behavioral gate; see [Product State](docs/product_state.md).
 
-- [docs/operations/README.md](docs/operations/README.md)
-- [docs/operations/runtime_orchestration.md](docs/operations/runtime_orchestration.md)
-- [docs/operations/market_data.md](docs/operations/market_data.md)
-- [docs/operations/strategy_and_risk.md](docs/operations/strategy_and_risk.md)
-- [docs/operations/broker_execution_portfolio.md](docs/operations/broker_execution_portfolio.md)
-- [docs/operations/event_store_and_audit.md](docs/operations/event_store_and_audit.md)
-- [docs/operations/results_and_metrics.md](docs/operations/results_and_metrics.md)
-- [docs/first_strategy.md](docs/first_strategy.md)
-- [docs/tool_contracts.md](docs/tool_contracts.md)
-- [docs/ai_tool_workflows.md](docs/ai_tool_workflows.md)
-- [docs/agent_operating_model.md](docs/agent_operating_model.md)
+## Quality gates
 
-For architecture-level review, use:
-
-- [docs/system_architecture.md](docs/system_architecture.md)
-- [docs/runtime_hot_path_and_reconciliation.md](docs/runtime_hot_path_and_reconciliation.md)
-- [docs/schema.md](docs/schema.md)
-- [docs/backtesting.md](docs/backtesting.md)
-- [docs/testing.md](docs/testing.md)
-
-## Live Runtime Safety
-
-For Alpaca-backed live trading, the runtime is intentionally fail-closed.
-
-- `trader_service.portfolio_source: alpaca` makes startup reset local `position_snapshots` from the broker account before trading begins.
-- After the reset, startup validates that broker positions belong to the configured trading universe.
-- If Alpaca contains positions outside the configured symbols or asset class, the service aborts rather than trading against an ambiguous account state.
-- `trader_service.order_reconciliation_interval_seconds` enables periodic append-only open-order reconciliation in loop/realtime service modes.
-- The global halt flag lives in Postgres `config_kv` and is enforced by `run_cycle` before strategy execution.
-- During live execution, order lifecycle logs now show `created`, `validated`, `submitted`, and broker-response states, and risk rejections are logged explicitly.
-
-Equivalent Alpaca crypto forms such as `BTC/USD`, `BTCUSD`, and enum-style asset classes returned by the SDK are normalized into the runtime’s canonical symbol and asset-class model.
-
-Operator commands:
-
+<!-- verified: integration:repository tests/cross_package/documentation/test_package_documentation.py -->
 ```bash
-uv run python run_operator.py configs/example.yaml status --json
-uv run python run_operator.py configs/example.yaml health --json
-uv run python run_operator.py configs/example.yaml positions --json
-uv run python run_operator.py configs/example.yaml open-orders --json
-uv run python run_operator.py configs/example.yaml halt set --reason "manual safety stop"
-uv run python run_operator.py configs/example.yaml halt clear
-uv run python run_operator.py configs/example.yaml reconcile --json
-```
-
-Read-only operator commands are event-store-first and do not construct a broker. `reconcile` is explicit and appends
-local order/fill audit events based on broker state.
-
-## AI-Toolable Research
-
-The Sprint 5 research surface lets an AI system or script plan data work, run bounded research suites, compare results,
-rank candidates, and prepare a dry-run paper-promotion packet. These commands are JSON-first and research-only; they do
-not start `TraderService`, submit Alpaca orders, clear halt state, or reconcile broker state.
-
-```bash
-uv run python run_research_discovery.py configs/reproducible_backtest.yaml \
-  --symbols DEMO \
-  --asset-class stocks \
-  --timeframe 1Min \
-  --since 1d \
-  --strategies trend_following,mean_reversion \
-  --data-mode existing \
-  --json
-
-uv run python run_research_recommendations.py configs/reproducible_backtest.yaml --experiment demo_discovery --json
-```
-
-See [docs/tool_contracts.md](docs/tool_contracts.md) for the stable envelope schema and side-effect classes, and
-[docs/ai_tool_workflows.md](docs/ai_tool_workflows.md) for the discovery, recommendation, and promotion workflows.
-
-## Order Recovery
-
-Use [run_operator.py](run_operator.py) as the primary operator tool for status, health, halt, and explicit
-reconciliation. [run_order_recovery.py](run_order_recovery.py) remains available for focused recovery reports and
-local clean-start operations.
-
-```bash
-uv run python run_operator.py configs/example.yaml reconcile --json
-uv run python run_order_recovery.py configs/example.yaml report
-uv run python run_order_recovery.py configs/example.yaml reconcile
-uv run python run_order_recovery.py configs/example.yaml clean-start
-```
-
-- `report` inspects local open orders and broker open orders without mutating anything.
-- `reconcile` reads broker state and repairs local `order_events` so stale local-open orders do not block trading.
-- `clean-start` closes local open orders in the configured universe only. It does not cancel broker orders and it is not a trading entrypoint.
-
-Neither recovery command starts trading. The canonical live entrypoint remains [examples/run_injected_trader_service.py](examples/run_injected_trader_service.py).
-
-## Configuration
-
-All runtime entrypoints take a single YAML config file.
-
-Use `configs/example.yaml` as the starting point.
-
-The YAML supports environment variable expansion such as `${ALPACA_API_KEY}` and `${PG_HOST}`. Load `.env` into the shell or rely on the top-level entrypoints, which call `load_dotenv(".env")`.
-
-### Minimal runtime shape
-
-```yaml
-runtime:
-  mode: once
-
-strategy:
-  id: toggle
-  timeframe: 1Min
-  toggle:
-    order_qty: 0.01
-
-broker:
-  type: alpaca
-  time_in_force: gtc
-
-market_data:
-  source: alpaca
-  asset_class: crypto
-  symbols:
-    - BTC/USD
-
-database:
-  event_store: postgres
-  pg:
-    host: ${PG_HOST}
-    port: ${PG_PORT}
-    db: ${PG_DB}
-    user: ${PG_USER}
-    password: ${PG_PASSWORD}
-```
-
-### Strategy and risk injection
-
-The supported integration model is normal Python imports and direct object injection.
-
-```python
-from trader.config import build_config, load_yaml_config
-from trader.risk import RiskPipeline
-from trader_standard.risk import MaxOrdersPerRunRiskManager
-from trader_standard.strategies import ToggleUnitStrategy
-from trader.trader_service import TraderService
-
-config_data = load_yaml_config("configs/example.yaml")
-config = build_config(config_data)
-
-strategy = ToggleUnitStrategy(
-    symbols=config.market_data_symbols,
-    order_qty=config.toggle_order_qty,
-)
-risk_manager = RiskPipeline(
-    [
-        MaxOrdersPerRunRiskManager(limit=10),
-    ]
-)
-
-service = TraderService(
-    config=config,
-    strategy=strategy,
-    risk_manager=risk_manager,
-    config_snapshot=config_data,
-)
-service.run()
-```
-
-Reference examples:
-
-```bash
-uv run python external_strategy_demo.py
-uv run python examples/run_injected_trader_service.py
-uv run python examples/run_injected_backtest.py
-uv run python examples/run_library_trader_service.py
-uv run python examples/run_library_backtest.py
-```
-
-### Standard implementation library
-
-The maintained `trader_standard` package ships with a reusable long/flat strategy engine and standard compositions for:
-
-- trend-following
-- mean-reversion
-- Bollinger Band re-entry
-
-These are still composed in user-owned Python wrappers, not instantiated by the runtime itself.
-
-```python
-from trader_standard.strategies import FixedStopLossPolicy, build_trend_following_strategy
-
-strategy = build_trend_following_strategy(
-    symbols=config.market_data_symbols,
-    asset_class=config.market_data_asset_class,
-    timeframe=config.strategy_timeframe,
-    target_qty_when_long=1.0,
-    stop_policy=FixedStopLossPolicy(stop_loss_pct=0.03),
-    ema_fast_period=12,
-    ema_slow_period=26,
-    macd_fast_period=12,
-    macd_slow_period=26,
-    macd_signal_period=9,
-)
-```
-
-Standard implementation helpers live under:
-
-- `trader_standard.indicators`
-- `trader_standard.signals`
-- `trader_standard.strategies`
-- `trader_standard.risk`
-
-The example wrappers in `examples/run_library_backtest.py` and `examples/run_library_trader_service.py`
-show how to build these from passive YAML input while keeping strategy ownership in user code.
-Those wrappers read [configs/library_example.yaml](configs/library_example.yaml).
-
-### Risk composition
-
-```yaml
-risk:
-  max_orders_per_run: 10
-  max_gross_usd: 250000
-  max_pos_usd_per_symbol: 100000
-  max_open_buy_orders_per_symbol: 1
-```
-
-If you keep risk values in YAML, treat them as passive input for your wrapper script. The library does not build risk managers from config.
-
-```python
-from trader.risk import RiskPipeline
-from trader_standard.risk import (
-    MaxGrossExposureRiskManager,
-    MaxOrdersPerRunRiskManager,
-    MaxPositionUsdPerSymbolRiskManager,
-    OpenBuyOrderLimitRiskManager,
-)
-
-risk_cfg = config_data.get("risk", {})
-risk_manager = RiskPipeline(
-    [
-        MaxOrdersPerRunRiskManager(limit=int(risk_cfg["max_orders_per_run"])),
-        MaxGrossExposureRiskManager(limit_usd=float(risk_cfg["max_gross_usd"])),
-        MaxPositionUsdPerSymbolRiskManager(limit_usd=float(risk_cfg["max_pos_usd_per_symbol"])),
-        OpenBuyOrderLimitRiskManager(
-            max_open_buy_orders_per_symbol=int(risk_cfg["max_open_buy_orders_per_symbol"])
-        ),
-    ]
-)
-```
-
-You can also ignore YAML completely and instantiate custom `RiskManager` subclasses directly in Python.
-
-### Broker configuration
-
-```yaml
-broker:
-  type: alpaca  # noop|internal|alpaca
-  time_in_force: gtc
-  internal:
-    reject_probability: 0.0
-    fill_delay_ms_mean: 0
-    fill_delay_ms_stddev: 0
-    fill_qty_fraction_mean: 1.0
-    fill_qty_fraction_stddev: 0.0
-    rng_seed: null
-```
-
-For Alpaca paper trading:
-
-```yaml
-alpaca:
-  api_key: ${ALPACA_API_KEY}
-  secret_key: ${ALPACA_SECRET_KEY}
-  base_url: ${ALPACA_BASE_URL}
-  data_base_url: https://data.alpaca.markets
-```
-
-Crypto orders require a valid crypto time-in-force such as `gtc`, `ioc`, or `fok`.
-
-## Core Runtime Commands
-
-### Stream live market data
-
-```bash
-uv run python run_market_data_stream.py configs/example.yaml
-```
-
-### Backfill historical bars
-
-```bash
-uv run python run_market_data_backfill.py configs/example.yaml
-```
-
-### Run the trader service from a user-owned wrapper
-
-```bash
-uv run python examples/run_injected_trader_service.py
-```
-
-`runtime.mode` supports `once`, `loop`, and realtime variants such as `real_time`.
-
-### Run a backtest from a user-owned wrapper
-
-```bash
-uv run python examples/run_injected_backtest.py
-uv run python examples/run_library_backtest.py
-```
-
-Useful `backtest` config fields:
-
-- `start`
-- `end`
-- `timeframe`
-- `symbols`
-- `asset_class`
-- `initial_cash`
-- `initial_positions`
-- `max_runs`
-- `log_cycle_details`
-- `assumptions`
-
-Backtest assumptions are optional and stay at the wrapper/backtest layer rather than the global runtime config. They
-can declare deterministic fees, slippage, latency metadata, and data fallback behavior.
-
-### Run the reproducible sample backtest workflow
-
-```bash
-docker compose -f docker-compose.postgres.yml up -d
-uv run python examples/load_sample_market_data.py
-uv run python examples/run_reproducible_backtest.py
-```
-
-This loads the checked-in synthetic `DEMO` 1-minute dataset and exports stable artifacts under
-`artifacts/reproducible_backtest/`.
-
-### Run a research experiment and compare results
-
-```bash
-uv run python run_research_experiment.py configs/reproducible_backtest.yaml --experiment demo_research --run-data-quality
-uv run python run_compare_results.py configs/reproducible_backtest.yaml --experiment demo_research --format table
-uv run python run_compare_results.py configs/reproducible_backtest.yaml --experiment demo_research --format json
-```
-
-Research runs are backtest-only in this phase. They use config-defined `trader_standard` strategies, optional
-deterministic parameter sweeps, Postgres `experiments` / `experiment_runs` records, and local artifacts under
-`artifacts/research/`.
-
-### Replay stored bars through the realtime path
-
-```bash
-uv run python -m trader.market_data_replay configs/example.yaml
-```
-
-### Run data-quality checks
-
-```bash
-uv run python run_data_quality.py configs/example.yaml
-uv run python run_data_quality.py configs/example.yaml --output-json artifacts/data_quality/example.json
-```
-
-## Operational Notes
-
-- The injected wrapper scripts under `examples/` show the preferred Phase 1 runtime pattern.
-- `run_cycle`, `TraderService`, and `BacktestRunner` are library primitives intended to be called from user-owned wrapper scripts.
-- The streamer, replay tooling, backfill, and data-quality scripts remain normal infrastructure entrypoints.
-- The runtime is event-sourced and writes to Postgres.
-- Metrics snapshots can be enabled through:
-
-```yaml
-metrics:
-  enable_snapshots: true
-  interval_seconds: 30
-  window_seconds: null
-```
-
-- For live Alpaca paper trading, `trader_service.portfolio_source: alpaca` keeps portfolio state aligned with the broker-side account.
-- `trader_service.startup_recovery_mode` supports `resume` and `fail_closed`.
-- `run_order_recovery.py clean-start` is local event-store cleanup only; it does not cancel broker orders.
-
-## Tests
-
-Run the full suite:
-
-```bash
-uv run pytest -q
-```
-
-Run the Postgres integration subset against a local Docker-backed Postgres instance:
-
-```bash
-docker compose -f docker-compose.postgres.yml up -d
-uv run pytest -m postgres
-```
-
-Targeted examples:
-
-```bash
-uv run pytest tests/test_alpaca_broker.py
-uv run pytest tests/test_risk_manager.py
-uv run pytest tests/test_backtest.py
 uv run ruff check src tests examples run_*.py external_strategy_demo.py
 uv run mypy
+uv run pytest -m 'not postgres'
 ```
 
-## Deferred Interface Work
-
-The repo still contains deferred interface/platform work, but it is not part of the active Phase 1 roadmap:
-
-- Reflex UI in `src/ui/`
-- UI backtest workflow as the primary research/control surface
-- API/UI expansion for non-default backtest assumptions and richer strategy selection
-- UI plans in `plans/task_0_8b_breakdown.md` and `plans/task_0_8g_reflex_ui_refactor_plan.md`
-
-These remain in the repo for later phases and historical continuity, not as current-phase commitments.
-
-## Runtime contract
-
-- Strategies and risk managers are instantiated in user code and injected directly.
-- YAML config files describe runtime settings, not code-loading instructions.
-- `python -m trader.cycle`, `python -m trader.backtest`, and `run_trader_service.py` are not supported execution paths for strategy-bearing workflows.
+Postgres, local-model, notebook, and controlled qualification requirements are declared by their owning docs and tests;
+they run through explicit guarded commands rather than the offline default.

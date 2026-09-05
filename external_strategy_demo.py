@@ -7,11 +7,11 @@ from typing import Mapping, Sequence
 
 from trader.config import build_config, load_yaml_config
 from trader.cycle import run_cycle
-from trader.data import NoOpEventStore
+from trader.event_store import NoOpEventStore
 from trader.market_data import StaticMarketDataSource, StockBarEvent
 from trader.portfolio import Portfolio
 from trader.risk import RiskManager, RiskPipeline
-from trader.strategy import Strategy
+from trader.strategies import Strategy
 
 
 class ExternalDemoStrategy(Strategy):

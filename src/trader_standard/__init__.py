@@ -4,10 +4,13 @@ from .indicators import (
     BollingerBandsIndicator,
     BollingerBandValue,
     EmaIndicator,
+    HistoricalVolatilityIndicator,
     MacdIndicator,
     MacdValue,
+    RollingVolatilityIndicator,
     RsiIndicator,
     SmaIndicator,
+    ZScoreIndicator,
 )
 from .risk import (
     HaltRiskManager,
@@ -20,6 +23,7 @@ from .risk import (
 from .signal_generators import InMemoryBarsSignalGenerator, SimpleBarsSignalGenerator
 from .signals import (
     BollingerBandSignal,
+    BollingerBwmaActionSignal,
     EmaCrossoverSignal,
     MacdCrossoverSignal,
     RsiThresholdSignal,
@@ -34,6 +38,7 @@ from .strategies import (
     LongFlatSignalStrategy,
     NoOpStopPolicy,
     NoOpStrategy,
+    PairsMeanReversionStrategy,
     RandomStrategy,
     SignalThresholdEntryPolicy,
     SignalThresholdExitPolicy,
@@ -44,23 +49,28 @@ from .strategies import (
     TrailingStopPolicy,
     build_bollinger_band_strategy,
     build_mean_reversion_strategy,
+    build_pairs_mean_reversion_strategy,
     build_trend_following_strategy,
 )
 
 __all__ = [
     "SmaIndicator",
     "EmaIndicator",
+    "HistoricalVolatilityIndicator",
     "RsiIndicator",
     "MacdIndicator",
     "MacdValue",
     "BollingerBandsIndicator",
     "BollingerBandValue",
+    "RollingVolatilityIndicator",
+    "ZScoreIndicator",
     "SmaCrossoverSignal",
     "EmaCrossoverSignal",
     "RsiThresholdSignal",
     "MacdCrossoverSignal",
     "SmaStretchSignal",
     "BollingerBandSignal",
+    "BollingerBwmaActionSignal",
     "SimpleBarsSignalGenerator",
     "InMemoryBarsSignalGenerator",
     "NoOpRiskManager",
@@ -78,6 +88,7 @@ __all__ = [
     "ExitPolicy",
     "StopPolicy",
     "NoOpStopPolicy",
+    "PairsMeanReversionStrategy",
     "FixedStopLossPolicy",
     "TrailingStopPolicy",
     "CompositeStopPolicy",
@@ -86,5 +97,6 @@ __all__ = [
     "LongFlatSignalStrategy",
     "build_trend_following_strategy",
     "build_mean_reversion_strategy",
+    "build_pairs_mean_reversion_strategy",
     "build_bollinger_band_strategy",
 ]

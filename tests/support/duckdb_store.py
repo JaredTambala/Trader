@@ -1,4 +1,13 @@
-"""DuckDB-backed event store for tests only."""
+"""Shared in-process implementation of the core event-store contract for tests.
+
+Subject: Deterministic event, runtime, portfolio, and experiment persistence without an external database.
+Level: Shared test infrastructure.
+Collaborators: The core ``EventStore`` interface and DuckDB's in-process connection.
+Guarantees: Multiple package owners exercise the same SQL-shaped persistence behavior in isolated files.
+Non-goals: Postgres compatibility qualification, concurrency guarantees, migration testing, or production use.
+Cohesion rationale: The implementation is intentionally one complete ``EventStore`` test double; splitting its
+schema and methods would obscure the interface-wide state transitions that its cross-package consumers depend on.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +18,7 @@ from typing import Iterator, Mapping, Sequence
 
 import duckdb
 
-from trader.data import EventStore
+from trader.event_store import EventStore
 
 
 @dataclass(frozen=True)
@@ -170,9 +179,13 @@ class DuckDBEventStore(EventStore):
                     session_id TEXT,
                     cycle_id TEXT,
                     symbol TEXT,
+                    signal_name TEXT,
                     signal_value DOUBLE,
                     target_qty DOUBLE,
-                    generated_at TIMESTAMP
+                    generated_at TIMESTAMP,
+                    prediction_event_refs TEXT,
+                    mapper_id TEXT,
+                    payload TEXT
                 )
                 """,
             ),
@@ -187,6 +200,32 @@ class DuckDBEventStore(EventStore):
                     indicator_name TEXT,
                     value DOUBLE,
                     bar_ts TIMESTAMP,
+                    payload TEXT
+                )
+                """,
+            ),
+            SchemaTable(
+                name="prediction_events",
+                create_sql="""
+                CREATE TABLE IF NOT EXISTS prediction_events (
+                    prediction_event_id TEXT PRIMARY KEY,
+                    run_id TEXT,
+                    session_id TEXT,
+                    cycle_id TEXT,
+                    deployment_id TEXT,
+                    deployment_validation_id TEXT,
+                    model_version_id TEXT,
+                    feature_set_id TEXT,
+                    feature_batch_hash TEXT,
+                    decision_ts TIMESTAMP,
+                    symbol TEXT,
+                    output_name TEXT,
+                    semantics TEXT,
+                    horizon TEXT,
+                    value_payload TEXT,
+                    latency_ms DOUBLE,
+                    status TEXT,
+                    error_message TEXT,
                     payload TEXT
                 )
                 """,
@@ -207,6 +246,7 @@ class DuckDBEventStore(EventStore):
                     status TEXT,
                     broker_order_id TEXT,
                     rejection_reason TEXT,
+                    decision_evidence TEXT,
                     created_at TIMESTAMP
                 )
                 """,
@@ -314,6 +354,7 @@ class DuckDBEventStore(EventStore):
             "crypto_bar_events",
             "signal_events",
             "indicator_events",
+            "prediction_events",
             "order_events",
             "fill_events",
             "position_snapshots",

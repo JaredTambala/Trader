@@ -13,12 +13,17 @@ from trader_standard.indicators import MacdIndicator
 
 @dataclass(frozen=True)
 class MacdCrossoverSignal(Signal):
-    """Signal that fires when MACD crosses its signal line."""
+    """Emit actions when MACD crosses its signal line.
+
+    The latest two MACD observations determine whether to return `1.0`, `-1.0`,
+    or no-action `0.0`.
+    """
 
     indicator: MacdIndicator
 
     @property
     def name(self) -> str:
+        """Return a parameterized MACD crossover name for audit and strategy payloads."""
         return (
             f"macd_crossover_{self.indicator.fast_period}_"
             f"{self.indicator.slow_period}_{self.indicator.signal_period}"
@@ -26,9 +31,15 @@ class MacdCrossoverSignal(Signal):
 
     @property
     def window(self) -> int:
+        """Return the MACD warmup window plus one bar required for crossover detection."""
         return self.indicator.window + 1
 
     def compute(self, bars: Sequence[Bar]) -> float:
+        """Return the latest MACD crossover action from current and previous components.
+
+        A MACD-line cross above the signal line returns `1.0`, a cross below
+        returns `-1.0`, and no crossover returns `0.0`.
+        """
         series = self.indicator.compute_series(bars)
         if len(series) < 2:
             raise ValueError("Insufficient bars for MACD crossover computation")
@@ -41,6 +52,7 @@ class MacdCrossoverSignal(Signal):
         return 0.0
 
     def indicator_values(self, bars: Sequence[Bar]) -> Sequence[IndicatorObservation]:
+        """Return current MACD components in a structured indicator observation payload for events."""
         series = self.indicator.compute_series(bars)
         if not series:
             raise ValueError("Insufficient bars for MACD indicator values")
