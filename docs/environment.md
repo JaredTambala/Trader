@@ -101,3 +101,60 @@ Guarded Postgres verification uses the explicit `PG_TEST_*`, `PG_OPERATOR_*`, `P
 Provisioning is an explicit operator action. From the repository root, run
 `uv run python -m tests.cross_package.qualification.support.postgres_verification provision --reset` only against the
 dedicated verification database named by the complete guarded profile.
+
+## Console database access
+
+The Console read contract does not provision a service principal, PostgreSQL roles, grants, credentials, or
+database-wide access policy. During local development, its migration DSN may use the existing developer database
+identity. Run installation explicitly; API startup never runs it:
+
+<!-- verified: integration:postgres tests/trader/event_store/test_console_read_contract.py -->
+```bash
+export TRADER_CONSOLE_MIGRATION_DSN='postgresql://migration-owner:secret@127.0.0.1:5432/trader'
+uv run trader-console-read-contract install
+unset TRADER_CONSOLE_MIGRATION_DSN
+```
+
+`TRADER_CONSOLE_DATABASE_URL` is the API/deployment extension point. It may initially contain a local DSN. A later
+deployment can resolve it from a secret manager, managed identity, database proxy, or environment-specific IAM adapter
+without changing repository queries or the producer-owned schema. The current compatibility queries use short
+read-only transactions regardless of how the connection is authenticated. This is not a package-wide restriction on
+future command operations.
+
+Verify the installed relation shapes and compatibility metadata with any identity intended to perform Console reads:
+
+<!-- verified: integration:postgres tests/trader/event_store/test_console_read_contract.py -->
+```bash
+export TRADER_CONSOLE_DATABASE_URL='postgresql://developer:secret@127.0.0.1:5432/trader'
+uv run trader-console-read-contract verify
+unset TRADER_CONSOLE_DATABASE_URL
+```
+
+Verification reads catalogs and contract metadata only. It does not assess roles or claim that production IAM exists.
+It fails on missing relations, column drift, or an incompatible contract version.
+
+Start one local API process for one isolated scope after verification succeeds:
+
+<!-- verified: integration:console tests/trader_console_api/application/test_lifecycle_and_health.py -->
+```bash
+export TRADER_CONSOLE_SCOPE_ID='paper-primary'
+export TRADER_CONSOLE_SCOPE_DISPLAY_NAME='Primary paper account'
+export TRADER_CONSOLE_SCOPE_ENVIRONMENT='paper'
+export TRADER_CONSOLE_BROKER_ACCOUNT_DISPLAY_LABEL='Paper A'
+uv run trader-console-api
+```
+
+The default listener is `127.0.0.1:8001`. Startup opens one bounded pool and admits only a compatible database schema.
+`/health/live` reports process liveness; `/health/ready` rechecks schema compatibility in a fresh read-only
+transaction. Neither route claims trading health, brokerage-account verification, or production authorization. Pool
+size, acquisition/open/close timeouts, statement timeout, and presentation timezone are listed in the Console API
+[usage reference](../src/trader_console_api/docs/usage.md).
+
+Rollback is an owner action and removes only the Console schema. It refuses to cross an unknown version boundary:
+
+<!-- verified: integration:postgres tests/trader/event_store/test_console_read_contract.py -->
+```bash
+export TRADER_CONSOLE_MIGRATION_DSN='postgresql://migration-owner:secret@127.0.0.1:5432/trader'
+uv run trader-console-read-contract rollback --confirm-version 1
+unset TRADER_CONSOLE_MIGRATION_DSN
+```

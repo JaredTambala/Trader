@@ -31,6 +31,10 @@ Postgres-first does not mean every Postgres schema belongs to core. Research kno
 embeddings, ingestion reports, and method-card records are owned by `trader_research.infrastructure`; `trader` neither
 defines nor exports that research persistence surface.
 
+Core does own the versioned `console_read` projections over its runtime evidence. Their stable names and compatibility
+metadata are installed explicitly rather than constructed by the runtime. The migration does not provision roles or
+credentials; the separate Console API and deployment layer own connection, transaction, and future IAM policy.
+
 ## System Principles
 
 ### Safety First
@@ -112,11 +116,16 @@ Primary responsibilities:
 - preserve bounded prediction-to-signal/order lineage
 - expose transactional writes and query access
 - support filtered writes based on runtime logging configuration
+- publish and migrate allowlisted, versioned Console read views outside runtime startup
 
 Representative runtime objects:
 
 - `EventStore`
 - `FilteredEventStore`
+
+`PostgresEventStore` remains a writer/bootstrap adapter. The `trader-console-read-contract` command is a separate shell
+over producer-owned view definitions; Console application startup verifies and consumes the installed contract through
+its own pool and read-only transaction boundary.
 
 ### 3. Strategy Layer
 

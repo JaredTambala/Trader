@@ -12,6 +12,7 @@ The event-store/audit component persists runtime facts and makes backtests and l
 - Preserve append-only order and fill history.
 - Tie records together with `run_id`, `session_id`, and `cycle_id`.
 - Support direct SQL reconstruction after a run.
+- Own versioned, allowlisted read views used by the separate Trader Console API.
 
 ## Backtest operation
 
@@ -92,6 +93,34 @@ logging:
 
 Postgres is the runtime source of truth. DuckDB remains test/support-only.
 
+## Console read contract
+
+The core event-store owner publishes a versioned contract in the `console_read` schema. Installing it is an explicit deployment
+step; `PostgresEventStore` construction does not install, upgrade, or repair this interface. The Console API uses a
+separate connection pool and must never construct `PostgresEventStore` for reads.
+
+The contract provides stable, ordinary `security_barrier` views for sessions, runs, cycles, stock and crypto bars, signals,
+indicators, predictions, orders, fills, and position snapshots. Every view selects a fixed column list. The contract
+does not expose `config_snapshot`, generic `payload` fields, prediction `value_payload`, order `decision_evidence`,
+metrics payloads, research JSON, or `config_kv`. Those fields require separately reviewed typed projections.
+
+`console_read.contract_versions` records the installed version and the oldest admitted consumer. A consumer is
+compatible when its supported version is between `minimum_consumer_version` and `contract_version`, inclusive. Missing
+or malformed metadata, catalog drift, or unavailable views fails readiness. Relation and Python symbol names do not
+embed the version; compatibility metadata carries evolution explicitly.
+
+The installer does not create service principals, roles, grants, credentials, or database-wide policy. Local
+development may use the existing developer connection while the API enforces short read-only transactions and bounded
+queries. The API configuration is the extension point for a later deployment to supply a secret-backed DSN, managed
+identity, proxy, or another IAM mechanism without changing the read contract.
+
+The versioned implementation and rollback guard live in
+`trader.event_store.console_read_contract`. Ordinary runtime schema bootstrap remains in `schema.py`; the two paths are
+deliberately separate. Upgrades must remain additive while their recorded `minimum_consumer_version` admits the
+deployed API. Removing or changing a column requires a new contract version and coordinated API rollout. Rollback of
+the current contract drops only the `console_read` schema, refuses to run over an unknown/later version, and leaves
+source evidence and externally managed database access unchanged.
+
 ## Persistence model
 
 Table semantics:
@@ -158,7 +187,8 @@ role belongs to data-quality tooling and future dataset/versioning work.
 
 ## Current limits
 
-- No migration framework beyond bootstrap/alter support in the event store.
+- Runtime tables still have no general migration framework beyond event-store bootstrap/alter support. The Console
+  read interface has a separate explicit versioned installer and guarded rollback.
 - No table partitioning or retention policy.
 - No warehouse/export pipeline beyond current result/research exports and SQL access.
 

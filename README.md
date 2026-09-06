@@ -13,6 +13,7 @@ It is distributed as one project but organized into packages with explicit depen
 | `trader_mcp` | MCP transport, tool registration, policy gates, and envelopes | [`src/trader_mcp/README.md`](src/trader_mcp/README.md) |
 | `trader_agents` | Model-backed coordinator/specialist graphs over role-scoped MCP | [`src/trader_agents/README.md`](src/trader_agents/README.md) |
 | `trader_mlflow` | Optional MLflow pyfunc inference adapter | [`src/trader_mlflow/README.md`](src/trader_mlflow/README.md) |
+| `trader_console_api` | Trader Console HTTP application boundary | [`src/trader_console_api/README.md`](src/trader_console_api/README.md) |
 
 ## Setup
 
@@ -36,6 +37,7 @@ mutation capabilities.
 - MCP tool operation: [`trader_mcp` tutorial](src/trader_mcp/docs/tutorial.md)
 - Multi-agent architecture and use: [`trader_agents` tutorial](src/trader_agents/docs/tutorial.md)
 - MLflow prediction: [`trader_mlflow` tutorial](src/trader_mlflow/docs/tutorial.md)
+- Console API setup: [`trader_console_api` tutorial](src/trader_console_api/docs/tutorial.md)
 
 The [documentation index](docs/README.md) owns cross-package architecture, current product state, environment, complete
 workflows, contributor standards, and history.

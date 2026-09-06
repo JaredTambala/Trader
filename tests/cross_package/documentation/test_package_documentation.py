@@ -32,6 +32,7 @@ PACKAGE_NAMES = (
     "trader_mcp",
     "trader_agents",
     "trader_mlflow",
+    "trader_console_api",
 )
 REQUIRED_PACKAGE_DOCS = ("architecture.md", "tutorial.md", "usage.md")
 EXPECTED_NOTEBOOKS = {
@@ -41,6 +42,7 @@ EXPECTED_NOTEBOOKS = {
     "trader_mcp": (),
     "trader_agents": (),
     "trader_mlflow": ("mlflow_prediction_tutorial.ipynb",),
+    "trader_console_api": (),
 }
 EXECUTABLE_LANGUAGES = frozenset({"bash", "pycon", "python", "sh", "shell"})
 CONFIG_LANGUAGES = frozenset({"yaml", "yml"})

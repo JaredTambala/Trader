@@ -12,7 +12,7 @@ dependencies, and delivery progress. Use the repository
 [capability roadmap](../plans/research_capability_roadmap.md) only for its retained architecture, dependency,
 acceptance, and migration context.
 
-Last reviewed: 2026-09-04.
+Last reviewed: 2026-09-06.
 
 ## How To Read Capability State
 
@@ -43,6 +43,16 @@ explicit Data Agent scope and quality evidence
 
 It also provides bounded source ingestion and methodology extraction, plus a newly implemented runtime path for
 consuming immutable predictive models in strategies and synchronized-universe backtests.
+
+The first Trader Console foundation is implemented across its database and API boundaries. Core publishes an explicit
+`console_read` contract with stable, allowlisted ordinary views and compatibility metadata. The
+`trader_console_api` process now provides immutable server-owned scope configuration, one lifespan-managed bounded
+Psycopg pool, fail-closed startup schema inspection, and separate liveness and readiness endpoints. Its current schema
+queries run in short PostgreSQL read-only transactions and have no Trader execution, event-store construction, broker,
+research, MCP, Agent, or MLflow dependency. Those constraints describe the implemented health and compatibility slice,
+not the permanent identity of the API: the package is intended to grow into Trader's primary human-facing query and
+command boundary. Operational endpoints, mutation services, authentication enforcement, and the frontend remain
+unimplemented, so no human-facing Console is available yet.
 
 Trader now has an implemented but unqualified first model-backed orchestration slice. One Research Coordinator model
 creates an agenda containing only the specialist responsibilities materially required by the brief, delegates

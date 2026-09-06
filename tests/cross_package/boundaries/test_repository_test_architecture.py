@@ -24,6 +24,7 @@ PACKAGE_OWNERS = frozenset(
         "trader_mlflow",
         "trader_mcp",
         "trader_agents",
+        "trader_console_api",
     }
 )
 CROSS_PACKAGE_CONTEXTS = frozenset(
@@ -84,6 +85,9 @@ OWNER_CONTEXTS = {
             "observability",
             "specialists",
         }
+    ),
+    "trader_console_api": frozenset(
+        {"application", "contracts", "repositories", "routers", "scopes", "services"}
     ),
     "cross_package": CROSS_PACKAGE_CONTEXTS,
 }
