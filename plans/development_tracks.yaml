@@ -1,0 +1,283 @@
+version: 1
+
+# This is a local execution manifest, not the planning database. Notion remains
+# authoritative for assignment, dependencies, priority, and delivery status.
+repository:
+  base_branch: main
+  worktrees_dir: .worktrees
+  state_dir: .trader-development/state
+  postgres:
+    database_env: PG_TEST_DB
+    admin_prefix: PG_ADMIN
+
+current_state:
+  path: docs/product_state.md
+  max_age_days: 14
+  reviewed_marker: "Last reviewed:"
+  required_markers:
+    - "# Trader Product State"
+    - "Trader currently provides a strong deterministic research control plane"
+    - "## Active Agentic Redesign"
+  forbidden_markers:
+    - "Trader has no deterministic research control plane"
+
+# The human-authored vision, candidate journeys, and functional requirements live
+# in this source document. The decision and scenario map below is review scaffolding
+# that connects work items to the decisions those journeys should support.
+product_intent:
+  source: docs/product_intent.md
+  mission: Trader helps me move from trustworthy market data to inspectable research decisions and controlled execution while I retain authority over assumptions, evidence, and risk.
+  current_problem: Several valuable workstreams compete for attention, but there is no shared local control surface that connects low-level implementation to product decisions, runs them independently, and keeps me in the loop.
+  decisions:
+    - id: choose_next_work
+      statement: I can decide which product capability deserves attention next from current evidence, dependencies, and user value.
+    - id: trust_data
+      statement: I can decide whether a data source is fit for a research question and understand its coverage and quality limits.
+    - id: trust_backtest
+      statement: I can decide what a backtest result actually supports about historical execution and what remains uncertain.
+    - id: assess_strategy
+      statement: I can decide whether a generated or discovered strategy is worth the next experiment based on lineage, validation, and skeptical evaluation.
+    - id: assess_agents
+      statement: I can decide whether an MCP, agent, or third-party LLM path is useful, grounded, bounded, and safe enough for the next research step.
+  acceptance_scenarios:
+    - id: choose-next-track
+      decision: choose_next_work
+      trigger: Several independent tracks have valid evidence but compete for attention.
+      desired_outcome: I can choose the next capability from visible evidence, dependencies, and user value.
+      evidence:
+        - The report shows each track's phase, dependencies, decisions served, and evidence obligations.
+        - A human review records why the selected track should proceed.
+    - id: trust-data-source
+      decision: trust_data
+      trigger: A new source produces a result that could be a genuine signal or a coverage and quality artifact.
+      desired_outcome: I can decide whether the source is fit for the research question and state its limits.
+      evidence:
+        - Source identity, coverage, quality findings, and loading provenance are inspectable.
+        - The research result carries the data limitations into the next decision.
+    - id: trust-backtest-result
+      decision: trust_backtest
+      trigger: Two strategy results differ and the difference may come from execution assumptions rather than signal quality.
+      desired_outcome: I can state what historical execution evidence supports and what remains uncertain.
+      evidence:
+        - Replay assumptions, observed bars, fills, risk decisions, and persistence reconcile.
+        - An adversarial edge case identifies a material limitation or survives with evidence.
+    - id: advance-strategy-candidate
+      decision: assess_strategy
+      trigger: A generated or discovered candidate looks promising after an initial experiment.
+      desired_outcome: I can decide whether the candidate merits the next bounded experiment and what would falsify it.
+      evidence:
+        - Candidate implementation and data lineage are exact and inspectable.
+        - Validation, backtest, and skeptical evaluation define the next advance or rejection.
+    - id: qualify-agent-path
+      decision: assess_agents
+      trigger: An MCP, agent, or third-party model path proposes a research action or conclusion.
+      desired_outcome: I can decide whether its identity, evidence, authority, and failure behavior are acceptable for the next step.
+      evidence:
+        - Runtime model identity, tool scope, canonical evidence, and human authority are visible.
+        - Recovery and evaluation evidence bounds what the path is allowed to influence.
+  principles:
+    - Human authority remains explicit for goals, assumptions, costly or external mutations, and merge decisions.
+    - Evidence and uncertainty stay visible; plausible output is not treated as proof.
+    - Product tracks remain independently testable, but shared contracts and merge points are serialized.
+    - Research capabilities do not acquire live trading or broker mutation authority.
+    - Every implementation slice explains its instrumental purpose in terms of a human decision.
+  open_questions:
+    - Which data-scope fields and evidence must be fixed before an instrument-agnostic UJ-06 run can begin?
+    - What evidence threshold makes a backtest useful enough to advance a strategy?
+    - Which third-party model and agent behavior is acceptable for controlled qualification?
+    - Which capabilities should remain operator-only or deferred?
+  review_question: Does this still describe the product I want Trader to become, and which decision is most valuable to improve next?
+
+tracks:
+  - id: mcp-capabilities
+    capability_id: mcp
+    title: MCP tools and trust boundaries
+    user_outcome: I can ask Trader for research evidence through tools whose scope, side effects, and failure states I can understand.
+    instrumental_purpose: Improve the capability surface that every research agent and external integration depends on.
+    scope:
+      - tool catalogue and registration
+      - envelope and error contracts
+      - capability and authority tests
+    branch: dev/mcp-capabilities
+    merge: {mode: independent, target: main}
+    depends_on: []
+    serves: [assess_agents, choose_next_work]
+    scenarios: [qualify-agent-path, choose-next-track]
+    journeys: [UJ-04, UJ-07, UJ-08, UJ-09]
+    requirements: [FR-08, FR-13]
+    workspace_files:
+      - source: env.template
+        target: local.env
+    checks:
+      - name: MCP package tests
+        profile: focused
+        command: uv run pytest tests/trader_mcp -q
+      - name: MCP Postgres tests
+        profile: postgres
+        requires_database: true
+        command: uv run pytest tests/trader_mcp -m postgres -q
+    evidence:
+      required:
+        - tool ownership and side effects are documented
+        - contract tests show bounded inputs, outputs, and failure states
+      artifacts: []
+    review:
+      question: Does this make the next research workflow safer and easier to inspect?
+      decision_point: after the capability contract and one representative workflow pass
+
+  - id: agent-identities
+    capability_id: agentic-qualification
+    title: Agent identities and third-party LLM qualification
+    user_outcome: I can tell whether an agent made a useful, grounded decision with the selected third-party model.
+    instrumental_purpose: Turn agent identity, model choice, and execution evidence into a repeatable qualification surface.
+    scope:
+      - role authority and tool allowlists
+      - real-model execution
+      - recovery, trace, and evaluation evidence
+    branch: dev/agent-identities
+    merge: {mode: stacked, target: main, after: [mcp-capabilities]}
+    depends_on: [mcp-capabilities]
+    serves: [assess_agents, choose_next_work]
+    scenarios: [qualify-agent-path, choose-next-track]
+    journeys: [UJ-04, UJ-07, UJ-08, UJ-09]
+    requirements: [FR-07, FR-09, FR-13]
+    checks:
+      - name: Agent contract tests
+        profile: focused
+        command: uv run pytest tests/trader_agents -q
+      - name: Agent Postgres tests
+        profile: postgres
+        requires_database: true
+        command: uv run pytest tests/trader_agents -m postgres -q
+    evidence:
+      required:
+        - the model profile and exact runtime identity are recorded
+        - agent choices are grounded in canonical evidence and human authority is visible
+      artifacts: []
+    review:
+      question: Would I trust this agent's evidence and limits enough to use it for the next research step?
+      decision_point: after one complete coordinator-to-specialist scenario and its failure cases
+
+  - id: console-experience
+    capability_id: console
+    title: Trader Console experience
+    user_outcome: I can move from data and backtest evidence to a clear next research decision without losing context.
+    instrumental_purpose: Make the human-facing control surface explain evidence, uncertainty, and available actions.
+    scope:
+      - navigation and workflow clarity
+      - evidence review and authoring
+      - accessible failure and progress states
+    branch: dev/console-experience
+    merge: {mode: independent, target: main}
+    depends_on: []
+    serves: [choose_next_work, trust_data, trust_backtest]
+    scenarios: [choose-next-track, trust-data-source, trust-backtest-result]
+    journeys: [UJ-01, UJ-03, UJ-04, UJ-05, UJ-06, UJ-08, UJ-09]
+    requirements: [FR-02, FR-05, FR-10, FR-12]
+    checks:
+      - name: Console unit tests
+        profile: focused
+        command: npm test --prefix apps/trader-console
+    evidence:
+      required:
+        - a real user journey states the decision it supports
+        - browser evidence covers loading, empty, failure, and completed states
+      artifacts: []
+    review:
+      question: Does the interface help me decide what to investigate next rather than only display implementation detail?
+      decision_point: after one complete journey is tested with representative evidence
+
+  - id: data-sources
+    capability_id: data
+    title: New data sources and quality
+    user_outcome: I can add or compare a data source while knowing exactly what coverage, quality, and limitations apply.
+    instrumental_purpose: Keep every downstream strategy and backtest claim tied to explicit data evidence.
+    scope:
+      - symbol and dataset discovery
+      - quality and coverage reports
+      - bounded loading and provenance
+    branch: dev/data-sources
+    merge: {mode: independent, target: main}
+    depends_on: []
+    serves: [trust_data, choose_next_work]
+    scenarios: [trust-data-source, choose-next-track]
+    journeys: [UJ-01, UJ-06, UJ-07]
+    requirements: [FR-01, FR-02]
+    checks:
+      - name: Research data tests
+        profile: focused
+        command: uv run pytest tests/trader_research/data -q
+      - name: Research data Postgres tests
+        profile: postgres
+        requires_database: true
+        command: uv run pytest tests/trader_research/data -m postgres -q
+    evidence:
+      required:
+        - source identity and coverage are explicit
+        - quality findings remain visible through loading and research use
+      artifacts: []
+    review:
+      question: Can I distinguish a promising result from a data artifact or coverage limitation?
+      decision_point: after one source is onboarded through discovery, quality, and bounded loading
+
+  - id: backtest-reality
+    capability_id: backtest
+    title: Backtest reality and execution semantics
+    user_outcome: I can tell what a backtest actually proves about historical execution and what it leaves uncertain.
+    instrumental_purpose: Make strategy comparisons meaningful by grounding them in observed bars, fills, risk decisions, and reproducible semantics.
+    scope:
+      - observed-bar clock and fill semantics
+      - risk and order evidence
+      - persistence and reconciliation
+    branch: dev/backtest-reality
+    merge: {mode: stacked, target: main, after: [data-sources]}
+    depends_on: [data-sources]
+    serves: [trust_backtest, choose_next_work]
+    scenarios: [trust-backtest-result, choose-next-track]
+    journeys: [UJ-03, UJ-06, UJ-08, UJ-09]
+    requirements: [FR-04, FR-05, FR-06]
+    checks:
+      - name: Backtest and cycle tests
+        profile: focused
+        command: uv run pytest tests/trader/backtest tests/trader/cycle -q
+      - name: Backtest Postgres tests
+        profile: postgres
+        requires_database: true
+        command: uv run pytest tests/trader/backtest tests/trader/cycle -m postgres -q
+    evidence:
+      required:
+        - replay assumptions and execution semantics are visible
+        - a persisted run reconciles cycles, orders, fills, and risk decisions
+      artifacts: []
+    review:
+      question: Would I use this result to choose the next research experiment without overstating its reality?
+      decision_point: after a representative persisted run and an adversarial edge case reconcile
+
+  - id: strategy-research
+    capability_id: strategy-research
+    title: Strategy generation and research loops
+    user_outcome: I can run a bounded research loop that produces an inspectable candidate and a justified next experiment.
+    instrumental_purpose: Connect data, methods, strategy authorship, backtesting, and evaluation without turning a plausible result into an unsupported claim.
+    scope:
+      - strategy discovery and generation
+      - deterministic admission and validation
+      - experiment and evaluation loops
+    branch: dev/strategy-research
+    merge: {mode: stacked, target: main, after: [backtest-reality]}
+    depends_on: [data-sources, backtest-reality]
+    serves: [assess_strategy, trust_data, trust_backtest]
+    scenarios: [advance-strategy-candidate, trust-data-source, trust-backtest-result]
+    journeys: [UJ-02, UJ-03, UJ-06, UJ-07, UJ-08, UJ-09]
+    requirements: [FR-03, FR-04, FR-06, FR-07, FR-14]
+    checks:
+      - name: Strategy and experiment tests
+        profile: focused
+        command: uv run pytest tests/trader_standard/strategies tests/trader_research/experiments -q
+    evidence:
+      required:
+        - the candidate has exact implementation and data lineage
+        - evaluation states what would falsify or advance the hypothesis
+      artifacts: []
+    review:
+      question: Did this loop improve my ability to choose a promising, testable strategy rather than produce more code?
+      decision_point: after one candidate reaches validation, backtest, and skeptical evaluation

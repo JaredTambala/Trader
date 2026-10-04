@@ -244,6 +244,12 @@ Generic CI runs `pytest -m 'not postgres'`. Postgres cases require the guarded `
 explicitly against package/workflow paths or through their controlled qualification profile; a convenience CI database
 with legacy `PG_*` variables is not a valid substitute.
 
+The local multi-track development harness can provision one disposable PostgreSQL database per worktree with
+`tools/development_harness.py provision-db <track>`. A check that declares `requires_database: true` receives the
+derived `PG_TEST_DB` only after that database exists, so concurrent worktrees do not share runtime tables. The
+per-worktree database is the isolation boundary because parts of the current producer contract explicitly reference
+the `public` schema.
+
 The Console demo workflows are an explicit exception to the shared database identity: `CONSOLE_DEMO_TESTS=1` and
 `CONSOLE_BROWSER_TESTS=1` provision a unique Docker Compose project, random loopback port and test-owned volume using
 the demo's fixed local database identity. They never consume `PG_*` or `PG_TEST_*` credentials. Process/database
