@@ -53,6 +53,10 @@ The governance registry approves the smallest set of target roles with distinct 
 
 Quantitative Methods and ML are optional producer agents for the core supplied-implementation workflow. A separate
 Hypothesis Agent is deferred until it has a decision that is not already represented by the experiment protocol.
+The deterministic governance boundary nevertheless persists a revisioned `HypothesisBrief` (`hypothesis_card`) when a
+registered Hypothesis or Experiment Design actor supplies one. It records the falsifier and outcome-to-decision rules
+and hands downstream roles a canonical reference; it does not expose a new MCP mutation or grant an agent approval
+authority.
 
 Validators, backtest runners, optimisation engines, risk pipelines, specification compilers and workflow executors are
 deterministic services, not agents. They execute approved inputs and produce canonical domain artifacts without making
