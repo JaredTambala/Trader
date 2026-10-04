@@ -64,6 +64,17 @@ The frontend displays these three endpoints through same-origin Next.js rewrites
 failures do not erase configured context or imply trading health. Its generated types consume the checked
 [OpenAPI export](usage.md#openapi-export), which can be produced without installing a database.
 
+To inspect the available data slices and their capability boundary, query the dataset resource:
+
+<!-- verified: integration:console tests/trader_console_api/application/test_lifecycle_and_health.py -->
+```bash
+curl --fail 'http://127.0.0.1:8001/api/market-data/datasets?limit=100&offset=0'
+```
+
+The response's `discovery` object distinguishes catalogue completeness (`complete`, `partial`, `stale`, or
+`unavailable`) from `load_capability` (`load_capable`, `discover_only`, or `unavailable`). Existing Console rows prove
+stored coverage only; they do not prove that the provider catalogue is complete or that a backfill can run.
+
 ## 4. Preflight and persist a definition
 
 Discover the maintained profiles, submit a typed draft to preflight, then persist it only after the response is valid:

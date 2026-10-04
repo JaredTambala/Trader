@@ -14,6 +14,7 @@ from ..contracts import (
     ExperimentsResponse,
     IndicatorSeriesPoint,
     MarketDataset,
+    MarketDataDiscovery,
     MarketDatasetsResponse,
     PageInfo,
     ResourceRecord,
@@ -66,8 +67,9 @@ class ResourceService:
     async def market_datasets(self, *, limit: int, offset: int) -> MarketDatasetsResponse:
         rows, total = await self._repository.list_market_datasets(limit=limit, offset=offset)
         return MarketDatasetsResponse(
-            items=tuple(MarketDataset.model_validate(row) for row in rows),
+            items=tuple(_market_dataset(row) for row in rows),
             page=_page(limit=limit, offset=offset, total=total),
+            discovery=_market_data_discovery(rows=rows, total=total),
         )
 
     async def bars(
@@ -207,6 +209,58 @@ class ResourceService:
 
 def _record(row: dict[str, Any] | None) -> ResourceRecord | None:
     return ResourceRecord.model_validate(row) if row else None
+
+
+def _market_dataset(row: dict[str, Any]) -> MarketDataset:
+    """Drop optional capability columns before validating one dataset item."""
+    fields = MarketDataset.model_fields
+    return MarketDataset.model_validate(
+        {name: value for name, value in row.items() if name in fields}
+    )
+
+
+def _market_data_discovery(
+    *,
+    rows: Iterable[dict[str, Any]],
+    total: int,
+) -> MarketDataDiscovery:
+    """Normalize optional producer capability metadata for the Console view.
+
+    Existing ``console_read`` projections contain stored slices, not a complete
+    provider catalogue. The fallback therefore reports ``partial`` and
+    ``discover_only`` with an actionable reason. A future producer projection
+    may provide the same typed fields per page; those values are preserved when
+    present without making catalogue visibility imply load support.
+    """
+    items = list(rows)
+    first = items[0] if items else {}
+    completeness = str(first.get("catalogue_completeness", "partial" if total else "unavailable"))
+    freshness = str(first.get("catalogue_freshness", "unknown"))
+    can_discover = bool(first.get("can_discover", bool(total)))
+    can_load = bool(first.get("can_load", False))
+    load_capability = str(
+        first.get(
+            "load_capability",
+            "load_capable" if can_load else ("discover_only" if can_discover else "unavailable"),
+        )
+    )
+    provider = str(first.get("provider", "alpaca"))
+    reason = first.get("capability_reason")
+    if reason is None:
+        reason = (
+            "Visible rows prove stored coverage only; provider catalogue completeness and load capability require Data evidence."
+            if total
+            else "No stored dataset slices are available for this Console scope."
+        )
+    return MarketDataDiscovery(
+        provider=provider,
+        catalogue_completeness=completeness,  # type: ignore[arg-type]
+        catalogue_freshness=freshness,  # type: ignore[arg-type]
+        can_discover=can_discover,
+        can_load=can_load,
+        load_capability=load_capability,  # type: ignore[arg-type]
+        reason=str(reason),
+    )
 
 
 def _risk_composition_entry(row: dict[str, Any]) -> RiskCompositionEntry:

@@ -24,6 +24,9 @@
 .field select:focus, .field input:focus { border-color: var(--accent); outline: 2px solid color-mix(in srgb, var(--accent) 30%, transparent); }
 .datasetMeta { display: flex; gap: 18px; flex-wrap: wrap; color: var(--muted); font-size: 12px; padding: 13px 0 3px; }
 .datasetMeta strong { color: var(--text); }
+.datasetCapability { display: flex; gap: 12px; flex-wrap: wrap; align-items: baseline; color: var(--muted); font-size: 12px; padding: 12px; margin-top: 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); }
+.datasetCapability strong { color: var(--text); }
+.datasetCapability small { flex-basis: 100%; color: var(--muted); }
 .rangeRow { margin-top: 21px; display: grid; grid-template-columns: 1fr 1fr auto; gap: 13px; align-items: end; }
 .secondaryButton { padding: 10px 13px; min-height: 42px; }
 .presetRow { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-top: 15px; color: var(--muted); font-size: 12px; }

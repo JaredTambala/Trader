@@ -110,12 +110,18 @@ collection returns `items` plus `page {limit, offset, total, has_more}`. General
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/market-data/datasets?limit=&offset=` | Discover available stock/crypto symbol, timeframe and source slices. |
+| `GET /api/market-data/datasets?limit=&offset=` | Discover available stock/crypto symbol, timeframe and source slices. The response also carries `discovery` capability evidence. |
 | `GET /api/market-data/bars?asset_class=&symbol=&timeframe=&source=&start=&end=&limit=&offset=` | Return ordered OHLCV bars; `start` and `end` are ISO timestamps. |
 | `GET /api/experiments?limit=&offset=` | Discover experiment IDs by published backtest-run membership. |
 | `GET /api/experiments/{experiment_id}/runs?compatible_with_run_id=&limit=&offset=` | List runs and scope-fingerprint comparison eligibility. |
 | `GET /api/runs/{run_id}?section_limit=` | Return one run and bounded performance/evidence sections. |
 | `GET /api/runs/{run_id}/risk-decisions?manager_id=&outcome=&cycle_id=&client_order_id=&limit=&offset=` | Return a bounded, filterable ordered manager-decision trace. |
+
+The dataset response includes a `discovery` object with `catalogue_completeness`
+(`complete`, `partial`, `stale`, or `unavailable`), `catalogue_freshness`, `can_discover`, and a separate
+`load_capability` (`load_capable`, `discover_only`, or `unavailable`). Existing `console_read` rows prove stored
+coverage only, so the default response is `partial` and `discover_only` until Data evidence supplies provider
+catalogue and loading receipts. The Console never treats a visible symbol as proof of a complete provider universe.
 
 The run detail response keeps sections separate (`performance`, `comparison_summary`, `exposure`, `scope`, `equity_curve`, `comparison_curves`, `trades`,
 `positions`, `assumptions`, `warnings`, `provenance`, `indicator_series`, `signal_markers`, `risk_composition`, `risk_summary`,
