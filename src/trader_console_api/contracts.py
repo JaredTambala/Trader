@@ -813,9 +813,21 @@ class PaperReconciliation(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     status: Literal["reconciled", "required", "failed", "unavailable"]
+    attempts: tuple["PaperReconciliationAttempt", ...] = ()
     last_attempt_at: datetime | None = None
     message: str | None = None
     evidence: RuntimeEvidence
+
+
+class PaperReconciliationAttempt(BaseModel):
+    """One bounded reconciliation attempt when a producer publishes it."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    attempt_id: str
+    attempted_at: datetime | None = None
+    status: str
+    message: str | None = None
 
 
 class PaperHaltState(BaseModel):
