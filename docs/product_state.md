@@ -12,7 +12,7 @@ dependencies, and delivery progress. Use the repository
 [capability roadmap](../plans/research_capability_roadmap.md) only for its retained architecture, dependency,
 acceptance, and migration context.
 
-Last reviewed: 2026-09-28.
+Last reviewed: 2026-10-03.
 
 ## How To Read Capability State
 
@@ -160,6 +160,51 @@ The local `trader-console-worker` entrypoint now supplies that composition path:
 YAML config, uses the maintained catalogue adapter and internal broker, polls the durable queue, and supports bounded
 `--once` execution. The worker still depends on explicit definition/execution schema installation and remains local
 scope only.
+
+## Data-to-Backtest Story Audit
+
+The first detailed product-intent audit is the instrument-agnostic story in
+[Trader Product Intent](product_intent.md): a researcher qualifies a bounded data scope, carries that exact evidence
+into backtest authoring, and receives a traceable result or an actionable blocker. The Data and MCP layers already
+provide symbol discovery, inventory manifests, quality reports, bounded loading, and matching research snapshots. The
+Console `/data` workflow currently provides aggregate coverage and source rows, while backtest authoring performs its
+own scope and coverage preflight. These are separate boundaries today.
+
+The audit therefore records four executable gaps: expose the Data quality and provenance evidence in the Console;
+carry the selected scope and source policy into authoring without re-entry; prove that replay bars still match the
+qualified dataset; and qualify the complete selection-to-submission journey with integrated fixtures and failure
+states. The detailed acceptance criteria, repository evidence, and linked Notion work items live in
+[product_intent.md](product_intent.md). This audit describes current capability; it does not claim that the end-to-end
+story is qualified.
+
+The same audit loop now covers the nine candidate journeys. UJ-01 has a working bounded data explorer but lacks Console
+quality/provenance, saved-scope, alternative-comparison, and discovery-completeness continuity. UJ-02 has deterministic
+implementation admission and a catalogue-first Strategy loop but lacks a complete hypothesis-to-candidate and
+human-facing lineage path; real-model qualification remains outstanding. UJ-03 has canonical backtests, rich review,
+comparison, and durable worker boundaries, but Console execution qualification, inference/robustness readouts, and
+next-decision records remain incomplete. UJ-04 now names the governed agent-session journey; UJ-07 covers specialist investigation, UJ-08 covers the
+agent-directed experiment loop, and UJ-09 covers evidence review and the next decision. The model-backed
+Coordinator/Data/Strategy runtime and recovery contracts exist, but controlled third-party-model acceptance, Console
+intervention, experiment handoff, and the unified evidence-review surface remain open.
+UJ-05 has conservative core paper-runtime and operator-CLI safety behavior, but general paper admission, Console
+operations/controls, and a retained paper qualification campaign remain absent. UJ-06 joins these seams and is tracked
+by the four data-to-backtest work items in its detailed audit.
+
+The 4 October feature diagnosis adds one feature-acceptance work item for each of UJ-04, UJ-07, UJ-08, and UJ-09. The
+UJ identifiers remain product features; the linked records are delivery work items that implement or qualify those
+features.
+The runtime and specialist contracts are ahead of their product qualification: UJ-04 and UJ-07 remain gated by the
+failed real-model campaign; UJ-08 remains gated by the Experiment Design review, the unresolved long-running MCP/job
+decision, replay identity, and missing independent Evaluation/Robustness paths; UJ-09 remains gated by the Console
+evidence graph and next-decision projection. These gates are recorded in the Product Intent and linked Notion work
+items; no agent journey is treated as controlled merely because deterministic component tests pass.
+
+The functional-requirement audit sizes the remaining work relative to its boundary: FR-02 and FR-06 are medium Console
+evidence projections; FR-14 is medium once the evidence chain exists; FR-01, FR-03, FR-04, FR-05, FR-07, and FR-08 through
+FR-13 are large because they cross persistence, authority, Console, agent, runtime, or controlled-qualification seams.
+The delivery order is identity contracts, research execution/review, bounded agent qualification, paper operation, and
+then the professional case-study surface. These are relative sizes, not calendar estimates; the detailed decomposition
+and linked work items live in [product_intent.md](product_intent.md).
 
 Trader now has an implemented but unqualified first model-backed orchestration slice. One Research Coordinator model
 creates an agenda containing only the specialist responsibilities materially required by the brief, delegates

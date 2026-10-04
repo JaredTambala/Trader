@@ -206,6 +206,10 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# Local development harness state and worktrees
+.trader-development/
+.worktrees/
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
