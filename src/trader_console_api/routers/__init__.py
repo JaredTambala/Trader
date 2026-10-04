@@ -6,6 +6,7 @@ from .backtest_definitions import router as backtest_definition_router
 from .backtest_executions import router as backtest_execution_router
 from .health import router as health_router
 from .resources import router as resource_router
+from .paper_runtime import router as paper_runtime_router
 __all__ = [
     "backtest_definition_router",
     "backtest_execution_router",
@@ -13,4 +14,5 @@ __all__ = [
     "context_router",
     "health_router",
     "resource_router",
+    "paper_runtime_router",
 ]
