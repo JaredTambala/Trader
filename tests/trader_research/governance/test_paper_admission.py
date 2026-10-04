@@ -191,6 +191,7 @@ def test_revocation_creates_human_owned_successor_without_mutating_original() ->
     assert successor["decision"] == "revoked"
     assert successor["supersedes_admission_id"] == payload["admission_id"]
     assert store.load_artifact_record(PAPER_CANDIDATE_ADMISSION, payload["admission_id"]).payload["decision"] == "approved"
+    assert validate_paper_candidate_admission(payload["admission_id"], artifact_store=store, now=NOW).ok is False
     assert validate_paper_candidate_admission(successor["admission_id"], artifact_store=store, now=NOW).ok is False
 
 
@@ -204,6 +205,20 @@ def test_agents_and_mcp_cannot_create_or_approve(principal: str) -> None:
         artifact_store=store,
         requested_by=principal,
         actor=principal,
+    )
+    assert result.ok is False
+    assert "human principal" in result.errors[0]["message"]
+
+
+def test_unprefixed_service_identity_cannot_cross_human_gate() -> None:
+    """A service-like identity without the human principal namespace is rejected."""
+    store = InMemoryResearchArtifactStore()
+    _seed_evidence(store)
+    result = create_paper_candidate_admission(
+        _admission_payload(),
+        artifact_store=store,
+        requested_by="operator-service",
+        actor="operator-service",
     )
     assert result.ok is False
     assert "human principal" in result.errors[0]["message"]

@@ -364,6 +364,8 @@ def _validation_blockers(
         blockers.append("admission has expired")
     if admission.revoked_at is not None:
         blockers.append("admission has been revoked")
+    elif _has_revocation_successor(store, admission.admission_id):
+        blockers.append("admission has a revocation successor")
     try:
         _validate_evidence_refs(store, admission)
     except (ValueError, ResearchArtifactStoreError) as exc:
@@ -415,6 +417,16 @@ def _resolve_reference(store: ResearchArtifactStore, reference: Mapping[str, Any
     if record.domain_owner != reference.get("domain_owner"):
         raise ValueError("evidence ref domain owner does not match canonical record")
     return record
+
+
+def _has_revocation_successor(store: ResearchArtifactStore, admission_id: str) -> bool:
+    """Return whether an immutable revoked successor supersedes this admission."""
+    records = store.list_artifacts(artifact_type=PAPER_CANDIDATE_ADMISSION)
+    return any(
+        record.payload.get("supersedes_admission_id") == admission_id
+        and record.payload.get("decision") == PaperAdmissionDecision.REVOKED.value
+        for record in records
+    )
 
 
 def _save_immutable(
@@ -481,6 +493,8 @@ def _require_human_principal(value: str, label: str) -> None:
     text = str(value or "").strip()
     if not text:
         raise ValueError(f"{label} is required")
+    if not text.lower().startswith("human:"):
+        raise ValueError(f"{label} must be a human principal")
     try:
         get_agent_definition(text)
     except KeyError:
