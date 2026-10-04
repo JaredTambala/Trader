@@ -315,6 +315,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/paper/runtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Paper Runtime
+         * @description Return read-only paper operational evidence with explicit qualifiers.
+         */
+        get: operations["paper_runtime_api_paper_runtime_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{run_id}": {
         parameters: {
             query?: never;
@@ -1338,6 +1358,323 @@ export interface components {
             total: number;
         };
         /**
+         * PaperDataFreshness
+         * @description Aggregate market-data freshness with explicit missing/stale states.
+         */
+        PaperDataFreshness: {
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            evidence: components["schemas"]["RuntimeEvidence"];
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["PaperFreshnessItem"][];
+            /**
+             * Missing Count
+             * @default 0
+             */
+            missing_count: number;
+            /**
+             * Stale Count
+             * @default 0
+             */
+            stale_count: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "partial" | "stale" | "unavailable" | "out_of_scope";
+        };
+        /**
+         * PaperFill
+         * @description One persisted fill evidence row.
+         */
+        PaperFill: {
+            /** Client Order Id */
+            client_order_id?: string | null;
+            /** Fee Amount */
+            fee_amount?: number | null;
+            /** Fill Price */
+            fill_price?: number | null;
+            /** Fill Qty */
+            fill_qty?: number | null;
+            /** Fill Ts */
+            fill_ts?: string | null;
+            /** Slippage Amount */
+            slippage_amount?: number | null;
+        };
+        /**
+         * PaperFills
+         * @description Bounded fills projection with partial-history qualification.
+         */
+        PaperFills: {
+            evidence: components["schemas"]["RuntimeEvidence"];
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["PaperFill"][];
+        };
+        /**
+         * PaperFreshnessItem
+         * @description Freshness evidence for one observed market-data stream.
+         */
+        PaperFreshnessItem: {
+            /** Age Seconds */
+            age_seconds?: number | null;
+            /**
+             * Asset Class
+             * @enum {string}
+             */
+            asset_class: "stock" | "crypto";
+            /** Latest Ts */
+            latest_ts?: string | null;
+            /** Stale */
+            stale: boolean;
+            /** Symbol */
+            symbol: string;
+            /** Timeframe */
+            timeframe: string;
+        };
+        /**
+         * PaperHaltState
+         * @description Operator halt state, or an explicit unavailable qualification.
+         */
+        PaperHaltState: {
+            evidence: components["schemas"]["RuntimeEvidence"];
+            /** Halted */
+            halted?: boolean | null;
+            /** Reason */
+            reason?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
+         * PaperIncident
+         * @description Actionable issue derived from published runtime evidence.
+         */
+        PaperIncident: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Observed At */
+            observed_at?: string | null;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "warning" | "error";
+        };
+        /**
+         * PaperOpenOrder
+         * @description One latest non-terminal local order lifecycle state.
+         */
+        PaperOpenOrder: {
+            /** Broker Order Id */
+            broker_order_id?: string | null;
+            /** Client Order Id */
+            client_order_id: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Order Type */
+            order_type?: string | null;
+            /** Qty */
+            qty?: number | null;
+            /** Rejection Reason */
+            rejection_reason?: string | null;
+            /** Side */
+            side?: string | null;
+            /** Status */
+            status: string;
+            /** Symbol */
+            symbol?: string | null;
+        };
+        /**
+         * PaperOrders
+         * @description Bounded open-order evidence and its freshness qualifier.
+         */
+        PaperOrders: {
+            evidence: components["schemas"]["RuntimeEvidence"];
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["PaperOpenOrder"][];
+            /**
+             * Stale Count
+             * @default 0
+             */
+            stale_count: number;
+        };
+        /**
+         * PaperPortfolio
+         * @description Cash and position snapshot read from published runtime evidence.
+         */
+        PaperPortfolio: {
+            /** Asof Ts */
+            asof_ts?: string | null;
+            /** Cash */
+            cash?: number | null;
+            evidence: components["schemas"]["RuntimeEvidence"];
+            /**
+             * Positions
+             * @default []
+             */
+            positions: components["schemas"]["PaperPosition"][];
+        };
+        /**
+         * PaperPosition
+         * @description One broker-backed position snapshot.
+         */
+        PaperPosition: {
+            /** Asof Ts */
+            asof_ts?: string | null;
+            /** Avg Price */
+            avg_price?: number | null;
+            /** Qty */
+            qty: number;
+            /** Symbol */
+            symbol: string;
+        };
+        /**
+         * PaperReconciliation
+         * @description Broker reconciliation state without inventing an attempt record.
+         */
+        PaperReconciliation: {
+            evidence: components["schemas"]["RuntimeEvidence"];
+            /** Last Attempt At */
+            last_attempt_at?: string | null;
+            /** Message */
+            message?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "reconciled" | "required" | "failed" | "unavailable";
+        };
+        /**
+         * PaperRiskOutcomes
+         * @description Risk outcome counts for the latest paper runtime.
+         */
+        PaperRiskOutcomes: {
+            /**
+             * Approved Count
+             * @default 0
+             */
+            approved_count: number;
+            /**
+             * Blocked Count
+             * @default 0
+             */
+            blocked_count: number;
+            /**
+             * Evaluated Count
+             * @default 0
+             */
+            evaluated_count: number;
+            evidence: components["schemas"]["RuntimeEvidence"];
+            /**
+             * Rejected Count
+             * @default 0
+             */
+            rejected_count: number;
+            /**
+             * Transformed Count
+             * @default 0
+             */
+            transformed_count: number;
+        };
+        /**
+         * PaperRuntimeHealth
+         * @description Derived health classification with reasons and evidence freshness.
+         */
+        PaperRuntimeHealth: {
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            evidence: components["schemas"]["RuntimeEvidence"];
+            /**
+             * Reasons
+             * @default []
+             */
+            reasons: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "healthy" | "degraded" | "unhealthy" | "unavailable";
+        };
+        /**
+         * PaperRuntimeOperations
+         * @description Read-only paper operations projection for the Console workspace.
+         */
+        PaperRuntimeOperations: {
+            broker_account_binding: components["schemas"]["BrokerAccountBinding"];
+            /** Broker Account Display Label */
+            broker_account_display_label?: string | null;
+            /**
+             * Broker Identity Verified
+             * @default false
+             */
+            broker_identity_verified: boolean;
+            data_freshness: components["schemas"]["PaperDataFreshness"];
+            fills: components["schemas"]["PaperFills"];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            halt: components["schemas"]["PaperHaltState"];
+            health: components["schemas"]["PaperRuntimeHealth"];
+            /**
+             * Incidents
+             * @default []
+             */
+            incidents: components["schemas"]["PaperIncident"][];
+            open_orders: components["schemas"]["PaperOrders"];
+            portfolio: components["schemas"]["PaperPortfolio"];
+            reconciliation: components["schemas"]["PaperReconciliation"];
+            risk: components["schemas"]["PaperRiskOutcomes"];
+            /** Scope Id */
+            scope_id: string;
+            session: components["schemas"]["PaperRuntimeSession"];
+        };
+        /**
+         * PaperRuntimeSession
+         * @description Latest paper session identity and lifecycle evidence.
+         */
+        PaperRuntimeSession: {
+            /** Error Message */
+            error_message?: string | null;
+            evidence: components["schemas"]["RuntimeEvidence"];
+            /** Finished At */
+            finished_at?: string | null;
+            /** Mode */
+            mode?: string | null;
+            /** Session Id */
+            session_id?: string | null;
+            /** Started At */
+            started_at?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Strategy Id */
+            strategy_id?: string | null;
+            /**
+             * Symbols
+             * @default []
+             */
+            symbols: string[];
+            /** Timeframe */
+            timeframe?: string | null;
+        };
+        /**
          * PreflightIssue
          * @description Actionable field-level preflight failure or warning.
          */
@@ -1578,6 +1915,23 @@ export interface components {
              * @default []
              */
             warnings: components["schemas"]["ResourceRecord"][];
+        };
+        /**
+         * RuntimeEvidence
+         * @description Evidence qualifier attached to every paper-runtime read model.
+         */
+        RuntimeEvidence: {
+            /** Observed At */
+            observed_at?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /** Source */
+            source: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "partial" | "stale" | "unavailable" | "out_of_scope";
         };
         /**
          * SavedComparisonView
@@ -2507,6 +2861,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    paper_runtime_api_paper_runtime_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaperRuntimeOperations"];
                 };
             };
             /** @description Service Unavailable */
