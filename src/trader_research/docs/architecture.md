@@ -88,7 +88,7 @@ concrete adapters remain behind it.
 | Context | Owns | Typical question |
 | --- | --- | --- |
 | `foundation` | identities, results, artifact references, and persistence ports | What stable value crosses this boundary? |
-| `governance` | ownership, authority, handoffs, sessions, approvals, protocol values, and paper admission | Who may create or consume this artifact? |
+| `governance` | ownership, authority, handoffs, sessions, approvals, protocol values, and revisioned research briefs | Who may create or consume this artifact? |
 | `data` | symbol discovery, inventory, quality, bounded loading, and dataset evidence | Is the requested market data complete and fit? |
 | `knowledge` | registered sources, chunks, retrieval, claim spans, citations, and method-card state | Which source-backed claims support this method? |
 | `methodology` | method contracts, implementation validation, diagnostics, kernels, and packages | Does a supplied method satisfy its contract? |
@@ -131,6 +131,8 @@ the exact canonical record.
 The usual supplied-implementation workflow is:
 
 ```text
+falsifiable hypothesis brief (revisioned, canonical)
+   -> Data and Strategy downstream handoffs
 bounded request
    -> data inventory and quality evidence
    -> exact implementation and validation
@@ -158,7 +160,15 @@ Agents own bounded decisions. Domain contexts own canonical artifacts. A persist
 A deterministic execution service is not an agent and owns no research claim.
 
 The canonical proposal remains immutable while material assumptions are decided through explicit approvals on an
-`ExperimentProtocol`. Robustness findings feed Evaluation rather than being overwritten by the coordinator.
+`ExperimentProtocol`. A `HypothesisBrief` is the preceding, revisioned intent contract: it records the question,
+mechanism, falsifier, intended scope, typed data requirements, strategy intent, risk intent, expected evidence,
+assumptions, and outcome-to-decision rules.
+`persist_hypothesis_brief` writes one immutable `hypothesis_card` revision through the artifact store, rejects scope
+contradictions and unauthorized actors, and returns a digest-pinned handoff reference for Data, Strategy Engineering,
+and Evaluation. `resolve_hypothesis_brief_handoff` is the downstream read boundary: it re-reads the canonical
+revision, verifies the payload digest and decision-rule projection, and accepts only the registered target roles. A
+later revision must name the immediately preceding persisted revision; exact retries are idempotent.
+Robustness findings feed Evaluation rather than being overwritten by the coordinator.
 Backtest execution, optimisation scheduling, and risk evaluation do not become agents merely because the coordinator
 invokes them. Deterministic services own those mechanics; Strategy Engineering is a bounded specialist because it must
 reason about catalogue comparison, reuse, adaptation, and source authoring.

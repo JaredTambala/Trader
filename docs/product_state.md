@@ -362,7 +362,13 @@ every revision needs an actionable finding and material source change, while equ
 problems terminate or escalate.
 
 The Experiment Design Agent review has started in its separate
-[Experiment Design design](../plans/agent_designs/experiment_design.md). Prospective immutable protocols, explicit
+[Experiment Design design](../plans/agent_designs/experiment_design.md). The governance context now persists a
+revisioned `HypothesisBrief` as an Experiments-owned `hypothesis_card` before protocol authoring. The brief records the
+question, mechanism, falsifier, intended universe/timeframe, typed data requirements, strategy intent, risk intent,
+expected evidence, assumptions, and outcome-to-decision rules; exact retries are idempotent, contradictory scopes and
+unauthorized actors fail closed, and downstream Data, Strategy Engineering, and Evaluation receive a digest-pinned
+reference. This is a deterministic artifact boundary,
+not a claim that the Console or a model-backed Hypothesis Agent is complete. Prospective immutable protocols, explicit
 material assumptions, operator approval, and successor-protocol lineage remain foundational. Experiment Design owns
 the research claim, protected-evidence roles, stage gates, overall budgets, and the authority envelope for later work.
 Detailed attack and walk-forward plan design belongs to the Robustness & Walk-Forward Agent, which synthesizes
@@ -603,7 +609,7 @@ the current first slice.
 | ML Agent | Ownership and deployment MCP tools exist; no ML Agent graph exists. | Parked future ML Signal Research Agent coordinating point-in-time features, training, evaluation, MLflow registry evidence, runtime parity, and drift. | Intentionally deferred until the first non-ML agentic slice is qualified; deterministic ML lifecycle tools and model-backed qualification remain future gaps. |
 | Evaluation Agent | Optimisation Evaluation service/tool exists; no Evaluation graph exists. | Independent model-backed critic of leakage, selection, costs, robustness, completeness, and alternative explanations. | Broader attribution/evaluation tools, isolated context, agent program, and evidence-grounding evaluations. |
 | Adversarial Agent | Optimisation audit planning and judgment tools exist; no Adversarial graph exists. | Robustness & Walk-Forward Agent that synthesizes multi-agent evidence into a staged plan, operates it after approval, inspects sensitivity, and requests successors without issuing the final verdict. | General robustness and WFO tools, canonical multi-agent input contract, staged-plan schema, model policy, and behavioral qualification. |
-| Hypothesis Agent | Legacy identity/allowlist metadata only. | No initial standalone agent; hypothesis formation belongs to Experiment Design with Strategy Engineering and Quantitative Methods support. | Reconsider only if isolated divergent ideation produces measured benefit. |
+| Hypothesis Agent | No standalone graph; the deterministic governance service persists revisioned hypothesis cards and enforces actor authorization. | No initial standalone agent; hypothesis formation belongs to Experiment Design with Strategy Engineering and Quantitative Methods support. | Reconsider only if isolated divergent ideation produces measured benefit; Console and MCP creation remain future slices. |
 
 ## Frozen Decision Architecture
 
@@ -633,7 +639,7 @@ Canonical evidence follows bounded-context authority:
 | --- | --- |
 | Data | Dataset manifests, quality reports and load evidence. |
 | Knowledge/Methodology | Source, evidence, method-card and method-validation artifacts. |
-| Experiments | Implementations, validations, specifications, backtests, comparisons, optimisation plans/runs/trials and tracking projections. |
+| Experiments | Revisioned hypothesis cards, implementations, validations, specifications, backtests, comparisons, optimisation plans/runs/trials and tracking projections. |
 | ML | Feature, training, model-version, deployment and drift artifacts. |
 | Review | Attribution, Evaluation, attack-plan and robustness artifacts. |
 | Orchestration | Research objectives, workflow plans, approval requests, bounded handoff summaries and workflow outcomes only. |
@@ -680,8 +686,12 @@ its own conclusion as specialist approval.
 ### Implemented Contract Baseline
 
 The provider-neutral declaration layer is implemented in
-`src/trader_research/governance/orchestration/`:
+`src/trader_research/governance/` (including `hypotheses.py` and `orchestration/`):
 
+- `HypothesisBrief` records one revisioned falsifiable question, mechanism, falsifier, intended scope, typed data
+  requirements, strategy intent, risk intent, assumptions, expected evidence, outcome-to-decision rules, requester and
+  actor. `persist_hypothesis_brief` preserves immutable
+  revision lineage and returns a bounded downstream handoff reference; it never grants execution or approval authority.
 - `ResearchObjective` records the operator's statement, success criteria, constraints, supplied canonical refs,
   requester and actor.
 - `ExperimentProtocol` records supplied strategy/risk implementation refs, role-labelled Data requirements, explicit
