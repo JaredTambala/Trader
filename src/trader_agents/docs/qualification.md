@@ -9,7 +9,7 @@ prove security or recovery.
   deterministic fakes
 - model-choice tests: the exact local model must choose appropriate specialists and stop on materially ambiguous briefs
 - production-boundary tests: real stdio MCP, Postgres roles, Docker isolation, failure injection, recovery, idempotency,
-  and redacted traces
+  redacted traces, and retained public trajectory verification
 - vertical behavioral scenarios: natural-language briefs exercise Data and Strategy selection, evidence review,
   revision, interruption, loop termination, and prohibited actions
 - bounded scale and final acceptance: repeated runs against one immutable code/model/tool/environment freeze
@@ -25,3 +25,10 @@ was not promoted. No fallback or post-hoc output rewrite counts as acceptance.
 The canonical current statement is in [Product State](../../../docs/product_state.md). When qualification resumes, all
 mandatory phases must run against the same clean revision, exact model digest, isolated Postgres profile, tool catalogue,
 program identities, and container image before a canonical acceptance record can be written.
+
+The deterministic retained trajectory fixture uses `RetainedTrajectorySink` with the existing event and checkpoint
+projections. Its optional atomic JSON `storage_path` is reloaded by a fresh Python process in the qualification test,
+so process replacement proves recovery from retained public evidence rather than only changing an in-memory process ID.
+It also proves concurrent Data and Strategy branch attribution, terminal decision receipt lineage, recursive redaction,
+duplicate rejection, and fail-closed sink outage handling. This fixture qualifies the public evidence boundary; it does
+not promote a model profile or make diagnostic events canonical research artifacts.

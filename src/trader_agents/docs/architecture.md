@@ -24,7 +24,7 @@ The primary graph implementation is `coordination/coordinator.py`; Data and Stra
 | `coordination/` | Agenda interpretation, scheduling, specialist dispatch, evidence review, and accepted transitions. | The other Agent responsibility packages through their explicit contracts. |
 | `specialists/` | Isolated Data Research and Strategy Engineering model/tool loops. | Contracts, model runtime, MCP runtime, checkpointing, and observability. |
 | `checkpointing/` | Bounded operational state and PostgreSQL checkpoint composition. | Agent contracts and LangGraph checkpoint interfaces. |
-| `observability/` | Semantic event schema, safe projections, ordered emission, console rendering, and trace sinks. | Agent contracts and stable research hashing only. |
+| `observability/` | Semantic event schema, safe projections, ordered emission, retained public trajectory verification, console rendering, and trace sinks. | Agent contracts and stable research hashing only. |
 | `application/` | Environment composition, lifecycle API, subprocess ownership, and CLI. | Every lower Agent responsibility package. |
 
 This direction keeps composition at the outside and contracts at the inside. There are no flat compatibility modules,
@@ -60,7 +60,7 @@ operator / CLI
        -> RoleScopedMcpRuntime -> stdio MCP client -> trader_mcp
        -> LangGraph Postgres checkpointer
        -> redacted trace sink
-       -> redacted semantic event sink -> operator stderr
+       -> redacted semantic event sink -> operator stderr or qualification retention
 
 trader_mcp -> trader_research -> trader / trader_standard / provider adapters
 ```
@@ -175,7 +175,9 @@ The production composition shares one emitter across the runtime, Coordinator, s
 and role-scoped MCP runtimes. This gives every event a monotonically increasing process-local sequence. The console
 sink writes either a concise human line or the exact event JSON to `stderr`; INFO filters DEBUG events but never hides
 warnings or errors. No-op and recording sinks remain available for isolated embedding and contract tests. Legacy
-MLflow spans continue alongside the semantic stream until approved durable event persistence is implemented.
+MLflow spans continue alongside the semantic stream until approved durable product event persistence is implemented.
+`RetainedTrajectorySink(storage_path=...)` provides atomic local JSON retention for qualification fixtures and does not
+change that product persistence boundary.
 
 The three child MCP processes also log their own bounded lifecycle events to inherited `stderr`. Each line carries the
 specialist role and a distinct MCP process identity, while MCP protocol JSON-RPC remains isolated on child `stdout`.
