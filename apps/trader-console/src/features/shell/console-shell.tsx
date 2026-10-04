@@ -11,6 +11,7 @@ const navigation = [
   { href: "/backtests", label: "Backtest review", hint: "Inspect one run" },
   { href: "/backtests/new", label: "New backtest", hint: "Define and execute" },
   { href: "/comparisons", label: "Comparisons", hint: "Compare related runs" },
+  { href: "/paper", label: "Paper operations", hint: "Runtime evidence" },
 ] as const;
 
 function isActive(pathname: string, href: string) {

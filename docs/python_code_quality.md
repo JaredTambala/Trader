@@ -22,6 +22,31 @@ This is review guidance, not a new automated gate. The existing baseline remains
 - Keep comments and docstrings factual. Explain contracts, invariants, intent, and non-obvious tradeoffs; do not
   narrate code that is already obvious.
 
+## Boundary Contracts And Type Discipline
+
+Use a strong contract when a value crosses a process, trust, package-ownership, persistence, recovery, or external
+API boundary. The contract should make the accepted input, normalized output, authority, side effects, identity,
+provenance, version or digest, idempotency, and stale or missing behavior reviewable. These boundaries are where an
+ambiguous shape can become an unauthorized action, an unreproducible artifact, or an unrecoverable workflow.
+
+Keep one canonical semantic contract at the owning domain layer. Transport and application layers may validate and
+project that contract into JSON Schema, OpenAPI, MCP envelopes, or other wire representations, but adapters must not
+reimplement domain truth. Use typed Python value objects or models inside the package and derive or adapt boundary
+schemas from them where practical; do not hand-maintain competing models for the same meaning.
+
+Do not introduce a new DTO or schema for every helper function. Same-package calls with no ownership, trust,
+persistence, or recovery transition can use ordinary typed functions and value objects. A new boundary contract is
+justified by the boundary it protects or by a concrete failure mode it prevents, and its contract tests should prove
+malformed input or output, authorization, authority, provenance, identity drift, replay or recovery, and explicit
+degraded states as applicable.
+
+Use a hard cutover when replacing an internal process, contract, schema, import surface, or persisted state that will
+not be executed again. Update all active callers, tests, fixtures, and documentation in the same change, then remove
+the obsolete path. Do not add compatibility imports, shims, aliases, fallback readers, dual writes, or silent
+translations to reduce transition anxiety. Keep compatibility only when an explicitly approved work item identifies a
+currently supported consumer or a bounded migration, its owner and removal condition, and the tests that prove the
+old and new behavior cannot be confused.
+
 ## Comments And Docstrings
 
 Use comments for the part a reader cannot infer locally. A useful comment usually answers one of these questions:
@@ -301,6 +326,14 @@ except BrokerUnavailableError as exc:
 - Logs include useful correlation identifiers and avoid secrets or noisy implementation details.
 - Exceptions are specific, contextual, and not silently swallowed.
 - Boundary data is normalized into typed shapes before deeper use.
+- Strong contracts are present at process, trust, ownership, persistence, recovery, and external API boundaries, with
+  one canonical semantic owner and adapters for transport representations.
+- New types or schemas have a stated boundary or failure mode; internal helpers do not gain duplicate DTOs merely for
+  ceremony.
+- Contract tests cover validation, authority, provenance, identity or version drift, idempotency, and recovery when
+  those concerns apply.
+- Replaced internal paths are removed in the same change; any compatibility exception names its supported consumer,
+  owner, removal condition, and verification.
 - Package directories group related responsibilities; large flat directories are split when modules have different
   goals or dependency directions.
 - Changes pass the existing local baseline when code changes are included:

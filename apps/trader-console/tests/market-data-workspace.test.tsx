@@ -1,9 +1,9 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BarsResponse, MarketDataset } from "../src/features/market-data/client";
+import type { BarsResponse, MarketDataset, SavedDataScope } from "../src/features/market-data/client";
 import { MarketDataWorkspace } from "../src/features/market-data/market-data-workspace";
-import { loadMarketBars, loadMarketDatasets } from "../src/features/market-data/client";
+import { loadMarketBars, loadMarketDataEvidence, loadMarketDatasets, loadSavedDataScope, loadSavedDataScopes, revalidateSavedDataScope, saveDataScope } from "../src/features/market-data/client";
 
 vi.mock("../src/features/market-data/chart", () => ({
   MarketChart: ({ bars }: { bars: unknown[] }) => <div data-testid="market-chart">chart ({bars.length} bars)</div>,
@@ -11,6 +11,11 @@ vi.mock("../src/features/market-data/chart", () => ({
 vi.mock("../src/features/market-data/client", () => ({
   loadMarketDatasets: vi.fn(),
   loadMarketBars: vi.fn(),
+  loadMarketDataEvidence: vi.fn(),
+  loadSavedDataScope: vi.fn(),
+  loadSavedDataScopes: vi.fn(),
+  revalidateSavedDataScope: vi.fn(),
+  saveDataScope: vi.fn(),
   datasetKey: (dataset: MarketDataset) => [dataset.asset_class, dataset.symbol, dataset.timeframe, dataset.source ?? ""].join("|"),
 }));
 
@@ -29,6 +34,11 @@ const bars: BarsResponse = {
 beforeEach(() => {
   vi.mocked(loadMarketDatasets).mockReset().mockResolvedValue({ items: [dataset], page: { limit: 500, offset: 0, total: 1, has_more: false } });
   vi.mocked(loadMarketBars).mockReset().mockResolvedValue(bars);
+  vi.mocked(loadMarketDataEvidence).mockReset().mockResolvedValue({ state: "complete", evidence_reason: "Evidence matches.", scope: { asset_class: "stock", symbols: ["AAPL"], timeframe: "1Min", interval: "1Min", bar_type: "trade_bar", start: "2026-09-10T09:30:00Z", end: "2026-09-10T16:00:00Z" }, warnings: [], findings: [], provenance: [], coverage: {}, manifest: null, quality: null, provider: "alpaca", source_policy: "alpaca" });
+  vi.mocked(loadSavedDataScope).mockReset();
+  vi.mocked(loadSavedDataScopes).mockReset().mockResolvedValue({ items: [], page: { limit: 100, offset: 0, total: 0, has_more: false } });
+  vi.mocked(revalidateSavedDataScope).mockReset();
+  vi.mocked(saveDataScope).mockReset();
 });
 
 describe("market data exploration workflow", () => {
@@ -121,5 +131,50 @@ describe("market data exploration workflow", () => {
     await waitFor(() => expect(loadMarketDatasets).toHaveBeenCalled());
     view.unmount();
     expect(signal?.aborted).toBe(true);
+  });
+
+  it("saves and reopens the exact selected scope with its evidence state", async () => {
+    const saved: SavedDataScope = {
+      saved_scope_id: "11111111-1111-4111-8111-111111111111",
+      scope_id: "paper-primary",
+      revision: 1,
+      fingerprint: "a".repeat(64),
+      name: "AAPL research slice",
+      asset_class: "stock",
+      symbols: ["AAPL"],
+      universe: null,
+      timeframe: "1Min",
+      interval: "1Min",
+      start: "2026-09-10T09:30:00Z",
+      end: "2026-09-10T16:00:00Z",
+      source_policy: { provider: "alpaca", source: "alpaca", allow_fallback: false },
+      research_role: "backtest_authoring",
+      manifest_artifact_id: "manifest-1",
+      quality_artifact_id: "quality-1",
+      evidence_status: "active",
+      evidence_reason: null,
+      created_by: "console-operator",
+      idempotency_key: "key-1",
+      created_at: "2026-09-10T16:01:00Z",
+      updated_at: "2026-09-10T16:01:00Z",
+    };
+    vi.mocked(saveDataScope).mockResolvedValue(saved);
+    vi.mocked(loadSavedDataScope).mockResolvedValue(saved);
+    const user = userEvent.setup();
+    render(<MarketDataWorkspace />);
+    await screen.findByRole("heading", { name: "AAPL · 1Min" });
+    await user.type(screen.getByLabelText("Manifest artifact reference"), "manifest-1");
+    await user.type(screen.getByLabelText("Quality artifact reference"), "quality-1");
+    await user.click(screen.getByRole("button", { name: "Save exact scope" }));
+    expect(await screen.findByText(/Saved exact scope/)).toBeVisible();
+    expect(vi.mocked(saveDataScope)).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      manifest_artifact_id: "manifest-1",
+      quality_artifact_id: "quality-1",
+      start: "2026-09-10T09:30:00.000Z",
+      end: "2026-09-10T16:00:00.000Z",
+    }));
+    await user.selectOptions(screen.getByLabelText("Reopen saved scope"), saved.saved_scope_id);
+    expect(await screen.findByText("Reopened exact scope (active).")).toBeVisible();
+    expect(vi.mocked(loadSavedDataScope)).toHaveBeenCalledWith(expect.anything(), saved.saved_scope_id);
   });
 });

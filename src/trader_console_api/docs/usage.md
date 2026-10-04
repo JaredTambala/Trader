@@ -112,6 +112,11 @@ collection returns `items` plus `page {limit, offset, total, has_more}`. General
 | --- | --- |
 | `GET /api/market-data/datasets?limit=&offset=` | Discover available stock/crypto symbol, timeframe and source slices. The response also carries `discovery` capability evidence. |
 | `GET /api/market-data/bars?asset_class=&symbol=&timeframe=&source=&start=&end=&limit=&offset=` | Return ordered OHLCV bars; `start` and `end` are ISO timestamps. |
+| `GET /api/market-data/evidence?asset_class=&symbols=&timeframe=&interval=&bar_type=&provider=&source_policy=&start=&end=` | Resolve Data-owned manifest and quality evidence for one exact scope with explicit qualification state. |
+| `POST /api/data-scopes` | Save one exact scope and matching manifest/quality references with an idempotency key. |
+| `GET /api/data-scopes?limit=&offset=` | List saved exact scopes in the configured Console scope. |
+| `GET /api/data-scopes/{saved_scope_id}` | Reopen an exact scope without widening or refreshing it. |
+| `POST /api/data-scopes/{saved_scope_id}/revalidate` | Re-read producer evidence and persist `active`, `stale`, or `unavailable`. |
 | `GET /api/experiments?limit=&offset=` | Discover experiment IDs by published backtest-run membership. |
 | `GET /api/experiments/{experiment_id}/runs?compatible_with_run_id=&limit=&offset=` | List runs and scope-fingerprint comparison eligibility. |
 | `GET /api/runs/{run_id}?section_limit=` | Return one run and bounded performance/evidence sections. |
@@ -123,9 +128,30 @@ The dataset response includes a `discovery` object with `catalogue_completeness`
 coverage only, so the default response is `partial` and `discover_only` until Data evidence supplies provider
 catalogue and loading receipts. The Console never treats a visible symbol as proof of a complete provider universe.
 
+### Saved exact data scopes
+
+The saved-scope boundary persists an immutable handoff containing normalized symbols or universe, asset class, timeframe
+and interval, UTC window, source/provider policy, research role, creator, and exact Data manifest and quality artifact
+references. It stores references rather than recalculating Data quality. Install the additive table explicitly:
+
+<!-- verified: integration:console tests/trader_console_api/repositories/test_saved_data_scopes_schema.py -->
+```bash
+TRADER_CONSOLE_DATABASE_URL="$TRADER_CONSOLE_DATABASE_URL" \
+  uv run python -m trader_console_api.repositories.saved_data_scopes_schema install
+```
+
+Reopening returns the original scope and current evidence state. Missing or superseded producer evidence remains
+`unavailable` or `stale`; it is never silently refreshed or widened. A missing `console_read.data_scope_evidence`
+projection fails closed as `unavailable`.
+
+The evidence endpoint binds the complete asset class, symbol set, timeframe/interval/bar type, UTC window, provider
+and source-policy scope before returning manifest/quality artifact identity, coverage, findings, warnings and
+provenance. An absent exact pair is `unavailable`; `complete`, `partial`, `stale`, `warning`, and `empty` remain
+distinct producer states.
+
 The run detail response keeps sections separate (`performance`, `comparison_summary`, `exposure`, `scope`, `equity_curve`, `comparison_curves`, `trades`,
 `positions`, `assumptions`, `warnings`, `provenance`, `indicator_series`, `signal_markers`, `risk_composition`, `risk_summary`,
-`risk_decisions`, `signals`, `orders`, `fills`, and `evidence_coverage`).
+`risk_decisions`, `review_evidence`, `signals`, `orders`, `fills`, and `evidence_coverage`).
 `indicator_series` is the exact persisted observation stream for the run. Each point carries producer-declared `pane`,
 `scale_group`, `unit`, and `series_kind` fields: `price` series are eligible for the OHLC pane, while secondary panes
 use their declared scale group. `signal_markers.event_ts` comes from the recorded decision cycle, so markers bind to
@@ -140,6 +166,13 @@ dedicated risk-decision route accepts manager, outcome, cycle, and client-order 
 the review can inspect a long trace without loading it into one run-detail payload.
 `unavailable` means the run predates the risk evidence contract or did not publish it. The API does not infer a risk
 block from a broker rejection or an absent fill.
+
+`review_evidence` is a fixed three-part projection of Evaluation, multiple-testing, and Adversarial/robustness
+artifacts. Each item carries its producer identity, artifact digest, claim scope, data roles, limitations, blockers,
+and an explicit `available`, `missing`, `incompatible`, or `blocked` status. Optimisation-derived Evaluation and
+robustness artifacts remain labelled as optimisation context and cannot set `independent_confirmation`; the Console
+never recomputes producer statistics or turns exploratory selection into confirmation. Multiple-testing reports that
+are not persisted and linked to the run stay `missing` with an actionable reason.
 
 The API does not invent experiment metadata that is absent from the current contract. Saved comparison views contain
 only user-authored intent; their selected run IDs, metric keys and series keys are reread against current evidence on
@@ -280,3 +313,15 @@ runs. Standalone runs are grouped under `standalone_backtests`; their lifecycle,
 position evidence remains visible even when no aggregate metrics snapshot or replay scope was published. Equity,
 performance and exposure are reconstructed from persisted initial state, fills, fees and market bars; missing scope or
 benchmark identity remains explicitly unavailable.
+
+## Paper operations
+
+The paper operations workspace is read-only. It calls `GET /api/paper/runtime` and renders the latest published
+session, market-data freshness, portfolio positions, open orders, fills, risk outcomes, incidents, and account
+binding. Every section includes an evidence status and timestamp. `configured` account binding is configuration only;
+it is not a verified broker identity. Missing producer projections for reconciliation attempts and halt state are
+returned as `unavailable` with an explanation rather than inferred from `/health/ready`.
+
+The endpoint uses the server-owned scope and a bounded read-only transaction. It accepts no broker, database, session,
+or mutation selector. A database outage returns HTTP 503 with `database_unavailable`; stale or partial runtime evidence
+remains HTTP 200 so the Console can show the operational limitation.

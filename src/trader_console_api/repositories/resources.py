@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime
+import json
 from typing import Any, Literal
 
 from .database import ConsoleDatabase
@@ -144,6 +145,56 @@ class ConsoleResourceRepository:
             rows = _row_dicts(cursor, await cursor.fetchall())
         total = _total(rows)
         return _strip_total(rows), total
+
+    async def get_market_data_evidence(
+        self,
+        *,
+        asset_class: AssetClass,
+        symbols: tuple[str, ...],
+        timeframe: str,
+        interval: str,
+        bar_type: str,
+        start: datetime,
+        end: datetime,
+        provider: str | None,
+        source_policy: str | None,
+    ) -> dict[str, Any] | None:
+        """Resolve one exact Data manifest/quality pair from the producer projection.
+
+        The API never reconstructs quality or joins raw artifact payloads. The
+        producer-owned ``console_read.data_scope_evidence`` view resolves the
+        canonical pair and preserves explicit unavailable/partial/stale states.
+        """
+        query = """
+        SELECT *
+        FROM console_read.data_scope_evidence
+        WHERE asset_class = %s
+          AND symbols = %s::jsonb
+          AND timeframe = %s
+          AND interval = %s
+          AND bar_type = %s
+          AND requested_start = %s
+          AND requested_end = %s
+          AND COALESCE(provider, '') = COALESCE(%s, '')
+          AND COALESCE(source_policy, '') = COALESCE(%s, '')
+        ORDER BY quality_updated_at DESC NULLS LAST, manifest_updated_at DESC NULLS LAST
+        LIMIT 1
+        """
+        parameters = [
+            asset_class,
+            json.dumps(list(symbols), separators=(",", ":")),
+            timeframe,
+            interval,
+            bar_type,
+            start,
+            end,
+            provider,
+            source_policy,
+        ]
+        async with self._database.transaction() as connection:
+            cursor = await connection.execute(query, parameters)
+            rows = _row_dicts(cursor, await cursor.fetchall())
+        return rows[0] if rows else None
 
     async def list_bars(
         self,
@@ -316,6 +367,11 @@ class ConsoleResourceRepository:
             "risk_composition": ("SELECT * FROM console_read.risk_composition WHERE run_id = %s ORDER BY manager_position LIMIT %s", [run_id, section_limit]),
             "risk_summary": ("SELECT * FROM console_read.risk_summary WHERE run_id = %s LIMIT 1", [run_id]),
             "risk_decisions": ("SELECT * FROM console_read.risk_decisions WHERE run_id = %s ORDER BY decision_ts, cycle_id, manager_position LIMIT %s", [run_id, section_limit]),
+            "review_evidence": (
+                "SELECT * FROM console_read.research_review_evidence "
+                "WHERE run_id = %s ORDER BY artifact_type, artifact_id LIMIT %s",
+                [run_id, section_limit],
+            ),
             "signals": ("SELECT * FROM console_read.signal_lifecycle WHERE run_id = %s ORDER BY generated_at LIMIT %s", [run_id, section_limit]),
             "orders": ("SELECT * FROM console_read.order_lifecycle WHERE run_id = %s ORDER BY created_at LIMIT %s", [run_id, section_limit]),
             "fills": ("SELECT * FROM console_read.fill_lifecycle WHERE run_id = %s ORDER BY fill_ts LIMIT %s", [run_id, section_limit]),

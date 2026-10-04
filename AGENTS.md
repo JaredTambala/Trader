@@ -101,8 +101,10 @@ For every task, do this in order:
    reference.
 3. Inspect the change surface with repo searches and nearby code reads. Prefer `rg` and targeted file reads.
 4. Plan narrowly around the package boundary and existing patterns.
-5. Implement the smallest coherent change. Do not create compatibility layers unless the Notion work item, canonical
-   technical design, or user explicitly requires them.
+5. Implement the smallest coherent change. For an internal process, contract, schema, import surface, or persisted
+   state that is being replaced, use a hard cutover: update callers, tests, documentation, and fixtures together and
+   remove the obsolete path. Do not create compatibility layers unless the Notion work item, canonical technical
+   design, or user explicitly requires a bounded migration or a currently supported product-versioning contract.
 6. Test the direct behavior first, then broaden tests when touching shared contracts, MCP registration, agent identity,
    persistence, or package boundaries.
 7. Update active repository documentation when behavior, APIs, artifacts, architecture, or design changes. Update the
@@ -189,7 +191,10 @@ Use the narrowest checks that prove the change, then broaden when shared surface
 - Do not implement before checking or creating the atomic Notion work item and reading nearby repository docs.
 - Do not commit feature work without required repository documentation and Notion status updates, unless the final
   response explicitly explains why one of them was not applicable or could not be reached.
-- Do not create legacy compatibility imports, shims, or aliases unless explicitly planned.
+- Prefer hard cutover whenever old code, state, or process will not be executed again. Do not create legacy
+  compatibility imports, shims, aliases, fallback readers, dual writes, or silent translations unless an explicitly
+  approved work item names the supported consumer or migration, owner, removal condition, and verification. A desire
+  to reduce implementation risk is not by itself a compatibility requirement.
 - Do not bypass MCP/tool boundaries from agent code when a tool exists.
 - Do not give agents direct SQL write access, broker mutation, live trading controls, or raw scratchpad persistence.
 - Do not persist every LLM message, hidden reasoning trace, or tool-call payload as product state.

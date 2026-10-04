@@ -50,6 +50,14 @@ from .contracts import (
     RiskSummary,
     TraderPrincipal,
 )
+from .data_scope_contracts import (
+    DataScopeEvidenceStatus,
+    DataScopePageInfo,
+    DataScopeSourcePolicy,
+    SavedDataScope,
+    SavedDataScopeCreate,
+    SavedDataScopesResponse,
+)
 from .worker import (
     AmbiguousExecutionError,
     BacktestExecutionWorker,
@@ -103,6 +111,12 @@ __all__ = [
     "RiskSummary",
     "SavedComparisonView",
     "TraderPrincipal",
+    "DataScopeEvidenceStatus",
+    "DataScopePageInfo",
+    "DataScopeSourcePolicy",
+    "SavedDataScope",
+    "SavedDataScopeCreate",
+    "SavedDataScopesResponse",
     "create_app",
     "AmbiguousExecutionError",
     "BacktestExecutionWorker",

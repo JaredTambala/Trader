@@ -166,6 +166,13 @@ approved transformations. Rejected rows retain the candidate before-order and le
 Composition is retained for zero-signal and zero-trade runs; legacy runs remain explicit `unavailable`. Risk blocks are
 separate from broker rejections and missing fills, and the Console reads these projections with bounded detail limits.
 
+Contract version 10 adds `data_scope_evidence`, a producer-owned projection over Data's persisted
+`dataset_manifest` and `data_quality_report` artifacts. It binds the exact symbols, asset class, timeframe/interval,
+bar type, UTC window, provider and source policy, and retains both artifact identities, coverage, findings, warnings and
+provenance references. Its qualification state is explicit (`complete`, `partial`, `stale`, `warning`, `empty`, or
+`unavailable`); the Console API projects this evidence without recalculating Data quality. When the research artifact
+table is not installed, the contract installs an empty typed view so consumers fail closed to `unavailable`.
+
 `console_read.contract_versions` records the installed version and the oldest admitted consumer. A consumer is
 compatible when its supported version is between `minimum_consumer_version` and `contract_version`, inclusive. Missing
 or malformed metadata, catalog drift, or unavailable views fails readiness. Relation and Python symbol names do not

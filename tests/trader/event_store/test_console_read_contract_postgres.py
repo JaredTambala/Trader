@@ -81,7 +81,7 @@ def test_console_contract_reports_compatible_catalog_and_rolls_back(
     version = connection.execute(CONSOLE_READ_VERSION_QUERY, [CONSOLE_READ_CONTRACT]).fetchone()
     assert inspection.ready is True
     assert inspection.issues == ()
-    assert version == (8, 1)
+    assert version == (10, 1)
 
 
 def test_console_contract_derives_backtest_evidence_without_metrics_snapshot(

@@ -43,6 +43,10 @@ def test_checked_schema_matches_registered_routes_and_response_models() -> None:
         "/api/backtests/executions/{execution_id}",
         "/api/market-data/datasets",
         "/api/market-data/bars",
+        "/api/market-data/evidence",
+        "/api/data-scopes",
+        "/api/data-scopes/{saved_scope_id}",
+        "/api/data-scopes/{saved_scope_id}/revalidate",
         "/api/experiments",
         "/api/experiments/{experiment_id}/runs",
         "/api/runs/{run_id}",
@@ -50,6 +54,7 @@ def test_checked_schema_matches_registered_routes_and_response_models() -> None:
         "/api/experiments/{experiment_id}/comparison-views/preview",
         "/api/experiments/{experiment_id}/comparison-views",
         "/api/experiments/{experiment_id}/comparison-views/{view_id}",
+        "/api/paper/runtime",
         "/health/live",
         "/health/ready",
     }
@@ -59,6 +64,7 @@ def test_checked_schema_matches_registered_routes_and_response_models() -> None:
         ("/health/live", "200", "LivenessResponse"),
         ("/health/ready", "200", "ReadinessResponse"),
         ("/health/ready", "503", "ReadinessResponse"),
+        ("/api/paper/runtime", "200", "PaperRuntimeOperations"),
     ]:
         response_schema = schema["paths"][path]["get"]["responses"][code]["content"][
             "application/json"

@@ -21,15 +21,17 @@ The current application provides:
   reconciliation (the concrete BacktestRunner adapter remains deployment composition); and
 - a `trader-console-worker` entrypoint that binds the explicit core YAML config and polls the local queue; and
 - saved comparison-view definitions bound to one experiment and scope, with live eligibility explanations; and
+- a read-only `/api/paper/runtime` projection for paper session, freshness, portfolio, orders, fills, risk, and
+  explicitly unavailable reconciliation/halt evidence; and
 - permanent dependency checks excluding Trader execution, event-store, broker, research, MCP, Agent, and MLflow code.
 
 Request handling follows an explicit `routers` → `services` → `repositories` direction. Routers translate HTTP,
 services orchestrate application outcomes, and repositories own persistence and transaction policy.
 
-The current slice exposes public configuration, health, database compatibility, local resource queries, and the first
-Console-owned comparison-definition command. Authentication and principal authorization remain unimplemented; the
-separate frontend consumes the comparison API through its `/comparisons` workspace. These omissions are current
-implementation state, not a permanent definition of the API.
+The current slice exposes public configuration, health, database compatibility, local resource queries, the paper
+operations read model, and Console-owned comparison-definition commands. Authentication and principal authorization
+remain unimplemented; the separate frontend consumes the comparison and paper operations APIs. These omissions are
+current implementation state, not a permanent definition of the API.
 
 ## Documentation
 

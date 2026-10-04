@@ -16,6 +16,24 @@ test("the chart workspace selects a UTC range and exposes a bounded data window"
         { asset_class: "stock", symbol: "MSFT", timeframe: "1Min", source: "alpaca", first_ts: "2026-09-10T09:30:00Z", last_ts: "2026-09-10T16:00:00Z", bar_count: 60000 },
       ],
       page: { limit: 500, offset: 0, total: 2, has_more: false },
+      discovery: { provider: "alpaca", catalogue_completeness: "complete", catalogue_freshness: "fresh", can_discover: true, can_load: true, load_capability: "load_capable", reason: "Provider receipt covers the fixture." },
+    }),
+  }));
+  await page.route("**/api/market-data/evidence**", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      scope: { asset_class: "stock", symbols: ["AAPL"], timeframe: "1Min", interval: "1Min", bar_type: "trade_bar", start: "2026-09-10T09:30:00Z", end: "2026-09-10T16:00:00Z", provider: "alpaca", source_policy: "alpaca" },
+      state: "complete",
+      evidence_reason: "Manifest and quality evidence match the exact requested scope.",
+      provider: "alpaca",
+      source_policy: "alpaca",
+      coverage: { total_rows: 60000, total_bars: 60000 },
+      findings: [],
+      warnings: [],
+      provenance: ["research://postgres/dataset_manifest/manifest-1", "research://postgres/data_quality_report/quality-1"],
+      manifest: null,
+      quality: null,
     }),
   }));
   await page.route("**/api/market-data/bars**", (route) => {
@@ -38,6 +56,8 @@ test("the chart workspace selects a UTC range and exposes a bounded data window"
   await expect(page.getByRole("img", { name: "OHLC candlestick and volume chart" })).toBeVisible();
   await expect(page.getByText("2026-09-10 09:30:00 UTC")).toBeVisible();
   await expect(page.getByText("1 of 60,000 bars loaded")).toBeVisible();
+  await expect(page.getByText("Data evidence")).toBeVisible();
+  await expect(page.getByText("complete", { exact: true })).toBeVisible();
 
   await page.getByLabel("From UTC").fill("2026-09-10T10:00");
   await page.getByRole("button", { name: "Apply range" }).click();

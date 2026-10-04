@@ -15,6 +15,7 @@ from ..contracts import (
     ExperimentsResponse,
     MAX_MARKET_DATA_BARS_PER_PAGE,
     MarketDatasetsResponse,
+    MarketDataEvidenceResponse,
     RiskDecisionsResponse,
     RunDetail,
 )
@@ -56,6 +57,50 @@ async def market_datasets(
     """List available symbol/timeframe/source market-data slices."""
     try:
         result = await service.market_datasets(limit=limit, offset=offset)
+    except ResourceDatabaseUnavailable:
+        return _unavailable()
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
+
+@router.get(
+    "/market-data/evidence",
+    response_model=MarketDataEvidenceResponse,
+    responses={503: {"model": ApiError}},
+)
+async def market_data_evidence(
+    response: Response,
+    service: Annotated[ResourceService, Depends(get_resource_service)],
+    symbols: Annotated[str, Query(min_length=1, max_length=2000)],
+    asset_class: Literal["stock", "crypto"] = "stock",
+    timeframe: Annotated[str, Query(min_length=1, max_length=32)] = "1Min",
+    interval: Annotated[str | None, Query(max_length=32)] = None,
+    bar_type: Annotated[str, Query(min_length=1, max_length=64)] = "trade_bar",
+    provider: Annotated[str | None, Query(max_length=100)] = None,
+    source_policy: Annotated[str | None, Query(max_length=100)] = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
+) -> MarketDataEvidenceResponse | JSONResponse:
+    """Return qualified Data evidence for one exact bounded scope."""
+    requested_symbols = tuple(item.strip().upper() for item in symbols.split(",") if item.strip())
+    if not requested_symbols:
+        raise HTTPException(status_code=422, detail="symbols must contain at least one symbol")
+    if start is None or end is None:
+        raise HTTPException(status_code=422, detail="start and end are required for exact evidence")
+    if end < start:
+        raise HTTPException(status_code=422, detail="end must not precede start")
+    try:
+        result = await service.market_data_evidence(
+            asset_class=asset_class,
+            symbols=requested_symbols,
+            timeframe=timeframe,
+            interval=interval or timeframe,
+            bar_type=bar_type,
+            start=start,
+            end=end,
+            provider=provider,
+            source_policy=source_policy,
+        )
     except ResourceDatabaseUnavailable:
         return _unavailable()
     response.headers["Cache-Control"] = "no-store"

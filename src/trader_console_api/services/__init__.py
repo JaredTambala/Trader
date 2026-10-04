@@ -10,6 +10,13 @@ from .backtest_definitions import (
     InvalidBacktestDefinition,
 )
 from .backtest_executions import BacktestExecutionService, ExecutionDatabaseUnavailable
+from .saved_data_scopes import (
+    SavedDataScopeDatabaseUnavailable,
+    SavedDataScopeNotFound,
+    SavedDataScopeService,
+    SavedDataScopeStorageUnavailable,
+)
+from .paper_runtime import PaperRuntimeDatabaseUnavailable, PaperRuntimeService
 
 __all__ = [
     "CompatibilityRepository",
@@ -26,4 +33,10 @@ __all__ = [
     "InvalidBacktestDefinition",
     "BacktestExecutionService",
     "ExecutionDatabaseUnavailable",
+    "SavedDataScopeDatabaseUnavailable",
+    "SavedDataScopeNotFound",
+    "SavedDataScopeService",
+    "SavedDataScopeStorageUnavailable",
+    "PaperRuntimeDatabaseUnavailable",
+    "PaperRuntimeService",
 ]

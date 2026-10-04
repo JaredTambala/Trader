@@ -29,6 +29,31 @@ The sections below describe transport-level guarantees first and capability-spec
 implemented in the deterministic research package while remaining unavailable from a particular server process because
 its environment gate or dependency is not admitted.
 
+## Contract design rule
+
+MCP contracts are wire contracts over the owning domain semantics, not parallel domain models. Tool arguments and
+results must have explicit JSON Schema representations (using the MCP-supported schema dialect), and structured results
+must remain validatable by clients. The MCP adapter validates untrusted input, applies the declared authority and side
+effect policy, normalizes the request, and serializes a bounded public result.
+
+The canonical meaning remains in the owning package, usually `trader_research` for research artifacts and services.
+Adapters may translate between a typed domain value and an MCP envelope, but they must not recalculate domain truth or
+silently broaden scope. Durable or replayable values must carry the identity, version or digest, authority, provenance,
+and recovery or idempotency information needed to reject drift and reconcile a lost response.
+
+Do not add an MCP schema or public type for an internal helper that does not cross a trust, process, ownership,
+persistence, recovery, or external API boundary. When a new contract is justified, its design record must name the
+canonical owner, the boundary, the failure mode it prevents, and tests for malformed data, authorization, provenance,
+identity drift, replay or recovery, and explicit degraded states as applicable. Public projections must remain bounded:
+they do not expose hidden reasoning, raw credentials, or unredacted tool transcripts.
+
+When a registered MCP process or contract replaces an internal tool, payload shape, artifact schema, or agent-facing
+path, perform a hard cutover. Remove obsolete tool names, aliases, fallback readers, dual semantics, and automatic
+translations in the same change; update the catalogue, callers, tests, and documentation together. Retain a
+compatibility surface only when an explicitly approved work item identifies a currently supported consumer or bounded
+migration, owner, removal condition, and fail-closed verification. Compatibility is never added solely to avoid
+updating code that will not execute again.
+
 ## Functional Status Boundary
 
 Only tools listed as registered in the [tool catalogue](tools.md) and returned by `mcp_get_config` are callable. The
@@ -726,7 +751,8 @@ Catalog rows are informational producer metadata. They are not implementation ve
 
 The candidate-era Python packages, domain models, filesystem bundle readers, and performance-report service have been deleted. Their MCP names and artifact types are unsupported. No compatibility alias, filesystem fallback, migration reader, or automatic translation from candidate IDs exists.
 
-Compatibility aliases may be kept while the older Math Coder naming is retired:
+The following is an explicit, bounded compatibility exception for the currently supported Math Coder naming retirement;
+it is not a default migration pattern. Its removal requires a separate reviewed cutover decision:
 
 | Alias | Canonical tool |
 | --- | --- |

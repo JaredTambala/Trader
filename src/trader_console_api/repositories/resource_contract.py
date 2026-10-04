@@ -16,6 +16,16 @@ RESOURCE_CONTRACT_COLUMNS: Final[dict[str, tuple[str, ...]]] = {
         "symbol", "timeframe", "ts", "ingested_at", "open", "high", "low",
         "close", "volume", "trade_count", "vwap", "source",
     ),
+    "data_scope_evidence": (
+        "manifest_artifact_id", "quality_artifact_id", "manifest_uri", "quality_uri",
+        "evidence_status", "evidence_reason", "manifest_status", "quality_status",
+        "manifest_schema_version", "quality_schema_version", "asset_class", "symbols",
+        "timeframe", "interval", "bar_type", "requested_start", "requested_end",
+        "provider", "source_policy", "manifest_created_at", "manifest_updated_at",
+        "quality_created_at", "quality_updated_at", "manifest_source_hash",
+        "quality_source_hash", "manifest_payload", "quality_payload", "coverage",
+        "findings", "warnings", "provenance_refs",
+    ),
     "backtest_runs": (
         "experiment_run_id", "experiment_id", "run_id", "session_id", "status",
         "mode", "created_at", "finished_at", "strategy_id", "strategy_name",
@@ -134,5 +144,11 @@ RESOURCE_CONTRACT_COLUMNS: Final[dict[str, tuple[str, ...]]] = {
     "fill_lifecycle": (
         "fill_event_id", "client_order_id", "run_id", "session_id", "cycle_id", "fill_ts",
         "fill_qty", "raw_fill_price", "slippage_amount", "fee_amount", "fill_price",
+    ),
+    "research_review_evidence": (
+        "artifact_type", "artifact_id", "domain_owner", "producer_tool",
+        "artifact_status", "schema_version", "source_hash", "created_at", "updated_at",
+        "run_id", "claim_scope", "data_roles", "limitations", "blockers",
+        "independent_confirmation", "origin_kind",
     ),
 }

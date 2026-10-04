@@ -75,7 +75,37 @@ The response's `discovery` object distinguishes catalogue completeness (`complet
 `unavailable`) from `load_capability` (`load_capable`, `discover_only`, or `unavailable`). Existing Console rows prove
 stored coverage only; they do not prove that the provider catalogue is complete or that a backfill can run.
 
-## 4. Preflight and persist a definition
+Resolve producer qualification evidence for the selected exact scope before saving or handing it to backtest
+authoring:
+
+<!-- verified: integration:console tests/trader_console_api/services/test_resource_service_evidence.py -->
+```bash
+curl --fail 'http://127.0.0.1:8001/api/market-data/evidence?asset_class=stock&symbols=AAPL&timeframe=1Min&interval=1Min&bar_type=trade_bar&start=2026-09-10T09:30:00Z&end=2026-09-10T16:00:00Z'
+```
+
+The response keeps complete, partial, stale, warning, empty, and unavailable states explicit and references the
+Data-owned manifest and quality artifacts instead of recomputing their findings in the Console API.
+
+## 4. Save and reopen an exact data scope
+
+After selecting a dataset and UTC window, obtain the matching Data manifest and quality artifact references from the
+Data evidence surface. Save the scope with the same identity that will be handed to authoring:
+
+<!-- verified: integration:console tests/trader_console_api/repositories/test_saved_data_scopes_schema.py -->
+```bash
+TRADER_CONSOLE_DATABASE_URL="$TRADER_CONSOLE_DATABASE_URL" \
+  uv run python -m trader_console_api.repositories.saved_data_scopes_schema install
+curl --fail -X POST http://127.0.0.1:8001/api/data-scopes \
+  -H 'content-type: application/json' \
+  -d '{"name":"Instrument-agnostic research window","asset_class":"stock","symbols":["AAPL"],"timeframe":"1Min","interval":"1Min","start":"2026-01-01T00:00:00Z","end":"2026-01-02T00:00:00Z","source_policy":{"provider":"alpaca","source":"iex","allow_fallback":false},"research_role":"backtest_authoring","manifest_artifact_id":"research://postgres/dataset_manifest/manifest-1","quality_artifact_id":"research://postgres/data_quality_report/quality-1","created_by":"console-operator","idempotency_key":"scope-demo-1"}'
+```
+
+Use the returned `saved_scope_id` with `GET /api/data-scopes/{saved_scope_id}` after a fresh process. The response keeps
+the original scope and evidence references. `POST /api/data-scopes/{saved_scope_id}/revalidate` updates only the
+qualification state; it reports `active`, `stale`, or `unavailable` instead of silently refreshing or widening the
+request. The market-data workspace exposes the same save/reopen actions.
+
+## 5. Preflight and persist a definition
 
 Discover the maintained profiles, submit a typed draft to preflight, then persist it only after the response is valid:
 
@@ -126,7 +156,7 @@ uv run trader-console-worker
 The worker resolves exact catalogue versions and invokes the canonical internal-broker runner through its injected
 adapter. `uv run trader-console-worker --once` is useful for one-command recovery checks.
 
-## 5. Install saved comparison storage when needed
+## 6. Install saved comparison storage when needed
 
 Comparison views are an additive Console-owned feature. Install their table as an explicit operator action after the
 producer `console_read` contract is ready:
@@ -140,7 +170,7 @@ TRADER_CONSOLE_DATABASE_URL="$TRADER_CONSOLE_DATABASE_URL" \
 Use the API's comparison-view endpoints from [the usage reference](usage.md#saved-comparison-views). The API stores
 the definition only and evaluates selected runs from current published evidence whenever it previews or loads a view.
 
-## 6. Shut down and clear local secrets
+## 7. Shut down and clear local secrets
 
 Stopping the process closes its one connection pool. Clear the local DSN from the shell afterward:
 

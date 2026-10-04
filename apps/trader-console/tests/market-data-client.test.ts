@@ -36,6 +36,22 @@ it("passes the selected slice and UTC range to the bars endpoint", async () => {
   expect(url.searchParams.get("limit")).toBe("50000");
 });
 
+it("requests exact Data evidence through the generated OpenAPI path", async () => {
+  const payload = { state: "unavailable", evidence_reason: "missing", scope: { asset_class: "stock", symbols: ["AAPL"], timeframe: "1Min", interval: "1Min", bar_type: "trade_bar", start: "2026-01-01T00:00:00Z", end: "2026-01-02T00:00:00Z" }, warnings: ["missing"], findings: [], provenance: [], coverage: {} };
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(payload)));
+  vi.resetModules();
+  const { loadMarketDataEvidence } = await import("../src/features/market-data/client");
+  await loadMarketDataEvidence(new AbortController().signal, {
+    asset_class: "stock", symbols: ["AAPL", "MSFT"], timeframe: "1Min", interval: "1Min",
+    bar_type: "trade_bar", provider: "alpaca", source_policy: "alpaca",
+    start: "2026-01-01T00:00:00.000Z", end: "2026-01-02T00:00:00.000Z",
+  });
+  const url = requestUrl(vi.mocked(fetch).mock.calls[0]?.[0]);
+  expect(url.pathname).toBe("/api/market-data/evidence");
+  expect(url.searchParams.get("symbols")).toBe("AAPL,MSFT");
+  expect(url.searchParams.get("bar_type")).toBe("trade_bar");
+});
+
 it("keeps typed service-unavailable failures retryable", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code: "database_unavailable", message: "Console database is unavailable" }, { status: 503 })));
   vi.resetModules();
