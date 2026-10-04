@@ -2810,6 +2810,14 @@
         "additionalProperties": false,
         "description": "Broker reconciliation state without inventing an attempt record.",
         "properties": {
+          "attempts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PaperReconciliationAttempt"
+            },
+            "title": "Attempts",
+            "type": "array"
+          },
           "evidence": {
             "$ref": "#/components/schemas/RuntimeEvidence"
           },
@@ -2852,6 +2860,49 @@
           "evidence"
         ],
         "title": "PaperReconciliation",
+        "type": "object"
+      },
+      "PaperReconciliationAttempt": {
+        "additionalProperties": false,
+        "description": "One bounded reconciliation attempt when a producer publishes it.",
+        "properties": {
+          "attempt_id": {
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "attempted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempted At"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempt_id",
+          "status"
+        ],
+        "title": "PaperReconciliationAttempt",
         "type": "object"
       },
       "PaperRiskOutcomes": {
