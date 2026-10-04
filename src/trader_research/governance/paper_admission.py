@@ -102,13 +102,13 @@ class PaperCandidateAdmission:
             if not str(name or "").strip():
                 raise ValueError("evidence reference names are required")
             _validate_reference_shape(reference, name)
-        for value, label in (
+        for mapping_value, label in (
             (self.risk_limits, "risk_limits"),
             (self.broker_scope, "broker_scope"),
             (self.monitoring_policy, "monitoring_policy"),
             (self.metadata, "metadata"),
         ):
-            if not isinstance(value, Mapping):
+            if not isinstance(mapping_value, Mapping):
                 raise ValueError(f"{label} must be a mapping")
         if not isinstance(self.unresolved_limitations, tuple):
             raise ValueError("unresolved_limitations must be a tuple")
