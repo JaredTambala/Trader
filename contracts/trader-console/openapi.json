@@ -2300,6 +2300,835 @@
         "title": "PageInfo",
         "type": "object"
       },
+      "PaperDataFreshness": {
+        "additionalProperties": false,
+        "description": "Aggregate market-data freshness with explicit missing/stale states.",
+        "properties": {
+          "checked_at": {
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/RuntimeEvidence"
+          },
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PaperFreshnessItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "missing_count": {
+            "default": 0,
+            "title": "Missing Count",
+            "type": "integer"
+          },
+          "stale_count": {
+            "default": 0,
+            "title": "Stale Count",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "partial",
+              "stale",
+              "unavailable",
+              "out_of_scope"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "checked_at",
+          "evidence"
+        ],
+        "title": "PaperDataFreshness",
+        "type": "object"
+      },
+      "PaperFill": {
+        "additionalProperties": false,
+        "description": "One persisted fill evidence row.",
+        "properties": {
+          "client_order_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Order Id"
+          },
+          "fee_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Amount"
+          },
+          "fill_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fill Price"
+          },
+          "fill_qty": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fill Qty"
+          },
+          "fill_ts": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fill Ts"
+          },
+          "slippage_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slippage Amount"
+          }
+        },
+        "title": "PaperFill",
+        "type": "object"
+      },
+      "PaperFills": {
+        "additionalProperties": false,
+        "description": "Bounded fills projection with partial-history qualification.",
+        "properties": {
+          "evidence": {
+            "$ref": "#/components/schemas/RuntimeEvidence"
+          },
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PaperFill"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "evidence"
+        ],
+        "title": "PaperFills",
+        "type": "object"
+      },
+      "PaperFreshnessItem": {
+        "additionalProperties": false,
+        "description": "Freshness evidence for one observed market-data stream.",
+        "properties": {
+          "age_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age Seconds"
+          },
+          "asset_class": {
+            "enum": [
+              "stock",
+              "crypto"
+            ],
+            "title": "Asset Class",
+            "type": "string"
+          },
+          "latest_ts": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Ts"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "timeframe": {
+            "title": "Timeframe",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_class",
+          "symbol",
+          "timeframe",
+          "stale"
+        ],
+        "title": "PaperFreshnessItem",
+        "type": "object"
+      },
+      "PaperHaltState": {
+        "additionalProperties": false,
+        "description": "Operator halt state, or an explicit unavailable qualification.",
+        "properties": {
+          "evidence": {
+            "$ref": "#/components/schemas/RuntimeEvidence"
+          },
+          "halted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Halted"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "evidence"
+        ],
+        "title": "PaperHaltState",
+        "type": "object"
+      },
+      "PaperIncident": {
+        "additionalProperties": false,
+        "description": "Actionable issue derived from published runtime evidence.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "severity": {
+            "enum": [
+              "warning",
+              "error"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "title": "PaperIncident",
+        "type": "object"
+      },
+      "PaperOpenOrder": {
+        "additionalProperties": false,
+        "description": "One latest non-terminal local order lifecycle state.",
+        "properties": {
+          "broker_order_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broker Order Id"
+          },
+          "client_order_id": {
+            "title": "Client Order Id",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "order_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Type"
+          },
+          "qty": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qty"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Side"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbol"
+          }
+        },
+        "required": [
+          "client_order_id",
+          "status"
+        ],
+        "title": "PaperOpenOrder",
+        "type": "object"
+      },
+      "PaperOrders": {
+        "additionalProperties": false,
+        "description": "Bounded open-order evidence and its freshness qualifier.",
+        "properties": {
+          "evidence": {
+            "$ref": "#/components/schemas/RuntimeEvidence"
+          },
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PaperOpenOrder"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "stale_count": {
+            "default": 0,
+            "title": "Stale Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "evidence"
+        ],
+        "title": "PaperOrders",
+        "type": "object"
+      },
+      "PaperPortfolio": {
+        "additionalProperties": false,
+        "description": "Cash and position snapshot read from published runtime evidence.",
+        "properties": {
+          "asof_ts": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof Ts"
+          },
+          "cash": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cash"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/RuntimeEvidence"
+          },
+          "positions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PaperPosition"
+            },
+            "title": "Positions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "evidence"
+        ],
+        "title": "PaperPortfolio",
+        "type": "object"
+      },
+      "PaperPosition": {
+        "additionalProperties": false,
+        "description": "One broker-backed position snapshot.",
+        "properties": {
+          "asof_ts": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof Ts"
+          },
+          "avg_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Price"
+          },
+          "qty": {
+            "title": "Qty",
+            "type": "number"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "symbol",
+          "qty"
+        ],
+        "title": "PaperPosition",
+        "type": "object"
+      },
+      "PaperReconciliation": {
+        "additionalProperties": false,
+        "description": "Broker reconciliation state without inventing an attempt record.",
+        "properties": {
+          "evidence": {
+            "$ref": "#/components/schemas/RuntimeEvidence"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "status": {
+            "enum": [
+              "reconciled",
+              "required",
+              "failed",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "evidence"
+        ],
+        "title": "PaperReconciliation",
+        "type": "object"
+      },
+      "PaperRiskOutcomes": {
+        "additionalProperties": false,
+        "description": "Risk outcome counts for the latest paper runtime.",
+        "properties": {
+          "approved_count": {
+            "default": 0,
+            "title": "Approved Count",
+            "type": "integer"
+          },
+          "blocked_count": {
+            "default": 0,
+            "title": "Blocked Count",
+            "type": "integer"
+          },
+          "evaluated_count": {
+            "default": 0,
+            "title": "Evaluated Count",
+            "type": "integer"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/RuntimeEvidence"
+          },
+          "rejected_count": {
+            "default": 0,
+            "title": "Rejected Count",
+            "type": "integer"
+          },
+          "transformed_count": {
+            "default": 0,
+            "title": "Transformed Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "evidence"
+        ],
+        "title": "PaperRiskOutcomes",
+        "type": "object"
+      },
+      "PaperRuntimeHealth": {
+        "additionalProperties": false,
+        "description": "Derived health classification with reasons and evidence freshness.",
+        "properties": {
+          "checked_at": {
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/RuntimeEvidence"
+          },
+          "reasons": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "healthy",
+              "degraded",
+              "unhealthy",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "checked_at",
+          "evidence"
+        ],
+        "title": "PaperRuntimeHealth",
+        "type": "object"
+      },
+      "PaperRuntimeOperations": {
+        "additionalProperties": false,
+        "description": "Read-only paper operations projection for the Console workspace.",
+        "properties": {
+          "broker_account_binding": {
+            "$ref": "#/components/schemas/BrokerAccountBinding"
+          },
+          "broker_account_display_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broker Account Display Label"
+          },
+          "broker_identity_verified": {
+            "default": false,
+            "title": "Broker Identity Verified",
+            "type": "boolean"
+          },
+          "data_freshness": {
+            "$ref": "#/components/schemas/PaperDataFreshness"
+          },
+          "fills": {
+            "$ref": "#/components/schemas/PaperFills"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "halt": {
+            "$ref": "#/components/schemas/PaperHaltState"
+          },
+          "health": {
+            "$ref": "#/components/schemas/PaperRuntimeHealth"
+          },
+          "incidents": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PaperIncident"
+            },
+            "title": "Incidents",
+            "type": "array"
+          },
+          "open_orders": {
+            "$ref": "#/components/schemas/PaperOrders"
+          },
+          "portfolio": {
+            "$ref": "#/components/schemas/PaperPortfolio"
+          },
+          "reconciliation": {
+            "$ref": "#/components/schemas/PaperReconciliation"
+          },
+          "risk": {
+            "$ref": "#/components/schemas/PaperRiskOutcomes"
+          },
+          "scope_id": {
+            "title": "Scope Id",
+            "type": "string"
+          },
+          "session": {
+            "$ref": "#/components/schemas/PaperRuntimeSession"
+          }
+        },
+        "required": [
+          "scope_id",
+          "generated_at",
+          "broker_account_binding",
+          "session",
+          "health",
+          "data_freshness",
+          "portfolio",
+          "open_orders",
+          "fills",
+          "risk",
+          "reconciliation",
+          "halt"
+        ],
+        "title": "PaperRuntimeOperations",
+        "type": "object"
+      },
+      "PaperRuntimeSession": {
+        "additionalProperties": false,
+        "description": "Latest paper session identity and lifecycle evidence.",
+        "properties": {
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/RuntimeEvidence"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "strategy_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Id"
+          },
+          "symbols": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Symbols",
+            "type": "array"
+          },
+          "timeframe": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeframe"
+          }
+        },
+        "required": [
+          "evidence"
+        ],
+        "title": "PaperRuntimeSession",
+        "type": "object"
+      },
       "PreflightIssue": {
         "additionalProperties": false,
         "description": "Actionable field-level preflight failure or warning.",
@@ -2872,6 +3701,56 @@
           "run"
         ],
         "title": "RunDetail",
+        "type": "object"
+      },
+      "RuntimeEvidence": {
+        "additionalProperties": false,
+        "description": "Evidence qualifier attached to every paper-runtime read model.",
+        "properties": {
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "partial",
+              "stale",
+              "unavailable",
+              "out_of_scope"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "source"
+        ],
+        "title": "RuntimeEvidence",
         "type": "object"
       },
       "SavedComparisonView": {
@@ -4413,6 +5292,38 @@
         "summary": "Market Datasets",
         "tags": [
           "resources"
+        ]
+      }
+    },
+    "/api/paper/runtime": {
+      "get": {
+        "description": "Return read-only paper operational evidence with explicit qualifiers.",
+        "operationId": "paper_runtime_api_paper_runtime_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperRuntimeOperations"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Paper Runtime",
+        "tags": [
+          "paper-runtime"
         ]
       }
     },
