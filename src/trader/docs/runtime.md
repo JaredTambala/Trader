@@ -149,7 +149,8 @@ modes when `order_reconciliation_interval_seconds` is positive; set it to `0` to
 Paper startup admission is a governance prerequisite for the eventual operator command path. A valid
 `paper_candidate_admission` record must pin the candidate's strategy, risk, data, and evidence versions, broker/account
 scope, risk limits, monitoring policy, and non-expired human decision. The current admission slice only records and
-revalidates this evidence; Console startup controls and broker mutation remain separate delivery work.
+revalidates this evidence and retains any unresolved limitations; Console startup controls and broker mutation remain
+separate delivery work.
 
 Backtest wrappers also read:
 

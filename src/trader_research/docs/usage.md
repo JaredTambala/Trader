@@ -50,7 +50,7 @@ The normal call sequence is:
 
 The governance facade provides a human-owned paper gate. Supply a complete
 `PaperCandidateAdmission` payload with exact candidate/evidence references, strategy/risk/data versions, risk limits,
-broker scope, monitoring policy, and a decision. Pass a configured
+broker scope, monitoring policy, unresolved limitations, and a decision. Pass a configured
 `ResearchArtifactStore` to `create_paper_candidate_admission`; the service resolves and pins every evidence digest
 before persisting `research://postgres/paper_candidate_admission/...`. Use `validate_paper_candidate_admission` before
 paper startup to re-read those references. Rejection, expiry, revocation, missing evidence, changed versions, and

@@ -58,6 +58,34 @@ def test_human_approval_round_trips_and_is_idempotent() -> None:
     ).ok is True
 
 
+def test_unresolved_limitations_are_explicit_and_digest_pinned() -> None:
+    """Admission records retain limitations as part of the immutable decision."""
+    store = InMemoryResearchArtifactStore()
+    _seed_evidence(store)
+    payload = _admission_payload()
+    payload["unresolved_limitations"] = ["paper-only evidence", "manual monitoring required"]
+
+    result = create_paper_candidate_admission(
+        payload,
+        artifact_store=store,
+        requested_by="human:jared",
+        actor="human:jared",
+    )
+
+    assert result.ok is True
+    admission = PaperCandidateAdmission.from_dict(
+        store.load_artifact_record(PAPER_CANDIDATE_ADMISSION, payload["admission_id"]).payload
+    )
+    assert admission.unresolved_limitations == (
+        "paper-only evidence",
+        "manual monitoring required",
+    )
+    assert admission.to_dict()["unresolved_limitations"] == [
+        "paper-only evidence",
+        "manual monitoring required",
+    ]
+
+
 def test_missing_or_changed_evidence_blocks_creation_and_validation() -> None:
     """Admission creation and later validation fail closed when evidence changes."""
     store = InMemoryResearchArtifactStore()

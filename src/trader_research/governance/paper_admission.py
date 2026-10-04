@@ -74,6 +74,7 @@ class PaperCandidateAdmission:
     revoked_at: str | None = None
     revocation_reason: str | None = None
     supersedes_admission_id: str | None = None
+    unresolved_limitations: tuple[str, ...] = ()
     schema_version: str = "1"
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
@@ -109,6 +110,10 @@ class PaperCandidateAdmission:
         ):
             if not isinstance(value, Mapping):
                 raise ValueError(f"{label} must be a mapping")
+        if not isinstance(self.unresolved_limitations, tuple):
+            raise ValueError("unresolved_limitations must be a tuple")
+        if any(not str(item or "").strip() for item in self.unresolved_limitations):
+            raise ValueError("unresolved_limitations must contain non-empty text")
         _parse_timestamp(self.decided_at, "decided_at")
         if self.expires_at is not None:
             _parse_timestamp(self.expires_at, "expires_at")
@@ -157,6 +162,7 @@ class PaperCandidateAdmission:
             "revoked_at": self.revoked_at,
             "revocation_reason": self.revocation_reason,
             "supersedes_admission_id": self.supersedes_admission_id,
+            "unresolved_limitations": list(self.unresolved_limitations),
             "metadata": dict(self.metadata),
         }
 
@@ -181,6 +187,7 @@ class PaperCandidateAdmission:
             revoked_at=_optional_text(payload.get("revoked_at")),
             revocation_reason=_optional_text(payload.get("revocation_reason")),
             supersedes_admission_id=_optional_text(payload.get("supersedes_admission_id")),
+            unresolved_limitations=_text_sequence(payload.get("unresolved_limitations"), "unresolved_limitations"),
             schema_version=str(payload.get("schema_version") or "1"),
             metadata=_mapping(payload.get("metadata")),
         )
@@ -324,6 +331,7 @@ def revoke_paper_candidate_admission(
             revoked_at=revoked_at,
             revocation_reason=str(reason).strip(),
             supersedes_admission_id=current.admission_id,
+            unresolved_limitations=current.unresolved_limitations,
             metadata={"revocation_of": current.admission_id},
         )
         record = _save_immutable(
@@ -515,6 +523,18 @@ def _mapping_of_mappings(value: object) -> Mapping[str, Mapping[str, Any]]:
     if not isinstance(value, Mapping):
         return {}
     return {str(key): _mapping(item) for key, item in value.items()}
+
+
+def _text_sequence(value: object, label: str) -> tuple[str, ...]:
+    """Normalize a sequence of non-empty text values at the artifact boundary."""
+    if value is None:
+        return ()
+    if isinstance(value, (str, bytes)) or not isinstance(value, (list, tuple)):
+        raise ValueError(f"{label} must be a sequence")
+    normalized = tuple(str(item).strip() for item in value)
+    if any(not item for item in normalized):
+        raise ValueError(f"{label} must contain non-empty text")
+    return normalized
 
 
 def _optional_text(value: object) -> str | None:

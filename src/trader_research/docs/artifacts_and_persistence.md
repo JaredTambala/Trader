@@ -51,7 +51,7 @@ and interoperability.
 `paper_candidate_admission` is the governance record between research evidence and paper-runtime startup. It is
 owned by the Orchestration domain, but only a human principal may create, approve, reject, or revoke it. The record
 pins the candidate reference, exact strategy/risk/data versions, evidence references and payload digests, risk limits,
-broker/account scope, monitoring policy, decision, approver, decision time, and expiry. A changed evidence payload or
+broker/account scope, monitoring policy, unresolved limitations, decision, approver, decision time, and expiry. A changed evidence payload or
 source hash blocks revalidation; approved records also block after expiry or revocation. Revocation creates an
 append-only successor and does not mutate the original record. Agents and MCP identities have no admission authority,
 and this contract performs no broker or runtime mutation.
