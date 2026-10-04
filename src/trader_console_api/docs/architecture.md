@@ -81,6 +81,19 @@ Superset is an independent database consumer, not an API downstream service. The
 Superset datasets, or require Superset-specific contract relations for its own startup. Both consumers may read
 producer-owned PostgreSQL views independently, with each consumer declaring only the relations it actually needs.
 
+## Paper operations read model
+
+`routers.paper_runtime` → `services.paper_runtime` → `repositories.paper_runtime` maps the producer-owned
+`console_read` session, bars, positions, orders, fills, and risk-decision projections into one bounded read-only
+response. Every subsection carries a `RuntimeEvidence` qualifier and an observation timestamp. The service filters
+freshness to the published session scope when one exists and never treats API readiness, configured account labels, or
+visible rows as proof of broker identity. Reconciliation attempts and halt state remain explicit `unavailable` until
+the producer publishes those projections; the API does not query raw runtime tables or infer them from health.
+
+The route is `GET /api/paper/runtime` and uses the same enforced `READ ONLY` transaction as other Console resources.
+Its response is safe to render during partial startup, stale feed, missing session, empty portfolio, bounded fill
+history, and database outage cases. It has no command sibling and cannot mutate broker or runtime state.
+
 ## Capability growth
 
 Read-only is a property of the currently implemented schema queries, not the API's identity. Future operational
