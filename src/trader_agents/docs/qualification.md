@@ -27,7 +27,8 @@ mandatory phases must run against the same clean revision, exact model digest, i
 program identities, and container image before a canonical acceptance record can be written.
 
 The deterministic retained trajectory fixture uses `RetainedTrajectorySink` with the existing event and checkpoint
-projections. It proves concurrent Data and Strategy branch attribution, process replacement with checkpoint recovery,
-terminal decision receipt lineage, recursive redaction, duplicate rejection, and fail-closed sink outage handling.
-This fixture qualifies the public evidence boundary; it does not promote a model profile or make diagnostic events
-canonical research artifacts.
+projections. Its optional atomic JSON `storage_path` is reloaded by a fresh Python process in the qualification test,
+so process replacement proves recovery from retained public evidence rather than only changing an in-memory process ID.
+It also proves concurrent Data and Strategy branch attribution, terminal decision receipt lineage, recursive redaction,
+duplicate rejection, and fail-closed sink outage handling. This fixture qualifies the public evidence boundary; it does
+not promote a model profile or make diagnostic events canonical research artifacts.

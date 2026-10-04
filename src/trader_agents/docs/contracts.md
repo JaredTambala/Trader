@@ -58,5 +58,7 @@ detached `agent_public_state` checkpoint projection with its digest, process ide
 `RetainedTrajectory` can be queried by session and branch without treating diagnostic events as canonical research
 records. `verify_retained_trajectory` checks the pinned program/model/catalogue identities, concurrent branch
 attribution, redaction, fresh-process recovery markers, checkpoint coverage, and terminal decision receipt lineage.
-Sink outages and replayed events fail closed. Durable product retention remains a separate persistence decision; this
-boundary supplies the repeatable qualification fixture and its evidence verifier.
+Supplying `storage_path` writes the same bounded JSON document through an atomic replacement; a new process can
+construct a sink with that path and recover the retained trajectory. Sink outages and replayed events fail closed. This
+local file retention is a repeatable qualification fixture, not approved durable product event persistence, and does
+not replace canonical research artifacts or decision receipts.

@@ -175,7 +175,9 @@ The production composition shares one emitter across the runtime, Coordinator, s
 and role-scoped MCP runtimes. This gives every event a monotonically increasing process-local sequence. The console
 sink writes either a concise human line or the exact event JSON to `stderr`; INFO filters DEBUG events but never hides
 warnings or errors. No-op and recording sinks remain available for isolated embedding and contract tests. Legacy
-MLflow spans continue alongside the semantic stream until approved durable event persistence is implemented.
+MLflow spans continue alongside the semantic stream until approved durable product event persistence is implemented.
+`RetainedTrajectorySink(storage_path=...)` provides atomic local JSON retention for qualification fixtures and does not
+change that product persistence boundary.
 
 The three child MCP processes also log their own bounded lifecycle events to inherited `stderr`. Each line carries the
 specialist role and a distinct MCP process identity, while MCP protocol JSON-RPC remains isolated on child `stdout`.

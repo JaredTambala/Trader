@@ -2,7 +2,7 @@
 
 Subject: Retained public event and checkpoint trajectory verification owned by
 ``trader_agents.observability``.
-Level: In-process qualification fixture.
+Level: Deterministic qualification fixture with a fresh local Python process.
 Collaborators: Real public event/checkpoint validators and a deterministic
 retention sink; no model, MCP, Postgres, or canonical artifact store.
 Guarantees: Identity pins, concurrent branch attribution, redaction, fresh
@@ -15,6 +15,11 @@ rendering, or canonical research evidence validity.
 from __future__ import annotations
 
 from dataclasses import replace
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -55,6 +60,45 @@ def test_retained_fixture_proves_branch_identity_recovery_and_terminal_lineage()
         event.name is AgentEventName.CHECKPOINT_RECOVERED
         for event in trajectory.events
     )
+
+
+def test_retained_fixture_survives_a_fresh_python_process(tmp_path: Path) -> None:
+    """A second process reloads the retained public evidence from disk."""
+    storage_path = tmp_path / "trajectory.json"
+    expected = build_retained_trajectory_fixture(storage_path=storage_path)
+    script = """
+import json
+import sys
+
+from trader_agents import RetainedTrajectorySink, verify_retained_trajectory
+
+trajectory = RetainedTrajectorySink(storage_path=sys.argv[1]).snapshot()
+print(json.dumps({
+    "events": len(trajectory.events),
+    "checkpoints": len(trajectory.checkpoints),
+    "verdicts": verify_retained_trajectory(
+        trajectory,
+        expected_branch_ids=("branch-data", "branch-strategy"),
+    ),
+}, sort_keys=True))
+"""
+    source_root = Path(__file__).resolve().parents[3] / "src"
+    python_path = str(source_root)
+    existing_python_path = os.environ.get("PYTHONPATH")
+    if existing_python_path:
+        python_path += os.pathsep + existing_python_path
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(storage_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PYTHONPATH": python_path},
+    )
+
+    payload = json.loads(result.stdout)
+    assert payload["events"] == len(expected.events)
+    assert payload["checkpoints"] == len(expected.checkpoints)
+    assert payload["verdicts"]["fresh_process_recovery"] is True
 
 
 def test_retained_sink_rejects_duplicate_event_positions() -> None:

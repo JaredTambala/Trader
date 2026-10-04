@@ -15,6 +15,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 import copy
 import json
+import os
+from pathlib import Path
+import tempfile
 from threading import Lock
 from typing import Any
 
@@ -115,10 +118,18 @@ class RetainedTrajectorySink:
     """
 
     available: bool = True
+    storage_path: Path | str | None = None
     _events: list[AgentObservabilityEvent] = field(default_factory=list, init=False)
     _checkpoints: list[RetainedCheckpoint] = field(default_factory=list, init=False)
     _event_positions: set[tuple[str, int]] = field(default_factory=set, init=False)
     _lock: Lock = field(default_factory=Lock, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Load an existing detached public snapshot when a path is supplied."""
+        if self.storage_path is None:
+            return
+        self.storage_path = Path(self.storage_path)
+        self._load_storage()
 
     def emit(self, event: AgentObservabilityEvent) -> None:
         """Retain one validated event, rejecting outages and duplicate positions."""
@@ -134,12 +145,17 @@ class RetainedTrajectorySink:
                 )
             # Keep a detached copy so caller mutation cannot alter retained
             # evidence after sink validation.
-            self._events.append(
-                AgentObservabilityEvent.model_validate(
-                    validated.model_dump(mode="python")
-                )
+            retained = AgentObservabilityEvent.model_validate(
+                validated.model_dump(mode="python")
             )
+            self._events.append(retained)
             self._event_positions.add(position)
+            try:
+                self._persist_locked()
+            except Exception:
+                self._events.pop()
+                self._event_positions.remove(position)
+                raise
 
     def retain_checkpoint(
         self,
@@ -189,6 +205,11 @@ class RetainedTrajectorySink:
             ):
                 raise ValueError("retained trajectory already contains checkpoint")
             self._checkpoints.append(record)
+            try:
+                self._persist_locked()
+            except Exception:
+                self._checkpoints.pop()
+                raise
         return record
 
     def snapshot(self) -> RetainedTrajectory:
@@ -210,6 +231,98 @@ class RetainedTrajectorySink:
                 for checkpoint in self._checkpoints
             )
         return RetainedTrajectory(events=events, checkpoints=checkpoints)
+
+    def _load_storage(self) -> None:
+        """Load and validate one atomically-written public snapshot."""
+        path = self._storage_file()
+        if not path.exists():
+            return
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ValueError(f"retained trajectory storage is unreadable: {path}") from exc
+        if not isinstance(payload, Mapping) or payload.get("schema_version") != "1":
+            raise ValueError("retained trajectory storage has an unsupported schema")
+        raw_events = payload.get("events")
+        raw_checkpoints = payload.get("checkpoints")
+        if not isinstance(raw_events, list) or not isinstance(raw_checkpoints, list):
+            raise ValueError("retained trajectory storage must contain event and checkpoint lists")
+        events: list[AgentObservabilityEvent] = []
+        for raw_event in raw_events:
+            if not isinstance(raw_event, Mapping):
+                raise ValueError("retained trajectory storage contains an invalid event")
+            events.append(AgentObservabilityEvent.model_validate(raw_event))
+        checkpoints: list[RetainedCheckpoint] = []
+        for raw_checkpoint in raw_checkpoints:
+            if not isinstance(raw_checkpoint, Mapping):
+                raise ValueError("retained trajectory storage contains an invalid checkpoint")
+            checkpoints.append(RetainedCheckpoint(**dict(raw_checkpoint)))
+        validate_agent_event_stream(events)
+        positions = [event.stream_position for event in events]
+        if len(set(positions)) != len(positions):
+            raise ValueError("retained trajectory storage contains duplicate event positions")
+        with self._lock:
+            self._events = events
+            self._checkpoints = checkpoints
+            self._event_positions = set(positions)
+
+    def _storage_file(self) -> Path:
+        """Return the configured storage path or raise for memory-only sinks."""
+        if self.storage_path is None:  # pragma: no cover - guarded by callers
+            raise RuntimeError("retained trajectory sink has no storage path")
+        path = Path(self.storage_path)
+        if path.exists() and path.is_dir():
+            raise ValueError("retained trajectory storage path must be a file")
+        return path
+
+    def _persist_locked(self) -> None:
+        """Atomically replace the storage document after a successful append."""
+        if self.storage_path is None:
+            return
+        path = self._storage_file()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schema_version": "1",
+            "events": [event.model_dump(mode="json") for event in self._events],
+            "checkpoints": [
+                {
+                    "process_instance_id": checkpoint.process_instance_id,
+                    "checkpoint_digest": checkpoint.checkpoint_digest,
+                    "transition_sequence": checkpoint.transition_sequence,
+                    "state": _detached_json(checkpoint.state),
+                }
+                for checkpoint in self._checkpoints
+            ],
+        }
+        encoded = json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=path.parent,
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as temporary:
+                temporary.write(encoded)
+                temporary.flush()
+                os.fsync(temporary.fileno())
+                temporary_path = Path(temporary.name)
+            os.replace(temporary_path, path)
+        except OSError as exc:
+            raise RetainedTrajectoryUnavailable(
+                "retained trajectory storage is unavailable"
+            ) from exc
+        finally:
+            if temporary_path is not None and temporary_path.exists():
+                temporary_path.unlink(missing_ok=True)
 
     def query(
         self,

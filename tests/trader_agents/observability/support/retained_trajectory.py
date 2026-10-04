@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from trader_agents import (
@@ -28,9 +29,12 @@ TOOL_CATALOG_ID = first_slice_tool_catalogue().catalogue_id
 DECISION_RECEIPT_URI = "research://postgres/agent_decision_receipt/trajectory-decision"
 
 
-def build_retained_trajectory_fixture() -> RetainedTrajectory:
+def build_retained_trajectory_fixture(
+    *,
+    storage_path: Path | str | None = None,
+) -> RetainedTrajectory:
     """Build a complete two-process trajectory with concurrent branches."""
-    sink = RetainedTrajectorySink()
+    sink = RetainedTrajectorySink(storage_path=storage_path)
     first_state = build_agent_checkpoint_state(
         session_id=SESSION_ID,
         session_digest="session-digest",

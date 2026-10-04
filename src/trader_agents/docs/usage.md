@@ -83,9 +83,11 @@ process identity, event clock, and ordered sequence; callers supply semantic cor
 
 For a controlled qualification fixture, compose `RetainedTrajectorySink` as the event sink and call
 `retain_checkpoint(state, process_instance_id=...)` with each complete checkpoint read. The sink stores only detached
-public projections. Query a session or branch with `query(...)`, then call `verify_retained_trajectory(...)` to check
-identity pins, concurrent branch ownership, process-restart markers, redaction, and terminal decision lineage. This
-retention boundary is qualification evidence; it does not replace canonical artifact or decision persistence.
+public projections. Pass `storage_path="/tmp/trajectory.json"` when the fixture must survive process replacement; each
+successful append atomically replaces that JSON document, and a new process can construct another sink with the same
+path. Query a session or branch with `query(...)`, then call `verify_retained_trajectory(...)` to check identity pins,
+concurrent branch ownership, process-restart markers, redaction, and terminal decision lineage. This local retention
+boundary is qualification evidence; it does not replace canonical artifact or decision persistence.
 
 ## Required services
 
