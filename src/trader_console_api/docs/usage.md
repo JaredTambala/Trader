@@ -280,3 +280,15 @@ runs. Standalone runs are grouped under `standalone_backtests`; their lifecycle,
 position evidence remains visible even when no aggregate metrics snapshot or replay scope was published. Equity,
 performance and exposure are reconstructed from persisted initial state, fills, fees and market bars; missing scope or
 benchmark identity remains explicitly unavailable.
+
+## Paper operations
+
+The paper operations workspace is read-only. It calls `GET /api/paper/runtime` and renders the latest published
+session, market-data freshness, portfolio positions, open orders, fills, risk outcomes, incidents, and account
+binding. Every section includes an evidence status and timestamp. `configured` account binding is configuration only;
+it is not a verified broker identity. Missing producer projections for reconciliation attempts and halt state are
+returned as `unavailable` with an explanation rather than inferred from `/health/ready`.
+
+The endpoint uses the server-owned scope and a bounded read-only transaction. It accepts no broker, database, session,
+or mutation selector. A database outage returns HTTP 503 with `database_unavailable`; stale or partial runtime evidence
+remains HTTP 200 so the Console can show the operational limitation.
