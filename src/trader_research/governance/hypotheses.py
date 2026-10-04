@@ -34,7 +34,7 @@ from .artifacts import (
     HYPOTHESIS_AGENT_OWNER,
     HYPOTHESIS_CARD,
 )
-from .handoffs import ArtifactReportRef
+from .handoffs import ArtifactReportRef, DataRequirement
 
 
 RESEARCH_PERSIST_HYPOTHESIS_BRIEF = "research_persist_hypothesis_brief"
@@ -151,7 +151,13 @@ class HypothesisScope:
 
 @dataclass(frozen=True)
 class HypothesisBrief:
-    """Immutable, revisioned research intent handed to downstream specialists."""
+    """Immutable, revisioned research intent handed to downstream specialists.
+
+    The brief keeps the scientific claim separate from executable strategy and
+    risk specifications while recording the intent those later specifications
+    must satisfy.  Data requirements are typed using the shared bounded
+    requirement contract so Data can resolve them without copying the brief.
+    """
 
     brief_id: str
     revision: int
@@ -159,6 +165,9 @@ class HypothesisBrief:
     mechanism: str
     falsifier: str
     scope: HypothesisScope
+    data_requirements: tuple[DataRequirement, ...]
+    strategy_intent: str
+    risk_intent: str
     expected_evidence: tuple[str, ...]
     assumptions: tuple[str, ...]
     decision_rules: Mapping[str, str]
@@ -181,6 +190,19 @@ class HypothesisBrief:
         _required_text(self.question, "hypothesis question")
         _required_text(self.mechanism, "hypothesis mechanism")
         _required_text(self.falsifier, "hypothesis falsifier")
+        data_requirements = _normalize_data_requirements(self.data_requirements)
+        if not data_requirements:
+            raise ValueError("hypothesis data_requirements are required")
+        _required_text(self.strategy_intent, "hypothesis strategy_intent")
+        _required_text(self.risk_intent, "hypothesis risk_intent")
+        excluded_symbols = set(self.scope.excluded_symbols)
+        for requirement in data_requirements:
+            overlap = sorted(excluded_symbols.intersection(requirement.symbols))
+            if overlap:
+                raise ValueError(
+                    "hypothesis data requirement contradicts excluded scope symbols: "
+                    + ", ".join(overlap)
+                )
         _required_text(self.requested_by, "hypothesis requested_by")
         _required_text(self.actor, "hypothesis actor")
         if self.status not in HYPOTHESIS_BRIEF_STATUS_VALUES:
@@ -198,6 +220,7 @@ class HypothesisBrief:
             )
             for outcome, decision in self.decision_rules.items()
         }
+        object.__setattr__(self, "data_requirements", data_requirements)
         object.__setattr__(self, "expected_evidence", tuple(self.expected_evidence))
         object.__setattr__(self, "assumptions", tuple(self.assumptions))
         object.__setattr__(self, "decision_rules", normalized_rules)
@@ -229,6 +252,9 @@ class HypothesisBrief:
             "mechanism": self.mechanism,
             "falsifier": self.falsifier,
             "scope": self.scope.to_dict(),
+            "data_requirements": [item.to_dict() for item in self.data_requirements],
+            "strategy_intent": self.strategy_intent,
+            "risk_intent": self.risk_intent,
             "expected_evidence": list(self.expected_evidence),
             "assumptions": list(self.assumptions),
             "decision_rules": jsonable(self.decision_rules),
@@ -250,6 +276,9 @@ class HypothesisBrief:
             "mechanism",
             "falsifier",
             "scope",
+            "data_requirements",
+            "strategy_intent",
+            "risk_intent",
             "expected_evidence",
             "assumptions",
             "decision_rules",
@@ -271,6 +300,11 @@ class HypothesisBrief:
             mechanism=str(payload.get("mechanism") or ""),
             falsifier=str(payload.get("falsifier") or ""),
             scope=HypothesisScope.from_dict(_mapping(payload.get("scope"))),
+            data_requirements=_normalize_data_requirements(
+                payload.get("data_requirements"),
+            ),
+            strategy_intent=str(payload.get("strategy_intent") or ""),
+            risk_intent=str(payload.get("risk_intent") or ""),
             expected_evidence=_text_sequence(
                 payload.get("expected_evidence"),
                 "hypothesis expected_evidence",
@@ -646,6 +680,23 @@ def _normalize_symbols(value: Sequence[str], label: str) -> tuple[str, ...]:
     symbols = _text_sequence(value, label)
     normalized = tuple(dict.fromkeys(item.upper() for item in symbols))
     return normalized
+
+
+def _normalize_data_requirements(value: object) -> tuple[DataRequirement, ...]:
+    """Parse and validate the bounded market-data requirements in a brief."""
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise ValueError("hypothesis data_requirements must be a sequence")
+    requirements: list[DataRequirement] = []
+    for item in value:
+        if isinstance(item, DataRequirement):
+            requirements.append(item)
+        elif isinstance(item, Mapping):
+            requirements.append(DataRequirement.from_dict(item))
+        else:
+            raise ValueError(
+                "hypothesis data_requirements entries must be DataRequirement mappings"
+            )
+    return tuple(requirements)
 
 
 def _required_text(value: str, label: str) -> str:

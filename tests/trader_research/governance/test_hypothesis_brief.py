@@ -16,6 +16,7 @@ import pytest
 
 from trader_research.foundation import InMemoryResearchArtifactStore
 from trader_research.governance import (
+    DataRequirement,
     HYPOTHESIS_AGENT_OWNER,
     HYPOTHESIS_CARD,
     HypothesisBrief,
@@ -114,6 +115,43 @@ def test_scope_window_and_decision_rules_are_required() -> None:
         )
     with pytest.raises(ValueError, match="decision_rules are required"):
         replace(_brief(), decision_rules={})
+
+
+def test_data_and_strategy_risk_intent_are_required_and_typed() -> None:
+    """A complete brief carries bounded data requirements and explicit strategy/risk intent."""
+    brief = _brief()
+
+    assert brief.data_requirements[0].timeframe == brief.scope.timeframe
+    assert brief.strategy_intent.startswith("Use the declared")
+    assert brief.risk_intent.startswith("Cap")
+    restored = HypothesisBrief.from_dict(brief.to_dict())
+    assert restored.data_requirements == brief.data_requirements
+
+    with pytest.raises(ValueError, match="data_requirements"):
+        replace(brief, data_requirements=())
+    with pytest.raises(ValueError, match="strategy_intent"):
+        replace(brief, strategy_intent="")
+    with pytest.raises(ValueError, match="risk_intent"):
+        replace(brief, risk_intent="")
+
+
+def test_data_requirement_cannot_include_an_excluded_scope_symbol() -> None:
+    """Data requirements cannot silently request a symbol excluded by the declared scope."""
+    with pytest.raises(ValueError, match="contradicts excluded scope symbols"):
+        replace(
+            _brief(),
+            data_requirements=(
+                DataRequirement(
+                    symbols=("AAPL",),
+                    asset_class="equity",
+                    timeframe="1D",
+                    start="2024-01-01T00:00:00Z",
+                    end="2024-06-30T00:00:00Z",
+                    source="approved_provider",
+                ),
+            ),
+            scope=replace(_brief().scope, excluded_symbols=("AAPL",)),
+        )
 
 
 def test_unauthorized_actor_and_agent_acceptance_are_rejected() -> None:
@@ -232,6 +270,18 @@ def _brief() -> HypothesisBrief:
             asset_class="equity",
             source_policy="approved_provider",
         ),
+        data_requirements=(
+            DataRequirement(
+                symbols=("AAPL", "MSFT"),
+                asset_class="equity",
+                timeframe="1D",
+                start="2024-01-01T00:00:00Z",
+                end="2024-06-30T00:00:00Z",
+                source="approved_provider",
+            ),
+        ),
+        strategy_intent="Use the declared momentum signal with a versioned implementation.",
+        risk_intent="Cap position size and reject execution when the declared loss limit is exceeded.",
         expected_evidence=(
             "Out-of-sample return after declared costs",
             "Turnover and drawdown evidence",

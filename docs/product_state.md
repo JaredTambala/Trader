@@ -362,9 +362,10 @@ problems terminate or escalate.
 The Experiment Design Agent review has started in its separate
 [Experiment Design design](../plans/agent_designs/experiment_design.md). The governance context now persists a
 revisioned `HypothesisBrief` as an Experiments-owned `hypothesis_card` before protocol authoring. The brief records the
-question, mechanism, falsifier, intended universe/timeframe, expected evidence, assumptions, and outcome-to-decision
-rules; exact retries are idempotent, contradictory scopes and unauthorized actors fail closed, and downstream Data,
-Strategy Engineering, and Evaluation receive a digest-pinned reference. This is a deterministic artifact boundary,
+question, mechanism, falsifier, intended universe/timeframe, typed data requirements, strategy intent, risk intent,
+expected evidence, assumptions, and outcome-to-decision rules; exact retries are idempotent, contradictory scopes and
+unauthorized actors fail closed, and downstream Data, Strategy Engineering, and Evaluation receive a digest-pinned
+reference. This is a deterministic artifact boundary,
 not a claim that the Console or a model-backed Hypothesis Agent is complete. Prospective immutable protocols, explicit
 material assumptions, operator approval, and successor-protocol lineage remain foundational. Experiment Design owns
 the research claim, protected-evidence roles, stage gates, overall budgets, and the authority envelope for later work.
@@ -685,8 +686,9 @@ its own conclusion as specialist approval.
 The provider-neutral declaration layer is implemented in
 `src/trader_research/governance/` (including `hypotheses.py` and `orchestration/`):
 
-- `HypothesisBrief` records one revisioned falsifiable question, mechanism, falsifier, intended scope, assumptions,
-  expected evidence, outcome-to-decision rules, requester and actor. `persist_hypothesis_brief` preserves immutable
+- `HypothesisBrief` records one revisioned falsifiable question, mechanism, falsifier, intended scope, typed data
+  requirements, strategy intent, risk intent, assumptions, expected evidence, outcome-to-decision rules, requester and
+  actor. `persist_hypothesis_brief` preserves immutable
   revision lineage and returns a bounded downstream handoff reference; it never grants execution or approval authority.
 - `ResearchObjective` records the operator's statement, success criteria, constraints, supplied canonical refs,
   requester and actor.

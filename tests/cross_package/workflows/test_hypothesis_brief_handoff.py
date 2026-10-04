@@ -39,6 +39,18 @@ def test_brief_reference_reaches_data_and_strategy_planning() -> None:
             end="2024-03-01T00:00:00Z",
             source_policy="approved_provider",
         ),
+        data_requirements=(
+            DataRequirement(
+                symbols=("AAA", "BBB"),
+                asset_class="equity",
+                timeframe="1D",
+                start="2024-01-01T00:00:00Z",
+                end="2024-03-01T00:00:00Z",
+                source="approved_provider",
+            ),
+        ),
+        strategy_intent="Use a versioned continuation strategy candidate.",
+        risk_intent="Limit per-symbol exposure and reject runs outside the approved loss budget.",
         expected_evidence=("Holdout return after costs",),
         assumptions=("The selected bars are complete",),
         decision_rules={
@@ -60,6 +72,9 @@ def test_brief_reference_reaches_data_and_strategy_planning() -> None:
     assert resolved.ok is True
     resolved_brief = HypothesisBrief.from_dict(resolved.data["hypothesis_brief"])
     assert resolved_brief == brief
+    assert resolved_brief.data_requirements == brief.data_requirements
+    assert resolved_brief.strategy_intent == brief.strategy_intent
+    assert resolved_brief.risk_intent == brief.risk_intent
     canonical = store.load_artifact_record(
         handoff.brief_ref.artifact_type,
         handoff.brief_ref.artifact_id,

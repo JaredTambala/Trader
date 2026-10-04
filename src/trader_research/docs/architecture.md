@@ -161,7 +161,8 @@ A deterministic execution service is not an agent and owns no research claim.
 
 The canonical proposal remains immutable while material assumptions are decided through explicit approvals on an
 `ExperimentProtocol`. A `HypothesisBrief` is the preceding, revisioned intent contract: it records the question,
-mechanism, falsifier, intended scope, expected evidence, assumptions, and outcome-to-decision rules.
+mechanism, falsifier, intended scope, typed data requirements, strategy intent, risk intent, expected evidence,
+assumptions, and outcome-to-decision rules.
 `persist_hypothesis_brief` writes one immutable `hypothesis_card` revision through the artifact store, rejects scope
 contradictions and unauthorized actors, and returns a digest-pinned handoff reference for Data, Strategy Engineering,
 and Evaluation. `resolve_hypothesis_brief_handoff` is the downstream read boundary: it re-reads the canonical

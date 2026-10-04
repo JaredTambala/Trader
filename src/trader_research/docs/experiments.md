@@ -23,9 +23,10 @@ canonical trial ledger; every suggestion and terminal trial remains recorded by 
 
 A falsifiable `HypothesisBrief` is the upstream intent boundary. It is persisted as an immutable, revisioned
 `hypothesis_card` by the governance context before downstream Data and Strategy work begins. The brief carries the
-question, mechanism, falsifier, intended universe/timeframe, assumptions, expected evidence, and an explicit decision
-rule for each outcome. Consumers receive a digest-pinned reference and must re-read the canonical brief; they must not
-copy or silently replace its scope or decision.
+question, mechanism, falsifier, intended universe/timeframe, typed data requirements, strategy intent, risk intent,
+assumptions, expected evidence, and an explicit decision rule for each outcome. Consumers receive a digest-pinned
+reference and must re-read the canonical brief; they must not copy or silently replace its scope, implementation
+intent, or decision.
 
 An experiment is reproducible because each stage names its inputs instead of filling in scientific choices implicitly:
 

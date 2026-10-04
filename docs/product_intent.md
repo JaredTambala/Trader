@@ -860,8 +860,9 @@ and the stated integrated evidence all pass.
 #### GAP-02-01 — Hypothesis and experiment brief (M)
 
 1. **Contract and flow:** settle the Experiment Design owner and define a typed brief containing question, mechanism,
-   falsifier, intended universe/timeframe, assumptions, expected evidence, and outcome-to-decision rules. Persist a
-   revisioned brief and expose references that Data, Strategy, and Evaluation can consume without copying intent.
+   falsifier, intended universe/timeframe, bounded data requirements, strategy intent, risk intent, assumptions,
+   expected evidence, and outcome-to-decision rules. Persist a revisioned brief and expose references that Data,
+   Strategy, and Evaluation can consume without copying intent.
 2. **Owning surfaces:** extend `src/trader_research/governance/` (or its agreed Experiment Design module), its
    artifact store/projection, and MCP registration only if agents need to create proposals. Console reads and edits go
    through `src/trader_console_api/` and a dedicated feature; agents never write the human decision directly.

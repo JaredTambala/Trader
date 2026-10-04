@@ -52,8 +52,9 @@ JSON-RPC conversion are added only by `trader_mcp`.
 ### Persisting a hypothesis brief
 
 `trader_research.governance.HypothesisBrief` is the intent boundary before Data or Strategy work. It requires a
-question, mechanism, falsifier, intended universe/timeframe, expected evidence, assumptions, and outcome-to-decision
-rules. `persist_hypothesis_brief` stores one immutable `hypothesis_card` revision through the injected artifact store
+question, mechanism, falsifier, intended universe/timeframe, typed data requirements, strategy intent, risk intent,
+expected evidence, assumptions, and outcome-to-decision rules. `persist_hypothesis_brief` stores one immutable
+`hypothesis_card` revision through the injected artifact store
 and returns a digest-pinned `HypothesisBriefHandoff` for Data, Strategy Engineering, and Evaluation. Retrying the same
 brief ID and revision is idempotent; changing that payload or skipping the immediately preceding revision fails closed.
 Before constructing a downstream request, the recipient calls `resolve_hypothesis_brief_handoff` with its registered
