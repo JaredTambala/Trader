@@ -12,7 +12,7 @@ dependencies, and delivery progress. Use the repository
 [capability roadmap](../plans/research_capability_roadmap.md) only for its retained architecture, dependency,
 acceptance, and migration context.
 
-Last reviewed: 2026-09-06.
+Last reviewed: 2026-09-28.
 
 ## How To Read Capability State
 
@@ -45,14 +45,121 @@ It also provides bounded source ingestion and methodology extraction, plus a new
 consuming immutable predictive models in strategies and synchronized-universe backtests.
 
 The first Trader Console foundation is implemented across its database and API boundaries. Core publishes an explicit
-`console_read` contract with stable, allowlisted ordinary views and compatibility metadata. The
-`trader_console_api` process now provides immutable server-owned scope configuration, one lifespan-managed bounded
-Psycopg pool, fail-closed startup schema inspection, and separate liveness and readiness endpoints. Its current schema
-queries run in short PostgreSQL read-only transactions and have no Trader execution, event-store construction, broker,
-research, MCP, Agent, or MLflow dependency. Those constraints describe the implemented health and compatibility slice,
-not the permanent identity of the API: the package is intended to grow into Trader's primary human-facing query and
-command boundary. Operational endpoints, mutation services, authentication enforcement, and the frontend remain
-unimplemented, so no human-facing Console is available yet.
+`console_read` contract with stable, allowlisted ordinary views, typed backtest evidence projections, and compatibility metadata. A
+producer-owned, non-mutating impact report records the API's complete current relation manifest across releases 1–9;
+historical databases missing views required by current routes fail closed. The `trader_console_api` process provides
+immutable server-owned scope configuration, one lifespan-managed bounded Psycopg pool, fail-closed startup schema
+inspection, separate liveness/readiness endpoints, and general resource routes for OHLCV dataset/bar discovery,
+experiment/run discovery and bounded single-run backtest evidence. The resource API uses only the producer-owned
+database contract and preserves canonical identifiers, nulls, statuses and explicit comparison exclusions. The Console
+API also persists user-authored comparison definitions in its isolated `console_app` table and rereads producer
+evidence on preview/load; it never mutates canonical backtest results. The checked OpenAPI artifact is reproducible offline. Resource
+queries run in short PostgreSQL read-only transactions and have no Trader execution, broker, research, MCP, Agent, or
+MLflow dependency. Those constraints describe the current implementation, not the permanent identity of the API: the
+package is intended to grow into Trader's primary human-facing query and command boundary. The separate Next.js app
+now exposes `/data` for bounded OHLCV exploration and `/backtests` for experiment/run selection plus scoped single-run
+review. The review surface preserves run state, scope, assumptions, performance, strategy-versus-benchmark curves,
+drawdown, trades, positions, warnings, evidence coverage, and risk-manager composition/decision evidence; missing scope identity remains explicit while metrics are
+shown when persisted runtime evidence supports a reconstructed result.
+Both workflows consume generated API types and producer-owned projections. ECharts is a generic frontend renderer, not
+a Trader-core abstraction. Operational commands and authentication enforcement remain
+unimplemented; this is not a trading qualification claim.
+
+The Console backtest read contract now includes standalone `BacktestRunner` runs alongside experiment-linked runs.
+Standalone runs are grouped under `standalone_backtests`, and the review page assembles their persisted indicator,
+signal, order, fill, position, and lifecycle evidence. Release 8 derives equity, performance and exposure directly from
+initial state, fills, fees and market bars, so aggregate metrics snapshots are optional; missing scope and benchmark
+identity remain explicit nulls.
+
+Release 9 adds typed risk composition, summary and ordered per-manager decisions to the run review. Each manager's
+identity, catalogue parameters, outcome, reason, and normalized order change are visible when published. Composition
+remains available for no-signal and zero-trade runs; older runs show risk evidence as unavailable rather than inferring
+blocks from missing fills.
+
+Backtest replay now constructs one typed in-memory recent-bar reader over the bars loaded for the run and passes that
+reader through the cycle and maintained strategy boundaries. Point-in-time, bounded indicator history therefore comes
+from the replay window without issuing one market-data query per decision; reader request and bar-return counts are
+logged for evidence. Ordinary runtime cycles leave the reader unset and retain their event-store reads. The full-window
+BTC/USD Bollinger persistence qualification completed under TRD-258 with 127,379 successful cycles and direct evidence
+reconciliation.
+
+The Apache Superset visibility initiative has an implementation slice in `examples/superset_demo/`: a pinned local
+Superset 6.1.0 stack, separate writable metadata PostgreSQL, a synthetic Trader database, and a PostgreSQL-enforced
+reader for the producer-owned `console_read.stock_bars` view. The setup fixture contains three OHLCV rows and proves a
+real Superset preview plus denied writes/DDL. When the explicit repository `.env` database settings are present, the
+same local stack also registers the real Trader database and MCP-generated charts over loaded Alpaca bars. It remains
+an evaluation harness, not an adopted dashboard, a complete data explorer, a production deployment, or a replacement
+for the Console API. The exploration dashboards expose shared Symbol and Bar time (UTC) native filters over their
+compatible stock-bar datasets; refresh remains manual. The minute price view uses Superset's zoomable mixed time-series
+chart with close and volume on separate axes rather than a compressed scatter plot.
+The demo's chart and dashboard seed uses Superset 6.1.0's built-in MCP service, so saved layout metadata is owned by
+Superset rather than hand-authored in the repository.
+The current real-data exploration set includes separate MCP-created coverage, price/volume, and activity/data-quality
+dashboards. It is intentionally observational: it preserves observed timestamps and explicitly avoids treating
+overnight/weekend intervals as proof of missing market bars.
+The dedicated demo can generate completed, partial, zero-trade, multi-symbol, missing-mark, and failed backtest review
+cases through a demo-owned fixture adapter that invokes Trader's production `BacktestRunner` and event-store path. Only
+deterministic replay bars are fixture inputs, and reruns are scoped to the demo fixture namespace. This adapter is setup
+for the isolated evaluation, not a Trader backtest publication API. Superset consumes the resulting PostgreSQL tables
+and typed `console_read.backtest_*` projections directly; Trader core has no Superset dependency or callback. The demo
+currently seeds a single-run review dashboard with run, performance, strategy-versus-benchmark equity, exposure,
+execution, assumptions, warnings, provenance, lifecycle and evidence-coverage panels. Its shared run and observation-time filters are dashboard
+metadata owned by the idempotent Superset seed; this remains a local review surface and does not make Superset an
+execution or decision authority.
+
+The producer contract also publishes typed `console_read.backtest_scope`, `backtest_comparison_runs`, and
+`backtest_comparison_curves` projections. They record content-based replay data identity, benchmark construction,
+initial state, execution assumptions, separate strategy/parameter variant fingerprints, and normalized per-run curves so
+comparison views can admit only compatible runs.
+
+The final TRD-258 BTC/USD Bollinger qualification completed the explicit 2026-06-21 through 2026-09-21 UTC `1Min`
+window with 127,379 successful decisions, 127,379 signals, four typed indicator series with 127,379 points each,
+4,730 orders and fills, and one persisted aggregate metrics snapshot. Replay instrumentation measured 2 initial
+market-data queries and zero later history queries; the run is discoverable through the Console read views. This is
+evidence under declared simulation assumptions, not a profitability claim.
+
+The Console qualification slice is delivered through TRD-245. Its generated contract, API/SQL, frontend, documentation,
+isolated PostgreSQL and test-owned browser checks pass, including database outage/recovery. Superset remains a
+limited-adoption database consumer; comparative scope fingerprints and cross-run dashboards remain bounded to explicit
+producer evidence and stay separate from the single-run forensic view.
+
+The Superset evaluation is now a focused, limited-adoption result rather than the primary Trader application path. It is
+useful for broad read-only database exploration and summary dashboards, but it is not being extended with a Candlestick
+plugin or made responsible for the core OHLCV and backtest-review workflows. The **Trader Console — data exploration and
+backtest review** initiative has delivered its separate API/frontend OHLCV exploration workflow and its bounded
+single-run review workflow: generated OpenAPI types, real Alpaca-backed bar retrieval, ECharts candlestick/volume
+rendering, UTC navigation, explicit bounded windows, source-row reconciliation, scoped run identity, performance and
+evidence states. The typed indicator/signal/event overlay contract is now delivered for run-detail consumers, and TRD-243
+delivers the comparison-view API definition/persistence boundary. TRD-244 adds the `/comparisons` workspace with saved
+and draft views, eligibility explanations, synchronized curves and metric tables. TRD-245 qualifies the local and
+isolated Console workflows; live two-run qualification still depends on producer scope fingerprints. No Trader-core
+chart abstraction or Superset-specific runtime behavior is implied.
+
+Any future request to make arbitrary backtest results inspectable must first define the general Trader database evidence
+and persistence contract. It must not be framed as adding Superset support to `BacktestRunner` or another core runtime.
+
+The next Console tranche now has a concrete definition boundary: `GET /api/backtests/catalogue` exposes the maintained
+typed strategy/risk allowlist, and `POST /api/backtests/preflight` returns normalized definitions, fingerprints,
+coverage/warmup and resource-budget checks, plus explicit warnings. Durable definition persistence and worker execution
+remain the follow-on work; Superset is not part of this path.
+
+TRD-271 is now in progress: the API has the immutable definition revision contract and explicit
+`console_app.backtest_definitions` installer/status boundary. Successful preflight is required before a revision is
+stored; list/get/revision routes expose only server-scoped normalized intent. Durable execution state remains separate.
+
+TRD-272 is now in progress with its first slice: an explicitly installed `console_app.backtest_executions` record,
+idempotent submit keyed by caller token, definition revision snapshot, and bounded queued status/history routes. The
+worker lease and terminal lifecycle are now implemented behind an injected adapter; the concrete runner composition
+and end-to-end producer qualification remain pending.
+
+The repository now also contains the worker lifecycle seam: lease claim, deterministic run identity, heartbeat,
+bounded retry, terminal state and explicit ambiguous-outcome reconciliation over an injected executor port. The
+concrete catalogue-to-`BacktestRunner` adapter is composed by the local worker entrypoint.
+
+The local `trader-console-worker` entrypoint now supplies that composition path: it requires an explicit core Trader
+YAML config, uses the maintained catalogue adapter and internal broker, polls the durable queue, and supports bounded
+`--once` execution. The worker still depends on explicit definition/execution schema installation and remains local
+scope only.
 
 Trader now has an implemented but unqualified first model-backed orchestration slice. One Research Coordinator model
 creates an agenda containing only the specialist responsibilities materially required by the brief, delegates

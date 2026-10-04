@@ -244,5 +244,12 @@ Generic CI runs `pytest -m 'not postgres'`. Postgres cases require the guarded `
 explicitly against package/workflow paths or through their controlled qualification profile; a convenience CI database
 with legacy `PG_*` variables is not a valid substitute.
 
+The Console demo workflows are an explicit exception to the shared database identity: `CONSOLE_DEMO_TESTS=1` and
+`CONSOLE_BROWSER_TESTS=1` provision a unique Docker Compose project, random loopback port and test-owned volume using
+the demo's fixed local database identity. They never consume `PG_*` or `PG_TEST_*` credentials. Process/database
+orchestration lives under `tests/cross_package/workflows/`; TypeScript unit tests and Playwright browser assertions
+live under `apps/trader-console/tests/`. See the [demo](../examples/console_demo/README.md) and
+[frontend](../apps/trader-console/README.md) for the executable checks and prerequisites.
+
 This architecture governs ownership and verification structure. It does not change product behavior, public APIs, or
 the meaning of test assertions.

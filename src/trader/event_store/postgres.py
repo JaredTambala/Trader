@@ -53,6 +53,8 @@ def _event_insert_query(plan: PostgresEventInsertPlan) -> Any:
     )
     if plan.ignore_bar_conflicts:
         query = query + sql.SQL(" ON CONFLICT (symbol, timeframe, ts, source) DO NOTHING")
+    elif plan.ignore_risk_conflicts:
+        query = query + sql.SQL(" ON CONFLICT DO NOTHING")
     return query
 
 

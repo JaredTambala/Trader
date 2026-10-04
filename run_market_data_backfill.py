@@ -21,7 +21,7 @@ from trader.market_data.backfill import (
     _resolve_since,
     _resolve_window_from_config,
 )
-from trader_research.contracts import SideEffect, envelope_json, success_envelope
+from trader_mcp.protocol.contracts import SideEffect, envelope_json, success_envelope
 
 
 logger = logging.getLogger(__name__)

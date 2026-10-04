@@ -17,11 +17,22 @@ from .repositories import (
     ConsoleDatabase,
     ConsoleDatabaseUnavailable,
     PoolFactory,
+    ConsoleResourceRepository,
     SchemaCompatibilityRepository,
     create_connection_pool,
 )
-from .routers import health_router
-from .services import HealthService
+from .routers import (
+    backtest_definition_router,
+    backtest_execution_router,
+    catalogue_router,
+    context_router,
+    health_router,
+    resource_router,
+)
+from .services.catalogue import CatalogueService, PreflightService
+from .services.backtest_definitions import BacktestDefinitionService
+from .services.backtest_executions import BacktestExecutionService
+from .services import ContextService, HealthService, ResourceService
 
 
 class AuthenticationProvider(Protocol):
@@ -51,8 +62,8 @@ def create_app(
             The default consumes the configured DSN; a deployment can provide a
             secret-manager, managed-identity, or proxy-backed factory later.
         authentication_provider: Optional request-principal extension point.
-            This scaffold stores but does not invoke it because health routes do
-            not make authorization claims and scoped data routes are later work.
+            Current health and public configuration routes do not invoke it or
+            make authorization claims. Authenticated deployment is later work.
 
     Returns:
         A FastAPI application whose lifespan owns exactly one bounded pool.
@@ -61,6 +72,11 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        from .repositories.comparison_views import ComparisonViewRepository
+        from .services.comparison_views import ComparisonViewService
+        from .repositories.backtest_definitions import BacktestDefinitionRepository
+        from .repositories.backtest_executions import BacktestExecutionRepository
+
         pool = pool_factory(configured_settings)
         database = ConsoleDatabase(pool, configured_settings)
         compatibility_repository = SchemaCompatibilityRepository(database)
@@ -68,9 +84,29 @@ def create_app(
             scope_id=configured_settings.scope.scope_id,
             compatibility_repository=compatibility_repository,
         )
+        resource_repository = ConsoleResourceRepository(database)
+        resource_service = ResourceService(resource_repository)
+        catalogue_service = CatalogueService.default()
+        preflight_service = PreflightService.default(resource_repository)
+        backtest_definition_service = BacktestDefinitionService(
+            BacktestDefinitionRepository(database, configured_settings.scope.scope_id),
+            preflight_service,
+        )
+        backtest_execution_service = BacktestExecutionService(
+            BacktestExecutionRepository(database, configured_settings.scope.scope_id)
+        )
+        comparison_view_service = ComparisonViewService(
+            ComparisonViewRepository(database, configured_settings.scope.scope_id)
+        )
         opened = False
         app.state.database = database
         app.state.health_service = health_service
+        app.state.resource_service = resource_service
+        app.state.catalogue_service = catalogue_service
+        app.state.preflight_service = preflight_service
+        app.state.backtest_definition_service = backtest_definition_service
+        app.state.backtest_execution_service = backtest_execution_service
+        app.state.comparison_view_service = comparison_view_service
         try:
             try:
                 await pool.open(
@@ -101,8 +137,17 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.scope = configured_settings.scope
+    app.state.context_service = ContextService(configured_settings.scope)
     app.state.authentication_provider = authentication_provider
     app.include_router(health_router)
+    app.include_router(context_router)
+    app.include_router(catalogue_router)
+    app.include_router(backtest_definition_router)
+    app.include_router(backtest_execution_router)
+    app.include_router(resource_router)
+    from .routers.comparison_views import router as comparison_view_router
+
+    app.include_router(comparison_view_router)
     return app
 
 

@@ -1,15 +1,16 @@
 """Contracts for the independent Console API lifecycle and health surface.
 
-Subject: FastAPI composition, bounded pool ownership, and liveness/readiness semantics.
+Subject: FastAPI composition, bounded pool ownership, context and liveness/readiness semantics.
 Level: In-process application contract.
 Collaborators: Real FastAPI routes and database boundary with an asynchronous recording pool; no PostgreSQL server.
 Guarantees: One pool is lifespan-owned, current queries are read-only, startup fails closed, and health claims stay narrow.
-Non-goals: Scope discovery, request authorization, trading health, producer migration, and operational data endpoints.
+Non-goals: Request authorization, trading health, producer migration, and frontend workflow behavior.
 """
 
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import json
 from typing import Any
 
 from fastapi import Request
@@ -157,6 +158,7 @@ def test_lifespan_owns_one_pool_and_current_probes_use_read_only_transactions() 
     with TestClient(app) as client:
         live_response = client.get("/health/live")
         ready_response = client.get("/health/ready")
+        context_response = client.get("/api/context")
 
     assert factory_calls == [_settings()]
     assert pool.open_calls == [(True, 10.0)]
@@ -167,6 +169,7 @@ def test_lifespan_owns_one_pool_and_current_probes_use_read_only_transactions() 
     assert ready_response.json()["status"] == "ready"
     assert live_response.headers["cache-control"] == "no-store"
     assert ready_response.headers["cache-control"] == "no-store"
+    assert context_response.json() == _settings().scope.model_dump(mode="json")
 
 
 def test_incompatible_schema_aborts_startup_and_closes_the_open_pool() -> None:
@@ -189,11 +192,18 @@ def test_liveness_survives_database_outage_while_readiness_returns_unavailable()
     with TestClient(app) as client:
         live_response = client.get("/health/live")
         ready_response = client.get("/health/ready")
+        context_response = client.get("/api/context")
+        pool.fail_connections_after = None
+        recovered_response = client.get("/health/ready")
 
     assert live_response.status_code == 200
     assert ready_response.status_code == 503
     assert ready_response.json()["issues"] == ["database_unavailable"]
     assert ready_response.headers["cache-control"] == "no-store"
+    assert context_response.status_code == 200
+    assert context_response.json() == _settings().scope.model_dump(mode="json")
+    assert recovered_response.status_code == 200
+    assert recovered_response.json()["status"] == "ready"
 
 
 def test_pool_open_failure_is_reported_as_a_console_startup_error() -> None:
@@ -232,6 +242,7 @@ def test_health_routes_do_not_invoke_or_claim_request_authentication() -> None:
 
     with TestClient(app) as client:
         response = client.get("/health/ready")
+        assert client.get("/api/context").status_code == 200
 
     assert response.status_code == 200
     assert provider.calls == 0
@@ -246,8 +257,27 @@ def test_openapi_exposes_no_client_database_or_scope_override() -> None:
     with TestClient(app) as client:
         schema = client.get("/openapi.json").json()
 
-    assert set(schema["paths"]) == {"/health/live", "/health/ready"}
-    for path_item in schema["paths"].values():
-        operation = path_item["get"]
-        assert "parameters" not in operation
-        assert "requestBody" not in operation
+        assert set(schema["paths"]) == {
+            "/health/live",
+            "/health/ready",
+            "/api/context",
+            "/api/backtests/catalogue",
+            "/api/backtests/preflight",
+            "/api/backtests/definitions",
+            "/api/backtests/definitions/{definition_id}",
+            "/api/backtests/definitions/{definition_id}/revisions",
+            "/api/backtests/executions",
+            "/api/backtests/executions/{execution_id}",
+            "/api/market-data/datasets",
+            "/api/market-data/bars",
+            "/api/experiments",
+            "/api/experiments/{experiment_id}/runs",
+            "/api/runs/{run_id}",
+            "/api/runs/{run_id}/risk-decisions",
+            "/api/experiments/{experiment_id}/comparison-views/preview",
+            "/api/experiments/{experiment_id}/comparison-views",
+            "/api/experiments/{experiment_id}/comparison-views/{view_id}",
+        }
+    rendered = json.dumps(schema)
+    for forbidden in ("database_url", "postgresql://", "scope_id_override"):
+        assert forbidden not in rendered

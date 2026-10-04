@@ -18,6 +18,8 @@ POSTGRES_EVENT_TABLES: Final[frozenset[str]] = frozenset(
         "prediction_events",
         "order_events",
         "fill_events",
+        "risk_compositions",
+        "risk_decisions",
         "position_snapshots",
         "config_kv",
         "metrics_snapshots",
@@ -191,6 +193,7 @@ POSTGRES_SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
             """,
             """
             CREATE TABLE IF NOT EXISTS signal_events (
+                signal_event_id TEXT,
                 run_id TEXT,
                 session_id TEXT,
                 cycle_id TEXT,
@@ -204,6 +207,7 @@ POSTGRES_SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
                 payload TEXT
             )
             """,
+            "ALTER TABLE signal_events ADD COLUMN IF NOT EXISTS signal_event_id TEXT",
             "ALTER TABLE signal_events ADD COLUMN IF NOT EXISTS signal_name TEXT",
             "ALTER TABLE signal_events ADD COLUMN IF NOT EXISTS prediction_event_refs TEXT",
             "ALTER TABLE signal_events ADD COLUMN IF NOT EXISTS mapper_id TEXT",
@@ -259,6 +263,7 @@ POSTGRES_SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
             CREATE TABLE IF NOT EXISTS order_events (
                 order_event_id TEXT PRIMARY KEY,
                 client_order_id TEXT,
+                signal_event_id TEXT,
                 run_id TEXT,
                 session_id TEXT,
                 cycle_id TEXT,
@@ -279,11 +284,47 @@ POSTGRES_SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
             """,
             """
             ALTER TABLE order_events
+            ADD COLUMN IF NOT EXISTS signal_event_id TEXT
+            """,
+            """
+            ALTER TABLE order_events
             ADD COLUMN IF NOT EXISTS session_id TEXT
             """,
             """
             ALTER TABLE order_events
             ADD COLUMN IF NOT EXISTS decision_evidence TEXT
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS risk_compositions (
+                risk_composition_record_id TEXT PRIMARY KEY,
+                run_id TEXT,
+                session_id TEXT,
+                catalogue_version TEXT,
+                composition_fingerprint TEXT,
+                manager_count INTEGER,
+                managers JSONB,
+                created_at TIMESTAMPTZ
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS risk_decisions (
+                risk_decision_id TEXT PRIMARY KEY,
+                composition_fingerprint TEXT,
+                run_id TEXT,
+                session_id TEXT,
+                cycle_id TEXT,
+                client_order_id TEXT,
+                decision_ts TIMESTAMPTZ,
+                manager_id TEXT,
+                manager_type TEXT,
+                manager_position INTEGER,
+                outcome TEXT,
+                reason_code TEXT,
+                before_qty DOUBLE PRECISION,
+                after_qty DOUBLE PRECISION,
+                before_order JSONB,
+                after_order JSONB
+            )
             """,
             """
             ALTER TABLE order_events
@@ -308,6 +349,7 @@ POSTGRES_SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
             """,
             """
             CREATE TABLE IF NOT EXISTS fill_events (
+                fill_event_id TEXT,
                 client_order_id TEXT,
                 run_id TEXT,
                 session_id TEXT,
@@ -319,6 +361,10 @@ POSTGRES_SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
                 fee_amount DOUBLE PRECISION,
                 fill_price DOUBLE PRECISION
             )
+            """,
+            """
+            ALTER TABLE fill_events
+            ADD COLUMN IF NOT EXISTS fill_event_id TEXT
             """,
             """
             ALTER TABLE fill_events
@@ -395,6 +441,10 @@ POSTGRES_SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
             ON signal_events(run_id)
             """,
             """
+            CREATE INDEX IF NOT EXISTS signal_events_event_id_idx
+            ON signal_events(signal_event_id)
+            """,
+            """
             CREATE INDEX IF NOT EXISTS signal_events_session_id_idx
             ON signal_events(session_id)
             """,
@@ -431,8 +481,40 @@ POSTGRES_SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
             ON order_events(client_order_id)
             """,
             """
+            CREATE INDEX IF NOT EXISTS order_events_signal_event_id_idx
+            ON order_events(signal_event_id)
+            """,
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS risk_compositions_run_id_idx
+            ON risk_compositions(run_id)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS risk_decisions_run_id_idx
+            ON risk_decisions(run_id)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS risk_decisions_cycle_id_idx
+            ON risk_decisions(cycle_id)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS risk_decisions_client_order_id_idx
+            ON risk_decisions(client_order_id)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS risk_decisions_decision_ts_idx
+            ON risk_decisions(decision_ts)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS risk_decisions_manager_outcome_idx
+            ON risk_decisions(manager_id, outcome)
+            """,
+            """
             CREATE INDEX IF NOT EXISTS fill_events_run_id_idx
             ON fill_events(run_id)
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS fill_events_event_id_idx
+            ON fill_events(fill_event_id)
             """,
             """
             CREATE INDEX IF NOT EXISTS fill_events_session_id_idx

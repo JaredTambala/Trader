@@ -8,6 +8,8 @@ import math
 from typing import Mapping, Sequence
 
 from trader.event_store import EventStore
+from trader.identifiers import deterministic_signal_event_id
+from trader.market_data import RecentBarReader
 from trader.portfolio import Portfolio
 from trader.predictions import (
     PredictionDecision,
@@ -118,6 +120,28 @@ class PredictionDrivenStrategy(Strategy):
             decision_ts=decision_ts,
             event_store=event_store,
             portfolio=portfolio,
+            recent_bar_reader=None,
+        )
+
+    def generate_orders_with_recent_bar_reader(
+        self,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Sequence[Mapping[str, object]]:
+        """Generate prediction orders using bounded replay price reads."""
+        return self._generate(
+            symbols=self._symbols,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            event_store=event_store,
+            portfolio=portfolio,
+            recent_bar_reader=recent_bar_reader,
         )
 
     def generate_orders_for_symbol(
@@ -142,6 +166,34 @@ class PredictionDrivenStrategy(Strategy):
             decision_ts=decision_ts,
             event_store=event_store,
             portfolio=portfolio,
+            recent_bar_reader=None,
+        )
+
+    def generate_orders_for_symbol_with_recent_bar_reader(
+        self,
+        symbol: str,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Sequence[Mapping[str, object]]:
+        """Generate one prediction symbol using bounded replay price reads."""
+        if self.decision_scope != "per_symbol":
+            raise ValueError("universe_snapshot strategy cannot run through per-symbol callbacks")
+        normalized = str(symbol).strip().upper()
+        if normalized not in self._symbols:
+            raise ValueError(f"symbol is outside the strategy universe: {normalized}")
+        return self._generate(
+            symbols=(normalized,),
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            event_store=event_store,
+            portfolio=portfolio,
+            recent_bar_reader=recent_bar_reader,
         )
 
     def _generate(
@@ -153,6 +205,7 @@ class PredictionDrivenStrategy(Strategy):
         decision_ts: datetime,
         event_store: EventStore,
         portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
     ) -> tuple[Mapping[str, object], ...]:
         decision = self._binding.evaluate(
             run_id=run_id,
@@ -164,8 +217,18 @@ class PredictionDrivenStrategy(Strategy):
         inputs = tuple(item for item in decision.strategy_inputs if item.name == self._input_name)
         if not inputs:
             return ()
-        for item in inputs:
-            self._record_strategy_input(event_store, run_id, cycle_id, decision_ts, item, decision)
+        signal_event_ids = {
+            str(item.symbol): self._record_strategy_input(
+                event_store,
+                run_id,
+                cycle_id,
+                decision_ts,
+                item,
+                decision,
+            )
+            for item in inputs
+            if item.symbol
+        }
         if self._consumer_kind == "directional":
             targets = {
                 str(item.symbol): self._order_qty * _direction(item.value, self._decision_threshold)
@@ -175,7 +238,13 @@ class PredictionDrivenStrategy(Strategy):
         elif self._consumer_kind == "ranking":
             targets = self._ranking_targets(inputs)
         elif self._consumer_kind == "allocation":
-            targets = self._allocation_targets(inputs, portfolio, event_store, decision_ts)
+            targets = self._allocation_targets(
+                inputs,
+                portfolio,
+                event_store,
+                decision_ts,
+                recent_bar_reader=recent_bar_reader,
+            )
         elif self._consumer_kind == "regime":
             targets = {
                 str(item.symbol): (
@@ -218,6 +287,7 @@ class PredictionDrivenStrategy(Strategy):
                     target_qty=target_qty,
                     current_qty=portfolio.positions.get(symbol).qty if symbol in portfolio.positions else 0.0,
                     decision_evidence=evidence,
+                    signal_event_id=signal_event_ids.get(symbol),
                 )
             )
             is not None
@@ -241,6 +311,8 @@ class PredictionDrivenStrategy(Strategy):
         portfolio: Portfolio,
         event_store: EventStore,
         decision_ts: datetime,
+        *,
+        recent_bar_reader: RecentBarReader | None,
     ) -> dict[str, float]:
         prices = _latest_prices(
             event_store,
@@ -248,6 +320,7 @@ class PredictionDrivenStrategy(Strategy):
             asset_class=self._asset_class,
             timeframe=self._timeframe,
             decision_ts=decision_ts,
+            recent_bar_reader=recent_bar_reader,
         )
         value = portfolio.cash_balance + sum(
             position.qty * prices.get(symbol, position.avg_price or 0.0)
@@ -271,7 +344,7 @@ class PredictionDrivenStrategy(Strategy):
         decision_ts: datetime,
         item: StrategyPrediction,
         decision: PredictionDecision,
-    ) -> None:
+    ) -> str:
         value = (
             float(item.value)
             if isinstance(item.value, (int, float))
@@ -279,9 +352,17 @@ class PredictionDrivenStrategy(Strategy):
             and math.isfinite(float(item.value))
             else None
         )
+        signal_event_id = deterministic_signal_event_id(
+            run_id,
+            cycle_id,
+            item.symbol,
+            self._input_name,
+            identity_suffix="|".join(sorted(str(value) for value in decision.prediction_event_ids)),
+        )
         event_store.record_event(
             "signal_events",
             {
+                "signal_event_id": signal_event_id,
                 "run_id": run_id,
                 "session_id": run_id,
                 "cycle_id": cycle_id,
@@ -302,6 +383,7 @@ class PredictionDrivenStrategy(Strategy):
                 ),
             },
         )
+        return signal_event_id
 
 
 def build_prediction_driven_strategy(**kwargs: object) -> PredictionDrivenStrategy:
@@ -315,6 +397,7 @@ def _target_order(
     target_qty: float,
     current_qty: float,
     decision_evidence: Mapping[str, object],
+    signal_event_id: str | None,
 ) -> Mapping[str, object] | None:
     delta = target_qty - current_qty
     if abs(delta) < 1e-12:
@@ -325,6 +408,7 @@ def _target_order(
         "qty": abs(delta),
         "order_type": "market",
         "decision_evidence": dict(decision_evidence),
+        "signal_event_id": signal_event_id,
     }
 
 
@@ -335,6 +419,7 @@ def _latest_prices(
     asset_class: str,
     timeframe: str,
     decision_ts: datetime,
+    recent_bar_reader: RecentBarReader | None,
 ) -> dict[str, float]:
     table = table_for_asset_class(asset_class)
     output: dict[str, float] = {}
@@ -346,6 +431,7 @@ def _latest_prices(
             timeframe=timeframe,
             limit=1,
             as_of_ts=decision_ts,
+            recent_bar_reader=recent_bar_reader,
         )
         if bars:
             output[symbol] = float(bars[0].close)

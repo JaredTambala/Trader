@@ -17,6 +17,27 @@ Knowledge evidence may inform a method contract, but source provenance does not 
 Likewise, a passed computational contract does not bypass independent strategy admission, prospective experiment
 design, robustness, or evaluation.
 
+## Method evidence lifecycle
+
+```text
+typed contract -> supplied implementation manifest -> static/provenance checks
+       -> deterministic fixtures -> diagnostics and multiple-testing report
+       -> optional kernel parity -> immutable method package
+```
+
+The contract defines what can be checked: parameter types and bounds, required inputs and outputs, warm-up behavior,
+invariants, and fixture expectations. A passed fixture says that the implementation matches those declared examples;
+it does not say that the method predicts returns or improves a strategy.
+
+The package keeps three decisions separate:
+
+- methodology validates a computational implementation;
+- Experiments admits a strategy or risk implementation and binds it to a declared specification;
+- Review evaluates the resulting experiment and records skeptical findings.
+
+This separation makes a failure actionable. A contract error belongs to the implementation; a data or specification
+error belongs to the experiment; an unsupported conclusion belongs to independent review.
+
 ## Verification ownership
 
 Package-owned contracts live under `tests/trader_research/methodology/` and follow the computational pipeline rather

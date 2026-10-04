@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal, Mapping, Sequence
 
-from ..identifiers import deterministic_cycle_id, deterministic_run_session_id
+from ..identifiers import deterministic_backtest_cycle_id, deterministic_cycle_id, deterministic_run_session_id
 
 
 @dataclass(frozen=True)
@@ -106,6 +106,7 @@ def _build_cycle_identity(
     run_type: str,
     started_at: datetime,
     run_id: str | None,
+    symbols: Sequence[str] = (),
 ) -> CycleIdentity:
     """Build deterministic run/cycle identity without touching storage."""
     owns_run_session = run_id is None
@@ -116,7 +117,11 @@ def _build_cycle_identity(
     )
     return CycleIdentity(
         run_id=effective_run_id,
-        cycle_id=deterministic_cycle_id(strategy_id, decision_ts),
+        cycle_id=(
+            deterministic_backtest_cycle_id(effective_run_id, strategy_id, decision_ts, symbols)
+            if run_type == "backtest"
+            else deterministic_cycle_id(strategy_id, decision_ts)
+        ),
         owns_run_session=owns_run_session,
     )
 

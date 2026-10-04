@@ -1,7 +1,18 @@
 # Research Capability Tutorial
 
 This tutorial uses dependency-light values to explain how research work becomes evidence. It does not require
-Postgres, MCP, an LLM, or a broker.
+Postgres, MCP, an LLM, or a broker. The same sequence applies when a service is later reached through an MCP tool.
+
+The important distinction is between an operation result and the evidence it names:
+
+```text
+request -> normalize and validate -> bounded service operation
+                                      |              |
+                           ApplicationResult   canonical artifact ref
+```
+
+The result tells the caller what happened now. The artifact reference tells a later caller which durable record to
+re-read and verify.
 
 ## 1. Produce a transport-neutral outcome
 
@@ -26,6 +37,10 @@ True
 
 The result is not an MCP response and does not imply that the reference exists. The concrete service and artifact store
 are responsible for canonical persistence.
+
+An application result has five useful questions: did the operation succeed (`ok`), which operation ran, what data was
+returned, which durable artifacts were created, and which warnings or structured errors need attention. A successful
+result can still carry warnings, and a failed result can carry bounded partial evidence for diagnosis.
 
 ## 2. Use stable evidence references
 
@@ -59,6 +74,10 @@ Knowledge-backed authoring adds registered sources, retrieved evidence, exact cl
 and then the normal coding and admission path. Citations can support implementation intent; they cannot establish
 trading efficacy.
 
+The graph is deliberately append-only. If an assumption, implementation, or source changes, create a new identity or
+successor artifact. Reusing an identity with different content is an integrity failure, which keeps comparisons
+reproducible.
+
 ## 4. Choose the public context
 
 - Need usable market data? Start with `trader_research.data`.
@@ -67,6 +86,10 @@ trading efficacy.
   when authoring or adaptation is required.
 - Need a run? Create and validate specifications through `trader_research.experiments` before execution.
 - Need a scientific conclusion? Use `trader_research.review`; do not infer it from a run's headline metric.
+
+The contexts compose through stable values and references. For example, Data produces a dataset manifest and quality
+report; Experiments consumes those references to create a specification; Review consumes the resulting run without
+becoming a second execution engine.
 
 ## 5. Move to integration
 
@@ -80,6 +103,10 @@ cross-package sequence.
 Check `ok`, errors, warnings, artifact references, scope, status, and lineage on every result. A successful service call
 does not make its scientific conclusion valid. Missing citations, stale or partial data, failed admission, contaminated
 evaluation, and unresolved canonical references must remain blockers.
+
+For a read-only operation, retry only within its stated deadline. For a mutation whose response is lost, resolve the
+stable operation or artifact identity first. If the store cannot establish whether the mutation was accepted, preserve
+the reconciliation-required error instead of issuing a blind second mutation.
 
 Use [Artifacts And Persistence](artifacts_and_persistence.md) for the evidence contract, then continue to the focused
 Data, Knowledge, Methodology, Experiments, Review, Coding, or ML guide linked from the package README.

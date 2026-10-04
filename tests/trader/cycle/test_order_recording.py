@@ -192,6 +192,7 @@ def test_build_order_lifecycle_event_payload_does_not_mutate_input() -> None:
     assert payload.to_record() == {
         "order_event_id": "order_evt_fixed",
         "client_order_id": "cid_1",
+        "signal_event_id": None,
         "run_id": "run_1",
         "session_id": "run_1",
         "cycle_id": "cycle_1",
@@ -229,6 +230,7 @@ def test_build_broker_fill_event_payload_returns_fill_record_or_none() -> None:
 
     assert payload is not None
     assert payload.to_record() == {
+        "fill_event_id": payload.fill_event_id,
         "client_order_id": "cid_1",
         "run_id": "run_1",
         "session_id": "run_1",
@@ -284,6 +286,7 @@ def test_build_broker_response_recording_plan_prepares_order_and_fill_records() 
     assert plan.order_event.to_record() == {
         "order_event_id": "order_evt_fixed",
         "client_order_id": "cid_1",
+        "signal_event_id": None,
         "run_id": "run_1",
         "session_id": "run_1",
         "cycle_id": "cycle_1",
@@ -299,6 +302,7 @@ def test_build_broker_response_recording_plan_prepares_order_and_fill_records() 
     }
     assert plan.fill_event is not None
     assert plan.fill_event.to_record() == {
+        "fill_event_id": plan.fill_event.fill_event_id,
         "client_order_id": "cid_1",
         "run_id": "run_1",
         "session_id": "run_1",

@@ -6,6 +6,7 @@ from .core import (
     run_cycle,
 )
 from .data import BacktestMarketDataSource
+from .recent_bars import InMemoryRecentBarReader, RecentBarReadStats
 from .exports import (
     export_backtest_equity_curve_csv,
     export_backtest_result_json,
@@ -14,6 +15,7 @@ from .exports import (
 )
 from .models import (
     BacktestAssumptions,
+    BacktestEvidenceCoverage,
     BacktestResult,
     BacktestSpec,
     DataAssumptions,
@@ -28,12 +30,25 @@ from .models import (
 )
 from .performance import _build_performance_summary
 from .persistence import persist_backtest_result, _compute_trade_stats
+from .review_scope import (
+    BacktestReviewScope,
+    BacktestVariant,
+    ReviewInitialPosition,
+    build_backtest_review_scope,
+    build_backtest_variant,
+    build_data_scope_id,
+)
 
 __all__ = [
     "BacktestAssumptions",
+    "BacktestEvidenceCoverage",
     "BacktestMarketDataSource",
     "BacktestResult",
+    "BacktestReviewScope",
     "BacktestRunner",
+    "InMemoryRecentBarReader",
+    "RecentBarReadStats",
+    "BacktestVariant",
     "BacktestSpec",
     "DataAssumptions",
     "EquityPoint",
@@ -41,9 +56,13 @@ __all__ = [
     "PerformanceSummary",
     "PortfolioSummary",
     "PositionSummary",
+    "ReviewInitialPosition",
     "SlippageAssumptions",
     "TradeRecord",
     "build_backtest_assumptions",
+    "build_backtest_review_scope",
+    "build_backtest_variant",
+    "build_data_scope_id",
     "export_backtest_equity_curve_csv",
     "export_backtest_result_json",
     "export_backtest_trades_csv",

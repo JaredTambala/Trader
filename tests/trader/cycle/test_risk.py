@@ -17,7 +17,7 @@ from trader.cycle.risk import (
     _evaluate_cycle_order_risk,
 )
 from trader.portfolio import Position
-from trader.risk import RiskContext, RiskManager
+from trader.risk import RiskContext, RiskManager, RiskPipeline
 
 
 class RejectSymbolRiskManager(RiskManager):
@@ -49,6 +49,14 @@ class RejectSymbolRiskManager(RiskManager):
             else:
                 approved.append(order)
         return approved, rejected
+
+
+class TransformRiskManager(RiskManager):
+    """Test manager that changes quantity while approving an order."""
+
+    def validate(self, orders, context: RiskContext):
+        del context
+        return [{**order, "qty": float(order["qty"]) * 2} for order in orders]
 
 
 def test_build_stream_risk_price_lookup_uses_latest_prices_and_order_override() -> None:
@@ -138,3 +146,34 @@ def test_evaluate_cycle_order_risk_returns_approved_and_manager_rejection_logs()
     assert len(result.rejection_logs) == 1
     assert result.rejection_logs[0].order == result.rejected_orders[0]
     assert result.rejection_logs[0].manager_name == "RejectSymbolRiskManager"
+    assert result.decision_traces[0].outcome == "rejected"
+    assert result.decision_traces[0].reason_code == "blocked_symbol"
+    assert result.decision_traces[0].manager_position == 0
+    assert result.decision_traces[0].after_order is None
+    assert result.composition is not None
+
+
+def test_evaluate_cycle_order_risk_records_transformations_and_short_circuit() -> None:
+    """Record approved changes and omit managers after an earlier blocker."""
+    base_ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    context = RiskContext(
+        positions={},
+        open_orders=[],
+        price_lookup={},
+        run_id="run_1",
+        cycle_id="cycle_1",
+        decision_ts=base_ts,
+    )
+    result = _evaluate_cycle_order_risk(
+        order={"client_order_id": "order_1", "symbol": "AAPL", "side": "buy", "qty": 1.0},
+        context=context,
+        risk_manager=RiskPipeline([TransformRiskManager(), RejectSymbolRiskManager("AAPL", "blocked")]),
+    )
+
+    assert result.approved_orders == ()
+    assert [trace.outcome for trace in result.decision_traces] == ["transformed", "rejected"]
+    assert result.decision_traces[0].after_order == {
+        "client_order_id": "order_1", "symbol": "AAPL", "side": "buy", "qty": 2.0
+    }
+    assert result.decision_traces[1].reason_code == "blocked"
+    assert result.decision_traces[1].manager_position == 1

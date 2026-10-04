@@ -10,3 +10,24 @@ than changing the hypothesis after seeing protected outcomes.
 
 A coordinator may use the verdict for routing or synthesis, but cannot override it. A promising result may justify the
 next prospective stage; it is never itself paper-trading authorization.
+
+## Review workflow
+
+Review starts from exact canonical references rather than a prose summary:
+
+```text
+passed run + comparison + optimisation evidence
+                  |
+                  +-> Evaluation: completeness, comparability, uncertainty
+                  +-> Adversarial: declared attacks, variants, stress cases
+                                      |
+                         separate review artifacts and findings
+```
+
+Evaluation asks whether the evidence supports the declared claim. It checks dataset and period roles, assumptions,
+multiplicity, uncertainty, economic relevance, and unresolved warnings. Adversarial review asks how the result behaves
+when declared assumptions or selected variants are stressed. Neither context edits the run, chooses a parameter, or
+silently turns a missing artifact into a neutral finding.
+
+Read the verdict together with its scope, sample size, attack plan, and blockers. “Passed review” means that the stated
+review contract completed; it remains distinct from live deployment approval and from broker authority.

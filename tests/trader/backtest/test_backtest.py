@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from trader.backtest import BacktestAssumptions, BacktestRunner, BacktestSpec
+from trader.backtest import BacktestAssumptions, BacktestRunner, BacktestSpec, InMemoryRecentBarReader
 from trader.backtest.runtime_planning import (
     _build_backtest_runtime_config,
     _build_symbol_runtime_configs,
@@ -32,9 +32,11 @@ from trader_standard.strategies.noop import NoOpStrategy
 class CycleRecorder:
     def __init__(self) -> None:
         self.decision_times: list[datetime] = []
+        self.recent_bar_readers: list[InMemoryRecentBarReader] = []
 
     def __call__(self, *args, **kwargs) -> None:
         self.decision_times.append(kwargs["decision_ts"])
+        self.recent_bar_readers.append(kwargs["recent_bar_reader"])
 
 
 class UniverseNoOpStrategy(NoOpStrategy):
@@ -122,10 +124,25 @@ def test_backtest_runner_replays_timestamps(monkeypatch, tmp_path: Path) -> None
     result = runner.run()
 
     assert recorder.decision_times == timestamps
+    assert len(recorder.recent_bar_readers) == len(timestamps)
+    assert recorder.recent_bar_readers[0] is recorder.recent_bar_readers[-1]
+    assert recorder.recent_bar_readers[0].stats.request_count == 0
     assert result.assumptions == BacktestAssumptions()
     assert result.warnings == ()
     assert result.total_fees == 0.0
     assert result.total_slippage == 0.0
+    assert result.evidence_coverage is not None
+    assert result.evidence_coverage.signal_events == "recorded"
+    assert result.evidence_coverage.order_events == "recorded"
+    assert result.evidence_coverage.fill_events == "recorded"
+    assert result.evidence_coverage.position_snapshots == "recorded"
+    assert result.review_scope is not None
+    assert result.review_scope.data_scope_id.startswith("sha256:")
+    assert result.review_scope.scope_fingerprint.startswith("sha256:")
+    assert result.variant is not None
+    assert result.variant.strategy_id == "noop"
+    assert result.variant.strategy_version == "1"
+    assert result.variant.parameters == {}
 
 
 def test_backtest_runner_returns_empty_result_when_window_has_no_bars(
@@ -156,6 +173,11 @@ def test_backtest_runner_returns_empty_result_when_window_has_no_bars(
     assert result.failed_runs == 0
     assert result.symbols == ("AAPL",)
     assert result.warnings == ("No bars found for backtest window.",)
+    assert result.evidence_coverage is not None
+    assert result.evidence_coverage.signal_events == "not_applicable"
+    assert result.evidence_coverage.order_events == "not_applicable"
+    assert result.evidence_coverage.fill_events == "not_applicable"
+    assert result.evidence_coverage.position_snapshots == "not_applicable"
     assert result.strategy_performance.start_equity is None
     assert result.benchmark_performance.start_equity is None
 

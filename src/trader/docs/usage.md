@@ -36,10 +36,13 @@ precedence rules are in [Configuration](configuration.md).
 | Risk | `trader.RiskManager`, `trader.RiskPipeline` | caller implementation or `trader_standard` |
 | Persistence | `trader.EventStore` | `PostgresEventStore` or deliberate `NoOpEventStore` |
 | Market data | `trader.MarketDataSource` | static/no-op sources or the Alpaca adapter |
+| Replay history | `trader.market_data.RecentBarReader` | runner-owned in-memory reads for backtest strategies |
 | Predictions | contracts under `trader.predictions` | feature provider, predictor, adapter profile, mapper, and prediction-driven standard strategy |
 
 `BacktestRunner` accepts explicit strategy, risk manager, spec, universe, starting cash, configuration snapshot, and
 assumptions. `TraderService` owns the live service lifecycle and must perform recovery before normal execution.
+During replay, the runner supplies a bounded `RecentBarReader` over its loaded bars; ordinary runtime cycles leave the
+reader unset and use the event-store history path.
 
 ## Result handling
 

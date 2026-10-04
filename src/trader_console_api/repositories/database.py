@@ -72,20 +72,38 @@ class ConsoleDatabase:
     async def transaction(self) -> AsyncIterator[Any]:
         """Yield one connection inside the current bounded transaction policy.
 
-        The currently implemented query repositories use PostgreSQL ``READ ONLY``
-        enforcement. Command repositories can introduce their own explicit
-        transaction policy when mutation operations are added.
+        Query repositories use PostgreSQL ``READ ONLY`` enforcement. Command
+        repositories use :meth:`command_transaction` with their explicit write
+        and isolation policy.
 
         Raises:
             ConsoleDatabaseUnavailable: If Psycopg cannot acquire or use a
                 database connection.
         """
+        async with self._transaction(command=False) as connection:
+            yield connection
+
+    @asynccontextmanager
+    async def command_transaction(self) -> AsyncIterator[Any]:
+        """Commit one bounded application command, rolling back on any failure.
+
+        Comparison definitions are the only current command owner. Repeatable
+        reads keep membership validation and its write on the same evidence view.
+        """
+        async with self._transaction(command=True) as connection:
+            yield connection
+
+    @asynccontextmanager
+    async def _transaction(self, *, command: bool) -> AsyncIterator[Any]:
         try:
             async with self._pool.connection(
                 timeout=self._settings.pool_timeout_seconds
             ) as connection:
                 async with connection.transaction():
-                    await connection.execute("SET TRANSACTION READ ONLY")
+                    await connection.execute(
+                        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ WRITE"
+                        if command else "SET TRANSACTION READ ONLY"
+                    )
                     await connection.execute(
                         "SELECT set_config('statement_timeout', %s, true)",
                         [str(self._settings.statement_timeout_ms)],

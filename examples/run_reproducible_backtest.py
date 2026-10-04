@@ -15,6 +15,7 @@ from trader.backtest import (
     export_backtest_equity_curve_csv,
     export_backtest_result_json,
     export_backtest_trades_csv,
+    persist_backtest_result,
 )
 from trader.config import build_config, load_yaml_config
 
@@ -67,6 +68,7 @@ def main() -> None:
         assumptions=assumptions_from_backtest_config(backtest_cfg),
     )
     result = runner.run(log_cycle_details=bool(backtest_cfg.get("log_cycle_details", False)))
+    persist_backtest_result(result.run_id, result, config)
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

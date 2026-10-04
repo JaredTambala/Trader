@@ -18,6 +18,14 @@ these implementations.
 - Risk managers accept or reject candidate orders using an explicit `RiskContext`.
 - Prediction helpers build point-in-time features and map typed predictions into strategy-specific decisions.
 
+## Replay bar-reader injection
+
+Bar-backed maintained strategies expose the core strategy reader entrypoints used by `BacktestRunner`. During replay,
+the runner supplies a typed `RecentBarReader` over its loaded bars; the strategy passes requests through the existing
+signal and indicator calculation path. When no reader is supplied, the standard implementation keeps its normal
+event-store query behavior for ordinary runtime cycles. This boundary preserves as-of and warmup semantics while
+making replay query counts independent of decision count.
+
 The policy-driven strategy separates three decisions: entry when flat, ordinary exit when long, and protective exit.
 `StrategySnapshot` is the immutable handoff to these policies. Stateful trailing stops own only their per-symbol
 high-water marks and reset when the position is flat.

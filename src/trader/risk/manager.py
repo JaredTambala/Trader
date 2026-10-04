@@ -71,6 +71,20 @@ class RiskManager(ABC):
     persistence to the cycle, which records approved and rejected orders.
     """
 
+    def risk_descriptor(self) -> Mapping[str, object]:
+        """Return stable identity and typed parameters for risk evidence.
+
+        Maintained managers override this method with their allowlisted
+        constructor parameters. Custom managers retain a safe class identity
+        and an empty parameter map until they opt into richer metadata.
+        """
+        return {
+            "manager_id": self.__class__.__name__,
+            "manager_type": f"{self.__class__.__module__}.{self.__class__.__qualname__}",
+            "catalogue_version": "runtime-1",
+            "parameters": {},
+        }
+
     @abstractmethod
     def validate(
         self,

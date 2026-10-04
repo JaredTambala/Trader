@@ -16,6 +16,7 @@ from trader.event_store.console_read_contract import (
     CONSOLE_READ_CONTRACT_VERSION,
     CONSOLE_READ_COLUMNS,
     CONSOLE_READ_SOURCES,
+    CONSOLE_READ_VIEW_SQL,
     assess_console_read_compatibility,
 )
 
@@ -94,9 +95,26 @@ def test_console_read_compatibility_fails_closed(
     assert result.consumer_version == consumer
 
 
-def test_console_read_contract_version_starts_at_one() -> None:
-    """Anchor the first additive Console database contract at version one."""
-    assert CONSOLE_READ_CONTRACT_VERSION == 1
+def test_console_read_contract_version_includes_standalone_backtest_runs() -> None:
+    """Anchor standalone runs alongside lifecycle and typed chart evidence."""
+    assert CONSOLE_READ_CONTRACT_VERSION == 9
+    assert CONSOLE_READ_COLUMNS["signal_lifecycle"][0] == "signal_event_id"
+    assert "signal_event_id" in CONSOLE_READ_COLUMNS["order_lifecycle"]
+    assert CONSOLE_READ_COLUMNS["fill_lifecycle"][0] == "fill_event_id"
+    assert CONSOLE_READ_COLUMNS["backtest_evidence_coverage"][-1] == "risk_evidence_status"
+    assert "scope_fingerprint" in CONSOLE_READ_COLUMNS["backtest_scope"]
+    assert "variant_parameters_fingerprint" in CONSOLE_READ_COLUMNS["backtest_scope"]
+    assert "strategy_normalized" in CONSOLE_READ_COLUMNS["backtest_comparison_curves"]
+    assert "scope_fingerprint" in CONSOLE_READ_COLUMNS["backtest_comparison_runs"]
+    assert CONSOLE_READ_COLUMNS["indicator_series"][0] == "run_id"
+    assert "pane" in CONSOLE_READ_COLUMNS["indicator_series"]
+    assert CONSOLE_READ_COLUMNS["signal_markers"][8] == "event_ts"
+    assert "manager_parameters" in CONSOLE_READ_COLUMNS["risk_composition"]
+    assert "blocked_count" in CONSOLE_READ_COLUMNS["risk_summary"]
+    assert "before_order" in CONSOLE_READ_COLUMNS["risk_decisions"]
+    standalone_view = CONSOLE_READ_VIEW_SQL["backtest_runs"]
+    assert "standalone_backtests" in standalone_view
+    assert "runs.run_type = 'backtest'" in standalone_view
 
 
 def test_console_read_relation_names_do_not_encode_contract_version() -> None:

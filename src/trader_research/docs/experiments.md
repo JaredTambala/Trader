@@ -19,6 +19,29 @@ decide canonical state.
 Optuna qualification uses a dedicated non-`public` schema and writer role. Its sampler state is provider state, not the
 canonical trial ledger; every suggestion and terminal trial remains recorded by Trader.
 
+## From implementation to evidence
+
+An experiment is reproducible because each stage names its inputs instead of filling in scientific choices implicitly:
+
+1. Resolve one exact implementation version and passed validation report.
+2. Create strategy, risk-stack, and backtest specifications with dataset, model, cost, period, and execution
+   assumptions pinned.
+3. Validate the specifications and persist their identities before execution.
+4. Run the declared specification and persist the canonical run, trades, metrics, warnings, and provenance.
+5. Compare only compatible scopes, or return explicit differences and unknowns.
+6. Treat optimisation and tracking projections as evidence about the declared search, then send the run to independent
+   Evaluation and Adversarial review.
+
+The context owns execution mechanics, not the scientific conclusion. A successful backtest proves that the declared
+simulation completed; it does not prove live profitability or authorize paper trading.
+
+## Optimisation and projection boundaries
+
+`OptimizationEngine` suggests candidates, `OptimizationTrialExecutor` runs one exact candidate, and the canonical trial
+ledger records every suggestion, result, failure, and selected candidate. Optuna and MLflow are optional provider
+adapters. Tracking projections help operators inspect runs but are non-authoritative and are never queried to decide
+whether canonical work passed.
+
 ## Verification ownership
 
 Package-owned contracts live under `tests/trader_research/experiments/`. Implementation catalogue and maintained

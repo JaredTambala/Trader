@@ -36,6 +36,8 @@ output-free and executed in temporary copies during documentation tests.
 - [Repository and test architecture](test_architecture.md)
 - [Product state](product_state.md)
 - [Environment and local services](environment.md)
+- [Console local demo](../examples/console_demo/README.md) and [frontend application](../apps/trader-console/README.md)
+- [Apache Superset local evaluation](../examples/superset_demo/README.md)
 - [Getting started workflow](workflows/getting_started.md)
 - [Research workflows](workflows/research.md)
 - [Research and agent operations](workflows/research_operations.md)

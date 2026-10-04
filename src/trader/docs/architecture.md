@@ -105,6 +105,14 @@ Representative runtime objects:
 - `AlpacaMarketDataSource`
 - replay and backfill runners
 
+Backtest replay constructs a typed `RecentBarReader` over the runner's loaded bars and passes it through the strategy
+cycle boundary. The reader carries symbol, asset class, timeframe, as-of timestamp, and lookback limit, and returns
+latest-first windows without database access. The ordinary runtime leaves this optional reader unset and retains its
+event-store history reads.
+
+Backtest cycle identifiers include the run session and the configured decision symbol subset. This prevents two
+overlapping replays from updating one another's lifecycle rows while keeping retries within a run deterministic.
+
 ### 2. Event Store and Schema Layer
 
 The event store provides the runtime’s persistence, transaction boundary, and queryable audit trail.

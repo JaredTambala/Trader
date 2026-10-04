@@ -17,6 +17,7 @@ from trader.risk import (
     RiskContext,
     RiskManager,
     RiskPipeline,
+    build_risk_composition,
     evaluate_risk_pipeline,
     split_approved_rejected_orders,
 )
@@ -360,3 +361,21 @@ def test_evaluate_risk_pipeline_returns_immutable_ordered_result() -> None:
         "blocked_msft",
         "blocked_aapl",
     ]
+
+
+def test_risk_composition_fingerprint_contains_ordered_typed_parameters() -> None:
+    """Describe maintained manager identity without exposing mutable internals."""
+    composition = build_risk_composition(
+        (
+            MaxOrdersPerRunRiskManager(limit=2),
+            MaxGrossExposureRiskManager(limit_usd=1250.0),
+        )
+    )
+
+    assert [manager.manager_id for manager in composition.managers] == [
+        "max_orders_per_run",
+        "max_gross_exposure",
+    ]
+    assert composition.managers[0].parameters == {"limit": 2}
+    assert composition.managers[1].parameters == {"limit_usd": 1250.0}
+    assert len(composition.composition_fingerprint) == 64

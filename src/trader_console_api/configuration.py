@@ -39,7 +39,7 @@ class ConsoleApiSettings(BaseModel):
     pool_timeout_seconds: float = Field(default=3.0, gt=0, le=60)
     pool_open_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
     pool_close_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
-    statement_timeout_ms: int = Field(default=2_000, ge=100, le=60_000)
+    statement_timeout_ms: int = Field(default=10_000, ge=100, le=60_000)
 
     @model_validator(mode="after")
     def validate_pool_bounds(self) -> ConsoleApiSettings:
@@ -103,7 +103,7 @@ class ConsoleApiSettings(BaseModel):
                 values, "TRADER_CONSOLE_POOL_CLOSE_TIMEOUT_SECONDS", 5.0
             ),
             statement_timeout_ms=_integer(
-                values, "TRADER_CONSOLE_STATEMENT_TIMEOUT_MS", 2_000
+                values, "TRADER_CONSOLE_STATEMENT_TIMEOUT_MS", 10_000
             ),
         )
 

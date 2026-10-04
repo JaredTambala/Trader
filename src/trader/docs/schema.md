@@ -161,6 +161,7 @@ runtime `runs.run_id`; failed sweep members can still be recorded even when no c
 
 ### `signal_events`
 
+- `signal_event_id` (TEXT, nullable for legacy rows)
 - `run_id` (TEXT)
 - `session_id` (TEXT, nullable)
 - `cycle_id` (TEXT, nullable)
@@ -214,6 +215,7 @@ indicators independently observable without forcing every output into one float.
 
 - `order_event_id` (TEXT, PK)
 - `client_order_id` (TEXT)
+- `signal_event_id` (TEXT, nullable)
 - `run_id` (TEXT)
 - `session_id` (TEXT, nullable)
 - `cycle_id` (TEXT, nullable)
@@ -229,6 +231,7 @@ indicators independently observable without forcing every output into one float.
 
 ### `fill_events`
 
+- `fill_event_id` (TEXT, nullable for legacy rows)
 - `client_order_id` (TEXT)
 - `run_id` (TEXT)
 - `session_id` (TEXT, nullable)
@@ -243,6 +246,22 @@ indicators independently observable without forcing every output into one float.
 `fill_price` is the effective execution price used for accounting. When cost modeling is enabled, `raw_fill_price`
 preserves the unadjusted bar-close reference while `slippage_amount` and `fee_amount` expose the explicit execution
 costs applied to the fill. Older rows may leave these fields null.
+
+`signal_event_id`, `order_event_id`, and `fill_event_id` are stable lifecycle identities. New strategy emissions derive
+signal identities from the run/cycle/symbol/signal name, and fills derive identities from the client order and fill
+evidence. The event-store bootstrap adds indexes for signal-to-order and fill lookups. These identifiers are additive:
+legacy rows remain valid, but consumers must treat missing IDs or links as unknown rather than reconstructing causality
+from timestamps.
+
+The `console_read.signal_lifecycle`, `console_read.order_lifecycle`, and `console_read.fill_lifecycle` views expose the
+typed causal chain without raw payloads. `console_read.backtest_evidence_coverage` exposes whether each optional event
+stream was recorded for a persisted backtest result.
+
+The `console_read.backtest_scope` view exposes the typed replay window, content-based data identity, benchmark
+construction, initial cash and position count, execution assumptions, and separate strategy/parameter variant
+fingerprints. Legacy result snapshots return null comparison fields and are not eligible for compatibility-gated cohorts.
+The `console_read.backtest_comparison_runs` and `console_read.backtest_comparison_curves` views expose the bounded
+cohort rows and independently normalized strategy/benchmark curves used by comparison consumers.
 
 ### `position_snapshots`
 
@@ -310,6 +329,13 @@ runtime bootstrap and is installed explicitly. The current contract contains sta
 | `orders` | `order_events` | `decision_evidence` |
 | `fills` | `fill_events` | None; identity limitations still apply. |
 | `positions` | `position_snapshots` | None; retention limitations still apply. |
+| `signal_lifecycle` | `signal_events` | `payload`, `prediction_event_refs` |
+| `order_lifecycle` | `order_events` | `decision_evidence` |
+| `fill_lifecycle` | `fill_events` | None; legacy identity fields may be null. |
+| `backtest_evidence_coverage` | `metrics_snapshots` + `experiment_runs` | Result payload details. |
+| `backtest_scope` | `metrics_snapshots` + `experiment_runs` | Untyped result payload and raw parameter values. |
+| `backtest_comparison_runs` | typed `console_read` projections | Raw result payload and mixed-scope aggregation. |
+| `backtest_comparison_curves` | typed `console_read` projections | Raw result payload and unnormalized cross-run curves. |
 
 The exact ordered column lists are declared by `CONSOLE_READ_COLUMNS` in
 `trader.event_store.console_read_contract` and checked against the PostgreSQL catalog during deployment verification.
@@ -324,6 +350,8 @@ parameterized queries against these views and preserve explicit session/data-sou
 - `experiment_run_id` is `exp_run_<sha256-prefix>` derived from `experiment_id` and `run_id`.
 - `client_order_id` is `order_<sha256>` derived from `cycle_id`, normalized `symbol`, normalized `side`, and normalized `target_qty`.
 - `order_event_id` is `order_evt_<uuid>` generated per order lifecycle row.
+- `signal_event_id` is deterministic for a run/cycle/symbol/signal identity; legacy signal rows may not have one.
+- `fill_event_id` is deterministic for a client order and fill evidence; legacy fill rows may not have one.
 
 ## Query Patterns
 

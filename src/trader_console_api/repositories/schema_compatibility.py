@@ -6,6 +6,8 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from typing import Any, Final, Mapping, Protocol
 
+from .resource_contract import RESOURCE_CONTRACT_COLUMNS
+
 
 class DatabaseTransactionManager(Protocol):
     """Transaction boundary required by the compatibility repository."""
@@ -166,6 +168,7 @@ EXPECTED_CONTRACT_COLUMNS: Final[Mapping[str, tuple[str, ...]]] = {
         "session_id",
         "cycle_id",
     ),
+    **RESOURCE_CONTRACT_COLUMNS,
 }
 
 _VERSION_QUERY: Final = """

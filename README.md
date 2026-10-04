@@ -38,6 +38,7 @@ mutation capabilities.
 - Multi-agent architecture and use: [`trader_agents` tutorial](src/trader_agents/docs/tutorial.md)
 - MLflow prediction: [`trader_mlflow` tutorial](src/trader_mlflow/docs/tutorial.md)
 - Console API setup: [`trader_console_api` tutorial](src/trader_console_api/docs/tutorial.md)
+- Console first screen: [local demo](examples/console_demo/README.md) and [frontend](apps/trader-console/README.md)
 
 The [documentation index](docs/README.md) owns cross-package architecture, current product state, environment, complete
 workflows, contributor standards, and history.

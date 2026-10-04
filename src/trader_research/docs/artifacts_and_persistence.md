@@ -13,6 +13,21 @@ adapter live under `infrastructure.postgres.knowledge` and are exposed to compos
 embedding indexes and vectors, ingestion reports, and method-card revisions. None of those tables or adapters belongs
 to the core `trader` event store.
 
+## Record anatomy and lifecycle
+
+An artifact record answers four questions before another context consumes it:
+
+| Field group | Purpose |
+| --- | --- |
+| type, ID, schema version | identifies the contract and exact revision |
+| domain owner, producer tool, requester, actor | records authority and provenance separately |
+| status, timestamps, operation identity | describes lifecycle and recovery state |
+| normalized payload, source hash, scope, lineage | makes the evidence reproducible and comparable |
+
+The normal lifecycle is `prepare -> validate -> persist -> read and revalidate`. The application service owns the
+deterministic preparation and validation rules; the concrete store owns durable persistence and transaction behavior.
+Consumers do not treat a successful write response as a substitute for re-reading the accepted canonical record.
+
 ## Trust model
 
 An `ArtifactReference` is a pointer, not evidence by itself. At a trust transition, load the canonical record through

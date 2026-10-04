@@ -175,6 +175,7 @@ class DuckDBEventStore(EventStore):
                 name="signal_events",
                 create_sql="""
                 CREATE TABLE IF NOT EXISTS signal_events (
+                    signal_event_id TEXT,
                     run_id TEXT,
                     session_id TEXT,
                     cycle_id TEXT,
@@ -236,6 +237,7 @@ class DuckDBEventStore(EventStore):
                 CREATE TABLE IF NOT EXISTS order_events (
                     order_event_id TEXT PRIMARY KEY,
                     client_order_id TEXT,
+                    signal_event_id TEXT,
                     run_id TEXT,
                     session_id TEXT,
                     cycle_id TEXT,
@@ -255,6 +257,7 @@ class DuckDBEventStore(EventStore):
                 name="fill_events",
                 create_sql="""
                 CREATE TABLE IF NOT EXISTS fill_events (
+                    fill_event_id TEXT,
                     client_order_id TEXT,
                     run_id TEXT,
                     session_id TEXT,
@@ -265,6 +268,44 @@ class DuckDBEventStore(EventStore):
                     slippage_amount DOUBLE,
                     fee_amount DOUBLE,
                     fill_price DOUBLE
+                )
+                """,
+            ),
+            SchemaTable(
+                name="risk_compositions",
+                create_sql="""
+                CREATE TABLE IF NOT EXISTS risk_compositions (
+                    risk_composition_record_id TEXT PRIMARY KEY,
+                    run_id TEXT,
+                    session_id TEXT,
+                    catalogue_version TEXT,
+                    composition_fingerprint TEXT,
+                    manager_count INTEGER,
+                    managers TEXT,
+                    created_at TIMESTAMP
+                )
+                """,
+            ),
+            SchemaTable(
+                name="risk_decisions",
+                create_sql="""
+                CREATE TABLE IF NOT EXISTS risk_decisions (
+                    risk_decision_id TEXT PRIMARY KEY,
+                    composition_fingerprint TEXT,
+                    run_id TEXT,
+                    session_id TEXT,
+                    cycle_id TEXT,
+                    client_order_id TEXT,
+                    decision_ts TIMESTAMP,
+                    manager_id TEXT,
+                    manager_type TEXT,
+                    manager_position INTEGER,
+                    outcome TEXT,
+                    reason_code TEXT,
+                    before_qty DOUBLE,
+                    after_qty DOUBLE,
+                    before_order TEXT,
+                    after_order TEXT
                 )
                 """,
             ),
@@ -363,12 +404,16 @@ class DuckDBEventStore(EventStore):
             "trading_sessions",
             "experiments",
             "experiment_runs",
+            "risk_compositions",
+            "risk_decisions",
         }:
             raise ValueError(f"Unknown event type: {event_type}")
 
         columns = ", ".join(payload.keys())
         placeholders = ", ".join(["?"] * len(payload))
-        insert = "INSERT OR IGNORE" if event_type in {"stock_bar_events", "crypto_bar_events"} else "INSERT"
+        insert = "INSERT OR IGNORE" if event_type in {
+            "stock_bar_events", "crypto_bar_events", "risk_compositions", "risk_decisions"
+        } else "INSERT"
         sql = f"{insert} INTO {event_type} ({columns}) VALUES ({placeholders})"
         self._connection.execute(sql, list(payload.values()))
 

@@ -19,8 +19,13 @@ def _allowed_cycle_event_types(config: Config) -> set[str]:
         allowed.add("signal_events")
     if config.log_indicator_events:
         allowed.add("indicator_events")
+    # Keep the composition snapshot even when detailed order events are disabled:
+    # a zero-trade or no-signal run still needs to explain which risk profile was
+    # configured. Per-order decisions remain coupled to order-event persistence.
+    allowed.add("risk_compositions")
     if config.log_order_events:
         allowed.add("order_events")
+        allowed.add("risk_decisions")
     if config.log_fill_events:
         allowed.add("fill_events")
     if config.log_position_snapshots:

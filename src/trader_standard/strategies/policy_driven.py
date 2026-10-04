@@ -10,6 +10,8 @@ import math
 from typing import AsyncIterator, Mapping, Sequence
 
 from trader.event_store import EventStore
+from trader.identifiers import deterministic_signal_event_id
+from trader.market_data import RecentBarReader
 from trader.portfolio import Portfolio, Position
 from trader.signals import Signal
 from trader.strategies import Strategy
@@ -276,6 +278,11 @@ class LongFlatSignalStrategy(Strategy):
         return self._strategy_id
 
     @property
+    def required_lookback(self) -> int:
+        """Return the largest signal window needed for warmup bars."""
+        return max(signal.window for signal in self._signals)
+
+    @property
     def strategy_info(self) -> StrategyInfo:
         """Return structured strategy metadata for research runs and artifact export payloads."""
         return StrategyInfo(
@@ -310,6 +317,45 @@ class LongFlatSignalStrategy(Strategy):
         portfolio state, computed signals, and stop/exit/entry policies. Only
         required buy or flattening market orders are emitted.
         """
+        return self._generate_orders(
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            event_store=event_store,
+            portfolio=portfolio,
+            recent_bar_reader=None,
+        )
+
+    def generate_orders_with_recent_bar_reader(
+        self,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Sequence[Mapping[str, object]]:
+        """Generate policy-driven orders using bounded replay bar reads."""
+        return self._generate_orders(
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            event_store=event_store,
+            portfolio=portfolio,
+            recent_bar_reader=recent_bar_reader,
+        )
+
+    def _generate_orders(
+        self,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Sequence[Mapping[str, object]]:
         logger.info(
             "Generating policy-driven orders strategy=%s run_id=%s symbols=%s",
             self.strategy_id,
@@ -326,6 +372,7 @@ class LongFlatSignalStrategy(Strategy):
                     decision_ts=decision_ts,
                     event_store=event_store,
                     portfolio=portfolio,
+                    recent_bar_reader=recent_bar_reader,
                 )
             )
         logger.info("Policy-driven strategy emitted orders count=%s", len(orders))
@@ -349,6 +396,29 @@ class LongFlatSignalStrategy(Strategy):
             decision_ts=decision_ts,
             event_store=event_store,
             portfolio=portfolio,
+            recent_bar_reader=None,
+        )
+
+    def generate_orders_for_symbol_with_recent_bar_reader(
+        self,
+        symbol: str,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Sequence[Mapping[str, object]]:
+        """Generate one symbol through bounded replay bar reads."""
+        return self._generate_orders_for_symbol(
+            symbol.strip().upper(),
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            event_store=event_store,
+            portfolio=portfolio,
+            recent_bar_reader=recent_bar_reader,
         )
 
     async def order_stream(
@@ -369,6 +439,7 @@ class LongFlatSignalStrategy(Strategy):
                 decision_ts=decision_ts,
                 event_store=event_store,
                 portfolio=portfolio,
+                recent_bar_reader=None,
             ):
                 yield order
 
@@ -381,6 +452,7 @@ class LongFlatSignalStrategy(Strategy):
         decision_ts: datetime,
         event_store: EventStore,
         portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
     ) -> list[Mapping[str, object]]:
         table = table_for_asset_class(self._asset_class)
         max_window = max_window_for_signals(self._signals)
@@ -391,6 +463,7 @@ class LongFlatSignalStrategy(Strategy):
             timeframe=self._timeframe,
             limit=max_window,
             as_of_ts=decision_ts,
+            recent_bar_reader=recent_bar_reader,
         )
         if len(bars) < max_window:
             logger.warning(
@@ -439,14 +512,17 @@ class LongFlatSignalStrategy(Strategy):
                 "order_type": "market",
             }
 
-        _record_signal_event(
+        signal_event_id = _record_signal_event(
             event_store,
             run_id=run_id,
             cycle_id=cycle_id,
             symbol=symbol,
+            signal_name=self._primary_signal,
             signal_value=float(symbol_signals.get(self._primary_signal, 0.0)),
             target_qty=float(order.get("qty", 0.0)) if order else 0.0,
         )
+        if order is not None:
+            order = {**order, "signal_event_id": signal_event_id}
         return [order] if order is not None else []
 
 
@@ -525,6 +601,45 @@ class CrossSectionalMomentumStrategy(Strategy):
         portfolio: Portfolio,
     ) -> Sequence[Mapping[str, object]]:
         """Generate rebalance orders for the top-ranked symbols."""
+        return self._generate_orders(
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            event_store=event_store,
+            portfolio=portfolio,
+            recent_bar_reader=None,
+        )
+
+    def generate_orders_with_recent_bar_reader(
+        self,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Sequence[Mapping[str, object]]:
+        """Generate rankings using bounded replay bar reads."""
+        return self._generate_orders(
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            event_store=event_store,
+            portfolio=portfolio,
+            recent_bar_reader=recent_bar_reader,
+        )
+
+    def _generate_orders(
+        self,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Sequence[Mapping[str, object]]:
         table = table_for_asset_class(self._asset_class)
         scores: list[tuple[float, str, float]] = []
         for symbol in self._symbols:
@@ -535,6 +650,7 @@ class CrossSectionalMomentumStrategy(Strategy):
                 timeframe=self._timeframe,
                 limit=self._lookback_period + 1,
                 as_of_ts=decision_ts,
+                recent_bar_reader=recent_bar_reader,
             )
             if len(bars) < self._lookback_period + 1:
                 logger.warning(
@@ -555,25 +671,27 @@ class CrossSectionalMomentumStrategy(Strategy):
         orders: list[Mapping[str, object]] = []
         for _, symbol, latest_close in ranked:
             position = portfolio.positions.get(symbol, Position(symbol=symbol, qty=0.0, avg_price=None))
+            order: Mapping[str, object] | None = None
             if symbol in selected and position.qty <= 0.0 and self._target_qty_when_long > 0.0:
-                orders.append(
-                    {
-                        "symbol": symbol,
-                        "side": "buy",
-                        "qty": float(self._target_qty_when_long),
-                        "order_type": "market",
-                    }
-                )
+                order = {
+                    "symbol": symbol,
+                    "side": "buy",
+                    "qty": float(self._target_qty_when_long),
+                    "order_type": "market",
+                }
             elif symbol not in selected and position.qty > 0.0:
-                orders.append(_flatten_order(symbol, position.qty))
-            _record_signal_event(
+                order = _flatten_order(symbol, position.qty)
+            signal_event_id = _record_signal_event(
                 event_store,
                 run_id=run_id,
                 cycle_id=cycle_id,
                 symbol=symbol,
+                signal_name="cross_sectional_momentum",
                 signal_value=float(next(score for score, ranked_symbol, _ in ranked if ranked_symbol == symbol)),
                 target_qty=float(self._target_qty_when_long if symbol in selected else 0.0),
             )
+            if order is not None:
+                orders.append({**order, "signal_event_id": signal_event_id})
             del latest_close
         return orders
 
@@ -661,6 +779,45 @@ class PairsMeanReversionStrategy(Strategy):
         portfolio: Portfolio,
     ) -> Sequence[Mapping[str, object]]:
         """Generate pair-entry and pair-exit orders from current spread z-scores."""
+        return self._generate_orders(
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            event_store=event_store,
+            portfolio=portfolio,
+            recent_bar_reader=None,
+        )
+
+    def generate_orders_with_recent_bar_reader(
+        self,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Sequence[Mapping[str, object]]:
+        """Generate pair orders using bounded replay bar reads."""
+        return self._generate_orders(
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            event_store=event_store,
+            portfolio=portfolio,
+            recent_bar_reader=recent_bar_reader,
+        )
+
+    def _generate_orders(
+        self,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Sequence[Mapping[str, object]]:
         table = table_for_asset_class(self._asset_class)
         orders: list[Mapping[str, object]] = []
         for symbol_a, symbol_b in self._pairs:
@@ -670,6 +827,7 @@ class PairsMeanReversionStrategy(Strategy):
                 symbol_a=symbol_a,
                 symbol_b=symbol_b,
                 decision_ts=decision_ts,
+                recent_bar_reader=recent_bar_reader,
             )
             if zscore is None:
                 continue
@@ -677,25 +835,29 @@ class PairsMeanReversionStrategy(Strategy):
             position_a = portfolio.positions.get(symbol_a, Position(symbol=symbol_a, qty=0.0, avg_price=None))
             position_b = portfolio.positions.get(symbol_b, Position(symbol=symbol_b, qty=0.0, avg_price=None))
             target_a, target_b = self._pair_targets(zscore, position_a, position_b)
-            orders.extend(_orders_to_target(position_a, target_a))
-            orders.extend(_orders_to_target(position_b, target_b))
+            orders_a = _orders_to_target(position_a, target_a)
+            orders_b = _orders_to_target(position_b, target_b)
 
-            _record_signal_event(
+            signal_event_id_a = _record_signal_event(
                 event_store,
                 run_id=run_id,
                 cycle_id=cycle_id,
                 symbol=symbol_a,
+                signal_name="pairs_spread_zscore",
                 signal_value=float(zscore),
                 target_qty=target_a,
             )
-            _record_signal_event(
+            signal_event_id_b = _record_signal_event(
                 event_store,
                 run_id=run_id,
                 cycle_id=cycle_id,
                 symbol=symbol_b,
+                signal_name="pairs_spread_zscore",
                 signal_value=float(-zscore),
                 target_qty=target_b,
             )
+            orders.extend({**order, "signal_event_id": signal_event_id_a} for order in orders_a)
+            orders.extend({**order, "signal_event_id": signal_event_id_b} for order in orders_b)
         return orders
 
     def generate_orders_for_symbol(
@@ -709,6 +871,49 @@ class PairsMeanReversionStrategy(Strategy):
         portfolio: Portfolio,
     ) -> Sequence[Mapping[str, object]]:
         """Generate only the requested pair leg for per-symbol cycle execution."""
+        return self._generate_orders_for_symbol(
+            symbol,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            event_store=event_store,
+            portfolio=portfolio,
+            recent_bar_reader=None,
+        )
+
+    def generate_orders_for_symbol_with_recent_bar_reader(
+        self,
+        symbol: str,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Sequence[Mapping[str, object]]:
+        """Generate one pair leg using bounded replay bar reads."""
+        return self._generate_orders_for_symbol(
+            symbol,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            event_store=event_store,
+            portfolio=portfolio,
+            recent_bar_reader=recent_bar_reader,
+        )
+
+    def _generate_orders_for_symbol(
+        self,
+        symbol: str,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Sequence[Mapping[str, object]]:
         requested = symbol.strip().upper()
         table = table_for_asset_class(self._asset_class)
         for symbol_a, symbol_b in self._pairs:
@@ -720,6 +925,7 @@ class PairsMeanReversionStrategy(Strategy):
                 symbol_a=symbol_a,
                 symbol_b=symbol_b,
                 decision_ts=decision_ts,
+                recent_bar_reader=recent_bar_reader,
             )
             if zscore is None:
                 return ()
@@ -727,24 +933,26 @@ class PairsMeanReversionStrategy(Strategy):
             position_b = portfolio.positions.get(symbol_b, Position(symbol=symbol_b, qty=0.0, avg_price=None))
             target_a, target_b = self._pair_targets(zscore, position_a, position_b)
             if requested == symbol_a:
-                _record_signal_event(
+                signal_event_id = _record_signal_event(
                     event_store,
                     run_id=run_id,
                     cycle_id=cycle_id,
                     symbol=symbol_a,
+                    signal_name="pairs_spread_zscore",
                     signal_value=float(zscore),
                     target_qty=target_a,
                 )
-                return tuple(_orders_to_target(position_a, target_a))
-            _record_signal_event(
+                return tuple({**order, "signal_event_id": signal_event_id} for order in _orders_to_target(position_a, target_a))
+            signal_event_id = _record_signal_event(
                 event_store,
                 run_id=run_id,
                 cycle_id=cycle_id,
                 symbol=symbol_b,
+                signal_name="pairs_spread_zscore",
                 signal_value=float(-zscore),
                 target_qty=target_b,
             )
-            return tuple(_orders_to_target(position_b, target_b))
+            return tuple({**order, "signal_event_id": signal_event_id} for order in _orders_to_target(position_b, target_b))
         return ()
 
     def _pair_zscore(
@@ -755,6 +963,7 @@ class PairsMeanReversionStrategy(Strategy):
         symbol_a: str,
         symbol_b: str,
         decision_ts: datetime,
+        recent_bar_reader: RecentBarReader | None,
     ) -> float | None:
         bars_a = fetch_recent_bars(
             event_store,
@@ -763,6 +972,7 @@ class PairsMeanReversionStrategy(Strategy):
             timeframe=self._timeframe,
             limit=self._lookback_period,
             as_of_ts=decision_ts,
+            recent_bar_reader=recent_bar_reader,
         )
         bars_b = fetch_recent_bars(
             event_store,
@@ -771,6 +981,7 @@ class PairsMeanReversionStrategy(Strategy):
             timeframe=self._timeframe,
             limit=self._lookback_period,
             as_of_ts=decision_ts,
+            recent_bar_reader=recent_bar_reader,
         )
         if len(bars_a) < self._lookback_period or len(bars_b) < self._lookback_period:
             logger.warning(
@@ -1089,18 +1300,28 @@ def _record_signal_event(
     run_id: str,
     cycle_id: str,
     symbol: str,
+    signal_name: str,
     signal_value: float,
     target_qty: float,
-) -> None:
+) -> str:
+    signal_event_id = deterministic_signal_event_id(
+        run_id,
+        cycle_id,
+        symbol,
+        signal_name,
+    )
     event_store.record_event(
         "signal_events",
         {
+            "signal_event_id": signal_event_id,
             "run_id": run_id,
             "session_id": run_id,
             "cycle_id": cycle_id,
             "symbol": symbol,
+            "signal_name": signal_name,
             "signal_value": float(signal_value),
             "target_qty": float(target_qty),
             "generated_at": datetime.now(timezone.utc),
         },
     )
+    return signal_event_id

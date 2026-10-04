@@ -46,7 +46,7 @@ OWNER_CONTEXTS = {
             "runtime",
         }
     ),
-    "trader_standard": frozenset({"predictions", "risk", "strategies"}),
+    "trader_standard": frozenset({"catalogue", "predictions", "risk", "strategies"}),
     "trader_research": frozenset(
         {
             "coding",

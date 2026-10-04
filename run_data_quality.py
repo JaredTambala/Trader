@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 from trader.config import load_yaml_config, resolve_log_level
 from trader.market_data.quality import run_data_quality, write_data_quality_report
-from trader_research.contracts import SideEffect, envelope_json, success_envelope
+from trader_mcp.protocol.contracts import SideEffect, envelope_json, success_envelope
 
 
 logger = logging.getLogger(__name__)

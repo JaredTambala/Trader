@@ -1,0 +1,82 @@
+# Reproducible BTC/USD 1-minute Bollinger Band backtest.
+# The window is explicit and matches the loaded local crypto-bar coverage.
+runtime:
+  mode: backtest
+
+logging:
+  level: INFO
+  persist:
+    signals: true
+    indicators: true
+    orders: true
+    fills: true
+    positions: true
+
+strategy:
+  id: bollinger_band
+  type: library
+  timeframe: 1Min
+  bollinger_band:
+    period: 20
+    stddev_multiplier: 2.0
+    target_qty_when_long: 0.001
+
+risk: {}
+
+broker:
+  type: internal
+  time_in_force: day
+  internal:
+    rng_seed: 241
+    reject_probability: 0.0
+
+market_data:
+  source: alpaca
+  asset_class: crypto
+  symbols:
+    - BTC/USD
+  max_age_seconds: 300
+
+database:
+  event_store: postgres
+  pg:
+    host: ${PG_HOST}
+    port: 5432
+    db: ${PG_DB}
+    user: ${PG_USER}
+    password: ${PG_PASSWORD}
+  buffering:
+    enabled: false
+    flush_interval_ms: 1000
+    max_batch_size: 5000
+    max_queue_size: 50000
+    block_on_full: true
+
+backtest:
+  start: "2026-06-21T00:00:00Z"
+  end: "2026-09-21T21:25:00Z"
+  timeframe: 1Min
+  symbols:
+    - BTC/USD
+  asset_class: crypto
+  max_runs: null
+  log_cycle_details: false
+  initial_cash: 100000.0
+  initial_positions: []
+  assumptions:
+    fill_model: full_fill
+    latency_ms: 0
+    fees:
+      fixed_per_order: 0.0
+      bps: 10.0
+      minimum_fee: 0.0
+    slippage:
+      bps: 2.0
+    data:
+      allow_latest_prior_bar: true
+      allow_price_carry_forward: true
+
+metrics:
+  enable_snapshots: true
+  interval_seconds: 0
+  window_seconds: null

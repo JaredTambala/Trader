@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 import json
 from typing import Mapping, Sequence
 
-from ..identifiers import deterministic_client_order_id
+from ..identifiers import deterministic_client_order_id, deterministic_fill_event_id
 
 
 @dataclass(frozen=True)
@@ -63,6 +63,7 @@ class CycleOrderEventPayload:
 
     order_event_id: str
     client_order_id: object | None
+    signal_event_id: object | None
     run_id: object | None
     session_id: object | None
     cycle_id: object | None
@@ -81,6 +82,7 @@ class CycleOrderEventPayload:
         return {
             "order_event_id": self.order_event_id,
             "client_order_id": self.client_order_id,
+            "signal_event_id": self.signal_event_id,
             "run_id": self.run_id,
             "session_id": self.session_id,
             "cycle_id": self.cycle_id,
@@ -100,6 +102,7 @@ class CycleOrderEventPayload:
 class CycleFillEventPayload:
     """Immutable fill event prepared from a broker response."""
 
+    fill_event_id: str | None
     client_order_id: object | None
     run_id: object | None
     session_id: object | None
@@ -114,6 +117,7 @@ class CycleFillEventPayload:
     def to_record(self) -> dict[str, object]:
         """Return an event-store-compatible fill event mapping."""
         return {
+            "fill_event_id": self.fill_event_id,
             "client_order_id": self.client_order_id,
             "run_id": self.run_id,
             "session_id": self.session_id,
@@ -312,6 +316,7 @@ def build_order_lifecycle_event_payload(
     return CycleOrderEventPayload(
         order_event_id=order_event_id,
         client_order_id=order.get("client_order_id"),
+        signal_event_id=order.get("signal_event_id"),
         run_id=order.get("run_id"),
         session_id=order.get("session_id") or order.get("run_id"),
         cycle_id=order.get("cycle_id"),
@@ -336,6 +341,7 @@ def build_broker_fill_event_payload(
     response: Mapping[str, object],
     *,
     fill_ts: datetime,
+    fill_event_id: str | None = None,
 ) -> CycleFillEventPayload | None:
     """Build a deterministic fill event payload from a broker response.
 
@@ -353,8 +359,18 @@ def build_broker_fill_event_payload(
     fill_price = response.get("fill_price", order.get("price"))
     if fill_qty is None or fill_price is None:
         return None
+    client_order_id = response.get("client_order_id") or order.get("client_order_id")
+    resolved_fill_event_id = fill_event_id or str(response.get("fill_event_id") or "") or None
+    if not resolved_fill_event_id and client_order_id is not None:
+        resolved_fill_event_id = deterministic_fill_event_id(
+            str(client_order_id),
+            fill_ts,
+            fill_qty,
+            fill_price,
+        )
     return CycleFillEventPayload(
-        client_order_id=response.get("client_order_id"),
+        fill_event_id=resolved_fill_event_id,
+        client_order_id=client_order_id,
         run_id=order.get("run_id"),
         session_id=order.get("session_id") or order.get("run_id"),
         cycle_id=order.get("cycle_id"),
@@ -373,6 +389,7 @@ def build_broker_response_recording_plan(
     *,
     terminal_ts: datetime,
     order_event_id: str,
+    fill_event_id: str | None = None,
 ) -> CycleBrokerResponseRecordingPlan:
     """Build the order and fill records implied by one broker response.
 
@@ -403,6 +420,7 @@ def build_broker_response_recording_plan(
             order,
             response,
             fill_ts=terminal_ts,
+            fill_event_id=fill_event_id,
         )
         missing_fill_evidence = fill_event is None
     return CycleBrokerResponseRecordingPlan(

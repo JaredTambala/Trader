@@ -29,6 +29,8 @@ def test_allowed_cycle_event_types_respects_logging_flags(tmp_path) -> None:
         "signal_events",
         "indicator_events",
         "prediction_events",
+        "risk_compositions",
+        "risk_decisions",
         "order_events",
         "fill_events",
         "position_snapshots",
@@ -50,6 +52,7 @@ def test_allowed_cycle_event_types_respects_logging_flags(tmp_path) -> None:
         "crypto_bar_events",
         "config_kv",
         "prediction_events",
+        "risk_compositions",
     }
 
 

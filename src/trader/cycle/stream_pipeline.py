@@ -10,7 +10,7 @@ from typing import AsyncIterator, Mapping, Sequence
 from ..broker import Broker
 from ..config import Config
 from ..event_store import EventStore
-from ..market_data import MarketDataEvent
+from ..market_data import MarketDataEvent, RecentBarReader
 from ..portfolio import Portfolio
 from ..risk import RiskManager
 from ..strategies import Strategy
@@ -18,7 +18,7 @@ from . import state as cycle_state
 from .broker_state import _build_cycle_broker_response_plan
 from .orders import _attach_order_metadata
 from .portfolio_state import _sync_portfolio_for_broker_response
-from .recording import _record_broker_responses, _record_order_events
+from .recording import _record_broker_responses, _record_order_events, _record_risk_decisions
 from .risk import _build_cycle_risk_context, _evaluate_cycle_order_risk
 from .stream import (
     CycleStreamRuntime,
@@ -82,6 +82,7 @@ def _run_market_event_stream_pipeline(
     sync_portfolio_on_fill: bool,
     broker_kind: str,
     risk_manager: RiskManager,
+    recent_bar_reader: RecentBarReader | None,
 ) -> tuple[Sequence[Mapping[str, object]], Mapping[str, float]]:
     """Run a market-event stream through strategy, risk, and broker stages."""
     return asyncio.run(
@@ -101,6 +102,7 @@ def _run_market_event_stream_pipeline(
             broker_type=broker_kind,
             config=config,
             risk_manager=risk_manager,
+            recent_bar_reader=recent_bar_reader,
         )
     )
 
@@ -150,13 +152,14 @@ async def _generate_stream_orders(
         symbol = plan.symbol
         decision_ts = plan.decision_ts
         state.latest_prices[symbol] = (decision_ts, plan.close_price)
-        async for order in runtime.strategy.order_stream_for_symbol(
+        async for order in runtime.strategy.order_stream_for_symbol_with_recent_bar_reader(
             symbol,
             run_id=runtime.run_id,
             cycle_id=runtime.cycle_id,
             decision_ts=decision_ts,
             event_store=runtime.event_store,
             portfolio=runtime.portfolio,
+            recent_bar_reader=runtime.recent_bar_reader,
         ):
             enriched = _attach_order_metadata(
                 [order],
@@ -218,12 +221,13 @@ async def _generate_universe_snapshot_orders(
     state.latest_prices.update(
         {plan.symbol: (decision_ts, plan.close_price) for plan in plans}
     )
-    async for order in runtime.strategy.order_stream(
+    async for order in runtime.strategy.order_stream_with_recent_bar_reader(
         run_id=runtime.run_id,
         cycle_id=runtime.cycle_id,
         decision_ts=decision_ts,
         event_store=runtime.event_store,
         portfolio=runtime.portfolio,
+        recent_bar_reader=runtime.recent_bar_reader,
     ):
         enriched = _attach_order_metadata(
             [order],
@@ -275,6 +279,7 @@ async def _validate_stream_orders(
             context=context,
             risk_manager=runtime.risk_manager,
         )
+        _record_risk_decisions(runtime.event_store, evaluation.decision_traces)
         for rejection in evaluation.rejection_logs:
             state.counters.orders_rejected_locally += 1
             _log_order_status(
@@ -382,6 +387,7 @@ async def _process_market_stream_async(
     broker_type: str,
     config: Config,
     risk_manager: RiskManager,
+    recent_bar_reader: RecentBarReader | None,
 ) -> tuple[Sequence[Mapping[str, object]], Mapping[str, float]]:
     """Run streaming market events through signal, risk, and broker stages."""
     event_queue: asyncio.Queue[MarketDataEvent | None] = asyncio.Queue()
@@ -402,6 +408,7 @@ async def _process_market_stream_async(
         broker_type=broker_type,
         config=config,
         risk_manager=risk_manager,
+        recent_bar_reader=recent_bar_reader,
     )
     state = _build_cycle_stream_state()
 

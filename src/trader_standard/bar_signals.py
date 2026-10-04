@@ -9,6 +9,8 @@ from typing import Sequence
 
 from trader.event_store import EventStore
 from trader.indicators import IndicatorObservation
+from trader.identifiers import deterministic_signal_event_id
+from trader.market_data import RecentBarReader, RecentBarRequest
 from trader.signals import Bar, Signal
 
 
@@ -39,12 +41,26 @@ def fetch_recent_bars(
     timeframe: str,
     limit: int,
     as_of_ts: datetime | None = None,
+    recent_bar_reader: RecentBarReader | None = None,
 ) -> list[Bar]:
     """Fetch recent OHLCV bars for a symbol/timeframe in latest-first order.
 
     `as_of_ts` bounds historical/backtest reads so signals do not see bars after
     the decision timestamp.
     """
+    if recent_bar_reader is not None:
+        if as_of_ts is None:
+            raise ValueError("recent-bar reader calls require an as_of_ts")
+        asset_class = "crypto" if table == "crypto_bar_events" else "stocks"
+        request = RecentBarRequest(
+            symbol=symbol,
+            asset_class=asset_class,
+            timeframe=timeframe,
+            as_of_ts=as_of_ts,
+            limit=limit,
+        )
+        return list(recent_bar_reader.read(request))
+
     connection = getattr(event_store, "connection", lambda: None)()
     if connection is None:
         return []
@@ -142,7 +158,23 @@ def record_indicator_events(
         )
         return
     for indicator in indicators:
-        indicator_name, value, bar_ts, payload = _normalize_indicator_audit_value(indicator)
+        indicator_name, value, bar_ts, payload_document = _normalize_indicator_audit_value(indicator)
+        metadata = dict(payload_document.get("metadata", {})) if payload_document else {}
+        metadata.setdefault("series_id", indicator_name)
+        metadata.setdefault("series_label", indicator_name)
+        metadata.setdefault("display", _display_metadata(signal, indicator_name, metadata))
+        metadata["signal_name"] = signal.name
+        metadata["signal_event_id"] = deterministic_signal_event_id(run_id, cycle_id, symbol, signal.name)
+        payload = json.dumps(
+            {
+                "indicator_name": indicator_name,
+                "ts": bar_ts,
+                "value": payload_document.get("value") if payload_document else value,
+                "metadata": metadata,
+            },
+            default=str,
+            sort_keys=True,
+        )
         event_store.record_event(
             "indicator_events",
             {
@@ -160,12 +192,38 @@ def record_indicator_events(
 
 def _normalize_indicator_audit_value(
     value: IndicatorObservation | tuple[str, float, datetime],
-) -> tuple[str, float | None, datetime, str | None]:
+) -> tuple[str, float | None, datetime, dict[str, object] | None]:
     if isinstance(value, IndicatorObservation):
-        payload = json.dumps(value.to_payload(), sort_keys=True)
-        return value.indicator_name, value.scalar_value, value.ts, payload
+        return value.indicator_name, value.scalar_value, value.ts, value.to_payload()
     indicator_name, scalar_value, bar_ts = value
-    return indicator_name, float(scalar_value), bar_ts, None
+    return indicator_name, float(scalar_value), bar_ts, {"metadata": {}}
+
+
+def _display_metadata(
+    signal: Signal,
+    indicator_name: str,
+    metadata: dict[str, object],
+) -> dict[str, str]:
+    """Return producer-declared plotting semantics for standard indicators.
+
+    The Console consumes these fields as evidence. It never classifies a series
+    from a display name or recomputes an indicator from the chart bars.
+    """
+    existing = metadata.get("display")
+    if isinstance(existing, dict):
+        return {str(key): str(value) for key, value in existing.items()}
+    base_indicator = str(metadata.get("base_indicator", ""))
+    if base_indicator in {"sma", "ema"} or indicator_name.startswith(("sma_", "ema_")):
+        return {"pane": "price", "scale_group": "price", "unit": "price", "series_kind": "line"}
+    if base_indicator in {"rsi", "momentum"} or indicator_name.startswith(("rsi", "momentum")):
+        return {"pane": "secondary", "scale_group": "momentum", "unit": "index", "series_kind": "line"}
+    if indicator_name.startswith(("bollinger_middle", "bollinger_upper", "bollinger_lower", "bollinger_bwma_middle", "bollinger_bwma_upper", "bollinger_bwma_lower")):
+        return {"pane": "price", "scale_group": "price", "unit": "price", "series_kind": "line"}
+    if "bandwidth" in indicator_name or "volatility" in indicator_name:
+        return {"pane": "secondary", "scale_group": "volatility", "unit": "ratio", "series_kind": "line"}
+    if indicator_name.startswith("macd"):
+        return {"pane": "secondary", "scale_group": "macd", "unit": "value", "series_kind": "bar"}
+    return {"pane": "unknown", "scale_group": "unknown", "unit": "unknown", "series_kind": "line"}
 
 
 def _row_to_bar(row: Sequence[object]) -> Bar:

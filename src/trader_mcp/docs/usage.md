@@ -12,6 +12,15 @@
 bundle. Capability modules must accept the injected port, registry, policy, or factory; they must not import a concrete
 provider to manufacture their own fallback.
 
+The public path is intentionally layered:
+
+| Need | Use | Why |
+| --- | --- | --- |
+| deterministic research behavior | `trader_research` facade | owns validation, artifacts, and domain semantics |
+| tool discovery and policy | `trader_mcp.catalogue` | describes ownership, schemas, gates, and side effects |
+| an MCP call | registered adapter under `trader_mcp.tools` | normalizes JSON and preserves the service result |
+| local process composition | `trader_mcp.runtime` | selects stores, providers, and stdio lifecycle |
+
 ## Server lifecycle
 
 The client owns the subprocess and MCP session. Initialize once, discover tools, make bounded calls, and close the
@@ -22,6 +31,18 @@ The server logs bounded lifecycle events to `stderr`. `TRADER_MCP_LOG_LEVEL` acc
 `TRADER_MCP_LOG_FORMAT` accepts `human` (default) or `json`. `TRADER_MCP_SERVER_ROLE` labels concurrent subprocesses;
 the agent runtime assigns it automatically. Never redirect MCP diagnostic output into protocol `stdout`.
 
+At call time, inspect both layers of failure: an MCP `isError` can report transport or adapter failure, while an
+envelope with `ok=false` reports a structured application failure. A successful envelope can still contain warnings or
+partial evidence that must be handled by the caller.
+
+| Situation | Meaning | Caller action |
+| --- | --- | --- |
+| tool is absent | registration gate or dependency is unavailable | inspect config and stop; do not invent a fallback |
+| `isError=true` | MCP or adapter call failed | preserve the transport error and reconnect or inspect policy |
+| `isError=false`, `ok=false` | service rejected or could not complete the request | inspect structured errors and change the request or reconcile |
+| `ok=true` with warnings | operation completed with declared caveats | carry warnings with the artifact refs and review them |
+| lost mutation response | terminal state is unknown | read by stable identity before retrying |
+
 ## Adding a tool
 
 1. Add deterministic behavior to the owning `trader_research` context.
@@ -30,6 +51,9 @@ the agent runtime assigns it automatically. Never redirect MCP diagnostic output
 4. Update [Tools](tools.md) and [Contracts](contracts.md).
 5. Test direct service behavior, envelope mapping, registration policy, stdio transport, and role allowlists where the
    tool is exposed to an agent.
+
+Keep catalogue, contracts, and package documentation synchronized. A description that promises a capability the policy
+cannot register is a documentation bug as well as a usability bug.
 
 ## Prohibited shortcuts
 
