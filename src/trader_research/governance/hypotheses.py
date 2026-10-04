@@ -40,6 +40,7 @@ from .handoffs import ArtifactReportRef
 RESEARCH_PERSIST_HYPOTHESIS_BRIEF = "research_persist_hypothesis_brief"
 # Keep a descriptive alias for callers that use the create vocabulary.
 RESEARCH_CREATE_HYPOTHESIS_BRIEF = RESEARCH_PERSIST_HYPOTHESIS_BRIEF
+RESEARCH_RESOLVE_HYPOTHESIS_BRIEF_HANDOFF = "research_resolve_hypothesis_brief_handoff"
 HYPOTHESIS_BRIEF_STATUS_VALUES = frozenset({"draft", "proposed", "accepted"})
 HYPOTHESIS_BRIEF_DOWNSTREAM_ROLES = (
     "Data Agent",
@@ -312,7 +313,7 @@ class HypothesisBriefHandoff:
         if self.brief_ref.artifact_type != HYPOTHESIS_CARD:
             raise ValueError("hypothesis brief handoff must reference a hypothesis card")
         _required_text(self.brief_id, "hypothesis handoff brief_id")
-        if self.revision < 1:
+        if isinstance(self.revision, bool) or self.revision < 1:
             raise ValueError("hypothesis handoff revision must be positive")
         expected_id = stable_research_id(
             HYPOTHESIS_CARD,
@@ -322,8 +323,33 @@ class HypothesisBriefHandoff:
             raise ValueError("hypothesis brief handoff identity drift")
         if not self.target_roles:
             raise ValueError("hypothesis brief handoff target_roles are required")
-        if not self.decision_rules:
+        target_roles = tuple(
+            _required_text(str(role), "hypothesis handoff target role")
+            for role in self.target_roles
+        )
+        if len(target_roles) != len(set(target_roles)):
+            raise ValueError("hypothesis brief handoff target_roles must be unique")
+        unsupported_roles = sorted(
+            set(target_roles).difference(HYPOTHESIS_BRIEF_DOWNSTREAM_ROLES)
+        )
+        if unsupported_roles:
+            raise ValueError(
+                "hypothesis brief handoff target_roles contain unsupported roles: "
+                + ", ".join(unsupported_roles)
+            )
+        object.__setattr__(self, "target_roles", target_roles)
+        normalized_rules = _normalized_decision_rules(self.decision_rules)
+        if not normalized_rules:
             raise ValueError("hypothesis brief handoff decision_rules are required")
+        object.__setattr__(self, "decision_rules", normalized_rules)
+        metadata = self.brief_ref.metadata
+        payload_hash = metadata.get("payload_sha256")
+        if not isinstance(payload_hash, str) or len(payload_hash) != 64:
+            raise ValueError("hypothesis brief handoff payload_sha256 is required")
+        if metadata.get("brief_id") != self.brief_id:
+            raise ValueError("hypothesis brief handoff metadata brief_id drift")
+        if metadata.get("revision") != self.revision:
+            raise ValueError("hypothesis brief handoff metadata revision drift")
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the bounded reference and decision continuity."""
@@ -423,6 +449,75 @@ def create_hypothesis_brief(
         artifact_store=artifact_store,
         requested_by=requested_by,
         actor=actor,
+    )
+
+
+def resolve_hypothesis_brief_handoff(
+    *,
+    handoff: HypothesisBriefHandoff | Mapping[str, Any],
+    recipient: str,
+    artifact_store: ResearchArtifactStore | None,
+) -> ApplicationResult:
+    """Resolve a digest-pinned brief for one authorized downstream recipient.
+
+    The handoff is deliberately only a reference.  A recipient must be named
+    in ``target_roles`` and the canonical artifact is re-read from the store;
+    the reference's payload digest then protects the recipient from consuming
+    a replaced or stale brief.  This is the executable boundary used by Data,
+    Strategy Engineering, and Evaluation before they construct downstream
+    artifacts.
+    """
+    command = RESEARCH_RESOLVE_HYPOTHESIS_BRIEF_HANDOFF
+    if artifact_store is None:
+        return error_result(
+            command=command,
+            code="research_artifact_store_required",
+            message="A ResearchArtifactStore is required.",
+        )
+    try:
+        parsed = (
+            handoff
+            if isinstance(handoff, HypothesisBriefHandoff)
+            else HypothesisBriefHandoff.from_dict(handoff)
+        )
+        recipient_name = _required_text(recipient, "hypothesis handoff recipient")
+        if recipient_name not in parsed.target_roles:
+            raise ValueError(
+                f"hypothesis handoff recipient is not authorized: {recipient_name}"
+            )
+        expected_hash = str(parsed.brief_ref.metadata.get("payload_sha256") or "")
+        if not expected_hash:
+            raise ValueError("hypothesis handoff payload_sha256 is required")
+        record = artifact_store.load_artifact_record(
+            parsed.brief_ref.artifact_type,
+            parsed.brief_ref.artifact_id,
+        )
+        if record.artifact_type != HYPOTHESIS_CARD:
+            raise ValueError("hypothesis handoff resolved an unexpected artifact type")
+        if record.domain_owner != DOMAIN_OWNER_BY_ARTIFACT_TYPE[HYPOTHESIS_CARD]:
+            raise ValueError("hypothesis handoff resolved an unauthorized artifact owner")
+        actual_hash = json_payload_hash(record.payload)
+        if actual_hash != expected_hash:
+            raise ValueError("hypothesis handoff payload digest does not match canonical artifact")
+        brief = HypothesisBrief.from_dict(record.payload)
+        if brief.brief_id != parsed.brief_id or brief.revision != parsed.revision:
+            raise ValueError("hypothesis handoff resolved brief identity drift")
+        if dict(parsed.decision_rules) != dict(brief.decision_rules):
+            raise ValueError("hypothesis handoff decision rules drift from canonical brief")
+    except (ValueError, ResearchArtifactStoreError) as exc:
+        return error_result(
+            command=command,
+            code="hypothesis_brief_handoff_resolution_failed",
+            message=str(exc),
+        )
+    return success_result(
+        command=command,
+        data={
+            "hypothesis_brief": brief.to_dict(),
+            "recipient": recipient_name,
+            "downstream_handoff": parsed.to_dict(),
+        },
+        artifacts={"hypothesis_card": record.reference().to_dict()},
     )
 
 
@@ -577,6 +672,18 @@ def _string_mapping(value: object, label: str) -> dict[str, str]:
     if not isinstance(value, Mapping):
         raise ValueError(f"{label} must be a mapping")
     return {str(key): str(item) for key, item in value.items()}
+
+
+def _normalized_decision_rules(value: object) -> dict[str, str]:
+    """Normalize and validate outcome rules carried by a downstream handoff."""
+    rules = _string_mapping(value, "hypothesis handoff decision_rules")
+    return {
+        _required_text(outcome, "hypothesis handoff decision outcome"): _required_text(
+            decision,
+            "hypothesis handoff decision rule",
+        )
+        for outcome, decision in rules.items()
+    }
 
 
 def _mapping(value: object) -> Mapping[str, Any]:

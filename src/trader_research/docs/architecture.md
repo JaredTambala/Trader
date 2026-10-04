@@ -164,7 +164,9 @@ The canonical proposal remains immutable while material assumptions are decided 
 mechanism, falsifier, intended scope, expected evidence, assumptions, and outcome-to-decision rules.
 `persist_hypothesis_brief` writes one immutable `hypothesis_card` revision through the artifact store, rejects scope
 contradictions and unauthorized actors, and returns a digest-pinned handoff reference for Data, Strategy Engineering,
-and Evaluation. A later revision must name the immediately preceding persisted revision; exact retries are idempotent.
+and Evaluation. `resolve_hypothesis_brief_handoff` is the downstream read boundary: it re-reads the canonical
+revision, verifies the payload digest and decision-rule projection, and accepts only the registered target roles. A
+later revision must name the immediately preceding persisted revision; exact retries are idempotent.
 Robustness findings feed Evaluation rather than being overwritten by the coordinator.
 Backtest execution, optimisation scheduling, and risk evaluation do not become agents merely because the coordinator
 invokes them. Deterministic services own those mechanics; Strategy Engineering is a bounded specialist because it must

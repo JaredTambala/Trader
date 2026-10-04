@@ -56,7 +56,10 @@ question, mechanism, falsifier, intended universe/timeframe, expected evidence, 
 rules. `persist_hypothesis_brief` stores one immutable `hypothesis_card` revision through the injected artifact store
 and returns a digest-pinned `HypothesisBriefHandoff` for Data, Strategy Engineering, and Evaluation. Retrying the same
 brief ID and revision is idempotent; changing that payload or skipping the immediately preceding revision fails closed.
-The service does not expose a Console or MCP mutation and does not grant approval or execution authority.
+Before constructing a downstream request, the recipient calls `resolve_hypothesis_brief_handoff` with its registered
+role. Resolution re-reads the canonical artifact, checks the payload digest and decision-rule projection, and rejects
+unknown recipients or stale references. The service does not expose a Console or MCP mutation and does not grant
+approval or execution authority.
 
 ## Persistence choices
 

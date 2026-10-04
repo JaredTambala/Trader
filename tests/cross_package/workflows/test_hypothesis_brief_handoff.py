@@ -18,6 +18,7 @@ from trader_research.governance import (
     HypothesisBriefHandoff,
     HypothesisScope,
     persist_hypothesis_brief,
+    resolve_hypothesis_brief_handoff,
 )
 
 
@@ -51,6 +52,14 @@ def test_brief_reference_reaches_data_and_strategy_planning() -> None:
     assert result.ok is True
 
     handoff = HypothesisBriefHandoff.from_dict(result.data["downstream_handoff"])
+    resolved = resolve_hypothesis_brief_handoff(
+        handoff=handoff,
+        recipient="Data Agent",
+        artifact_store=store,
+    )
+    assert resolved.ok is True
+    resolved_brief = HypothesisBrief.from_dict(resolved.data["hypothesis_brief"])
+    assert resolved_brief == brief
     canonical = store.load_artifact_record(
         handoff.brief_ref.artifact_type,
         handoff.brief_ref.artifact_id,
