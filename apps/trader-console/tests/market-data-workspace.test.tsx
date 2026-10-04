@@ -73,6 +73,30 @@ describe("market data exploration workflow", () => {
     expect(screen.getByText("No stored dataset slices are available for this Console scope.")).toBeVisible();
   });
 
+  it("keeps complete catalogue and load capability as separate visible states", async () => {
+    vi.mocked(loadMarketDatasets).mockResolvedValue({
+      items: [dataset],
+      page: { limit: 500, offset: 0, total: 1, has_more: false },
+      discovery: {
+        provider: "alpaca",
+        catalogue_completeness: "complete",
+        catalogue_freshness: "fresh",
+        can_discover: true,
+        can_load: true,
+        load_capability: "load_capable",
+        reason: "Provider receipt covers the requested scope.",
+      },
+    });
+
+    render(<MarketDataWorkspace />);
+
+    expect(await screen.findByText("Catalogue: complete")).toBeVisible();
+    expect(screen.getByText("Freshness: fresh")).toBeVisible();
+    expect(screen.getByText("Discovery: available")).toBeVisible();
+    expect(screen.getByText("Loading: capable")).toBeVisible();
+    expect(screen.getByText("Provider receipt covers the requested scope.")).toBeVisible();
+  });
+
   it("applies a range and retries a failed bars request", async () => {
     vi.mocked(loadMarketBars).mockRejectedValueOnce(new Error("Console database is unavailable")).mockResolvedValueOnce(bars);
     const user = userEvent.setup();
