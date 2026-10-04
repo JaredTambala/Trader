@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import math
-from typing import Mapping
+from typing import Literal, Mapping, cast
 
 from trader_standard.catalogue import (
     Catalogue,
@@ -33,6 +33,7 @@ from ..repositories.resources import ConsoleResourceRepository
 
 
 CatalogueDatabaseUnavailable = ConsoleDatabaseUnavailable
+AssetClass = Literal["stock", "crypto"]
 
 
 class CatalogueService:
@@ -73,7 +74,7 @@ class PreflightService:
         """Return normalized definition, coverage, and field-level issues."""
         issues: list[PreflightIssue] = []
         normalized_symbols: tuple[str, ...] | None = None
-        asset_class: str | None = None
+        asset_class: AssetClass | None = None
         timeframe: str | None = None
         start: datetime | None = None
         end: datetime | None = None
@@ -87,7 +88,7 @@ class PreflightService:
         except CatalogueValidationError as exc:
             issues.append(_error("symbols", "invalid_symbols", str(exc)))
         try:
-            asset_class = normalize_asset_class(request.asset_class)
+            asset_class = cast(AssetClass, normalize_asset_class(request.asset_class))
         except CatalogueValidationError as exc:
             issues.append(_error("asset_class", "unsupported_asset_class", str(exc)))
         try:
@@ -219,7 +220,9 @@ class PreflightService:
                 first_ts = _as_utc(row.get("first_ts"))
                 last_ts = _as_utc(row.get("last_ts"))
                 available = first_ts is not None and last_ts is not None and last_ts >= start
-                warmup_satisfied = available and first_ts <= required_start
+                warmup_satisfied = (
+                    available and first_ts is not None and first_ts <= required_start
+                )
                 coverage.append(
                     BacktestCoverageCheck(
                         symbol=str(row["symbol"]),
@@ -290,7 +293,10 @@ def _lookback_bars(profile: ProfileDefinition | None, parameters: Mapping[str, o
     if profile is None:
         return 0
     if profile.profile_id == "bollinger_band":
-        return int(parameters.get("period", profile.lookback_bars - 1)) + 1
+        period = parameters.get("period", profile.lookback_bars - 1)
+        if isinstance(period, (int, float, str, bytes, bytearray)):
+            return int(period) + 1
+        return profile.lookback_bars
     return profile.lookback_bars
 
 

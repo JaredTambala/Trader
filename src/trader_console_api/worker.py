@@ -104,7 +104,7 @@ class BacktestExecutionWorker:
                     run_id=None,
                     processed_cycles=0,
                     total_cycles=None,
-                    warning_summary=(),
+                    warning_summary=[],
                     error_code="definition_revision_missing",
                     error_message="The immutable definition revision is unavailable",
                 )
