@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import argparse
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, TypedDict
 
 from mcp.server.fastmcp import FastMCP
@@ -1524,9 +1526,21 @@ def _parse_iso_datetime(value: str, *, field_name: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
-def main() -> None:
-    """Run the MCP server with protocol-safe stderr lifecycle logging."""
-    local_env = load_local_environment()
+def main(argv: Sequence[str] | None = None) -> None:
+    """Run the MCP server with protocol-safe stderr lifecycle logging.
+
+    Args:
+        argv: Optional command-line arguments. When omitted, arguments are read
+            from ``sys.argv`` by :mod:`argparse`.
+    """
+    parser = argparse.ArgumentParser(description="Run the Trader MCP stdio server")
+    parser.add_argument(
+        "--env-path",
+        type=Path,
+        help="Path to the MCP dotenv file (defaults to repository local.env).",
+    )
+    args = parser.parse_args(argv)
+    local_env = load_local_environment(args.env_path)
     console = McpConsoleLogger(mcp_console_config())
     console.info(
         "trader.mcp.server.started",

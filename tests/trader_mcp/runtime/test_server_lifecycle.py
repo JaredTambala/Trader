@@ -211,7 +211,7 @@ def test_stdio_server_lists_and_calls_health_tool() -> None:
         env["PYTHONPATH"] = f"{src_path}{os.pathsep}{env.get('PYTHONPATH', '')}"
         server_params = StdioServerParameters(
             command=sys.executable,
-            args=["-m", "trader_mcp.runtime.server"],
+            args=["-m", "trader_mcp.runtime.server", "--env-path", "env.template"],
             cwd=Path(__file__).resolve().parents[3],
             env=env,
         )
