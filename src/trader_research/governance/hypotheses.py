@@ -197,7 +197,10 @@ class HypothesisBrief:
         _required_text(self.risk_intent, "hypothesis risk_intent")
         excluded_symbols = set(self.scope.excluded_symbols)
         for requirement in data_requirements:
-            overlap = sorted(excluded_symbols.intersection(requirement.symbols))
+            requirement_symbols = {
+                str(symbol).strip().upper() for symbol in requirement.symbols
+            }
+            overlap = sorted(excluded_symbols.intersection(requirement_symbols))
             if overlap:
                 raise ValueError(
                     "hypothesis data requirement contradicts excluded scope symbols: "
@@ -678,6 +681,8 @@ def _ordered_timestamps(start: str, end: str) -> None:
 
 def _normalize_symbols(value: Sequence[str], label: str) -> tuple[str, ...]:
     symbols = _text_sequence(value, label)
+    for symbol in symbols:
+        _required_text(symbol, label)
     normalized = tuple(dict.fromkeys(item.upper() for item in symbols))
     return normalized
 
@@ -689,13 +694,23 @@ def _normalize_data_requirements(value: object) -> tuple[DataRequirement, ...]:
     requirements: list[DataRequirement] = []
     for item in value:
         if isinstance(item, DataRequirement):
-            requirements.append(item)
+            requirement = item
         elif isinstance(item, Mapping):
-            requirements.append(DataRequirement.from_dict(item))
+            requirement = DataRequirement.from_dict(item)
         else:
             raise ValueError(
                 "hypothesis data_requirements entries must be DataRequirement mappings"
             )
+        for symbol in requirement.symbols:
+            _required_text(symbol, "hypothesis data requirement symbol")
+        _required_text(requirement.asset_class, "hypothesis data requirement asset_class")
+        _required_text(requirement.timeframe, "hypothesis data requirement timeframe")
+        _required_text(requirement.start, "hypothesis data requirement start")
+        _required_text(requirement.end, "hypothesis data requirement end")
+        _ordered_timestamps(requirement.start, requirement.end)
+        if requirement.source is not None:
+            _required_text(requirement.source, "hypothesis data requirement source")
+        requirements.append(requirement)
     return tuple(requirements)
 
 

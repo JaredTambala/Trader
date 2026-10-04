@@ -142,7 +142,7 @@ def test_data_requirement_cannot_include_an_excluded_scope_symbol() -> None:
             _brief(),
             data_requirements=(
                 DataRequirement(
-                    symbols=("AAPL",),
+                    symbols=("aapl",),
                     asset_class="equity",
                     timeframe="1D",
                     start="2024-01-01T00:00:00Z",
