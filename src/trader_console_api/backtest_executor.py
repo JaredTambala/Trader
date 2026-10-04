@@ -8,8 +8,10 @@ not load runtime configuration, construct brokers, or execute producer code.
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import Future
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal, cast
 
 from trader.backtest import BacktestRunner, BacktestSpec
 from trader.backtest.models import (
@@ -20,6 +22,7 @@ from trader.backtest.models import (
 )
 from trader.config import Config
 from trader.portfolio import Position
+from trader.strategies import Strategy
 from trader_standard.catalogue import Catalogue, maintained_catalogue
 
 from .contracts import BacktestDefinition
@@ -68,9 +71,10 @@ class BacktestDefinitionExecutor:
 
         def emit_progress(processed: int, total: int, last_ts: datetime | None) -> None:
             """Bridge the synchronous runner callback to the async worker sink."""
-            future = asyncio.run_coroutine_threadsafe(
-                progress(processed, total, last_ts), loop
-            )
+            async def notify() -> None:
+                await progress(processed, total, last_ts)
+
+            future: Future[None] = asyncio.run_coroutine_threadsafe(notify(), loop)
             future.result()
 
         runner = BacktestRunner(
@@ -81,7 +85,7 @@ class BacktestDefinitionExecutor:
                 timeframe=definition.timeframe,
                 max_runs=definition.resource_limits.max_cycles,
             ),
-            strategy=strategy,
+            strategy=cast(Strategy, strategy),
             risk_manager=risk_manager,
             symbols=definition.symbols,
             asset_class=definition.asset_class,
@@ -92,7 +96,9 @@ class BacktestDefinitionExecutor:
             config_snapshot={"console_definition": definition.model_dump(mode="json")},
         )
         result = await asyncio.to_thread(runner.run, progress_callback=emit_progress)
-        status = "partial" if result.failed_runs else "completed"
+        status: Literal["partial", "completed"] = (
+            "partial" if result.failed_runs else "completed"
+        )
         return ExecutionOutcome(
             status=status,
             processed_cycles=result.total_runs,
