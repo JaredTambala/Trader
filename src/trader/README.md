@@ -17,10 +17,12 @@ The package root exposes the stable, commonly composed contracts:
 
 - configuration: `Config`, `load_yaml_config`, and `build_config`
 - event stores: `EventStore`, `PostgresEventStore`, and `NoOpEventStore`
+- deployment tooling: the explicit `trader-console-read-contract` installer/verifier for the versioned, read-only
+  Console database boundary, plus its non-mutating `status --offline` impact report and connected status check
 - strategies and risk: `Strategy`, `RiskManager`, `RiskPipeline`, and `RiskContext`
-- market data: normalized bar events, sources, ingestion, streaming, backfill, and sample loading
+- market data: normalized bar events, sources, ingestion, streaming, backfill, sample loading, and typed replay reads
 - execution state: `Broker`, portfolio value objects, and deterministic identifiers
-- backtesting: `BacktestRunner`, execution assumptions, results, serialization, and exports
+- backtesting: `BacktestRunner`, execution assumptions, results, serialization, aggregate metrics persistence, and exports
 - prediction integration: provider-neutral feature, predictor, model-identity, adapter-profile, and mapping contracts
   under `trader.predictions`
 - live paper runtime: `TraderService` and explicit operator primitives

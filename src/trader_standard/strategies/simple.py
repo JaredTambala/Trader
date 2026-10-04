@@ -14,6 +14,8 @@ import logging
 from typing import AsyncIterator, Mapping, Sequence
 
 from trader.event_store import EventStore
+from trader.identifiers import deterministic_signal_event_id
+from trader.market_data import RecentBarReader
 from trader.portfolio import Portfolio
 from trader.signal_generators import SignalGenerator
 from trader.strategies import Strategy
@@ -54,16 +56,56 @@ class SimpleStrategy(Strategy):
         telemetry; positive primary signals become buys, negative signals become
         sells, and zero/missing primary signals emit no orders.
         """
+        return self._generate_orders(
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            event_store=event_store,
+            portfolio=portfolio,
+            recent_bar_reader=None,
+        )
+
+    def generate_orders_with_recent_bar_reader(
+        self,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Sequence[Mapping[str, object]]:
+        """Generate orders through the explicit replay bar-reader path."""
+        return self._generate_orders(
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            event_store=event_store,
+            portfolio=portfolio,
+            recent_bar_reader=recent_bar_reader,
+        )
+
+    def _generate_orders(
+        self,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Sequence[Mapping[str, object]]:
         logger.info(
             "Generating orders strategy=%s run_id=%s symbols=%s",
             self.strategy_id,
             run_id,
             ",".join(self.signal_generator.symbols) if hasattr(self.signal_generator, "symbols") else "<unknown>",
         )
-        by_symbol = self.signal_generator.generate(
+        by_symbol = self.signal_generator.generate_with_recent_bar_reader(
             as_of_ts=decision_ts,
             run_id=run_id,
             cycle_id=cycle_id,
+            recent_bar_reader=recent_bar_reader,
         )
         orders = self._orders_from_signals(
             by_symbol,
@@ -90,12 +132,56 @@ class SimpleStrategy(Strategy):
         the strategy falls back to batch generation and filters candidate orders by
         canonical symbol.
         """
+        return self._generate_orders_for_symbol(
+            symbol,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            event_store=event_store,
+            portfolio=portfolio,
+            recent_bar_reader=None,
+        )
+
+    def generate_orders_for_symbol_with_recent_bar_reader(
+        self,
+        symbol: str,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Sequence[Mapping[str, object]]:
+        """Generate one-symbol orders through the explicit replay reader path."""
+        return self._generate_orders_for_symbol(
+            symbol,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            event_store=event_store,
+            portfolio=portfolio,
+            recent_bar_reader=recent_bar_reader,
+        )
+
+    def _generate_orders_for_symbol(
+        self,
+        symbol: str,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Sequence[Mapping[str, object]]:
         if getattr(self.signal_generator, "supports_symbol_generation", False):
-            signals = self.signal_generator.generate_for_symbol(
+            signals = self.signal_generator.generate_for_symbol_with_recent_bar_reader(
                 symbol,
                 as_of_ts=decision_ts,
                 run_id=run_id,
                 cycle_id=cycle_id,
+                recent_bar_reader=recent_bar_reader,
             )
             if not signals:
                 return []
@@ -105,12 +191,13 @@ class SimpleStrategy(Strategy):
                 cycle_id=cycle_id,
                 event_store=event_store,
             )
-        orders = self.generate_orders(
+        orders = self._generate_orders(
             run_id=run_id,
             cycle_id=cycle_id,
             decision_ts=decision_ts,
             event_store=event_store,
             portfolio=portfolio,
+            recent_bar_reader=recent_bar_reader,
         )
         symbol_norm = symbol.strip().upper()
         return [
@@ -194,13 +281,21 @@ class SimpleStrategy(Strategy):
             else:
                 target_qty = 0.0
                 side = None
+            signal_event_id = deterministic_signal_event_id(
+                run_id,
+                cycle_id,
+                symbol,
+                self.primary_signal,
+            )
             event_store.record_event(
                 "signal_events",
                 {
+                    "signal_event_id": signal_event_id,
                     "run_id": run_id,
                     "session_id": run_id,
                     "cycle_id": cycle_id,
                     "symbol": symbol,
+                    "signal_name": self.primary_signal,
                     "signal_value": float(value),
                     "target_qty": float(target_qty),
                     "generated_at": generated_at,
@@ -210,6 +305,7 @@ class SimpleStrategy(Strategy):
                 continue
             orders.append(
                 {
+                    "signal_event_id": signal_event_id,
                     "symbol": symbol,
                     "side": side,
                     "qty": float(target_qty),

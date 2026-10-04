@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import datetime
+import math
 from typing import Any, Sequence
 
 from .models import BacktestResult, TradeRecord
@@ -90,4 +91,6 @@ def _sanitize_value(value: Any) -> Any:
         return [_sanitize_value(v) for v in value]
     if isinstance(value, tuple):
         return [_sanitize_value(v) for v in value]
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
     return value

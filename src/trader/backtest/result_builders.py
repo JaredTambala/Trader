@@ -7,6 +7,7 @@ from typing import Sequence
 
 from .models import (
     BacktestAssumptions,
+    BacktestEvidenceCoverage,
     BacktestResult,
     EquityPoint,
     PerformanceSummary,
@@ -14,6 +15,7 @@ from .models import (
     TradeStats as _TradeStats,
 )
 from .performance import _RelativeMetrics, _empty_performance_summary
+from .review_scope import BacktestReviewScope, BacktestVariant
 
 __all__ = [
     "_build_completed_backtest_result",
@@ -30,6 +32,9 @@ def _build_empty_backtest_result(
     run_id: str,
     timestamp: datetime,
     warning: str,
+    evidence_coverage: BacktestEvidenceCoverage | None = None,
+    review_scope: BacktestReviewScope | None = None,
+    variant: BacktestVariant | None = None,
 ) -> BacktestResult:
     """Build a zero-run backtest result from explicit shell-provided values."""
     empty_summary = _empty_performance_summary()
@@ -66,6 +71,9 @@ def _build_empty_backtest_result(
         equity_curve=tuple(),
         benchmark_curve=tuple(),
         run_id=run_id,
+        evidence_coverage=evidence_coverage,
+        review_scope=review_scope,
+        variant=variant,
     )
 
 
@@ -88,6 +96,9 @@ def _build_completed_backtest_result(
     equity_curve: Sequence[EquityPoint],
     benchmark_curve: Sequence[EquityPoint],
     run_id: str,
+    evidence_coverage: BacktestEvidenceCoverage | None = None,
+    review_scope: BacktestReviewScope | None = None,
+    variant: BacktestVariant | None = None,
 ) -> BacktestResult:
     """Assemble a completed backtest result from explicit summary values."""
     return BacktestResult(
@@ -123,4 +134,7 @@ def _build_completed_backtest_result(
         equity_curve=tuple(equity_curve),
         benchmark_curve=tuple(benchmark_curve),
         run_id=run_id,
+        evidence_coverage=evidence_coverage,
+        review_scope=review_scope,
+        variant=variant,
     )

@@ -29,9 +29,32 @@ while its modules share one responsibility. Empty taxonomic directories are not 
 | `trader_mlflow` | Optional MLflow inference adapter | Depends on `trader` prediction contracts |
 | `trader_mcp` | Protocol, catalogue/policy, capability tools, runtime composition, and observability | Adapts `trader_research`; its named composition root may construct documented providers |
 | `trader_agents` | Contracts/state, model runtime, MCP policy and use, coordination, specialists, checkpointing, observability, and application runtime | Uses platform capabilities through `trader_mcp` |
+| `trader_console_api` | HTTP routers, application services, repositories, API contracts, scope policy, and lifecycle | Router → service → repository; the current health/compatibility slice imports no Trader package, while future capabilities receive operation-specific boundaries |
 
 Names describe enduring responsibilities. Work-item IDs, delivery checkpoints, dates, `new`, `legacy`, `misc`,
 `common`, and undifferentiated `utils` are not bounded contexts.
+
+### Console ownership
+
+`trader_console_api` is a package owner. Its Python tests live under `tests/trader_console_api/` in the `application`,
+`contracts`, `repositories`, `routers`, `scopes`, or `services` context that owns the asserted behavior. The permanent
+repository verifier includes this owner and its closed context vocabulary.
+
+Frontend unit, component, accessibility, and browser tests belong with `apps/trader-console/`. A test belongs under
+`tests/cross_package/workflows/` only when the Python API/frontend seam or a complete multi-process workflow is itself
+the subject. Node 24.20.0 and npm 11.19.0 are pinned by the application, and frontend CI uses its committed
+`package-lock.json` with `npm ci` before lint, type checking, tests, contract-drift verification, and the production
+build.
+
+`trader_console_api` owns Pydantic and OpenAPI contract tests. The frontend owns generation and consumption of the
+TypeScript client. Cross-package tests own only the reproducibility seam between the checked OpenAPI artifact and the
+generated client. Existing `trader.web` backtest tests remain under `tests/trader/backtest/`; no compatibility test or
+shim joins that legacy API to the Console application boundary.
+
+The producer-owned `console_read` view contract remains under `trader` event-store ownership. Its deterministic tests
+live in `tests/trader/event_store/`; its guarded PostgreSQL test uses the standard `PG_TEST_*` owner to prove stable
+relation names, allowlisted projections, compatibility metadata, and rollback. API transaction and future IAM policy
+belong to `trader_console_api` and deployment tests rather than this producer migration.
 
 ## Dependency Direction
 
@@ -46,6 +69,8 @@ trader_standard ------> trader <------ trader_mlflow
                       ^
                       |
                  trader_agents
+
+trader --publishes SQL contract--> console_read <--reads-- trader_console_api
 ```
 
 An outer application composition root may import concrete implementations to construct a process. That exception does
@@ -101,6 +126,8 @@ tests/
     <protocol-or-capability-context>/
   trader_agents/
     <control-responsibility>/
+  trader_console_api/
+    <application|contracts|repositories|routers|scopes|services>/
   cross_package/
     boundaries/
     documentation/
@@ -119,6 +146,7 @@ The approved top-level context vocabulary is:
 | `trader_mlflow` | `inference` |
 | `trader_mcp` | `catalogue_policy`, `observability`, `protocol`, `runtime`, and capability families below `tools/` |
 | `trader_agents` | `application_runtime`, `checkpointing`, `contracts_state`, `coordination`, `mcp`, `model_runtime`, `observability`, `specialists` |
+| `trader_console_api` | `application`, `contracts`, `repositories`, `routers`, `scopes`, `services` |
 | `cross_package` | `boundaries`, `documentation`, `workflows`, `qualification` |
 
 Package-specific helpers and fixture data live below their owning package and context. A support directory may sit
@@ -215,6 +243,13 @@ and distribution contents.
 Generic CI runs `pytest -m 'not postgres'`. Postgres cases require the guarded `PG_TEST_*` identity and are executed
 explicitly against package/workflow paths or through their controlled qualification profile; a convenience CI database
 with legacy `PG_*` variables is not a valid substitute.
+
+The Console demo workflows are an explicit exception to the shared database identity: `CONSOLE_DEMO_TESTS=1` and
+`CONSOLE_BROWSER_TESTS=1` provision a unique Docker Compose project, random loopback port and test-owned volume using
+the demo's fixed local database identity. They never consume `PG_*` or `PG_TEST_*` credentials. Process/database
+orchestration lives under `tests/cross_package/workflows/`; TypeScript unit tests and Playwright browser assertions
+live under `apps/trader-console/tests/`. See the [demo](../examples/console_demo/README.md) and
+[frontend](../apps/trader-console/README.md) for the executable checks and prerequisites.
 
 This architecture governs ownership and verification structure. It does not change product behavior, public APIs, or
 the meaning of test assertions.

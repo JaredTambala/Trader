@@ -16,6 +16,19 @@ caller identity.
 Use the [tool catalogue](tools.md) for the current registered MCP catalog. This file is the detailed contract appendix for
 request fields, envelope shapes, artifact payloads, and validation behavior.
 
+## How to read this contract
+
+Start with the [catalogue](tools.md) to confirm that a tool is registered, then use this page to answer four questions:
+
+1. What request identity, scope, and approval does the tool require?
+2. Which side effect and domain owner does the call declare?
+3. Which canonical artifact or bounded result does it return?
+4. What must a caller re-read, reconcile, or treat as a blocker before continuing?
+
+The sections below describe transport-level guarantees first and capability-specific payloads second. A contract can be
+implemented in the deterministic research package while remaining unavailable from a particular server process because
+its environment gate or dependency is not admitted.
+
 ## Functional Status Boundary
 
 Only tools listed as registered in the [tool catalogue](tools.md) and returned by `mcp_get_config` are callable. The

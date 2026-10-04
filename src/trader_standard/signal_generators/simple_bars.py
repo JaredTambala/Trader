@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Iterable, Mapping, Sequence
 
 from trader.event_store import EventStore
+from trader.market_data import RecentBarReader
 from trader.signals import Bar, Signal
 from trader.signal_generators import SignalGenerator
 
@@ -74,6 +75,37 @@ class SimpleBarsSignalGenerator(SignalGenerator):
         insufficient windows are skipped with warnings, and computed signal maps
         include run/cycle IDs for indicator telemetry.
         """
+        return self._generate(
+            as_of_ts=as_of_ts,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            recent_bar_reader=None,
+        )
+
+    def generate_with_recent_bar_reader(
+        self,
+        *,
+        as_of_ts: datetime | None = None,
+        run_id: str | None = None,
+        cycle_id: str | None = None,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Mapping[str, Mapping[str, float]]:
+        """Generate signals from the supplied bounded replay reader."""
+        return self._generate(
+            as_of_ts=as_of_ts,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            recent_bar_reader=recent_bar_reader,
+        )
+
+    def _generate(
+        self,
+        *,
+        as_of_ts: datetime | None,
+        run_id: str | None,
+        cycle_id: str | None,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Mapping[str, Mapping[str, float]]:
         table = table_for_asset_class(self._asset_class)
         max_window = max_window_for_signals(self._signals)
         logger.info(
@@ -93,6 +125,7 @@ class SimpleBarsSignalGenerator(SignalGenerator):
                 self._timeframe,
                 max_window,
                 as_of_ts=as_of_ts,
+                recent_bar_reader=recent_bar_reader,
             )
             logger.debug("Fetched bars symbol=%s count=%s", symbol, len(bars))
             if len(bars) < max_window:
@@ -128,6 +161,41 @@ class SimpleBarsSignalGenerator(SignalGenerator):
         The method uses the same event-store fetch, insufficient-bar warning, and
         telemetry path as batch generation while avoiding unrelated symbols.
         """
+        return self._generate_for_symbol(
+            symbol,
+            as_of_ts=as_of_ts,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            recent_bar_reader=None,
+        )
+
+    def generate_for_symbol_with_recent_bar_reader(
+        self,
+        symbol: str,
+        *,
+        as_of_ts: datetime | None = None,
+        run_id: str | None = None,
+        cycle_id: str | None = None,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Mapping[str, float] | None:
+        """Generate one symbol from the supplied bounded replay reader."""
+        return self._generate_for_symbol(
+            symbol,
+            as_of_ts=as_of_ts,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            recent_bar_reader=recent_bar_reader,
+        )
+
+    def _generate_for_symbol(
+        self,
+        symbol: str,
+        *,
+        as_of_ts: datetime | None,
+        run_id: str | None,
+        cycle_id: str | None,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Mapping[str, float] | None:
         table = table_for_asset_class(self._asset_class)
         max_window = max_window_for_signals(self._signals)
         bars = _fetch_recent_bars(
@@ -137,6 +205,7 @@ class SimpleBarsSignalGenerator(SignalGenerator):
             self._timeframe,
             max_window,
             as_of_ts=as_of_ts,
+            recent_bar_reader=recent_bar_reader,
         )
         logger.debug("Fetched bars symbol=%s count=%s", symbol, len(bars))
         if len(bars) < max_window:
@@ -166,6 +235,7 @@ def _fetch_recent_bars(
     limit: int,
     *,
     as_of_ts: datetime | None = None,
+    recent_bar_reader: RecentBarReader | None = None,
 ) -> list[Bar]:
     """Fetch recent OHLCV bars for a symbol/timeframe (latest first)."""
     return fetch_recent_bars(
@@ -175,4 +245,5 @@ def _fetch_recent_bars(
         timeframe=timeframe,
         limit=limit,
         as_of_ts=as_of_ts,
+        recent_bar_reader=recent_bar_reader,
     )

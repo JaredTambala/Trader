@@ -1109,9 +1109,12 @@ def build_data_ensure_loaded_envelope(
                 allow_data_loading=environment.allow_data_loading,
                 backfill_config_path=environment.trader_config_path,
             ),
+            # Planning is read-only and must not initialize the canonical
+            # artifact store. This keeps dry-run acquisition estimates usable
+            # while an older research_artifacts schema is being reconciled.
             artifact_store=(
                 artifact_store_provider()
-                if artifact_store_provider is not None
+                if artifact_store_provider is not None and not dry_run
                 else None
             ),
         )

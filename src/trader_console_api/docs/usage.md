@@ -1,0 +1,276 @@
+# Trader Console API Usage Reference
+
+## Entry point
+
+`trader-console-api [--host HOST] [--port PORT]` launches Uvicorn with the `create_app` factory. It binds to
+`127.0.0.1:8001` by default. Binding remotely does not add authentication or authorization.
+
+## Required environment
+
+| Variable | Meaning |
+| --- | --- |
+| `TRADER_CONSOLE_DATABASE_URL` | Local DSN baseline consumed by the default pool factory. |
+| `TRADER_CONSOLE_SCOPE_ID` | Stable, server-owned scope identifier. |
+| `TRADER_CONSOLE_SCOPE_ENVIRONMENT` | One of `paper`, `backtest`, or `synthetic_demo`. |
+
+Optional values are `TRADER_CONSOLE_SCOPE_DISPLAY_NAME`, `TRADER_CONSOLE_BROKER_ACCOUNT_DISPLAY_LABEL`, and
+`TRADER_CONSOLE_PRESENTATION_TIMEZONE`. The brokerage label applies only to paper scopes and is safe display text, not
+a provider account reference.
+
+Pool and query bounds may be adjusted server-side with:
+
+| Variable | Default | Accepted bound |
+| --- | ---: | ---: |
+| `TRADER_CONSOLE_POOL_MIN_SIZE` | 1 | 1–16 |
+| `TRADER_CONSOLE_POOL_MAX_SIZE` | 4 | 1–32 and not below the minimum |
+| `TRADER_CONSOLE_POOL_TIMEOUT_SECONDS` | 3 | greater than 0, at most 60 |
+| `TRADER_CONSOLE_POOL_OPEN_TIMEOUT_SECONDS` | 10 | greater than 0, at most 120 |
+| `TRADER_CONSOLE_POOL_CLOSE_TIMEOUT_SECONDS` | 5 | greater than 0, at most 60 |
+| `TRADER_CONSOLE_STATEMENT_TIMEOUT_MS` | 10000 | 100–60000 |
+
+## Application factory
+
+`create_app(settings=None, *, pool_factory=create_connection_pool, authentication_provider=None)` returns the FastAPI
+application. Passing settings avoids process-environment access in tests and alternate composition roots. A custom pool
+factory owns later connection authentication; an `AuthenticationProvider` will supply Trader principals to future
+scoped routes. The current health and public-context routes intentionally do not invoke it and are local-development
+surfaces, not authenticated remote deployment.
+
+The composition root wires routers to application services and repositories. HTTP code does not execute SQL, and
+repository code does not construct HTTP responses.
+
+## First-screen contract
+
+The initial journey identifies configured context and connection availability; it does not show sessions, positions
+or charts. Fetch `GET /api/context` for the existing `ConsoleScope`, and use the health endpoints below for availability.
+All three responses use `Cache-Control: no-store`; context performs no database or broker query.
+
+| Screen value | Response field or condition | Meaning |
+| --- | --- | --- |
+| Environment / synthetic indicator | `ConsoleScope.environment` | `paper`, `backtest`, or explicitly `synthetic_demo`. |
+| Account | `broker_account_display_label`, `broker_account_binding` | Optional configured display text, never verified broker identity. A missing paper label stays unspecified; non-paper binding is not applicable. |
+| API available | Successful response, or `/health/live` | Only process reachability. A network failure has no API JSON body. |
+| Database schema available | `/health/ready` HTTP 200 | The configured database is reachable and compatible, not that trading is healthy. |
+| Database unavailable/incompatible | `/health/ready` HTTP 503 with `issues` | Keep context visible and show the reason; Retry repeats the check. |
+
+The context response includes `scope_id`, `display_name`, `environment`, `data_source_kind`, `isolation_kind`,
+`broker_account_display_label`, `broker_account_binding`, and `presentation_timezone`. It contains no connection URL,
+provider account reference, credentials or Trader principal. The environment itself is the synthetic indicator; there
+is no redundant boolean. Configuration fields are not broker attestation.
+
+For example, a synthetic context has `environment: "synthetic_demo"`, `broker_account_display_label: null` and
+`broker_account_binding: "not_applicable"`. A database outage returns the existing `ReadinessResponse`:
+
+```json
+{"status":"unavailable","scope_id":"demo","contract_version":null,"issues":["database_unavailable"]}
+```
+
+Incompatibility uses the same HTTP 503 shape with compatibility issue codes such as `database_schema_too_old`.
+The client should retain and display an unknown issue code safely rather than treat it as success. Loading and network
+errors are client states; they are not fabricated API responses. If startup fails, no context is available to fetch.
+
+## OpenAPI export
+
+Run from the repository root. Neither command requires a database, environment settings or external credentials.
+The second command fails without modifying the artifact if it is missing or stale; the package test runs this drift
+assertion as part of the normal test suite. The [frontend](../../../apps/trader-console/README.md) owns TypeScript
+generation and its non-mutating drift check against this artifact.
+
+<!-- verified: integration:console tests/trader_console_api/contracts/test_openapi.py -->
+```bash
+uv run python -m trader_console_api.openapi --output contracts/trader-console/openapi.json
+uv run python -m trader_console_api.openapi --output contracts/trader-console/openapi.json --check
+```
+
+## Health endpoints
+
+| Endpoint | Success | Failure meaning |
+| --- | --- | --- |
+| `GET /health/live` | HTTP 200, process is responding | No database or trading check is performed. |
+| `GET /health/ready` | HTTP 200, database schema is reachable and compatible | HTTP 503 for database loss or incompatible metadata/catalog after startup. |
+
+Responses are non-cacheable. No endpoint accepts a DSN, schema, table name, scope override, account mapping,
+environment, or capability from the client.
+
+## Startup behavior
+
+The lifespan creates and opens exactly one bounded pool, then inspects the compatibility row and exact stable relation
+columns in one short read-only transaction. Missing metadata, an older incompatible contract, or column drift aborts
+startup. The API never installs or repairs `console_read`.
+
+That transaction policy belongs to the currently implemented query resources. It does not define the whole API as
+read-only; future command services will have their own explicit authority and transaction contracts.
+
+## Data resources
+
+The current resource slice is deliberately bounded and consumes only the producer-owned `console_read` views. Every
+collection returns `items` plus `page {limit, offset, total, has_more}`. General collection limits are server-validated
+(1–5000); the market-data bars endpoint accepts up to 50,000 rows per window. All resource responses are
+`Cache-Control: no-store`.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/market-data/datasets?limit=&offset=` | Discover available stock/crypto symbol, timeframe and source slices. |
+| `GET /api/market-data/bars?asset_class=&symbol=&timeframe=&source=&start=&end=&limit=&offset=` | Return ordered OHLCV bars; `start` and `end` are ISO timestamps. |
+| `GET /api/experiments?limit=&offset=` | Discover experiment IDs by published backtest-run membership. |
+| `GET /api/experiments/{experiment_id}/runs?compatible_with_run_id=&limit=&offset=` | List runs and scope-fingerprint comparison eligibility. |
+| `GET /api/runs/{run_id}?section_limit=` | Return one run and bounded performance/evidence sections. |
+| `GET /api/runs/{run_id}/risk-decisions?manager_id=&outcome=&cycle_id=&client_order_id=&limit=&offset=` | Return a bounded, filterable ordered manager-decision trace. |
+
+The run detail response keeps sections separate (`performance`, `comparison_summary`, `exposure`, `scope`, `equity_curve`, `comparison_curves`, `trades`,
+`positions`, `assumptions`, `warnings`, `provenance`, `indicator_series`, `signal_markers`, `risk_composition`, `risk_summary`,
+`risk_decisions`, `signals`, `orders`, `fills`, and `evidence_coverage`).
+`indicator_series` is the exact persisted observation stream for the run. Each point carries producer-declared `pane`,
+`scale_group`, `unit`, and `series_kind` fields: `price` series are eligible for the OHLC pane, while secondary panes
+use their declared scale group. `signal_markers.event_ts` comes from the recorded decision cycle, so markers bind to
+the event timestamp rather than wall-clock insertion time. Missing or unknown display metadata stays explicit; the API
+does not recompute indicators from market bars.
+
+Risk sections are producer-owned evidence. `risk_composition` is the ordered manager chain with catalogue version,
+fingerprint, manager identity, and typed parameters. `risk_summary` reports whether risk evidence was recorded and
+counts approved, transformed, rejected, and blocked decisions. `risk_decisions` is bounded and ordered by decision
+time, cycle, and manager position; each row retains the manager reason and normalized before/after order fields. The
+dedicated risk-decision route accepts manager, outcome, cycle, and client-order filters with limit/offset pagination, so
+the review can inspect a long trace without loading it into one run-detail payload.
+`unavailable` means the run predates the risk evidence contract or did not publish it. The API does not infer a risk
+block from a broker rejection or an absent fill.
+
+The API does not invent experiment metadata that is absent from the current contract. Saved comparison views contain
+only user-authored intent; their selected run IDs, metric keys and series keys are reread against current evidence on
+each load. Excluded selections remain visible with a reason such as `missing_scope_fingerprint`,
+`no_comparison_projection`, or `scope_mismatch`.
+An absent run is `404 {"code":"run_not_found","message":"..."}`; a database loss is
+`503 {"code":"database_unavailable","message":"Console database is unavailable"}`.
+
+## Backtest definition and preflight
+
+The Console exposes the maintained strategy and risk choices before a definition is persisted or queued. The catalogue
+is an explicit, versioned allowlist; callers cannot provide import paths or arbitrary classes. Each profile advertises
+typed parameters, bounds, supported asset classes/timeframes, lookback requirements, and (for risk) manager IDs and
+reason codes.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/backtests/catalogue` | Return the current strategy/risk profile catalogue and its version. |
+| `POST /api/backtests/preflight` | Normalize a draft, validate profile versions and parameters, check coverage/warmup and resource budgets, and return a definition fingerprint. |
+
+Preflight reads only bounded coverage aggregates from `console_read.stock_bars` or `console_read.crypto_bars`. It
+normalizes symbols, asset class, timeframe, and UTC timestamps, and returns field-level errors or warnings. A valid
+response includes an immutable `normalized_definition`, per-symbol `coverage` checks, and a SHA-256
+`definition_fingerprint`; it has no persistence, command, worker, or producer side effect. The current warning for
+`assumptions.allow_price_carry_forward` makes valuation fallback visible before execution. Definition persistence and
+durable execution are the next command tranche.
+
+To persist a valid preflight draft, install the additive definition table explicitly; API startup and requests never
+run DDL:
+
+<!-- verified: integration:console tests/trader_console_api/repositories/test_backtest_definitions_schema.py -->
+```bash
+TRADER_CONSOLE_DATABASE_URL="$TRADER_CONSOLE_DATABASE_URL" \
+  uv run python -m trader_console_api.repositories.backtest_definitions_schema install
+```
+
+The definition routes store only normalized Console intent and keep earlier revisions immutable:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/backtests/definitions` | Preflight and create a first revision. |
+| `GET /api/backtests/definitions?limit=&offset=` | List the latest revision for each definition in the server-owned scope. |
+| `GET /api/backtests/definitions/{definition_id}` | Fetch the latest revision. |
+| `POST /api/backtests/definitions/{definition_id}/revisions` | Preflight and append a new revision. |
+
+Create and revision requests return HTTP 422 with the typed preflight response when validation fails, 409 when the
+content fingerprint conflicts in this scope, and 503 when the explicitly installed table or database is unavailable.
+The definition ID and scope are server-owned; clients cannot choose a database or write producer evidence. Durable
+execution commands are a separate follow-on boundary.
+
+The first durable command boundary records a submit request and makes it observable across API restarts. Install its
+additive table after definition storage:
+
+<!-- verified: integration:console tests/trader_console_api/repositories/test_backtest_executions_schema.py -->
+```bash
+TRADER_CONSOLE_DATABASE_URL="$TRADER_CONSOLE_DATABASE_URL" \
+  uv run python -m trader_console_api.repositories.backtest_executions_schema install
+```
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/backtests/executions` | Idempotently create one `queued` command for a persisted definition. |
+| `GET /api/backtests/executions/{execution_id}` | Read durable command status and progress fields. |
+| `GET /api/backtests/executions?limit=&offset=` | List bounded command history. |
+
+The submit body contains a server-owned `definition_id` and caller-provided `idempotency_key`. A duplicate key in the
+same scope returns the existing command. The current slice records `queued` state only; a separately started worker,
+lease/heartbeat updates, canonical `BacktestRunner` invocation, and terminal reconciliation operate through the
+separate worker process described below.
+
+The repository also provides `BacktestExecutionWorker`, which claims one command with a bounded lease, reserves a
+deterministic run ID, accepts progress heartbeats, and records `completed`, `partial`, `failed`, or
+`reconciliation_required` outcomes through an injected executor port. The worker does not substitute a fake executor:
+the deployment composition must provide the adapter that resolves the exact catalogue versions and invokes the
+internal-broker `BacktestRunner`.
+
+For a local worker process, set `TRADER_CONSOLE_BACKTEST_CONFIG_PATH` to the core Trader YAML configuration and run:
+
+<!-- verified: integration:console tests/trader_console_api/application/test_worker_entrypoint.py -->
+```bash
+TRADER_CONSOLE_BACKTEST_CONFIG_PATH=./config/local.yaml \
+  uv run trader-console-worker
+```
+
+Use `--once` to claim at most one queued command. The worker requires the definition and execution tables to have been
+installed explicitly; it does not run DDL at startup. `TRADER_CONSOLE_WORKER_ID`,
+`TRADER_CONSOLE_WORKER_LEASE_SECONDS`, `TRADER_CONSOLE_WORKER_MAX_ATTEMPTS`, and
+`TRADER_CONSOLE_WORKER_POLL_SECONDS` are bounded worker settings. An expired lease with a reserved run is marked
+`reconciliation_required`; an unreserved command is requeued until its bounded retry count is exhausted.
+
+## Saved comparison views
+
+Comparison definitions are scoped to the configured process scope and one experiment. Install the additive Console
+table explicitly before using save/load commands; API startup and requests never create it:
+
+<!-- verified: integration:console tests/trader_console_api/repositories/test_comparison_schema.py -->
+```bash
+TRADER_CONSOLE_DATABASE_URL='postgresql://developer:secret@127.0.0.1:5432/trader' \
+  uv run python -m trader_console_api.repositories.comparison_schema install
+TRADER_CONSOLE_DATABASE_URL='postgresql://developer:secret@127.0.0.1:5432/trader' \
+  uv run python -m trader_console_api.repositories.comparison_schema status
+```
+
+The command uses only the explicit DSN and creates `console_app.comparison_views` when installing. It does not alter
+producer-owned `console_read` objects. The bounded API surface is:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/experiments/{experiment_id}/comparison-views/preview` | Evaluate a draft without saving it. |
+| `GET /api/experiments/{experiment_id}/comparison-views?limit=&offset=` | List saved definitions. |
+| `POST /api/experiments/{experiment_id}/comparison-views` | Save a new definition and return its live evaluation. |
+| `GET /api/experiments/{experiment_id}/comparison-views/{view_id}` | Load a definition and reevaluate its evidence. |
+| `PUT /api/experiments/{experiment_id}/comparison-views/{view_id}` | Replace a definition with `expected_revision`. |
+
+Save rejects run IDs that are not members of the experiment. Empty and one-run definitions are valid drafts. A replace
+whose revision is stale returns HTTP 409. Missing application storage returns HTTP 503 with
+`comparison_storage_unavailable`; no request performs schema installation.
+
+## Dedicated local demo
+
+The [demo walkthrough](../../../examples/console_demo/README.md) runs PostgreSQL on loopback port 55432 and the API
+on 8001, independently of the existing Trader database. Bootstrap and compatibility repairs are explicit producer
+commands outside API startup. Its `console-demo` scope is `synthetic_demo`, without a brokerage-account label or
+trading rows. The frontend proxies `/api/context`, `/api/market-data/datasets`, `/api/market-data/bars`,
+`/health/live` and `/health/ready`; CORS is not needed.
+
+## Existing local Trader database
+
+For real local market-data exploration, install the current producer-owned `console_read` contract explicitly against
+the existing Trader database before starting the API. Configure `TRADER_CONSOLE_DATABASE_URL` with the local Trader
+DSN, use scope `trader-local` with environment `backtest`, and start the API with `uv run trader-console-api`.
+The `/data` workflow then reads the published stock/crypto views and returns bounded OHLCV rows from the existing
+database. The API does not connect to raw Trader tables, copy data into the demo database, or repair the contract at
+startup. Keep the dedicated demo for synthetic and failure-state checks.
+
+Backtest review reads the producer-owned projections for both experiment-linked runs and standalone `BacktestRunner`
+runs. Standalone runs are grouped under `standalone_backtests`; their lifecycle, indicator, signal, order, fill, and
+position evidence remains visible even when no aggregate metrics snapshot or replay scope was published. Equity,
+performance and exposure are reconstructed from persisted initial state, fills, fees and market bars; missing scope or
+benchmark identity remains explicitly unavailable.

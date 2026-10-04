@@ -32,6 +32,7 @@ PACKAGE_NAMES = (
     "trader_mcp",
     "trader_agents",
     "trader_mlflow",
+    "trader_console_api",
 )
 REQUIRED_PACKAGE_DOCS = ("architecture.md", "tutorial.md", "usage.md")
 EXPECTED_NOTEBOOKS = {
@@ -41,6 +42,7 @@ EXPECTED_NOTEBOOKS = {
     "trader_mcp": (),
     "trader_agents": (),
     "trader_mlflow": ("mlflow_prediction_tutorial.ipynb",),
+    "trader_console_api": (),
 }
 EXECUTABLE_LANGUAGES = frozenset({"bash", "pycon", "python", "sh", "shell"})
 CONFIG_LANGUAGES = frozenset({"yaml", "yml"})
@@ -329,6 +331,9 @@ def _active_markdown_docs() -> tuple[Path, ...]:
         REPO_ROOT / "docs" / "product_state.md",
         REPO_ROOT / "docs" / "system_architecture.md",
         REPO_ROOT / "docs" / "test_architecture.md",
+        REPO_ROOT / "apps" / "trader-console" / "README.md",
+        REPO_ROOT / "examples" / "console_demo" / "README.md",
+        REPO_ROOT / "examples" / "superset_demo" / "README.md",
         *(REPO_ROOT / "docs" / "workflows").glob("*.md"),
     )
     return tuple(sorted({*root_docs, *_package_markdown_docs()}))

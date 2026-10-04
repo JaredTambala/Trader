@@ -10,6 +10,7 @@ from ..broker import Broker
 from ..config import Config
 from ..event_store import EventStore
 from ..market_data import MarketDataEvent
+from ..market_data import RecentBarReader
 from ..portfolio import Portfolio
 from ..risk import RiskManager
 from ..strategies import Strategy
@@ -34,6 +35,7 @@ class CycleStreamRuntime:
     broker_type: str
     config: Config
     risk_manager: RiskManager
+    recent_bar_reader: RecentBarReader | None = None
 
 
 @dataclass

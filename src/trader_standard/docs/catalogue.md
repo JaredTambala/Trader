@@ -34,5 +34,14 @@ Policies include threshold entry/exit, fixed stop loss, trailing stop, and compo
 The maintained risk set includes no-op, halt, per-run order count, gross exposure, per-symbol position value, and open
 buy-order limits. Compose them with core `RiskPipeline`; list order is preserved and should be intentional.
 
+Every maintained manager exposes a stable risk descriptor for backtest evidence: allowlisted manager ID and type,
+catalogue version, and normalized constructor parameters. The core runtime records this ordered composition and each
+manager's approval, transformation, or rejection decision without requiring private attribute introspection.
+
 This catalogue describes availability, not suitability. Research selection still requires an explicit brief, data
 scope, assumptions, prospective experiment, and independent review.
+
+The Console's maintained backtest catalogue is the explicit resolver boundary for the first executable profiles. It
+publishes typed parameter bounds, supported data shapes, lookback/evidence requirements, and risk manager reason
+codes, then normalizes a draft into a deterministic definition fingerprint during preflight. Callers cannot resolve
+arbitrary Python import paths through this catalogue.

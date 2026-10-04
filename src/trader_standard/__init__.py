@@ -1,5 +1,17 @@
 """Project-maintained standard implementations built on top of trader core."""
 
+from .catalogue import (
+    Catalogue,
+    CatalogueValidationError,
+    ParameterDefinition,
+    ProfileDefinition,
+    fingerprint_definition,
+    maintained_catalogue,
+    normalize_asset_class,
+    normalize_symbols,
+    normalize_timeframe,
+)
+
 from .indicators import (
     BollingerBandsIndicator,
     BollingerBandValue,
@@ -54,6 +66,15 @@ from .strategies import (
 )
 
 __all__ = [
+    "Catalogue",
+    "CatalogueValidationError",
+    "ParameterDefinition",
+    "ProfileDefinition",
+    "fingerprint_definition",
+    "maintained_catalogue",
+    "normalize_asset_class",
+    "normalize_symbols",
+    "normalize_timeframe",
     "SmaIndicator",
     "EmaIndicator",
     "HistoricalVolatilityIndicator",

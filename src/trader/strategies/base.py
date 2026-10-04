@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import AsyncIterator, Mapping, Sequence
 
 from trader.event_store import EventStore
+from trader.market_data import RecentBarReader
 from trader.portfolio import Portfolio
 
 
@@ -79,6 +80,54 @@ class Strategy(ABC):
             if str(order.get("symbol", "")).strip().upper() == symbol.strip().upper()
         ]
 
+    def generate_orders_with_recent_bar_reader(
+        self,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Sequence[Mapping[str, object]]:
+        """Generate orders with an explicit optional replay bar reader.
+
+        The default delegates to the established strategy contract so custom
+        strategies that do not consume historical bars remain source-compatible.
+        Maintained bar-backed strategies override this entrypoint to use the
+        reader during replay.
+        """
+        del recent_bar_reader
+        return self.generate_orders(
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            event_store=event_store,
+            portfolio=portfolio,
+        )
+
+    def generate_orders_for_symbol_with_recent_bar_reader(
+        self,
+        symbol: str,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Sequence[Mapping[str, object]]:
+        """Generate one-symbol orders with an explicit optional replay reader."""
+        del recent_bar_reader
+        return self.generate_orders_for_symbol(
+            symbol,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            event_store=event_store,
+            portfolio=portfolio,
+        )
+
     async def order_stream(
         self,
         *,
@@ -99,6 +148,27 @@ class Strategy(ABC):
             decision_ts=decision_ts,
             event_store=event_store,
             portfolio=portfolio,
+        ):
+            yield order
+
+    async def order_stream_with_recent_bar_reader(
+        self,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> AsyncIterator[Mapping[str, object]]:
+        """Stream orders through the explicit optional replay reader path."""
+        for order in self.generate_orders_with_recent_bar_reader(
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            event_store=event_store,
+            portfolio=portfolio,
+            recent_bar_reader=recent_bar_reader,
         ):
             yield order
 
@@ -125,5 +195,28 @@ class Strategy(ABC):
             decision_ts=decision_ts,
             event_store=event_store,
             portfolio=portfolio,
+        ):
+            yield order
+
+    async def order_stream_for_symbol_with_recent_bar_reader(
+        self,
+        symbol: str,
+        *,
+        run_id: str,
+        cycle_id: str,
+        decision_ts: datetime,
+        event_store: EventStore,
+        portfolio: Portfolio,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> AsyncIterator[Mapping[str, object]]:
+        """Stream one-symbol orders through the explicit replay reader path."""
+        for order in self.generate_orders_for_symbol_with_recent_bar_reader(
+            symbol,
+            run_id=run_id,
+            cycle_id=cycle_id,
+            decision_ts=decision_ts,
+            event_store=event_store,
+            portfolio=portfolio,
+            recent_bar_reader=recent_bar_reader,
         ):
             yield order

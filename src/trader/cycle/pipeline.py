@@ -9,7 +9,7 @@ from typing import Sequence
 from ..broker import Broker
 from ..config import Config
 from ..event_store import EventStore
-from ..market_data import MarketDataEvent, MarketDataIngestor, MarketDataSource
+from ..market_data import MarketDataEvent, MarketDataIngestor, MarketDataSource, RecentBarReader
 from ..portfolio import Portfolio
 from ..risk import RiskManager
 from ..strategies import Strategy
@@ -46,6 +46,7 @@ def _run_market_data_pipeline_for_plan(
     decision_ts: datetime,
     market_data_source: MarketDataSource | None,
     ingest_market_data: bool,
+    recent_bar_reader: RecentBarReader | None,
 ) -> CycleMarketDataPipelineResult:
     """Run the market-data/order pipeline selected by the execution plan."""
     resolved_market_data_source = market_data_source or _build_market_data_source(config)
@@ -66,6 +67,7 @@ def _run_market_data_pipeline_for_plan(
             sync_portfolio_on_fill=execution_plan.sync_portfolio_on_fill,
             broker_kind=execution_plan.broker_kind,
             risk_manager=risk_manager,
+            recent_bar_reader=recent_bar_reader,
         )
     return _run_batch_market_data_pipeline(
         event_store=event_store,
@@ -81,6 +83,7 @@ def _run_market_data_pipeline_for_plan(
         sync_portfolio_on_fill=execution_plan.sync_portfolio_on_fill,
         broker_kind=execution_plan.broker_kind,
         risk_manager=risk_manager,
+        recent_bar_reader=recent_bar_reader,
     )
 
 
@@ -98,6 +101,7 @@ def _run_streaming_market_data_pipeline(
     sync_portfolio_on_fill: bool,
     broker_kind: str,
     risk_manager: RiskManager,
+    recent_bar_reader: RecentBarReader | None,
 ) -> CycleMarketDataPipelineResult:
     """Run stream ingestion with recent-bar fallback when the stream is empty."""
     event_counter = {"count": 0}
@@ -117,6 +121,7 @@ def _run_streaming_market_data_pipeline(
         sync_portfolio_on_fill=sync_portfolio_on_fill,
         broker_kind=broker_kind,
         risk_manager=risk_manager,
+        recent_bar_reader=recent_bar_reader,
     )
     if event_counter["count"] != 0:
         return CycleMarketDataPipelineResult(
@@ -139,6 +144,7 @@ def _run_streaming_market_data_pipeline(
         sync_portfolio_on_fill=sync_portfolio_on_fill,
         broker_kind=broker_kind,
         risk_manager=risk_manager,
+        recent_bar_reader=recent_bar_reader,
     )
 
 
@@ -157,6 +163,7 @@ def _run_batch_market_data_pipeline(
     sync_portfolio_on_fill: bool,
     broker_kind: str,
     risk_manager: RiskManager,
+    recent_bar_reader: RecentBarReader | None,
 ) -> CycleMarketDataPipelineResult:
     """Run non-stream market-data ingestion/fetching through the order pipeline."""
     if ingest_market_data:
@@ -180,6 +187,7 @@ def _run_batch_market_data_pipeline(
         sync_portfolio_on_fill=sync_portfolio_on_fill,
         broker_kind=broker_kind,
         risk_manager=risk_manager,
+        recent_bar_reader=recent_bar_reader,
     )
 
 
@@ -197,6 +205,7 @@ def _run_market_data_events_pipeline(
     sync_portfolio_on_fill: bool,
     broker_kind: str,
     risk_manager: RiskManager,
+    recent_bar_reader: RecentBarReader | None,
 ) -> CycleMarketDataPipelineResult:
     """Run already-loaded market-data events through freshness and order stages."""
     freshness_ts = _resolve_market_data_freshness_ts(
@@ -231,6 +240,7 @@ def _run_market_data_events_pipeline(
         sync_portfolio_on_fill=sync_portfolio_on_fill,
         broker_kind=broker_kind,
         risk_manager=risk_manager,
+        recent_bar_reader=recent_bar_reader,
     )
     return CycleMarketDataPipelineResult(
         processed_orders=processed_orders,

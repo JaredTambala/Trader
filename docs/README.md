@@ -24,6 +24,7 @@ replacing those technical sources.
 - [`trader_mcp`](../src/trader_mcp/README.md): MCP tools and contracts
 - [`trader_agents`](../src/trader_agents/README.md): multi-agent coordination
 - [`trader_mlflow`](../src/trader_mlflow/README.md): MLflow inference adapter
+- [`trader_console_api`](../src/trader_console_api/README.md): Trader Console HTTP application boundary
 
 Each package provides a README, architecture, tutorial, and usage reference. Focused pages are linked from its README.
 Python examples use doctest-compatible form; executable shell fences name their verifier; selected notebooks are
@@ -35,6 +36,8 @@ output-free and executed in temporary copies during documentation tests.
 - [Repository and test architecture](test_architecture.md)
 - [Product state](product_state.md)
 - [Environment and local services](environment.md)
+- [Console local demo](../examples/console_demo/README.md) and [frontend application](../apps/trader-console/README.md)
+- [Apache Superset local evaluation](../examples/superset_demo/README.md)
 - [Getting started workflow](workflows/getting_started.md)
 - [Research workflows](workflows/research.md)
 - [Research and agent operations](workflows/research_operations.md)

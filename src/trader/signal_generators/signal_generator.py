@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Mapping, Sequence
 
+from trader.market_data import RecentBarReader
 from trader.signals import Signal
 
 
@@ -61,3 +62,33 @@ class SignalGenerator(ABC):
         `None` when the requested symbol has no available bar window.
         """
         raise NotImplementedError("Per-symbol generation not supported")
+
+    def generate_with_recent_bar_reader(
+        self,
+        *,
+        as_of_ts: datetime | None = None,
+        run_id: str | None = None,
+        cycle_id: str | None = None,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Mapping[str, Mapping[str, float]]:
+        """Generate signals through an explicit optional replay bar reader."""
+        del recent_bar_reader
+        return self.generate(as_of_ts=as_of_ts, run_id=run_id, cycle_id=cycle_id)
+
+    def generate_for_symbol_with_recent_bar_reader(
+        self,
+        symbol: str,
+        *,
+        as_of_ts: datetime | None = None,
+        run_id: str | None = None,
+        cycle_id: str | None = None,
+        recent_bar_reader: RecentBarReader | None,
+    ) -> Mapping[str, float] | None:
+        """Generate one-symbol signals through an explicit optional replay reader."""
+        del recent_bar_reader
+        return self.generate_for_symbol(
+            symbol,
+            as_of_ts=as_of_ts,
+            run_id=run_id,
+            cycle_id=cycle_id,
+        )

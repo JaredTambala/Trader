@@ -7,7 +7,8 @@ This guide explains how backtesting works in this system, what data it uses, and
 A backtest replays the trading cycle over historical bar timestamps that already exist in the event store. It does
 not call Alpaca during the run and it does not write new bar data. Backtests force the internal broker path, even if
 the input YAML references Alpaca. Bars are loaded once into memory and treated as immutable inputs for the strategy
-and signal generator.
+and signal generator. Bar-backed strategies receive a typed replay reader over those loaded bars, so strategy history
+does not issue a database query for every decision.
 
 ## Preconditions
 
@@ -65,8 +66,20 @@ slippage, no effective latency, latest-prior-bar fallback allowed, and last-know
    - Generate signals for that symbol and execute them through a deterministic internal paper broker.
    - Apply adjusted fill prices, slippage, and fees to the shared in-memory portfolio.
    - Persist `runs` (session), `run_events` (cycles), `signal_events`, `order_events`,
-     `fill_events`, and `position_snapshots`.
+     `fill_events`, `position_snapshots`, the ordered `risk_compositions` snapshot, and
+     per-manager `risk_decisions` when order evidence is enabled.
 6) Compute a summary from the in-memory portfolio and the latest bar prices.
+
+## Replay bar-read boundary
+
+`BacktestRunner` builds one `InMemoryRecentBarReader` from the already-loaded bar window and passes it through the
+cycle strategy boundary. Each request is typed with the symbol, asset class, timeframe, decision timestamp, and
+positive lookback limit. Reads are inclusive of the decision timestamp, latest-first, and cannot expose future bars;
+warmup bars remain available without creating extra decision cycles. The reader reuses the loaded `Bar` objects and
+records request and returned-row counts for qualification logs.
+
+Ordinary runtime cycles leave this reader unset. Maintained strategies then use their existing event-store query path,
+so the replay optimization does not alter production market-data behavior.
 
 ## Output summary fields
 
@@ -86,6 +99,27 @@ The backtest returns and logs a summary with portfolio context:
 - `trades`: Per-fill trade records with effective fill price, raw fill price, fees, slippage, and realized PnL.
 - `realized_pnl`: Net realized PnL from closed trades.
 - `total_fees` / `total_slippage`: Aggregate execution-cost totals across the run.
+- `evidence_coverage`: Whether signal, order, fill, and position evidence was `recorded`, `not_recorded`, or
+  `not_applicable`. A recorded stream may legitimately contain zero rows.
+- `review_scope`: Producer-owned comparison identity covering the replay bars, benchmark construction, initial
+  portfolio state, and execution/data assumptions.
+- `variant`: Explicit strategy and parameter identity that may vary inside a matching review scope.
+
+## Risk evidence
+
+Each run publishes the ordered risk-manager composition with stable manager IDs, manager types, catalogue version,
+typed parameters, and a deterministic composition fingerprint. For every candidate order, the runtime records one
+decision row per manager that actually evaluated it. Rows preserve run/session/cycle/order identity, decision time,
+manager position, an allowlisted reason code, the outcome (`approved`, `transformed`, or `rejected`), and normalized
+before/after order fields when an approved order is changed. A rejected row keeps the candidate in `before_order` and
+leaves `after_order` absent while recording the manager's block reason. Later managers are absent when an earlier
+manager short-circuits an order, preserving the actual chain semantics.
+
+The Console summary counts evaluations, approvals, transformations, rejections, and risk blocks, and the review page
+renders the composition and a bounded ordered trace. A broker rejection is represented by broker/order lifecycle
+evidence rather than a risk decision. A no-signal or zero-trade run can still show its composition with zero decision
+rows. Legacy runs without these tables are labelled `risk_evidence_status=unavailable`; the Console never infers a
+risk block from a missing fill.
 
 Per-position details:
 
@@ -165,8 +199,18 @@ Annualization uses a calendar year (365 days) and the configured `timeframe`.
 - Fill behavior is deterministic and audit-friendly; stochastic slippage remains out of scope.
 - Results depend on the stored bars and timeframe; mismatched timeframes yield sparse signals.
 - Bar data is read-only during a backtest; only trading events are persisted.
+- Lifecycle IDs and signal-to-order links are deterministic when the relevant evidence exists. Historical rows created
+  before those fields were added remain unlinked and are surfaced as unknown by the Console read contract.
+- `review_scope.scope_fingerprint` is the admission key for cross-run comparison. It excludes strategy and parameter
+  variants, which are represented separately. Legacy persisted results without this scope are readable but unavailable
+  for compatibility-gated cohorts.
 
 ## Running a backtest
+
+Backtest execution produces Trader domain results and event-store evidence. It has no Superset dependency, dashboard
+callback, or publication step. External database consumers may inspect the persisted tables and producer-owned typed
+views when those surfaces have been explicitly populated; any consumer-specific connection, dataset registration, or
+visualisation setup belongs outside the backtest runtime.
 
 <!-- verified: integration:postgres tests/trader/backtest/test_backtest.py tests/trader/backtest/test_backtest_api.py -->
 ```bash
@@ -188,6 +232,15 @@ The reproducible runner exports:
 - `artifacts/reproducible_backtest/result.json`
 - `artifacts/reproducible_backtest/equity_curve.csv`
 - `artifacts/reproducible_backtest/trades.csv`
+
+The reproducible runner also persists one aggregate `metrics_snapshots` record for the completed run. The snapshot
+contains the serialized result, including the declared review scope, variant, assumptions, evidence coverage, summary
+metrics, and curve/trade exports. Per-cycle execution evidence remains in the dedicated event tables; the aggregate
+snapshot is the producer-owned summary used by the Console read contract.
+
+Backtest cycle identifiers include the owning run ID and the decision symbol universe. This keeps overlapping replays
+isolated while preserving deterministic retry IDs within one run. Ordinary trading cycle identifiers retain their
+existing strategy-and-timestamp identity.
 
 ## Canonical research backtests
 

@@ -25,8 +25,10 @@ The event-store suite lives under `tests/trader/event_store/`. Its deterministic
 interface, filtering, buffering, lifecycle builders, record normalization, SQL shapes, factory configuration, schema
 metadata, adapter wiring, and the shared DuckDB adapter used by deterministic workflows. The guarded Postgres modules
 then prove the behavior that fakes cannot: real schema bootstrap, lifecycle persistence, natural-key idempotency,
-append-only records, status queries, and notifications. The word `postgres` in a module name identifies the production
-subject; only tests marked `postgres` require the guarded database environment.
+append-only records, status queries, notifications, and the Console read contract's installed projections and
+compatibility metadata. The word `postgres` in a module name identifies the production subject; only tests marked
+`postgres` require the guarded database environment. The Console contract uses the standard guarded `PG_TEST_*`
+owner and does not create cluster roles.
 
 The market-data suite lives under `tests/trader/market_data/` and separates ingestion, backfill, gap analysis, quality
 summaries, stable quality-report export, query execution, pure query shaping, and streaming. Provider behavior is

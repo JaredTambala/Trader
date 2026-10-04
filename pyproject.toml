@@ -21,6 +21,7 @@ dependencies = [
     "pydantic>=2.12,<3",
     "pypdf>=6.4.0",
     "pyyaml>=6.0.2",
+    "psycopg-pool>=3.2,<4",
     "uvicorn>=0.40.0",
 ]
 
@@ -30,6 +31,9 @@ Documentation = "https://github.com/JaredTambala/Trader/tree/main/docs"
 
 [project.scripts]
 trader-agent = "trader_agents.application.cli:main"
+trader-console-api = "trader_console_api.application:main"
+trader-console-worker = "trader_console_api.worker_entrypoint:main"
+trader-console-read-contract = "trader.event_store.console_read_contract:main"
 
 [project.optional-dependencies]
 test = ["pytest>=7.4"]
@@ -50,6 +54,7 @@ trader_research = ["README.md", "docs/*.md", "docs/*.ipynb", "method_contracts_s
 trader_mcp = ["README.md", "docs/*.md", "docs/*.ipynb"]
 trader_agents = ["README.md", "docs/*.md", "docs/*.ipynb"]
 trader_mlflow = ["README.md", "docs/*.md", "docs/*.ipynb"]
+trader_console_api = ["README.md", "docs/*.md", "docs/*.ipynb"]
 "trader_standard.indicators" = ["cpp/*.cpp.template", "bindings/*.json"]
 
 [tool.pytest.ini_options]
@@ -83,6 +88,7 @@ files = [
     "src/trader_research",
     "src/trader_mcp",
     "src/trader_agents",
+    "src/trader_console_api",
     "src/trader/runtime/status.py",
     "run_operator.py",
 ]

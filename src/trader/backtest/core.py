@@ -19,12 +19,13 @@ from ..identifiers import deterministic_run_session_id
 from ..portfolio import Position
 from ..strategies import Strategy
 from ..risk import RiskManager
-from ..strategy_metadata import resolve_strategy_id
+from ..strategy_metadata import resolve_strategy_info
 from .data import (
     BacktestMarketDataSource,
     _build_data_sources,
     _load_bars,
 )
+from .recent_bars import InMemoryRecentBarReader
 from .data_queries import _build_symbol_schedule
 from .benchmark import (
     _build_buy_hold_baseline,
@@ -33,6 +34,7 @@ from .benchmark import (
 )
 from .models import (
     BacktestAssumptions,
+    BacktestEvidenceCoverage,
     BacktestResult,
     BacktestSpec,
     EquityPoint,
@@ -54,6 +56,7 @@ from .result_builders import (
     _build_completed_backtest_result,
     _build_empty_backtest_result,
 )
+from .review_scope import build_backtest_review_scope, build_backtest_variant
 from .trade_accounting import _empty_trade_stats
 from .results import (
     _log_backtest_result,
@@ -152,6 +155,20 @@ class BacktestRunner:
             timeframe=spec.timeframe,
         )
 
+    def _evidence_coverage(self, *, replayed: bool) -> BacktestEvidenceCoverage:
+        """Describe which optional event streams were enabled for this run."""
+        def status(enabled: bool) -> str:
+            if not replayed:
+                return "not_applicable"
+            return "recorded" if enabled else "not_recorded"
+
+        return BacktestEvidenceCoverage(
+            signal_events=status(self._config.log_signal_events),
+            order_events=status(self._config.log_order_events),
+            fill_events=status(self._config.log_fill_events),
+            position_snapshots=status(self._config.log_position_snapshots),
+        )
+
     def run(
         self,
         *,
@@ -176,6 +193,13 @@ class BacktestRunner:
             provenance, warnings, and final portfolio state.
         """
         warnings: list[str] = []
+        strategy_info = resolve_strategy_info(self._strategy, fallback_id=self._config.strategy_id)
+        strategy_id = strategy_info.strategy_id
+        variant = build_backtest_variant(
+            strategy_id=strategy_info.strategy_id,
+            strategy_version=strategy_info.version,
+            parameters=strategy_info.parameters,
+        )
         if not self._symbols:
             logger.warning("No symbols configured for backtest")
             started_at = self._started_at or datetime.now(timezone.utc)
@@ -189,6 +213,19 @@ class BacktestRunner:
                 run_id=run_id,
                 timestamp=now,
                 warning="No symbols configured for backtest.",
+                evidence_coverage=self._evidence_coverage(replayed=False),
+                review_scope=build_backtest_review_scope(
+                    asset_class=self._asset_class,
+                    symbols=self._symbols,
+                    timeframe=self._spec.timeframe,
+                    replay_start=self._spec.start,
+                    replay_end=self._spec.end,
+                    bars_by_symbol={},
+                    initial_cash=self._initial_cash,
+                    initial_positions=self._initial_positions,
+                    assumptions=self._assumptions,
+                ),
+                variant=variant,
             )
         if self._spec.start > self._spec.end:
             raise ValueError("Backtest start must be <= end")
@@ -202,6 +239,11 @@ class BacktestRunner:
             self._spec.start,
             self._spec.end,
             lookback_bars=lookback,
+        )
+        recent_bar_reader = InMemoryRecentBarReader(
+            bars_by_symbol=bars_by_symbol,
+            asset_class=self._asset_class,
+            timeframe=self._spec.timeframe,
         )
         symbol_schedule = _build_symbol_schedule(bars_by_symbol, self._spec.start, self._spec.end)
         timestamps = sorted(symbol_schedule.keys())
@@ -233,6 +275,19 @@ class BacktestRunner:
                 run_id=run_id,
                 timestamp=now,
                 warning="No bars found for backtest window.",
+                evidence_coverage=self._evidence_coverage(replayed=False),
+                review_scope=build_backtest_review_scope(
+                    asset_class=self._asset_class,
+                    symbols=self._symbols,
+                    timeframe=self._spec.timeframe,
+                    replay_start=self._spec.start,
+                    replay_end=self._spec.end,
+                    bars_by_symbol=bars_by_symbol,
+                    initial_cash=self._initial_cash,
+                    initial_positions=self._initial_positions,
+                    assumptions=self._assumptions,
+                ),
+                variant=variant,
             )
 
         count = 0
@@ -270,7 +325,6 @@ class BacktestRunner:
         strategy = self._strategy
         risk_manager = self._risk_manager
         broker = _build_backtest_broker(self._assumptions)
-        strategy_id = resolve_strategy_id(strategy, self._config.strategy_id)
         run_status = "success"
         run_error: str | None = None
         self._event_store.record_run_session_start(
@@ -293,6 +347,17 @@ class BacktestRunner:
             self._spec.start,
             seeded_positions,
             bars_by_symbol=bars_by_symbol,
+        )
+        review_scope = build_backtest_review_scope(
+            asset_class=self._asset_class,
+            symbols=self._symbols,
+            timeframe=self._spec.timeframe,
+            replay_start=self._spec.start,
+            replay_end=self._spec.end,
+            bars_by_symbol=bars_by_symbol,
+            initial_cash=self._initial_cash,
+            initial_positions=seeded_positions,
+            assumptions=self._assumptions,
         )
         benchmark_holdings = _build_buy_hold_baseline(
             symbols=self._symbols,
@@ -358,6 +423,7 @@ class BacktestRunner:
                             ingest_market_data=False,
                             run_id=run_id,
                             run_type="backtest",
+                            recent_bar_reader=recent_bar_reader,
                         )
                         count += 1
                         if progress_callback:
@@ -383,6 +449,7 @@ class BacktestRunner:
                                 ingest_market_data=False,
                                 run_id=run_id,
                                 run_type="backtest",
+                                recent_bar_reader=recent_bar_reader,
                             )
                             count += 1
                             if progress_callback:
@@ -437,6 +504,12 @@ class BacktestRunner:
 
         trade_stats = trade_stats or _empty_trade_stats()
 
+        logger.info(
+            "Backtest replay bar reads requests=%s bars_returned=%s",
+            recent_bar_reader.stats.request_count,
+            recent_bar_reader.stats.bars_returned,
+        )
+
         finished_at = datetime.now(timezone.utc)
         strategy_summary = _build_performance_summary(
             equity_curve,
@@ -473,6 +546,9 @@ class BacktestRunner:
             equity_curve=equity_curve,
             benchmark_curve=benchmark_curve,
             run_id=run_id,
+            evidence_coverage=self._evidence_coverage(replayed=True),
+            review_scope=review_scope,
+            variant=variant,
         )
         _log_backtest_result(result)
         return result

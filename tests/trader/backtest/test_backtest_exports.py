@@ -48,6 +48,20 @@ def test_serialize_backtest_result_is_json_friendly() -> None:
     assert payload["symbols"] == ["AAPL"]
 
 
+def test_serialize_backtest_result_normalizes_non_finite_metrics() -> None:
+    """Keep degenerate zero-trade metrics valid for PostgreSQL JSONB snapshots."""
+    result = _sample_result()
+    result = replace(
+        result,
+        strategy_performance=replace(result.strategy_performance, sharpe=float("inf")),
+    )
+
+    payload = serialize_backtest_result(result)
+
+    assert payload["strategy_performance"]["sharpe"] is None
+    json.dumps(payload, allow_nan=False)
+
+
 def test_export_backtest_files_have_stable_columns(tmp_path: Path) -> None:
     """Write reviewable result files with stable JSON values and CSV headers."""
     result = _sample_result()

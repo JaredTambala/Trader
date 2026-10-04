@@ -11,6 +11,10 @@ from trader.risk import RiskContext, RiskManager
 class NoOpRiskManager(RiskManager):
     """Risk manager for tests and demos that approves every candidate order."""
 
+    def risk_descriptor(self) -> Mapping[str, object]:
+        """Describe the maintained no-op risk profile."""
+        return _descriptor("noop", self, {})
+
     def validate(
         self,
         orders: Iterable[Mapping[str, object]],
@@ -25,6 +29,10 @@ class HaltRiskManager(RiskManager):
 
     Approved orders pass through unchanged once the halt flag clears.
     """
+
+    def risk_descriptor(self) -> Mapping[str, object]:
+        """Describe the global-halt risk profile."""
+        return _descriptor("halt", self, {})
 
     def validate(
         self,
@@ -52,6 +60,10 @@ class MaxOrdersPerRunRiskManager(RiskManager):
 
     def __init__(self, *, limit: int) -> None:
         self._limit = max(0, int(limit))
+
+    def risk_descriptor(self) -> Mapping[str, object]:
+        """Describe the per-run order limit and normalized bound."""
+        return _descriptor("max_orders_per_run", self, {"limit": self._limit})
 
     def validate(
         self,
@@ -81,6 +93,10 @@ class MaxGrossExposureRiskManager(RiskManager):
 
     def __init__(self, *, limit_usd: float) -> None:
         self._limit_usd = float(limit_usd)
+
+    def risk_descriptor(self) -> Mapping[str, object]:
+        """Describe the gross exposure limit in USD."""
+        return _descriptor("max_gross_exposure", self, {"limit_usd": self._limit_usd})
 
     def validate(
         self,
@@ -136,6 +152,10 @@ class MaxPositionUsdPerSymbolRiskManager(RiskManager):
 
     def __init__(self, *, limit_usd: float) -> None:
         self._limit_usd = float(limit_usd)
+
+    def risk_descriptor(self) -> Mapping[str, object]:
+        """Describe the per-symbol position limit in USD."""
+        return _descriptor("max_position_usd_per_symbol", self, {"limit_usd": self._limit_usd})
 
     def validate(
         self,
@@ -193,6 +213,14 @@ class OpenBuyOrderLimitRiskManager(RiskManager):
         self._limit = max(1, int(max_open_buy_orders_per_symbol))
         self._reserved_symbols: set[str] = set()
 
+    def risk_descriptor(self) -> Mapping[str, object]:
+        """Describe the open-buy order limit without mutable reservations."""
+        return _descriptor(
+            "open_buy_order_limit",
+            self,
+            {"max_open_buy_orders_per_symbol": self._limit},
+        )
+
     def validate(
         self,
         orders: Iterable[Mapping[str, object]],
@@ -248,6 +276,20 @@ def _resolve_order_price(order: Mapping[str, object], context: RiskContext) -> f
         if fallback is not None:
             return float(fallback)
     return None
+
+
+def _descriptor(
+    manager_id: str,
+    manager: RiskManager,
+    parameters: Mapping[str, object],
+) -> Mapping[str, object]:
+    """Build the shared descriptor shape for maintained managers."""
+    return {
+        "manager_id": manager_id,
+        "manager_type": f"{manager.__class__.__module__}.{manager.__class__.__qualname__}",
+        "catalogue_version": "standard-1",
+        "parameters": dict(parameters),
+    }
 
 
 def _count_open_buy_orders(open_orders: Sequence[Mapping[str, object]], symbol: str) -> int:

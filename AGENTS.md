@@ -48,6 +48,12 @@ Use Notion as the source of truth for development planning and progress:
   tools. Agent code should call MCP tools, not platform internals, when a tool exists.
 - `trader_mlflow`: optional MLflow pyfunc loading and prediction normalization over core prediction contracts. It does
   not own training governance, strategy mapping, or agent decisions.
+- `trader_console_api`: outward-facing HTTP application boundary intended to become the primary human-facing way to
+  interact with Trader. It owns API contracts, scope and authorization policy, application services, transport,
+  persistence adapters, and OpenAPI. The current health and database-compatibility slice has no Trader execution
+  dependency and uses read-only transactions, but those are slice-specific constraints rather than package identity.
+  Future query and command capabilities must enter through explicit router, service, and repository boundaries with
+  dependency and authority tests appropriate to the operation.
 
 ## Agent Definitions
 

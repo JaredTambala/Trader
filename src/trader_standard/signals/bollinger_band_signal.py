@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Sequence
 
+from trader.indicators import IndicatorObservation
 from trader.signals import Bar, Signal
 
 from trader_standard.indicators import BollingerBandsIndicator
@@ -51,8 +51,8 @@ class BollingerBandSignal(Signal):
             return -1.0
         return 0.0
 
-    def indicator_values(self, bars: Sequence[Bar]) -> Sequence[tuple[str, float, datetime]]:
-        """Return current Bollinger band components as timestamped legacy audit tuples for events."""
+    def indicator_values(self, bars: Sequence[Bar]) -> Sequence[IndicatorObservation]:
+        """Return typed price-band and volatility observations for audit events."""
         series = self.indicator.compute_series(bars)
         if not series:
             raise ValueError("Insufficient bars for Bollinger Band indicator values")
@@ -60,8 +60,28 @@ class BollingerBandSignal(Signal):
         suffix = f"{self.indicator.period}_{str(self.indicator.stddev_multiplier).replace('.', '_')}"
         bar_ts = bars[0].ts
         return (
-            (f"bollinger_middle_{suffix}", current.middle, bar_ts),
-            (f"bollinger_upper_{suffix}", current.upper, bar_ts),
-            (f"bollinger_lower_{suffix}", current.lower, bar_ts),
-            (f"bollinger_bandwidth_{suffix}", current.bandwidth, bar_ts),
+            IndicatorObservation(
+                indicator_name=f"bollinger_middle_{suffix}", ts=bar_ts, value=current.middle,
+                payload={"base_indicator": "bollinger", "component": "middle", "period": self.indicator.period,
+                         "stddev_multiplier": self.indicator.stddev_multiplier,
+                         "display": {"pane": "price", "scale_group": "price", "unit": "price", "series_kind": "line"}},
+            ),
+            IndicatorObservation(
+                indicator_name=f"bollinger_upper_{suffix}", ts=bar_ts, value=current.upper,
+                payload={"base_indicator": "bollinger", "component": "upper", "period": self.indicator.period,
+                         "stddev_multiplier": self.indicator.stddev_multiplier,
+                         "display": {"pane": "price", "scale_group": "price", "unit": "price", "series_kind": "line"}},
+            ),
+            IndicatorObservation(
+                indicator_name=f"bollinger_lower_{suffix}", ts=bar_ts, value=current.lower,
+                payload={"base_indicator": "bollinger", "component": "lower", "period": self.indicator.period,
+                         "stddev_multiplier": self.indicator.stddev_multiplier,
+                         "display": {"pane": "price", "scale_group": "price", "unit": "price", "series_kind": "line"}},
+            ),
+            IndicatorObservation(
+                indicator_name=f"bollinger_bandwidth_{suffix}", ts=bar_ts, value=current.bandwidth,
+                payload={"base_indicator": "bollinger", "component": "bandwidth", "period": self.indicator.period,
+                         "stddev_multiplier": self.indicator.stddev_multiplier,
+                         "display": {"pane": "secondary", "scale_group": "volatility", "unit": "ratio", "series_kind": "line"}},
+            ),
         )

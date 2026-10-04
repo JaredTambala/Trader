@@ -31,9 +31,11 @@ def test_postgres_event_tables_cover_runtime_insert_paths() -> None:
             "position_snapshots",
             "config_kv",
             "metrics_snapshots",
-            "experiments",
-            "experiment_runs",
-        }
+                "experiments",
+                "experiment_runs",
+                "risk_compositions",
+                "risk_decisions",
+            }
     )
     assert BAR_EVENT_TABLES == frozenset({"stock_bar_events", "crypto_bar_events"})
     assert BAR_EVENT_TABLES < POSTGRES_EVENT_TABLES
@@ -45,3 +47,12 @@ def test_postgres_schema_statements_include_runtime_tables() -> None:
 
     for table in POSTGRES_EVENT_TABLES:
         assert table in schema_sql
+
+
+def test_postgres_schema_statements_include_lifecycle_identity_columns() -> None:
+    """Keep signal, order, and fill correlation fields in the producer schema."""
+    schema_sql = "\n".join(POSTGRES_SCHEMA_STATEMENTS)
+
+    assert "signal_event_id TEXT" in schema_sql
+    assert "fill_event_id TEXT" in schema_sql
+    assert "order_events_signal_event_id_idx" in schema_sql

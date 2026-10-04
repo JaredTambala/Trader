@@ -51,6 +51,7 @@ class PostgresEventInsertPlan:
     columns: tuple[str, ...]
     values: tuple[object, ...]
     ignore_bar_conflicts: bool
+    ignore_risk_conflicts: bool
 
 
 @dataclass(frozen=True)
@@ -90,6 +91,7 @@ def build_postgres_event_insert_plan(
         columns=tuple(payload.keys()),
         values=tuple(payload.values()),
         ignore_bar_conflicts=event_type in BAR_EVENT_TABLES,
+        ignore_risk_conflicts=event_type in {"risk_compositions", "risk_decisions"},
     )
 
 

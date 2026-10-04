@@ -13,6 +13,8 @@ from typing import Mapping, Sequence
 import uuid
 
 from ..event_store import EventStore
+from ..identifiers import deterministic_fill_event_id
+from ..risk.evidence import RiskComposition, RiskDecisionTrace
 from .lifecycle import CycleRunSessionOutcome
 from .orders import (
     _normalize_event_ts,
@@ -24,6 +26,29 @@ from .orders import (
 
 
 logger = logging.getLogger(__name__)
+
+
+def _record_risk_composition(
+    event_store: EventStore,
+    composition: RiskComposition,
+    *,
+    run_id: str,
+    session_id: str | None,
+) -> None:
+    """Persist one idempotent snapshot of the ordered risk composition."""
+    event_store.record_event(
+        "risk_compositions",
+        composition.to_record(run_id=run_id, session_id=session_id),
+    )
+
+
+def _record_risk_decisions(
+    event_store: EventStore,
+    traces: Sequence[RiskDecisionTrace],
+) -> None:
+    """Persist the bounded per-manager risk trace for one candidate order."""
+    for trace in traces:
+        event_store.record_event("risk_decisions", trace.to_record())
 
 
 def _record_owned_run_session_start(
@@ -233,6 +258,7 @@ def _record_broker_responses(
     if not responses:
         return
     order_lookup = {order.get("client_order_id"): order for order in orders}
+    fill_sequences: dict[object, int] = {}
     for response in responses:
         client_order_id = response.get("client_order_id")
         order = order_lookup.get(client_order_id)
@@ -249,7 +275,15 @@ def _record_broker_responses(
             response,
             terminal_ts=resolved_fill_ts,
             order_event_id=f"order_evt_{uuid.uuid4().hex}",
+            fill_event_id=_build_fill_event_id(
+                order,
+                response,
+                fill_ts=resolved_fill_ts,
+                sequence=fill_sequences.get(client_order_id, 0),
+            ),
         )
+        if plan.fill_event is not None:
+            fill_sequences[client_order_id] = fill_sequences.get(client_order_id, 0) + 1
         event_store.record_event("order_events", plan.order_event.to_record())
         if plan.missing_fill_evidence:
             logger.warning(
@@ -258,6 +292,31 @@ def _record_broker_responses(
             )
         if plan.fill_event is not None:
             event_store.record_event("fill_events", plan.fill_event.to_record())
+
+
+def _build_fill_event_id(
+    order: Mapping[str, object],
+    response: Mapping[str, object],
+    *,
+    fill_ts: datetime,
+    sequence: int,
+) -> str | None:
+    """Build a stable fill identity when the broker did not provide one."""
+    broker_fill_id = response.get("fill_event_id") or response.get("fill_id")
+    if broker_fill_id:
+        return str(broker_fill_id)
+    client_order_id = response.get("client_order_id") or order.get("client_order_id")
+    fill_qty = response.get("fill_qty", order.get("qty"))
+    fill_price = response.get("fill_price", order.get("price"))
+    if client_order_id is None or fill_qty is None or fill_price is None:
+        return None
+    return deterministic_fill_event_id(
+        str(client_order_id),
+        fill_ts,
+        fill_qty,
+        fill_price,
+        sequence=sequence,
+    )
 
 
 def _resolve_terminal_event_ts(

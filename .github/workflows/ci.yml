@@ -34,3 +34,31 @@ jobs:
 
       - name: Verify packaged documentation
         run: uv run python tests/cross_package/documentation/support/verify_wheel_documentation.py /tmp/trader-dist/*.whl
+
+  console:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: apps/trader-console/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/trader-console/package-lock.json
+      - run: npm install --global npm@11.19.0
+      - run: npm ci
+        working-directory: apps/trader-console
+      - run: npm run lint && npm run typecheck && npm test && npm run check:contracts
+        working-directory: apps/trader-console
+      - run: uv run python -m trader_console_api.openapi --output contracts/trader-console/openapi.json --check
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/trader-console
+      - name: Real database and browser workflows (includes production build)
+        env:
+          CONSOLE_DEMO_TESTS: "1"
+          CONSOLE_BROWSER_TESTS: "1"
+        run: uv run pytest tests/cross_package/workflows/test_console_demo.py tests/cross_package/workflows/test_console_demo_postgres.py tests/cross_package/workflows/test_console_browser.py -q

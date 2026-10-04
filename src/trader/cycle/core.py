@@ -15,10 +15,10 @@ from typing import Mapping
 from ..broker import Broker
 from ..config import Config
 from ..event_store import EventStore, build_event_store
-from ..market_data import MarketDataSource
+from ..market_data import MarketDataSource, RecentBarReader
 from ..portfolio import Portfolio
 from ..strategies import Strategy
-from ..risk import RiskManager
+from ..risk import RiskManager, RiskPipeline, build_risk_composition
 from ..strategy_metadata import resolve_strategy_id, resolve_strategy_type
 from . import state as cycle_state
 from .adapters import _apply_event_filters, _build_broker
@@ -45,6 +45,7 @@ from .recording import (
     _record_halted_cycle_finish,
     _record_owned_run_session_finish,
     _record_owned_run_session_start,
+    _record_risk_composition,
     _record_successful_cycle_finish,
 )
 
@@ -109,6 +110,7 @@ def _initialize_cycle_runtime(
         run_type=execution_plan.run_type,
         started_at=started_at,
         run_id=run_id,
+        symbols=config.market_data_symbols,
     )
     return CycleRuntimeSetup(
         event_store=filtered_event_store,
@@ -137,6 +139,7 @@ def _execute_cycle_workflow(
     market_data_source: MarketDataSource | None,
     portfolio: Portfolio | None,
     ingest_market_data: bool,
+    recent_bar_reader: RecentBarReader | None,
 ) -> CycleWorkflowResult:
     """Run the side-effecting cycle workflow after setup is complete."""
     event_store.record_cycle_start(
@@ -187,6 +190,7 @@ def _execute_cycle_workflow(
         decision_ts=decision_ts,
         market_data_source=market_data_source,
         ingest_market_data=ingest_market_data,
+        recent_bar_reader=recent_bar_reader,
     )
     processed_orders = market_data_result.processed_orders
     market_data_events = market_data_result.market_data_events
@@ -244,6 +248,7 @@ def run_cycle(
     ingest_market_data: bool = True,
     run_id: str | None = None,
     run_type: str | None = None,
+    recent_bar_reader: RecentBarReader | None = None,
 ) -> CycleResult:
     """Execute a cycle and record run events.
 
@@ -260,6 +265,7 @@ def run_cycle(
         ingest_market_data: Whether to persist fetched market data events.
         run_id: Optional run session identifier (backtest or trading).
         run_type: Optional run type override (backtest/trading).
+        recent_bar_reader: Optional typed reader for replay strategy history.
 
     Returns:
         CycleResult describing the run outcome.
@@ -315,6 +321,15 @@ def run_cycle(
         symbols=config.market_data_symbols,
         timeframe=config.strategy_timeframe,
     )
+    risk_composition = build_risk_composition(
+        risk_manager.managers if isinstance(risk_manager, RiskPipeline) else (risk_manager,)
+    )
+    _record_risk_composition(
+        event_store,
+        risk_composition,
+        run_id=run_id,
+        session_id=run_id,
+    )
 
     workflow_result: CycleWorkflowResult | None = None
     try:
@@ -333,6 +348,7 @@ def run_cycle(
             market_data_source=market_data_source,
             portfolio=portfolio,
             ingest_market_data=ingest_market_data,
+            recent_bar_reader=recent_bar_reader,
         )
         run_session_outcome = workflow_result.run_session_outcome
     except Exception as exc:

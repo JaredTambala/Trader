@@ -10,7 +10,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
+
+if TYPE_CHECKING:
+    from .review_scope import BacktestReviewScope, BacktestVariant
 
 
 @dataclass(frozen=True)
@@ -73,6 +76,22 @@ class BacktestAssumptions:
     fees: FeeAssumptions = field(default_factory=FeeAssumptions)
     slippage: SlippageAssumptions = field(default_factory=SlippageAssumptions)
     data: DataAssumptions = field(default_factory=DataAssumptions)
+
+
+@dataclass(frozen=True)
+class BacktestEvidenceCoverage:
+    """Recording status for optional event streams emitted by a backtest.
+
+    ``recorded`` means the stream was enabled for the replay, including runs
+    where it legitimately contains zero events. ``not_recorded`` means the
+    runtime filter disabled the stream, while ``not_applicable`` is used when
+    no replay cycles were available.
+    """
+
+    signal_events: str
+    order_events: str
+    fill_events: str
+    position_snapshots: str
 
 
 @dataclass(frozen=True)
@@ -209,7 +228,9 @@ class BacktestResult:
     The result combines run counts, final positions, execution assumptions,
     trade accounting, strategy/benchmark equity curves, relative metrics, and
     optional research provenance. It is intentionally plain data so it can be
-    converted to JSON or CSV without reaching back into the event store.
+    converted to JSON or CSV without reaching back into the event store. When
+    present, ``review_scope`` contains producer-owned comparison identity and
+    ``variant`` contains intentional strategy/parameter variation.
     """
 
     total_runs: int
@@ -247,6 +268,9 @@ class BacktestResult:
     experiment_id: str | None = None
     experiment_run_id: str | None = None
     provenance: Mapping[str, Any] | None = None
+    evidence_coverage: BacktestEvidenceCoverage | None = None
+    review_scope: "BacktestReviewScope" | None = None
+    variant: "BacktestVariant" | None = None
 
 
 @dataclass(frozen=True)
@@ -348,6 +372,7 @@ def _bool_value(value: object | None, default: bool) -> bool:
 
 __all__ = [
     "BacktestAssumptions",
+    "BacktestEvidenceCoverage",
     "BacktestResult",
     "BacktestSpec",
     "DataAssumptions",

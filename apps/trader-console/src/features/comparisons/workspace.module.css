@@ -1,0 +1,61 @@
+.shell { min-height: 100vh; background: var(--background); color: var(--text); }
+.header { width: min(1440px, 90vw); min-height: 72px; margin: auto; display: flex; align-items: center; justify-content: space-between; gap: 24px; border-bottom: 1px solid var(--border); }
+.brand { display: inline-flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-size: 13px; letter-spacing: .12em; font-weight: 700; }
+.brandSub { color: var(--muted); font-weight: 500; }
+.mark { display: grid; place-items: center; width: 25px; height: 25px; border: 1px solid var(--accent); border-radius: 50%; color: var(--accent); font-size: 12px; }
+.nav { display: flex; align-items: center; gap: 17px; font-size: 12px; }
+.nav a { color: var(--muted); text-decoration: none; }
+.nav a[aria-current="page"] { color: var(--accent); }
+.local { padding: 6px 9px; border: 1px solid var(--border); border-radius: 99px; color: var(--muted); font-size: 10px; letter-spacing: .08em; }
+.main { width: min(1440px, calc(100% - 48px)); margin: auto; padding: 62px 0 48px; }
+.heading, .sectionHeading, .contextLine, .actions, .evidenceRow { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.eyebrow { margin: 0 0 10px; color: var(--accent); font-size: 11px; letter-spacing: .18em; font-weight: 700; }
+.heading h1, .sectionHeading h2 { margin: 0; letter-spacing: -.035em; }
+.heading h1 { font-size: clamp(29px, 4vw, 47px); }
+.sectionHeading h2 { font-size: 23px; }
+.subtitle { max-width: 680px; margin: 13px 0 0; color: var(--muted); line-height: 1.6; font-size: 14px; }
+.button, .secondaryButton { border: 1px solid var(--accent); border-radius: 7px; color: var(--background); background: var(--accent); min-height: 40px; padding: 9px 14px; cursor: pointer; }
+.button:disabled, .secondaryButton:disabled { cursor: wait; opacity: .55; }
+.secondaryButton { background: transparent; color: var(--accent); }
+.panel { margin-top: 18px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); padding: clamp(18px, 3vw, 30px); }
+.count { color: var(--accent); font-size: 12px; }
+.selectorGrid, .choiceGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; margin-top: 22px; }
+.nameField { display: block; margin-top: 21px; max-width: 650px; }
+.selectorGrid label, .nameField, .reference, .controls label { color: var(--muted); font-size: 12px; }
+.panel :global(select), .nameField input { display: block; width: 100%; margin-top: 8px; background: var(--raised); color: var(--text); border: 1px solid var(--border); border-radius: 6px; min-height: 42px; padding: 9px 11px; }
+.contextLine { justify-content: flex-start; flex-wrap: wrap; margin: 18px 0 0; color: var(--muted); font-size: 12px; }
+.panel :global(fieldset) { border: 1px solid var(--border); border-radius: 8px; margin: 21px 0 0; padding: 15px; }
+.panel :global(fieldset label) { color: var(--muted); font-size: 12px; }
+.panel :global(legend) { color: var(--text); padding: 0 7px; font-size: 12px; }
+.runList { display: grid; gap: 8px; }
+.runOption { display: flex; gap: 10px; align-items: flex-start; padding: 11px; border: 1px solid var(--border); border-radius: 7px; cursor: pointer; }
+.runOption.selected { border-color: var(--accent); background: #192537; }
+.runOption strong, .runOption small, .runOption em { display: block; }
+.runOption small { margin-top: 4px; color: var(--muted); overflow-wrap: anywhere; }
+.runOption em { margin-top: 5px; font-style: normal; font-size: 11px; }
+.reference { display: block; max-width: 650px; margin-top: 15px; }
+.choiceGrid fieldset { display: grid; gap: 9px; align-content: start; }
+.choiceGrid input { margin-right: 8px; }
+.actions { justify-content: flex-start; margin-top: 21px; }
+.eligible { color: var(--success); }
+.excluded { color: var(--warning); }
+.warning, .error, .message { padding: 13px 15px; margin: 20px 0 0; border-left: 3px solid var(--warning); background: #201e19; color: var(--warning); line-height: 1.5; font-size: 13px; }
+.error { border-color: var(--danger); background: #261b20; color: var(--danger); display: flex; justify-content: space-between; gap: 12px; }
+.message { border-color: var(--success); background: #18251f; color: var(--success); }
+.empty { min-height: 110px; display: grid; place-items: center; color: var(--muted); text-align: center; }
+.evidenceList { display: grid; gap: 8px; margin-top: 20px; }
+.evidenceRow { padding: 12px 0; border-top: 1px solid var(--border); }
+.evidenceRow strong, .evidenceRow small { display: block; }
+.evidenceRow small { margin-top: 4px; color: var(--muted); font: 11px ui-monospace, monospace; overflow-wrap: anywhere; }
+.chartPanel { margin-top: 23px; }
+.chart { min-height: 330px; width: 100%; }
+.controls { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.controls input { vertical-align: middle; margin-left: 8px; accent-color: var(--accent); }
+.metricTable { overflow-x: auto; margin-top: 24px; border: 1px solid var(--border); border-radius: 8px; }
+.metricTable table { width: 100%; border-collapse: collapse; min-width: 600px; font-size: 12px; }
+.metricTable caption { text-align: left; padding: 13px; color: var(--muted); }
+.metricTable th, .metricTable td { padding: 12px 13px; text-align: right; border-top: 1px solid var(--border); white-space: nowrap; }
+.metricTable th:first-child, .metricTable td:first-child { text-align: left; }
+.metricTable th { color: var(--muted); font-weight: 600; }
+.footer { width: min(1440px, calc(100% - 48px)); margin: auto; padding: 0 0 26px; color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; }
+@media (max-width: 700px) { .header { min-height: 65px; } .nav { gap: 9px; } .local { display: none; } .main { width: calc(100% - 32px); padding-top: 40px; } .heading, .sectionHeading { align-items: flex-start; flex-direction: column; } .heading .button { width: 100%; } .selectorGrid, .choiceGrid { grid-template-columns: 1fr; } .contextLine { flex-direction: column; align-items: flex-start; } .actions { align-items: stretch; flex-direction: column; } .actions button { width: 100%; } .footer { width: calc(100% - 32px); } }

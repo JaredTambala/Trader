@@ -30,6 +30,11 @@ Bar-backed maintained strategies expect the event store to contain normalized ba
 timeframe, and decision window. They emit plain candidate-order mappings and may record signal evidence. The core
 runtime owns risk evaluation, submission/simulation, portfolio accounting, and lifecycle evidence.
 
+Backtests also publish the composed risk profile and per-manager decision trace when order evidence is enabled. Use
+the manager descriptors and composition fingerprint in Console review to reproduce which limits were active; a
+rejection reason identifies the manager that blocked an order, while broker rejection and no-fill states remain
+separate lifecycle outcomes.
+
 ## Metadata and reproducibility
 
 Use `strategy_info` to inspect the stable identity, source, and parameters recorded with runs. Changing behaviorally

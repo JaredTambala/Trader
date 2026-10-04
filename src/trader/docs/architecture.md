@@ -31,6 +31,10 @@ Postgres-first does not mean every Postgres schema belongs to core. Research kno
 embeddings, ingestion reports, and method-card records are owned by `trader_research.infrastructure`; `trader` neither
 defines nor exports that research persistence surface.
 
+Core does own the versioned `console_read` projections over its runtime evidence. Their stable names and compatibility
+metadata are installed explicitly rather than constructed by the runtime. The migration does not provision roles or
+credentials; the separate Console API and deployment layer own connection, transaction, and future IAM policy.
+
 ## System Principles
 
 ### Safety First
@@ -101,6 +105,14 @@ Representative runtime objects:
 - `AlpacaMarketDataSource`
 - replay and backfill runners
 
+Backtest replay constructs a typed `RecentBarReader` over the runner's loaded bars and passes it through the strategy
+cycle boundary. The reader carries symbol, asset class, timeframe, as-of timestamp, and lookback limit, and returns
+latest-first windows without database access. The ordinary runtime leaves this optional reader unset and retains its
+event-store history reads.
+
+Backtest cycle identifiers include the run session and the configured decision symbol subset. This prevents two
+overlapping replays from updating one another's lifecycle rows while keeping retries within a run deterministic.
+
 ### 2. Event Store and Schema Layer
 
 The event store provides the runtime’s persistence, transaction boundary, and queryable audit trail.
@@ -112,11 +124,16 @@ Primary responsibilities:
 - preserve bounded prediction-to-signal/order lineage
 - expose transactional writes and query access
 - support filtered writes based on runtime logging configuration
+- publish and migrate allowlisted, versioned Console read views outside runtime startup
 
 Representative runtime objects:
 
 - `EventStore`
 - `FilteredEventStore`
+
+`PostgresEventStore` remains a writer/bootstrap adapter. The `trader-console-read-contract` command is a separate shell
+over producer-owned view definitions; Console application startup verifies and consumes the installed contract through
+its own pool and read-only transaction boundary.
 
 ### 3. Strategy Layer
 

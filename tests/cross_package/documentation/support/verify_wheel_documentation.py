@@ -18,6 +18,7 @@ PACKAGE_NAMES = (
     "trader_mcp",
     "trader_agents",
     "trader_mlflow",
+    "trader_console_api",
 )
 REPO_ROOT = Path(__file__).resolve().parents[4]
 

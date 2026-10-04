@@ -11,6 +11,34 @@ Provider discovery and loading are separate gated capabilities. A provider may s
 backfill for the requested asset/timeframe. Loading uses cost/limit policy and durable operation identity. After an
 interruption, the caller reconciles prepared or terminal evidence rather than blindly resubmitting.
 
+## Data readiness lifecycle
+
+The public operations form a deliberate sequence:
+
+```text
+discover symbols -> inspect inventory -> summarize quality
+                                      |
+                         missing coverage and quality gaps
+                                      v
+                       costed, approved bounded loading
+                                      |
+                         revalidate -> publish snapshot
+```
+
+Every step carries the complete composite scope: asset class, symbols, timeframe, interval, source, and research role.
+Readiness is therefore a property of the requested universe, not a convenient answer for whichever symbol happened to
+be available. A load operation must cite its matching plan and remains identifiable if the provider call is interrupted.
+
+The resulting manifest and quality evidence describe what the next context may use. They do not claim that the data is
+economically useful, and they do not authorize a backtest with a different scope.
+
+## Failure and recovery
+
+Malformed scope, unsupported provider capabilities, over-limit or over-cost requests, stale data, and incomplete
+coverage are explicit outcomes. A read-only inventory or quality request may be retried against the same scope. A
+prepared load is reconciled through its operation identity; if the store cannot establish a terminal result, the caller
+receives `data_load_reconciliation_required` rather than a second provider mutation.
+
 Public operations are exported from `trader_research.data`: discovery, inventory, quality, loading, and research
 snapshot creation. MCP ownership and agent selection are outside this package.
 

@@ -9,6 +9,7 @@ from .domain import (
     StaticMarketDataSource,
     StockBarEvent,
 )
+from .recent_bars import RecentBarReader, RecentBarRequest, normalize_asset_class
 
 __all__ = [
     "CryptoBarEvent",
@@ -18,4 +19,7 @@ __all__ = [
     "NoOpMarketDataSource",
     "StaticMarketDataSource",
     "StockBarEvent",
+    "RecentBarReader",
+    "RecentBarRequest",
+    "normalize_asset_class",
 ]

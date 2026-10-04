@@ -1,0 +1,4638 @@
+{
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "additionalProperties": false,
+        "description": "Stable error envelope for resource failures.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ApiError",
+        "type": "object"
+      },
+      "BacktestAssumptions": {
+        "additionalProperties": false,
+        "description": "Bounded execution and missing-data assumptions for preflight.",
+        "properties": {
+          "allow_latest_prior_bar": {
+            "default": true,
+            "title": "Allow Latest Prior Bar",
+            "type": "boolean"
+          },
+          "allow_price_carry_forward": {
+            "default": true,
+            "title": "Allow Price Carry Forward",
+            "type": "boolean"
+          },
+          "fee_bps": {
+            "default": 0.0,
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Fee Bps",
+            "type": "number"
+          },
+          "fee_fixed_per_order": {
+            "default": 0.0,
+            "maximum": 1000000.0,
+            "minimum": 0.0,
+            "title": "Fee Fixed Per Order",
+            "type": "number"
+          },
+          "fee_minimum": {
+            "default": 0.0,
+            "maximum": 1000000.0,
+            "minimum": 0.0,
+            "title": "Fee Minimum",
+            "type": "number"
+          },
+          "fill_model": {
+            "default": "full_fill",
+            "enum": [
+              "full_fill",
+              "next_bar"
+            ],
+            "title": "Fill Model",
+            "type": "string"
+          },
+          "latency_ms": {
+            "default": 0,
+            "maximum": 60000.0,
+            "minimum": 0.0,
+            "title": "Latency Ms",
+            "type": "integer"
+          },
+          "slippage_bps": {
+            "default": 0.0,
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Slippage Bps",
+            "type": "number"
+          }
+        },
+        "title": "BacktestAssumptions",
+        "type": "object"
+      },
+      "BacktestCatalogueResponse": {
+        "additionalProperties": false,
+        "description": "Versioned allowlisted strategy and risk catalogue.",
+        "properties": {
+          "catalogue_version": {
+            "title": "Catalogue Version",
+            "type": "string"
+          },
+          "risk_profiles": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogueProfile"
+            },
+            "title": "Risk Profiles",
+            "type": "array"
+          },
+          "strategy_profiles": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogueProfile"
+            },
+            "title": "Strategy Profiles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "catalogue_version",
+          "strategy_profiles",
+          "risk_profiles"
+        ],
+        "title": "BacktestCatalogueResponse",
+        "type": "object"
+      },
+      "BacktestCoverageCheck": {
+        "additionalProperties": false,
+        "description": "Read-only data coverage evidence returned by preflight.",
+        "properties": {
+          "asset_class": {
+            "enum": [
+              "stock",
+              "crypto"
+            ],
+            "title": "Asset Class",
+            "type": "string"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "bar_count": {
+            "default": 0,
+            "title": "Bar Count",
+            "type": "integer"
+          },
+          "first_ts": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Ts"
+          },
+          "last_ts": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ts"
+          },
+          "requested_end": {
+            "format": "date-time",
+            "title": "Requested End",
+            "type": "string"
+          },
+          "required_start": {
+            "format": "date-time",
+            "title": "Required Start",
+            "type": "string"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "timeframe": {
+            "title": "Timeframe",
+            "type": "string"
+          },
+          "warmup_bars": {
+            "title": "Warmup Bars",
+            "type": "integer"
+          },
+          "warmup_satisfied": {
+            "title": "Warmup Satisfied",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "symbol",
+          "asset_class",
+          "timeframe",
+          "required_start",
+          "requested_end",
+          "warmup_bars",
+          "available",
+          "warmup_satisfied"
+        ],
+        "title": "BacktestCoverageCheck",
+        "type": "object"
+      },
+      "BacktestDefinition": {
+        "additionalProperties": false,
+        "description": "Normalized, content-addressed input to one future backtest execution.",
+        "properties": {
+          "asset_class": {
+            "enum": [
+              "stock",
+              "crypto"
+            ],
+            "title": "Asset Class",
+            "type": "string"
+          },
+          "assumptions": {
+            "$ref": "#/components/schemas/BacktestAssumptions"
+          },
+          "benchmark_id": {
+            "default": "buy_hold",
+            "enum": [
+              "buy_hold",
+              "none"
+            ],
+            "title": "Benchmark Id",
+            "type": "string"
+          },
+          "display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "initial_cash": {
+            "maximum": 1000000000000.0,
+            "minimum": 0.0,
+            "title": "Initial Cash",
+            "type": "number"
+          },
+          "initial_positions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InitialPositionInput"
+            },
+            "title": "Initial Positions",
+            "type": "array"
+          },
+          "resource_limits": {
+            "$ref": "#/components/schemas/BacktestResourceLimits"
+          },
+          "risk_catalogue_version": {
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Risk Catalogue Version",
+            "type": "string"
+          },
+          "risk_parameters": {
+            "additionalProperties": true,
+            "title": "Risk Parameters",
+            "type": "object"
+          },
+          "risk_profile_id": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Risk Profile Id",
+            "type": "string"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          },
+          "strategy_catalogue_version": {
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Strategy Catalogue Version",
+            "type": "string"
+          },
+          "strategy_parameters": {
+            "additionalProperties": true,
+            "title": "Strategy Parameters",
+            "type": "object"
+          },
+          "strategy_profile_id": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Strategy Profile Id",
+            "type": "string"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Symbols",
+            "type": "array"
+          },
+          "timeframe": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Timeframe",
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_name",
+          "strategy_profile_id",
+          "strategy_catalogue_version",
+          "risk_profile_id",
+          "risk_catalogue_version",
+          "asset_class",
+          "symbols",
+          "timeframe",
+          "start",
+          "end",
+          "initial_cash"
+        ],
+        "title": "BacktestDefinition",
+        "type": "object"
+      },
+      "BacktestDefinitionRevision": {
+        "additionalProperties": false,
+        "description": "Immutable Console-owned definition revision returned after persistence.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/BacktestDefinition"
+          },
+          "definition_id": {
+            "title": "Definition Id",
+            "type": "string"
+          },
+          "definition_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Definition Version",
+            "type": "integer"
+          },
+          "fingerprint": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "scope_id": {
+            "title": "Scope Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "definition_id",
+          "scope_id",
+          "revision",
+          "fingerprint",
+          "definition",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BacktestDefinitionRevision",
+        "type": "object"
+      },
+      "BacktestDefinitionsResponse": {
+        "additionalProperties": false,
+        "description": "Bounded page of the latest immutable revision for each definition.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestDefinitionRevision"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "BacktestDefinitionsResponse",
+        "type": "object"
+      },
+      "BacktestExecutionRecord": {
+        "additionalProperties": false,
+        "description": "Durable execution command state linked to one immutable definition.",
+        "properties": {
+          "attempt": {
+            "minimum": 0.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "definition_fingerprint": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Definition Fingerprint",
+            "type": "string"
+          },
+          "definition_id": {
+            "title": "Definition Id",
+            "type": "string"
+          },
+          "definition_revision": {
+            "minimum": 1.0,
+            "title": "Definition Revision",
+            "type": "integer"
+          },
+          "execution_id": {
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "heartbeat_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heartbeat At"
+          },
+          "idempotency_key": {
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "last_decision_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Decision At"
+          },
+          "lease_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Expires At"
+          },
+          "processed_cycles": {
+            "minimum": 0.0,
+            "title": "Processed Cycles",
+            "type": "integer"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "scope_id": {
+            "title": "Scope Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "partial",
+              "failed",
+              "reconciliation_required"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "terminal_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal Error Code"
+          },
+          "terminal_error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal Error Message"
+          },
+          "total_cycles": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Cycles"
+          },
+          "warning_summary": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Warning Summary",
+            "type": "array"
+          },
+          "worker_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Id"
+          }
+        },
+        "required": [
+          "execution_id",
+          "scope_id",
+          "definition_id",
+          "definition_revision",
+          "definition_fingerprint",
+          "idempotency_key",
+          "status",
+          "attempt",
+          "processed_cycles",
+          "created_at"
+        ],
+        "title": "BacktestExecutionRecord",
+        "type": "object"
+      },
+      "BacktestExecutionSubmit": {
+        "additionalProperties": false,
+        "description": "Idempotent request to enqueue one persisted definition revision.",
+        "properties": {
+          "definition_id": {
+            "format": "uuid",
+            "title": "Definition Id",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "definition_id",
+          "idempotency_key"
+        ],
+        "title": "BacktestExecutionSubmit",
+        "type": "object"
+      },
+      "BacktestExecutionsResponse": {
+        "additionalProperties": false,
+        "description": "Bounded page of durable execution command records.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestExecutionRecord"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "BacktestExecutionsResponse",
+        "type": "object"
+      },
+      "BacktestPreflightRequest": {
+        "additionalProperties": false,
+        "description": "User-authored draft validated before persistence or execution.",
+        "properties": {
+          "asset_class": {
+            "title": "Asset Class",
+            "type": "string"
+          },
+          "assumptions": {
+            "$ref": "#/components/schemas/BacktestAssumptions"
+          },
+          "benchmark_id": {
+            "default": "buy_hold",
+            "enum": [
+              "buy_hold",
+              "none"
+            ],
+            "title": "Benchmark Id",
+            "type": "string"
+          },
+          "display_name": {
+            "default": "Untitled backtest",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "initial_cash": {
+            "default": 100000.0,
+            "maximum": 1000000000000.0,
+            "minimum": 0.0,
+            "title": "Initial Cash",
+            "type": "number"
+          },
+          "initial_positions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InitialPositionInput"
+            },
+            "title": "Initial Positions",
+            "type": "array"
+          },
+          "resource_limits": {
+            "$ref": "#/components/schemas/BacktestResourceLimits"
+          },
+          "risk_catalogue_version": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Catalogue Version"
+          },
+          "risk_parameters": {
+            "additionalProperties": true,
+            "title": "Risk Parameters",
+            "type": "object"
+          },
+          "risk_profile_id": {
+            "default": "noop",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Risk Profile Id",
+            "type": "string"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          },
+          "strategy_catalogue_version": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Catalogue Version"
+          },
+          "strategy_parameters": {
+            "additionalProperties": true,
+            "title": "Strategy Parameters",
+            "type": "object"
+          },
+          "strategy_profile_id": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Strategy Profile Id",
+            "type": "string"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Symbols",
+            "type": "array"
+          },
+          "timeframe": {
+            "title": "Timeframe",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strategy_profile_id",
+          "asset_class",
+          "symbols",
+          "timeframe",
+          "start",
+          "end"
+        ],
+        "title": "BacktestPreflightRequest",
+        "type": "object"
+      },
+      "BacktestPreflightResponse": {
+        "additionalProperties": false,
+        "description": "Normalized preflight result with no producer or command side effects.",
+        "properties": {
+          "catalogue_version": {
+            "title": "Catalogue Version",
+            "type": "string"
+          },
+          "coverage": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/BacktestCoverageCheck"
+            },
+            "title": "Coverage",
+            "type": "array"
+          },
+          "definition_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Definition Fingerprint"
+          },
+          "issues": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PreflightIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "normalized_definition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BacktestDefinition"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "valid",
+          "catalogue_version"
+        ],
+        "title": "BacktestPreflightResponse",
+        "type": "object"
+      },
+      "BacktestResourceLimits": {
+        "additionalProperties": false,
+        "description": "Explicit bounded resources accepted by a backtest definition.",
+        "properties": {
+          "max_bars": {
+            "default": 5000000,
+            "maximum": 50000000.0,
+            "minimum": 1.0,
+            "title": "Max Bars",
+            "type": "integer"
+          },
+          "max_cycles": {
+            "default": 1000000,
+            "maximum": 10000000.0,
+            "minimum": 1.0,
+            "title": "Max Cycles",
+            "type": "integer"
+          },
+          "timeout_seconds": {
+            "default": 3600,
+            "maximum": 86400.0,
+            "minimum": 1.0,
+            "title": "Timeout Seconds",
+            "type": "integer"
+          }
+        },
+        "title": "BacktestResourceLimits",
+        "type": "object"
+      },
+      "BarPoint": {
+        "additionalProperties": false,
+        "description": "One producer-owned OHLCV observation.",
+        "properties": {
+          "close": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High"
+          },
+          "ingested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingested At"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low"
+          },
+          "open": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "timeframe": {
+            "title": "Timeframe",
+            "type": "string"
+          },
+          "trade_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trade Count"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume"
+          },
+          "vwap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vwap"
+          }
+        },
+        "required": [
+          "symbol",
+          "timeframe",
+          "ts"
+        ],
+        "title": "BarPoint",
+        "type": "object"
+      },
+      "BarsResponse": {
+        "additionalProperties": false,
+        "description": "A page of OHLCV observations.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BarPoint"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "BarsResponse",
+        "type": "object"
+      },
+      "BrokerAccountBinding": {
+        "description": "Evidence level for the scope's configured brokerage binding.",
+        "enum": [
+          "configured",
+          "not_applicable"
+        ],
+        "title": "BrokerAccountBinding",
+        "type": "string"
+      },
+      "CatalogueParameter": {
+        "additionalProperties": false,
+        "description": "Public typed parameter metadata for one allowlisted profile.",
+        "properties": {
+          "default": {
+            "title": "Default"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "maximum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum"
+          },
+          "minimum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "required": {
+            "default": false,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "type": {
+            "enum": [
+              "integer",
+              "number",
+              "boolean",
+              "string"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "title": "CatalogueParameter",
+        "type": "object"
+      },
+      "CatalogueProfile": {
+        "additionalProperties": false,
+        "description": "One discoverable strategy or risk profile.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "evidence_requirements": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Requirements",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "strategy",
+              "risk"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "lookback_bars": {
+            "default": 0,
+            "title": "Lookback Bars",
+            "type": "integer"
+          },
+          "manager_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Manager Ids",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parameters": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CatalogueParameter"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "profile_id": {
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "reason_codes": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "supported_asset_classes": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Supported Asset Classes",
+            "type": "array"
+          },
+          "supported_timeframes": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Supported Timeframes",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "profile_id",
+          "version",
+          "name",
+          "description"
+        ],
+        "title": "CatalogueProfile",
+        "type": "object"
+      },
+      "ComparisonEvaluation": {
+        "additionalProperties": false,
+        "description": "Live admission result, independent of the saved definition's revision.",
+        "properties": {
+          "eligible_run_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Eligible Run Ids",
+            "type": "array"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/ComparisonRunEligibility"
+            },
+            "title": "Runs",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "empty",
+              "unavailable",
+              "one_run",
+              "ready"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "eligible_run_ids",
+          "runs"
+        ],
+        "title": "ComparisonEvaluation",
+        "type": "object"
+      },
+      "ComparisonRunEligibility": {
+        "additionalProperties": false,
+        "description": "Current eligibility of one selected ID; excluded IDs retain their reason.",
+        "properties": {
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "exclusion_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclusion Reason"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "scope_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Fingerprint"
+          }
+        },
+        "required": [
+          "run_id",
+          "eligible"
+        ],
+        "title": "ComparisonRunEligibility",
+        "type": "object"
+      },
+      "ComparisonViewDefinition": {
+        "additionalProperties": false,
+        "description": "User intent only; unknown keys and duplicate selections are rejected.",
+        "properties": {
+          "metric_keys": {
+            "default": [
+              "strategy_total_return"
+            ],
+            "items": {
+              "enum": [
+                "strategy_total_return",
+                "benchmark_total_return",
+                "strategy_max_drawdown",
+                "benchmark_max_drawdown",
+                "strategy_sharpe",
+                "strategy_trade_count",
+                "warnings_count"
+              ],
+              "type": "string"
+            },
+            "maxItems": 7,
+            "title": "Metric Keys",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "reference_run_id": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Run Id"
+          },
+          "run_ids": {
+            "default": [],
+            "items": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Run Ids",
+            "type": "array"
+          },
+          "series_keys": {
+            "default": [
+              "strategy_normalized"
+            ],
+            "items": {
+              "enum": [
+                "strategy_normalized",
+                "benchmark_normalized",
+                "strategy_drawdown",
+                "benchmark_drawdown"
+              ],
+              "type": "string"
+            },
+            "maxItems": 4,
+            "title": "Series Keys",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ComparisonViewDefinition",
+        "type": "object"
+      },
+      "ComparisonViewDetail": {
+        "additionalProperties": false,
+        "description": "Saved intent and its freshly evaluated exclusions.",
+        "properties": {
+          "evaluation": {
+            "$ref": "#/components/schemas/ComparisonEvaluation"
+          },
+          "view": {
+            "$ref": "#/components/schemas/SavedComparisonView"
+          }
+        },
+        "required": [
+          "view",
+          "evaluation"
+        ],
+        "title": "ComparisonViewDetail",
+        "type": "object"
+      },
+      "ComparisonViewUpdate": {
+        "additionalProperties": false,
+        "description": "Complete replacement guarded against lost edits.",
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "metric_keys": {
+            "default": [
+              "strategy_total_return"
+            ],
+            "items": {
+              "enum": [
+                "strategy_total_return",
+                "benchmark_total_return",
+                "strategy_max_drawdown",
+                "benchmark_max_drawdown",
+                "strategy_sharpe",
+                "strategy_trade_count",
+                "warnings_count"
+              ],
+              "type": "string"
+            },
+            "maxItems": 7,
+            "title": "Metric Keys",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "reference_run_id": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Run Id"
+          },
+          "run_ids": {
+            "default": [],
+            "items": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Run Ids",
+            "type": "array"
+          },
+          "series_keys": {
+            "default": [
+              "strategy_normalized"
+            ],
+            "items": {
+              "enum": [
+                "strategy_normalized",
+                "benchmark_normalized",
+                "strategy_drawdown",
+                "benchmark_drawdown"
+              ],
+              "type": "string"
+            },
+            "maxItems": 4,
+            "title": "Series Keys",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "expected_revision"
+        ],
+        "title": "ComparisonViewUpdate",
+        "type": "object"
+      },
+      "ComparisonViewsResponse": {
+        "additionalProperties": false,
+        "description": "A bounded page of definitions without live evidence queries per item.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SavedComparisonView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "ComparisonViewsResponse",
+        "type": "object"
+      },
+      "ConsoleEnvironment": {
+        "description": "Execution environment represented by one isolated Console scope.",
+        "enum": [
+          "paper",
+          "backtest",
+          "synthetic_demo"
+        ],
+        "title": "ConsoleEnvironment",
+        "type": "string"
+      },
+      "ConsoleScope": {
+        "additionalProperties": false,
+        "description": "Safe public description of one server-configured API scope.\n\nThe database URL and brokerage provider reference are deliberately absent.\nOne API process serves one scope backed by one isolated database.",
+        "properties": {
+          "broker_account_binding": {
+            "$ref": "#/components/schemas/BrokerAccountBinding"
+          },
+          "broker_account_display_label": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broker Account Display Label"
+          },
+          "data_source_kind": {
+            "const": "postgresql",
+            "default": "postgresql",
+            "title": "Data Source Kind",
+            "type": "string"
+          },
+          "display_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "environment": {
+            "$ref": "#/components/schemas/ConsoleEnvironment"
+          },
+          "isolation_kind": {
+            "const": "isolated_database",
+            "default": "isolated_database",
+            "title": "Isolation Kind",
+            "type": "string"
+          },
+          "presentation_timezone": {
+            "default": "UTC",
+            "title": "Presentation Timezone",
+            "type": "string"
+          },
+          "scope_id": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9_-]*$",
+            "title": "Scope Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope_id",
+          "display_name",
+          "environment",
+          "broker_account_binding"
+        ],
+        "title": "ConsoleScope",
+        "type": "object"
+      },
+      "ExperimentRunSummary": {
+        "additionalProperties": false,
+        "description": "A backtest run and its current comparison eligibility.",
+        "properties": {
+          "asset_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Class"
+          },
+          "benchmark_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Id"
+          },
+          "comparison_eligible": {
+            "default": false,
+            "title": "Comparison Eligible",
+            "type": "boolean"
+          },
+          "comparison_exclusion_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Exclusion Reason"
+          },
+          "comparison_projection_available": {
+            "default": false,
+            "title": "Comparison Projection Available",
+            "type": "boolean"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "data_scope_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Scope Id"
+          },
+          "end_ts": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Ts"
+          },
+          "experiment_id": {
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "experiment_run_id": {
+            "title": "Experiment Run Id",
+            "type": "string"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "scope_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Fingerprint"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "start_ts": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Ts"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "strategy_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Id"
+          },
+          "strategy_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Name"
+          },
+          "strategy_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Version"
+          },
+          "symbols": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Symbols",
+            "type": "array"
+          },
+          "timeframe": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeframe"
+          },
+          "variant_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Fingerprint"
+          },
+          "variant_strategy_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Strategy Id"
+          },
+          "variant_strategy_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Strategy Version"
+          }
+        },
+        "required": [
+          "experiment_run_id",
+          "experiment_id",
+          "run_id",
+          "status"
+        ],
+        "title": "ExperimentRunSummary",
+        "type": "object"
+      },
+      "ExperimentRunsResponse": {
+        "additionalProperties": false,
+        "description": "A page of runs belonging to one experiment.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExperimentRunSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "ExperimentRunsResponse",
+        "type": "object"
+      },
+      "ExperimentSummary": {
+        "additionalProperties": false,
+        "description": "An experiment grouping discovered from its published run projections.",
+        "properties": {
+          "experiment_id": {
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "latest_created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Created At"
+          },
+          "metadata_available": {
+            "default": false,
+            "title": "Metadata Available",
+            "type": "boolean"
+          },
+          "run_count": {
+            "title": "Run Count",
+            "type": "integer"
+          },
+          "statuses": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Statuses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "run_count"
+        ],
+        "title": "ExperimentSummary",
+        "type": "object"
+      },
+      "ExperimentsResponse": {
+        "additionalProperties": false,
+        "description": "A page of experiment groups.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExperimentSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "ExperimentsResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "IndicatorSeriesPoint": {
+        "additionalProperties": false,
+        "description": "One persisted indicator observation with producer-owned display semantics.",
+        "properties": {
+          "bar_ts": {
+            "format": "date-time",
+            "title": "Bar Ts",
+            "type": "string"
+          },
+          "cycle_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle Id"
+          },
+          "data_scope_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Scope Id"
+          },
+          "indicator_name": {
+            "title": "Indicator Name",
+            "type": "string"
+          },
+          "pane": {
+            "title": "Pane",
+            "type": "string"
+          },
+          "parameters_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parameters Fingerprint"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "scale_group": {
+            "title": "Scale Group",
+            "type": "string"
+          },
+          "series_id": {
+            "title": "Series Id",
+            "type": "string"
+          },
+          "series_kind": {
+            "title": "Series Kind",
+            "type": "string"
+          },
+          "series_label": {
+            "title": "Series Label",
+            "type": "string"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "signal_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signal Event Id"
+          },
+          "signal_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signal Name"
+          },
+          "strategy_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Id"
+          },
+          "strategy_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Version"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "variant_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Fingerprint"
+          }
+        },
+        "required": [
+          "run_id",
+          "symbol",
+          "indicator_name",
+          "series_id",
+          "series_label",
+          "pane",
+          "scale_group",
+          "unit",
+          "series_kind",
+          "bar_ts"
+        ],
+        "title": "IndicatorSeriesPoint",
+        "type": "object"
+      },
+      "InitialPositionInput": {
+        "additionalProperties": false,
+        "description": "Optional initial position included in a typed backtest definition.",
+        "properties": {
+          "avg_price": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Price"
+          },
+          "qty": {
+            "title": "Qty",
+            "type": "number"
+          },
+          "symbol": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Symbol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "symbol",
+          "qty"
+        ],
+        "title": "InitialPositionInput",
+        "type": "object"
+      },
+      "LivenessResponse": {
+        "additionalProperties": false,
+        "description": "Process-liveness response that makes no database or trading claim.",
+        "properties": {
+          "service": {
+            "const": "trader-console-api",
+            "default": "trader-console-api",
+            "title": "Service",
+            "type": "string"
+          },
+          "status": {
+            "const": "alive",
+            "default": "alive",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "LivenessResponse",
+        "type": "object"
+      },
+      "MarketDataset": {
+        "additionalProperties": false,
+        "description": "One available symbol/timeframe/source data slice.",
+        "properties": {
+          "asset_class": {
+            "enum": [
+              "stock",
+              "crypto"
+            ],
+            "title": "Asset Class",
+            "type": "string"
+          },
+          "bar_count": {
+            "title": "Bar Count",
+            "type": "integer"
+          },
+          "first_ts": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Ts"
+          },
+          "last_ts": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ts"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "timeframe": {
+            "title": "Timeframe",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_class",
+          "symbol",
+          "timeframe",
+          "bar_count"
+        ],
+        "title": "MarketDataset",
+        "type": "object"
+      },
+      "MarketDatasetsResponse": {
+        "additionalProperties": false,
+        "description": "Available market-data slices with bounded pagination.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MarketDataset"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "MarketDatasetsResponse",
+        "type": "object"
+      },
+      "PageInfo": {
+        "additionalProperties": false,
+        "description": "Bounded pagination evidence returned with collection resources.",
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "limit": {
+            "maximum": 50000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "limit",
+          "offset",
+          "total",
+          "has_more"
+        ],
+        "title": "PageInfo",
+        "type": "object"
+      },
+      "PreflightIssue": {
+        "additionalProperties": false,
+        "description": "Actionable field-level preflight failure or warning.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "severity",
+          "code",
+          "path",
+          "message"
+        ],
+        "title": "PreflightIssue",
+        "type": "object"
+      },
+      "ReadinessResponse": {
+        "additionalProperties": false,
+        "description": "Database readiness without trading-health or IAM claims.",
+        "properties": {
+          "contract_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Version"
+          },
+          "issues": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "scope_id": {
+            "title": "Scope Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "scope_id"
+        ],
+        "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "ResourceRecord": {
+        "additionalProperties": true,
+        "description": "Typed identity plus producer fields for a run-detail projection.",
+        "properties": {
+          "experiment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Experiment Id"
+          },
+          "experiment_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Experiment Run Id"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          }
+        },
+        "title": "ResourceRecord",
+        "type": "object"
+      },
+      "RiskCompositionEntry": {
+        "additionalProperties": false,
+        "description": "One ordered manager in the producer-published risk composition.",
+        "properties": {
+          "catalogue_version": {
+            "title": "Catalogue Version",
+            "type": "string"
+          },
+          "composition_fingerprint": {
+            "title": "Composition Fingerprint",
+            "type": "string"
+          },
+          "manager_id": {
+            "title": "Manager Id",
+            "type": "string"
+          },
+          "manager_position": {
+            "title": "Manager Position",
+            "type": "integer"
+          },
+          "manager_type": {
+            "title": "Manager Type",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          }
+        },
+        "required": [
+          "run_id",
+          "catalogue_version",
+          "composition_fingerprint",
+          "manager_position",
+          "manager_id",
+          "manager_type"
+        ],
+        "title": "RiskCompositionEntry",
+        "type": "object"
+      },
+      "RiskDecision": {
+        "additionalProperties": false,
+        "description": "One ordered per-manager risk decision with transformation evidence.",
+        "properties": {
+          "after_order": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Order"
+          },
+          "after_qty": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Qty"
+          },
+          "before_order": {
+            "additionalProperties": true,
+            "title": "Before Order",
+            "type": "object"
+          },
+          "before_qty": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before Qty"
+          },
+          "client_order_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Order Id"
+          },
+          "composition_fingerprint": {
+            "title": "Composition Fingerprint",
+            "type": "string"
+          },
+          "cycle_id": {
+            "title": "Cycle Id",
+            "type": "string"
+          },
+          "decision_ts": {
+            "format": "date-time",
+            "title": "Decision Ts",
+            "type": "string"
+          },
+          "manager_id": {
+            "title": "Manager Id",
+            "type": "string"
+          },
+          "manager_position": {
+            "title": "Manager Position",
+            "type": "integer"
+          },
+          "manager_type": {
+            "title": "Manager Type",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "approved",
+              "transformed",
+              "rejected"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "risk_decision_id": {
+            "title": "Risk Decision Id",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          }
+        },
+        "required": [
+          "risk_decision_id",
+          "composition_fingerprint",
+          "run_id",
+          "cycle_id",
+          "decision_ts",
+          "manager_id",
+          "manager_type",
+          "manager_position",
+          "outcome",
+          "reason_code"
+        ],
+        "title": "RiskDecision",
+        "type": "object"
+      },
+      "RiskDecisionsResponse": {
+        "additionalProperties": false,
+        "description": "A bounded, filterable page of manager decisions for one run.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RiskDecision"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "RiskDecisionsResponse",
+        "type": "object"
+      },
+      "RiskSummary": {
+        "additionalProperties": false,
+        "description": "Bounded risk evidence counts for one run.",
+        "properties": {
+          "approved_count": {
+            "title": "Approved Count",
+            "type": "integer"
+          },
+          "blocked_count": {
+            "title": "Blocked Count",
+            "type": "integer"
+          },
+          "composition_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Composition Fingerprint"
+          },
+          "evaluated_count": {
+            "title": "Evaluated Count",
+            "type": "integer"
+          },
+          "rejected_count": {
+            "title": "Rejected Count",
+            "type": "integer"
+          },
+          "risk_evidence_status": {
+            "enum": [
+              "recorded",
+              "unavailable"
+            ],
+            "title": "Risk Evidence Status",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "transformed_count": {
+            "title": "Transformed Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run_id",
+          "risk_evidence_status",
+          "evaluated_count",
+          "approved_count",
+          "transformed_count",
+          "rejected_count",
+          "blocked_count"
+        ],
+        "title": "RiskSummary",
+        "type": "object"
+      },
+      "RunDetail": {
+        "additionalProperties": false,
+        "description": "Published evidence for one backtest run, grouped by projection.",
+        "properties": {
+          "assumptions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResourceRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "comparison_curves": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ResourceRecord"
+            },
+            "title": "Comparison Curves",
+            "type": "array"
+          },
+          "comparison_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResourceRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "equity_curve": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ResourceRecord"
+            },
+            "title": "Equity Curve",
+            "type": "array"
+          },
+          "evidence_coverage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResourceRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResourceRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fills": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Fills",
+            "type": "array"
+          },
+          "indicator_series": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/IndicatorSeriesPoint"
+            },
+            "title": "Indicator Series",
+            "type": "array"
+          },
+          "orders": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Orders",
+            "type": "array"
+          },
+          "performance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResourceRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "positions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ResourceRecord"
+            },
+            "title": "Positions",
+            "type": "array"
+          },
+          "provenance": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ResourceRecord"
+            },
+            "title": "Provenance",
+            "type": "array"
+          },
+          "risk_composition": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RiskCompositionEntry"
+            },
+            "title": "Risk Composition",
+            "type": "array"
+          },
+          "risk_decisions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RiskDecision"
+            },
+            "title": "Risk Decisions",
+            "type": "array"
+          },
+          "risk_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RiskSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "run": {
+            "$ref": "#/components/schemas/ExperimentRunSummary"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResourceRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "signal_markers": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SignalMarker"
+            },
+            "title": "Signal Markers",
+            "type": "array"
+          },
+          "signals": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Signals",
+            "type": "array"
+          },
+          "trades": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ResourceRecord"
+            },
+            "title": "Trades",
+            "type": "array"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ResourceRecord"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "run"
+        ],
+        "title": "RunDetail",
+        "type": "object"
+      },
+      "SavedComparisonView": {
+        "additionalProperties": false,
+        "description": "Durable definition with server-owned identity and revision.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/ComparisonViewDefinition"
+          },
+          "definition_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Definition Version",
+            "type": "integer"
+          },
+          "experiment_id": {
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "scope_id": {
+            "title": "Scope Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "view_id": {
+            "format": "uuid",
+            "title": "View Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "view_id",
+          "scope_id",
+          "experiment_id",
+          "definition",
+          "revision",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SavedComparisonView",
+        "type": "object"
+      },
+      "SignalMarker": {
+        "additionalProperties": false,
+        "description": "One signal event bound to its decision-cycle timestamp.",
+        "properties": {
+          "cycle_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle Id"
+          },
+          "event_ts": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Ts"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At"
+          },
+          "mapper_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mapper Id"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "signal_event_id": {
+            "title": "Signal Event Id",
+            "type": "string"
+          },
+          "signal_name": {
+            "title": "Signal Name",
+            "type": "string"
+          },
+          "signal_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signal Value"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "target_qty": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Qty"
+          }
+        },
+        "required": [
+          "signal_event_id",
+          "run_id",
+          "symbol",
+          "signal_name"
+        ],
+        "title": "SignalMarker",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Trader Console API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/backtests/catalogue": {
+      "get": {
+        "description": "Return the allowlisted strategy and risk profiles.",
+        "operationId": "backtest_catalogue_api_backtests_catalogue_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestCatalogueResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Backtest Catalogue",
+        "tags": [
+          "backtests"
+        ]
+      }
+    },
+    "/api/backtests/definitions": {
+      "get": {
+        "description": "List latest immutable revisions in the configured scope.",
+        "operationId": "list_backtest_definitions_api_backtests_definitions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestDefinitionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Backtest Definitions",
+        "tags": [
+          "backtests"
+        ]
+      },
+      "post": {
+        "description": "Preflight and persist the first immutable revision for a definition.",
+        "operationId": "create_backtest_definition_api_backtests_definitions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BacktestPreflightRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestDefinitionRevision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestPreflightResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Create Backtest Definition",
+        "tags": [
+          "backtests"
+        ]
+      }
+    },
+    "/api/backtests/definitions/{definition_id}": {
+      "get": {
+        "description": "Return the latest immutable revision for one definition identity.",
+        "operationId": "get_backtest_definition_api_backtests_definitions__definition_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Definition Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestDefinitionRevision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Backtest Definition",
+        "tags": [
+          "backtests"
+        ]
+      }
+    },
+    "/api/backtests/definitions/{definition_id}/revisions": {
+      "post": {
+        "description": "Preflight and append one immutable revision to an existing definition.",
+        "operationId": "create_backtest_definition_revision_api_backtests_definitions__definition_id__revisions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Definition Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BacktestPreflightRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestDefinitionRevision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestPreflightResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Create Backtest Definition Revision",
+        "tags": [
+          "backtests"
+        ]
+      }
+    },
+    "/api/backtests/executions": {
+      "get": {
+        "description": "List durable commands in the configured scope.",
+        "operationId": "list_backtest_executions_api_backtests_executions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestExecutionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Backtest Executions",
+        "tags": [
+          "backtests"
+        ]
+      },
+      "post": {
+        "description": "Submit one idempotent queued command for an immutable definition.",
+        "operationId": "submit_backtest_execution_api_backtests_executions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BacktestExecutionSubmit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestExecutionRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Submit Backtest Execution",
+        "tags": [
+          "backtests"
+        ]
+      }
+    },
+    "/api/backtests/executions/{execution_id}": {
+      "get": {
+        "description": "Return durable status for one execution command.",
+        "operationId": "get_backtest_execution_api_backtests_executions__execution_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "execution_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Execution Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestExecutionRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Backtest Execution",
+        "tags": [
+          "backtests"
+        ]
+      }
+    },
+    "/api/backtests/preflight": {
+      "post": {
+        "description": "Normalize and validate a draft without persisting or queueing it.",
+        "operationId": "backtest_preflight_api_backtests_preflight_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BacktestPreflightRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestPreflightResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Backtest Preflight",
+        "tags": [
+          "backtests"
+        ]
+      }
+    },
+    "/api/context": {
+      "get": {
+        "description": "Return configured scope, not verified broker identity or trading health.",
+        "operationId": "get_context",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleScope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Context",
+        "tags": [
+          "context"
+        ]
+      }
+    },
+    "/api/experiments": {
+      "get": {
+        "description": "Discover experiment groups from published backtest runs.",
+        "operationId": "experiments_api_experiments_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Experiments",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/experiments/{experiment_id}/comparison-views": {
+      "get": {
+        "description": "List saved definitions for one experiment and configured scope.",
+        "operationId": "list_comparison_views_api_experiments__experiment_id__comparison_views_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 1,
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonViewsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Comparison Views",
+        "tags": [
+          "comparison-views"
+        ]
+      },
+      "post": {
+        "description": "Persist a new user-authored comparison definition.",
+        "operationId": "create_comparison_view_api_experiments__experiment_id__comparison_views_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 1,
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComparisonViewDefinition"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonViewDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Create Comparison View",
+        "tags": [
+          "comparison-views"
+        ]
+      }
+    },
+    "/api/experiments/{experiment_id}/comparison-views/preview": {
+      "post": {
+        "description": "Evaluate a draft against current evidence without saving it.",
+        "operationId": "preview_comparison_view_api_experiments__experiment_id__comparison_views_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 1,
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComparisonViewDefinition"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonEvaluation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Preview Comparison View",
+        "tags": [
+          "comparison-views"
+        ]
+      }
+    },
+    "/api/experiments/{experiment_id}/comparison-views/{view_id}": {
+      "get": {
+        "description": "Load one definition and reevaluate its selected evidence now.",
+        "operationId": "get_comparison_view_api_experiments__experiment_id__comparison_views__view_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 1,
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "view_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "View Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonViewDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Comparison View",
+        "tags": [
+          "comparison-views"
+        ]
+      },
+      "put": {
+        "description": "Replace a definition only when its revision is still current.",
+        "operationId": "replace_comparison_view_api_experiments__experiment_id__comparison_views__view_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 1,
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "view_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "View Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComparisonViewUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonViewDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Replace Comparison View",
+        "tags": [
+          "comparison-views"
+        ]
+      }
+    },
+    "/api/experiments/{experiment_id}/runs": {
+      "get": {
+        "description": "List runs and comparison eligibility within one experiment.",
+        "operationId": "experiment_runs_api_experiments__experiment_id__runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "compatible_with_run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Compatible With Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentRunsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Experiment Runs",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/market-data/bars": {
+      "get": {
+        "description": "Return bounded OHLCV observations ordered from earliest to latest.",
+        "operationId": "market_data_bars_api_market_data_bars_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Symbol",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "asset_class",
+            "required": false,
+            "schema": {
+              "default": "stock",
+              "enum": [
+                "stock",
+                "crypto"
+              ],
+              "title": "Asset Class",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "timeframe",
+            "required": false,
+            "schema": {
+              "default": "1Min",
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Timeframe",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 1000,
+              "maximum": 50000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BarsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Market Data Bars",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/market-data/datasets": {
+      "get": {
+        "description": "List available symbol/timeframe/source market-data slices.",
+        "operationId": "market_datasets_api_market_data_datasets_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDatasetsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Market Datasets",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/runs/{run_id}": {
+      "get": {
+        "description": "Return a backtest run and its published evidence sections.",
+        "operationId": "run_detail_api_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "section_limit",
+            "required": false,
+            "schema": {
+              "default": 1000,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Section Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Run Detail",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/api/runs/{run_id}/risk-decisions": {
+      "get": {
+        "description": "Return a bounded, filterable manager decision trace for one run.",
+        "operationId": "risk_decisions_api_runs__run_id__risk_decisions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "manager_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Manager Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "approved",
+                    "transformed",
+                    "rejected"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cycle_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cycle Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "client_order_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Client Order Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RiskDecisionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Risk Decisions",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/health/live": {
+      "get": {
+        "description": "Translate the service's process-liveness contract to HTTP.",
+        "operationId": "liveness_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LivenessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "description": "Translate the service's database readiness to HTTP.",
+        "operationId": "readiness_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Readiness",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}

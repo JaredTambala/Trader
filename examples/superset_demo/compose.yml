@@ -1,0 +1,106 @@
+name: trader-superset-demo
+
+x-superset: &superset
+  build: .
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  environment: &superset-environment
+    SUPERSET_SECRET_KEY: ${SUPERSET_DEMO_SECRET_KEY:?Use the demo helper}
+    SUPERSET_DEMO_METADATA_PASSWORD: ${SUPERSET_DEMO_METADATA_PASSWORD:?Use the demo helper}
+    SUPERSET_DEMO_REAL_TRADER_PASSWORD: ${SUPERSET_DEMO_REAL_TRADER_PASSWORD-}
+    SUPERSET_DEMO_REAL_TRADER_USER: ${SUPERSET_DEMO_REAL_TRADER_USER-trader}
+    SUPERSET_DEMO_REAL_TRADER_DATABASE: ${SUPERSET_DEMO_REAL_TRADER_DATABASE-trader}
+    SUPERSET_DEMO_REAL_TRADER_PORT: ${SUPERSET_DEMO_REAL_TRADER_PORT-5432}
+  depends_on:
+    metadata:
+      condition: service_healthy
+    trader:
+      condition: service_healthy
+
+services:
+  trader:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: trader_superset_demo
+      POSTGRES_USER: superset_demo_owner
+      POSTGRES_PASSWORD: ${SUPERSET_DEMO_TRADER_PASSWORD:?Use the demo helper}
+    ports:
+      - "127.0.0.1:${SUPERSET_DEMO_DATABASE_PORT:-25433}:5432"
+    volumes:
+      - trader-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U superset_demo_owner -d trader_superset_demo"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  metadata:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: superset_metadata
+      POSTGRES_USER: superset_metadata
+      POSTGRES_PASSWORD: ${SUPERSET_DEMO_METADATA_PASSWORD:?Use the demo helper}
+    volumes:
+      - metadata-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U superset_metadata -d superset_metadata"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  initialize:
+    <<: *superset
+    profiles: [setup]
+    environment:
+      <<: *superset-environment
+      SUPERSET_DEMO_READER_PASSWORD: ${SUPERSET_DEMO_READER_PASSWORD:?Use the demo helper}
+      SUPERSET_DEMO_ADMIN_PASSWORD: ${SUPERSET_DEMO_ADMIN_PASSWORD:?Use the demo helper}
+    command:
+      - /bin/sh
+      - -ec
+      - superset db upgrade && superset init && python /app/trader_demo/initialize.py
+
+  web:
+    <<: *superset
+    ports:
+      - "127.0.0.1:${SUPERSET_DEMO_UI_PORT:-8088}:8088"
+    command: ["gunicorn", "--bind", "0.0.0.0:8088", "--workers", "1", "--threads", "4", "--timeout", "60", "superset.app:create_app()"]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8088/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  mcp:
+    <<: *superset
+    ports:
+      - "127.0.0.1:${SUPERSET_DEMO_MCP_PORT:-5008}:5008"
+    command: ["superset", "mcp", "run", "--host", "0.0.0.0", "--port", "5008"]
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      # Superset 6.1.0 serves MCP at /mcp; its documented /health route is not
+      # present in this release. A 405 from the streamable HTTP endpoint proves
+      # that the daemon is listening without creating an MCP session.
+      test: ["CMD-SHELL", "code=$$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:5008/mcp); test \"$$code\" = 405"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  seed:
+    <<: *superset
+    profiles: [setup]
+    command: ["python", "/app/trader_demo/mcp_seed.py"]
+    environment:
+      <<: *superset-environment
+      SUPERSET_DEMO_MCP_URL: http://mcp:5008/mcp
+      SUPERSET_DEMO_UI_URL: http://web:8088
+      SUPERSET_DEMO_ADMIN_PASSWORD: ${SUPERSET_DEMO_ADMIN_PASSWORD:?Use the demo helper}
+    depends_on:
+      mcp:
+        condition: service_healthy
+
+volumes:
+  trader-data:
+  metadata-data:

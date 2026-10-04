@@ -1,0 +1,625 @@
+"""Public value contracts for the Trader Console API."""
+
+from __future__ import annotations
+
+from enum import StrEnum
+from datetime import datetime
+from typing import Any, Literal
+from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+MAX_MARKET_DATA_BARS_PER_PAGE = 50_000
+
+
+class ConsoleEnvironment(StrEnum):
+    """Execution environment represented by one isolated Console scope."""
+
+    PAPER = "paper"
+    BACKTEST = "backtest"
+    SYNTHETIC_DEMO = "synthetic_demo"
+
+
+class BrokerAccountBinding(StrEnum):
+    """Evidence level for the scope's configured brokerage binding."""
+
+    CONFIGURED = "configured"
+    NOT_APPLICABLE = "not_applicable"
+
+
+class TraderPrincipal(BaseModel):
+    """Authenticated Trader-platform identity supplied by a future gateway.
+
+    This is deliberately separate from brokerage-account identity and does not
+    imply a Trader-owned user table.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    principal_id: str = Field(min_length=1, max_length=200)
+
+
+class ConsoleScope(BaseModel):
+    """Safe public description of one server-configured API scope.
+
+    The database URL and brokerage provider reference are deliberately absent.
+    One API process serves one scope backed by one isolated database.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    scope_id: str = Field(min_length=1, max_length=100, pattern=r"^[a-z0-9][a-z0-9_-]*$")
+    display_name: str = Field(min_length=1, max_length=200)
+    environment: ConsoleEnvironment
+    data_source_kind: Literal["postgresql"] = "postgresql"
+    isolation_kind: Literal["isolated_database"] = "isolated_database"
+    broker_account_display_label: str | None = Field(default=None, max_length=200)
+    broker_account_binding: BrokerAccountBinding
+    presentation_timezone: str = "UTC"
+
+    @field_validator("presentation_timezone")
+    @classmethod
+    def validate_presentation_timezone(cls, value: str) -> str:
+        """Require an IANA timezone without retaining a mutable timezone object."""
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("presentation_timezone must be an IANA timezone") from exc
+        return value
+
+    @model_validator(mode="after")
+    def validate_broker_account_binding(self) -> ConsoleScope:
+        """Keep paper brokerage bindings distinct from non-broker scopes."""
+        if (
+            self.environment is ConsoleEnvironment.PAPER
+            and self.broker_account_binding is not BrokerAccountBinding.CONFIGURED
+        ):
+            raise ValueError("paper scopes require a configured broker-account binding")
+        if (
+            self.environment is not ConsoleEnvironment.PAPER
+            and self.broker_account_binding is not BrokerAccountBinding.NOT_APPLICABLE
+        ):
+            raise ValueError(
+                "backtest and synthetic-demo scopes do not have a broker-account binding"
+            )
+        return self
+
+
+class LivenessResponse(BaseModel):
+    """Process-liveness response that makes no database or trading claim."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: Literal["alive"] = "alive"
+    service: Literal["trader-console-api"] = "trader-console-api"
+
+
+class ReadinessResponse(BaseModel):
+    """Database readiness without trading-health or IAM claims."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: Literal["ready", "unavailable"]
+    scope_id: str
+    contract_version: int | None = None
+    issues: tuple[str, ...] = ()
+
+
+class ApiError(BaseModel):
+    """Stable error envelope for resource failures."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    code: str
+    message: str
+
+
+class CatalogueParameter(BaseModel):
+    """Public typed parameter metadata for one allowlisted profile."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str
+    type: Literal["integer", "number", "boolean", "string"]
+    default: Any = None
+    required: bool = False
+    minimum: float | None = None
+    maximum: float | None = None
+    description: str | None = None
+
+
+class CatalogueProfile(BaseModel):
+    """One discoverable strategy or risk profile."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    kind: Literal["strategy", "risk"]
+    profile_id: str
+    version: str
+    name: str
+    description: str
+    parameters: tuple[CatalogueParameter, ...] = ()
+    supported_asset_classes: tuple[str, ...] = ()
+    supported_timeframes: tuple[str, ...] = ()
+    lookback_bars: int = 0
+    evidence_requirements: tuple[str, ...] = ()
+    manager_ids: tuple[str, ...] = ()
+    reason_codes: tuple[str, ...] = ()
+
+
+class BacktestCatalogueResponse(BaseModel):
+    """Versioned allowlisted strategy and risk catalogue."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    catalogue_version: str
+    strategy_profiles: tuple[CatalogueProfile, ...]
+    risk_profiles: tuple[CatalogueProfile, ...]
+
+
+class InitialPositionInput(BaseModel):
+    """Optional initial position included in a typed backtest definition."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    symbol: str = Field(min_length=1, max_length=32)
+    qty: float
+    avg_price: float | None = Field(default=None, ge=0)
+
+
+class BacktestAssumptions(BaseModel):
+    """Bounded execution and missing-data assumptions for preflight."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    fill_model: Literal["full_fill", "next_bar"] = "full_fill"
+    latency_ms: int = Field(default=0, ge=0, le=60_000)
+    fee_fixed_per_order: float = Field(default=0.0, ge=0, le=1_000_000)
+    fee_bps: float = Field(default=0.0, ge=0, le=10_000)
+    fee_minimum: float = Field(default=0.0, ge=0, le=1_000_000)
+    slippage_bps: float = Field(default=0.0, ge=0, le=10_000)
+    allow_latest_prior_bar: bool = True
+    allow_price_carry_forward: bool = True
+
+
+class BacktestResourceLimits(BaseModel):
+    """Explicit bounded resources accepted by a backtest definition."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    max_cycles: int = Field(default=1_000_000, ge=1, le=10_000_000)
+    max_bars: int = Field(default=5_000_000, ge=1, le=50_000_000)
+    timeout_seconds: int = Field(default=3_600, ge=1, le=86_400)
+
+
+class BacktestDefinition(BaseModel):
+    """Normalized, content-addressed input to one future backtest execution."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    display_name: str = Field(min_length=1, max_length=120)
+    strategy_profile_id: str = Field(min_length=1, max_length=100)
+    strategy_catalogue_version: str = Field(min_length=1, max_length=50)
+    strategy_parameters: dict[str, Any] = Field(default_factory=dict)
+    risk_profile_id: str = Field(min_length=1, max_length=100)
+    risk_catalogue_version: str = Field(min_length=1, max_length=50)
+    risk_parameters: dict[str, Any] = Field(default_factory=dict)
+    asset_class: Literal["stock", "crypto"]
+    symbols: tuple[str, ...] = Field(min_length=1, max_length=50)
+    timeframe: str = Field(min_length=1, max_length=32)
+    start: datetime
+    end: datetime
+    initial_cash: float = Field(ge=0, le=1_000_000_000_000)
+    initial_positions: tuple[InitialPositionInput, ...] = ()
+    assumptions: BacktestAssumptions = Field(default_factory=BacktestAssumptions)
+    benchmark_id: Literal["buy_hold", "none"] = "buy_hold"
+    resource_limits: BacktestResourceLimits = Field(default_factory=BacktestResourceLimits)
+
+
+class BacktestDefinitionRevision(BaseModel):
+    """Immutable Console-owned definition revision returned after persistence."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    definition_id: str
+    scope_id: str
+    definition_version: Literal[1] = 1
+    revision: int = Field(ge=1)
+    fingerprint: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+    definition: BacktestDefinition
+    created_at: datetime
+    updated_at: datetime
+
+
+class BacktestDefinitionsResponse(BaseModel):
+    """Bounded page of the latest immutable revision for each definition."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    items: tuple[BacktestDefinitionRevision, ...]
+    page: PageInfo
+
+
+class BacktestExecutionSubmit(BaseModel):
+    """Idempotent request to enqueue one persisted definition revision."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    definition_id: UUID
+    idempotency_key: str = Field(min_length=1, max_length=200)
+
+
+class BacktestExecutionRecord(BaseModel):
+    """Durable execution command state linked to one immutable definition."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    execution_id: str
+    scope_id: str
+    definition_id: str
+    definition_revision: int = Field(ge=1)
+    definition_fingerprint: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+    idempotency_key: str
+    status: Literal[
+        "queued", "running", "completed", "partial", "failed", "reconciliation_required"
+    ]
+    attempt: int = Field(ge=0)
+    worker_id: str | None = None
+    run_id: str | None = None
+    processed_cycles: int = Field(ge=0)
+    total_cycles: int | None = Field(default=None, ge=0)
+    last_decision_at: datetime | None = None
+    heartbeat_at: datetime | None = None
+    lease_expires_at: datetime | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    warning_summary: tuple[str, ...] = ()
+    terminal_error_code: str | None = None
+    terminal_error_message: str | None = None
+
+
+class BacktestExecutionsResponse(BaseModel):
+    """Bounded page of durable execution command records."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    items: tuple[BacktestExecutionRecord, ...]
+    page: PageInfo
+
+
+class PreflightIssue(BaseModel):
+    """Actionable field-level preflight failure or warning."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    severity: Literal["error", "warning"]
+    code: str
+    path: str
+    message: str
+
+
+class BacktestCoverageCheck(BaseModel):
+    """Read-only data coverage evidence returned by preflight."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    symbol: str
+    asset_class: Literal["stock", "crypto"]
+    timeframe: str
+    first_ts: datetime | None = None
+    last_ts: datetime | None = None
+    bar_count: int = 0
+    required_start: datetime
+    requested_end: datetime
+    warmup_bars: int
+    available: bool
+    warmup_satisfied: bool
+
+
+class BacktestPreflightRequest(BaseModel):
+    """User-authored draft validated before persistence or execution."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    display_name: str = Field(default="Untitled backtest", min_length=1, max_length=120)
+    strategy_profile_id: str = Field(min_length=1, max_length=100)
+    strategy_catalogue_version: str | None = Field(default=None, max_length=50)
+    strategy_parameters: dict[str, Any] = Field(default_factory=dict)
+    risk_profile_id: str = Field(default="noop", min_length=1, max_length=100)
+    risk_catalogue_version: str | None = Field(default=None, max_length=50)
+    risk_parameters: dict[str, Any] = Field(default_factory=dict)
+    asset_class: str
+    symbols: tuple[str, ...] = Field(min_length=1, max_length=50)
+    timeframe: str
+    start: datetime
+    end: datetime
+    initial_cash: float = Field(default=100_000.0, ge=0, le=1_000_000_000_000)
+    initial_positions: tuple[InitialPositionInput, ...] = ()
+    assumptions: BacktestAssumptions = Field(default_factory=BacktestAssumptions)
+    benchmark_id: Literal["buy_hold", "none"] = "buy_hold"
+    resource_limits: BacktestResourceLimits = Field(default_factory=BacktestResourceLimits)
+
+
+class BacktestPreflightResponse(BaseModel):
+    """Normalized preflight result with no producer or command side effects."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    valid: bool
+    catalogue_version: str
+    definition_fingerprint: str | None = None
+    normalized_definition: BacktestDefinition | None = None
+    coverage: tuple[BacktestCoverageCheck, ...] = ()
+    issues: tuple[PreflightIssue, ...] = ()
+
+
+class PageInfo(BaseModel):
+    """Bounded pagination evidence returned with collection resources."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    limit: int = Field(ge=1, le=MAX_MARKET_DATA_BARS_PER_PAGE)
+    offset: int = Field(ge=0)
+    total: int = Field(ge=0)
+    has_more: bool
+
+
+class BarPoint(BaseModel):
+    """One producer-owned OHLCV observation."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    symbol: str
+    timeframe: str
+    ts: datetime
+    ingested_at: datetime | None = None
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    close: float | None = None
+    volume: float | None = None
+    trade_count: int | None = None
+    vwap: float | None = None
+    source: str | None = None
+
+
+class BarsResponse(BaseModel):
+    """A page of OHLCV observations."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    items: tuple[BarPoint, ...]
+    page: PageInfo
+
+
+class MarketDataset(BaseModel):
+    """One available symbol/timeframe/source data slice."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    asset_class: Literal["stock", "crypto"]
+    symbol: str
+    timeframe: str
+    source: str | None = None
+    first_ts: datetime | None = None
+    last_ts: datetime | None = None
+    bar_count: int
+
+
+class MarketDatasetsResponse(BaseModel):
+    """Available market-data slices with bounded pagination."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    items: tuple[MarketDataset, ...]
+    page: PageInfo
+
+
+class ExperimentSummary(BaseModel):
+    """An experiment grouping discovered from its published run projections."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    experiment_id: str
+    run_count: int
+    latest_created_at: datetime | None = None
+    statuses: tuple[str, ...] = ()
+    metadata_available: bool = False
+
+
+class ExperimentsResponse(BaseModel):
+    """A page of experiment groups."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    items: tuple[ExperimentSummary, ...]
+    page: PageInfo
+
+
+class ExperimentRunSummary(BaseModel):
+    """A backtest run and its current comparison eligibility."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    experiment_run_id: str
+    experiment_id: str
+    run_id: str
+    session_id: str | None = None
+    status: str
+    mode: str | None = None
+    created_at: datetime | None = None
+    finished_at: datetime | None = None
+    strategy_id: str | None = None
+    strategy_name: str | None = None
+    strategy_version: str | None = None
+    symbols: tuple[str, ...] = ()
+    asset_class: str | None = None
+    timeframe: str | None = None
+    start_ts: datetime | None = None
+    end_ts: datetime | None = None
+    scope_fingerprint: str | None = None
+    data_scope_id: str | None = None
+    benchmark_id: str | None = None
+    variant_fingerprint: str | None = None
+    variant_strategy_id: str | None = None
+    variant_strategy_version: str | None = None
+    comparison_projection_available: bool = False
+    comparison_eligible: bool = False
+    comparison_exclusion_reason: str | None = None
+
+
+class ExperimentRunsResponse(BaseModel):
+    """A page of runs belonging to one experiment."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    items: tuple[ExperimentRunSummary, ...]
+    page: PageInfo
+
+
+class ResourceRecord(BaseModel):
+    """Typed identity plus producer fields for a run-detail projection."""
+
+    model_config = ConfigDict(extra="allow", frozen=True)
+
+    experiment_run_id: str | None = None
+    experiment_id: str | None = None
+    run_id: str | None = None
+
+
+class IndicatorSeriesPoint(BaseModel):
+    """One persisted indicator observation with producer-owned display semantics."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    run_id: str
+    session_id: str | None = None
+    cycle_id: str | None = None
+    symbol: str
+    indicator_name: str
+    series_id: str
+    series_label: str
+    pane: str
+    scale_group: str
+    unit: str
+    series_kind: str
+    value: float | None = None
+    bar_ts: datetime
+    signal_name: str | None = None
+    signal_event_id: str | None = None
+    strategy_id: str | None = None
+    strategy_version: str | None = None
+    variant_fingerprint: str | None = None
+    parameters_fingerprint: str | None = None
+    data_scope_id: str | None = None
+
+
+class SignalMarker(BaseModel):
+    """One signal event bound to its decision-cycle timestamp."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    signal_event_id: str
+    run_id: str
+    session_id: str | None = None
+    cycle_id: str | None = None
+    symbol: str
+    signal_name: str
+    signal_value: float | None = None
+    target_qty: float | None = None
+    event_ts: datetime | None = None
+    generated_at: datetime | None = None
+    mapper_id: str | None = None
+
+
+class RiskCompositionEntry(BaseModel):
+    """One ordered manager in the producer-published risk composition."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    run_id: str
+    session_id: str | None = None
+    catalogue_version: str
+    composition_fingerprint: str
+    manager_position: int
+    manager_id: str
+    manager_type: str
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class RiskSummary(BaseModel):
+    """Bounded risk evidence counts for one run."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    run_id: str
+    composition_fingerprint: str | None = None
+    risk_evidence_status: Literal["recorded", "unavailable"]
+    evaluated_count: int
+    approved_count: int
+    transformed_count: int
+    rejected_count: int
+    blocked_count: int
+
+
+class RiskDecision(BaseModel):
+    """One ordered per-manager risk decision with transformation evidence."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    risk_decision_id: str
+    composition_fingerprint: str
+    run_id: str
+    session_id: str | None = None
+    cycle_id: str
+    client_order_id: str | None = None
+    decision_ts: datetime
+    manager_id: str
+    manager_type: str
+    manager_position: int
+    outcome: Literal["approved", "transformed", "rejected"]
+    reason_code: str
+    before_qty: float | None = None
+    after_qty: float | None = None
+    before_order: dict[str, Any] = Field(default_factory=dict)
+    after_order: dict[str, Any] | None = None
+
+
+class RiskDecisionsResponse(BaseModel):
+    """A bounded, filterable page of manager decisions for one run."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    items: tuple[RiskDecision, ...]
+    page: PageInfo
+
+
+class RunDetail(BaseModel):
+    """Published evidence for one backtest run, grouped by projection."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    run: ExperimentRunSummary
+    performance: ResourceRecord | None = None
+    comparison_summary: ResourceRecord | None = None
+    exposure: ResourceRecord | None = None
+    scope: ResourceRecord | None = None
+    assumptions: ResourceRecord | None = None
+    evidence_coverage: ResourceRecord | None = None
+    equity_curve: tuple[ResourceRecord, ...] = ()
+    comparison_curves: tuple[ResourceRecord, ...] = ()
+    trades: tuple[ResourceRecord, ...] = ()
+    positions: tuple[ResourceRecord, ...] = ()
+    warnings: tuple[ResourceRecord, ...] = ()
+    provenance: tuple[ResourceRecord, ...] = ()
+    indicator_series: tuple[IndicatorSeriesPoint, ...] = ()
+    signal_markers: tuple[SignalMarker, ...] = ()
+    risk_composition: tuple[RiskCompositionEntry, ...] = ()
+    risk_summary: RiskSummary | None = None
+    risk_decisions: tuple[RiskDecision, ...] = ()
+    signals: tuple[dict[str, Any], ...] = ()
+    orders: tuple[dict[str, Any], ...] = ()
+    fills: tuple[dict[str, Any], ...] = ()

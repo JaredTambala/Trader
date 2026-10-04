@@ -89,3 +89,28 @@ invalid metadata are explicit failures or no-action outcomes; do not replace the
 
 Continue with the [catalogue](catalogue.md) for available components and the [architecture](architecture.md) for the
 package boundary.
+
+## 7. Reproduce the BTC/USD Bollinger backtest
+
+The checked-in [`configs/btc_usd_bollinger_backtest.yaml`](../../../configs/btc_usd_bollinger_backtest.yaml) fixes the
+scope to BTC/USD crypto `1Min` bars from `2026-06-21T00:00:00Z` through `2026-09-21T21:25:00Z`, uses a 20-period,
+2-standard-deviation Bollinger Band signal, and enables indicator/signal/order/fill/position evidence. Run it through
+the canonical runner and export the result artifacts with:
+
+<!-- verified: integration:trader_standard tests/trader_standard/strategies/test_btc_bollinger_backtest_config.py -->
+```bash
+uv run python examples/run_reproducible_backtest.py \
+  configs/btc_usd_bollinger_backtest.yaml \
+  --output-dir artifacts/btc_usd_bollinger_backtest
+```
+
+The strategy emits middle, upper, and lower price overlays plus a separate bandwidth volatility series. The runner
+persists the typed indicator observations alongside the Bollinger signal events; it does not recompute chart values from
+the exported OHLCV result. Use `--max-runs 1000` for a bounded qualification run before attempting the complete
+three-month replay.
+
+The complete replay uses the bars already loaded by `BacktestRunner` through its typed recent-bar reader. This keeps
+the strategy's as-of and warmup behavior identical to the database path while removing per-decision historical-bar
+SQL. The runner logs the number of replay reader requests and returned bars for performance qualification. The
+reproducible wrapper persists the completed aggregate result as one metrics snapshot so the Console can assemble
+summary metrics from the same run evidence.
