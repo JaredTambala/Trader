@@ -118,7 +118,14 @@ def test_persistent_stdio_clients_preserve_primary_exception_on_close() -> None:
                     await stack.enter_async_context(
                         PersistentStdioMcpToolClient(
                             command="uv",
-                            args=("run", "python", "-m", "trader_mcp.runtime.server"),
+                            args=(
+                                "run",
+                                "python",
+                                "-m",
+                                "trader_mcp.runtime.server",
+                                "--env-path",
+                                "env.template",
+                            ),
                             cwd=Path.cwd(),
                         )
                     )
