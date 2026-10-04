@@ -10,6 +10,7 @@ Non-goals: Data loading mutation, stdio transport, live providers, or agent reas
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 
 import anyio
@@ -29,9 +30,26 @@ from trader_mcp.catalogue.definitions import (
 )
 from trader_mcp.catalogue.policy import load_local_environment
 from trader_mcp.runtime.server import create_server
+from trader_research.data import DataSymbolDiscoveryPolicy, DataSymbolDiscoveryRequest, SymbolCatalogResult
 
 
 SAMPLE_CSV = Path("examples/data/demo_stock_1min.csv")
+
+
+class _CatalogProvider:
+    """Deterministic provider adapter for MCP capability-state serialization."""
+
+    provider_key = "alpaca"
+
+    def __init__(self, result: SymbolCatalogResult) -> None:
+        self._result = result
+
+    def discover_symbols(
+        self,
+        request: DataSymbolDiscoveryRequest,
+        context: object,
+    ) -> SymbolCatalogResult:
+        return self._result
 
 
 def _inventory_args(**overrides: object) -> dict[str, object]:
@@ -152,6 +170,83 @@ def test_data_discover_symbols_mcp_tool_rejects_provider_without_policy(
             result.structuredContent["errors"][0]["code"]
             == "provider_discovery_not_allowed"
         )
+
+    anyio.run(_run)
+
+
+def test_data_discovery_mcp_serializes_capability_states_without_collapsing_them() -> None:
+    """Expose complete, partial, stale, discover-only, and unavailable states on the MCP wire."""
+    cases = (
+        (
+            SymbolCatalogResult(
+                symbols=({"symbol": "DEMO"},),
+                completeness="complete",
+                freshness="fresh",
+                can_load=True,
+                load_capability="load_capable",
+            ),
+            {"catalogue_completeness": "complete", "catalogue_freshness": "fresh", "load_capability": "load_capable"},
+        ),
+        (
+            SymbolCatalogResult(
+                symbols=(),
+                completeness="partial",
+                freshness="fresh",
+            ),
+            {"catalogue_completeness": "partial", "catalogue_freshness": "fresh", "load_capability": "discover_only"},
+        ),
+        (
+            SymbolCatalogResult(
+                symbols=(),
+                completeness="stale",
+                freshness="stale",
+            ),
+            {"catalogue_completeness": "stale", "catalogue_freshness": "stale", "load_capability": "discover_only"},
+        ),
+    )
+
+    async def _run() -> None:
+        for provider_result, expected in cases:
+            server = create_server(
+                load_local_environment("env.template"),
+                event_store_provider=NoOpEventStore,
+                symbol_discovery_policy=DataSymbolDiscoveryPolicy(
+                    allow_provider_discovery=True,
+                    catalog_providers={"alpaca": _CatalogProvider(provider_result)},
+                ),
+            )
+            result = await server.call_tool(
+                DATA_DISCOVER_SYMBOLS_TOOL,
+                {"asset_class": "stocks", "source": "provider"},
+            )
+
+            assert result.isError is False
+            assert result.structuredContent is not None
+            report = result.structuredContent["data"]["symbol_discovery_report"]
+            assert {key: report[key] for key in expected} == expected
+            assert json.loads(result.content[0].text) == result.structuredContent
+
+        unavailable_server = create_server(
+            load_local_environment("env.template"),
+            event_store_provider=NoOpEventStore,
+            symbol_discovery_policy=DataSymbolDiscoveryPolicy(allow_provider_discovery=True),
+        )
+        unavailable = await unavailable_server.call_tool(
+            DATA_DISCOVER_SYMBOLS_TOOL,
+            {"asset_class": "stocks", "source": "provider"},
+        )
+        assert unavailable.isError is True
+        assert unavailable.structuredContent is not None
+        capability = unavailable.structuredContent["data"]["discovery_capability"]
+        assert capability == {
+            "completeness": "unavailable",
+            "freshness": "unknown",
+            "can_discover": False,
+            "can_load": False,
+            "load_capability": "unavailable",
+            "reason": "No provider catalogue adapter is registered.",
+        }
+        assert json.loads(unavailable.content[0].text) == unavailable.structuredContent
 
     anyio.run(_run)
 

@@ -33,6 +33,7 @@ from .artifacts import (
     PARAMETER_OPTIMIZATION_PLAN,
     PARAMETER_OPTIMIZATION_ROBUSTNESS_REPORT,
     PARAMETER_OPTIMIZATION_RUN,
+    PAPER_CANDIDATE_ADMISSION,
     RESEARCH_OBJECTIVE,
     RESEARCH_SESSION,
     RISK_STACK_SPECIFICATION,
@@ -140,6 +141,14 @@ from .ownership import (
     get_agent_definition,
     get_decision_authority,
 )
+from .paper_admission import (
+    PaperAdmissionDecision,
+    PaperCandidateAdmission,
+    create_paper_candidate_admission,
+    get_paper_candidate_admission,
+    revoke_paper_candidate_admission,
+    validate_paper_candidate_admission,
+)
 
 __all__ = [
     "AGENT_DECISION_RECEIPT",
@@ -203,6 +212,9 @@ __all__ = [
     "PARAMETER_OPTIMIZATION_PLAN",
     "PARAMETER_OPTIMIZATION_ROBUSTNESS_REPORT",
     "PARAMETER_OPTIMIZATION_RUN",
+    "PAPER_CANDIDATE_ADMISSION",
+    "PaperAdmissionDecision",
+    "PaperCandidateAdmission",
     "Prerequisite",
     "PrerequisiteKind",
     "PrerequisiteStatus",
@@ -265,4 +277,8 @@ __all__ = [
     "get_agent_definition",
     "get_decision_authority",
     "replace_experiment_design_refs",
+    "create_paper_candidate_admission",
+    "get_paper_candidate_admission",
+    "revoke_paper_candidate_admission",
+    "validate_paper_candidate_admission",
 ]

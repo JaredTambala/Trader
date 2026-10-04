@@ -11,7 +11,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from trader.event_store import EventStore
 
@@ -25,6 +25,9 @@ _ENSURE_MODES = {"existing", "sample", "backfill"}
 _DEFAULT_CONFIGURED_PROVIDER = "alpaca"
 _DEFAULT_BAR_TYPE = "trade_bar"
 _DISCOVERY_SOURCES = {"local", "configured", "configured_source", "provider", "merged"}
+DISCOVERY_COMPLETENESS = Literal["complete", "partial", "stale", "unavailable"]
+DISCOVERY_FRESHNESS = Literal["fresh", "stale", "unknown"]
+LOAD_CAPABILITY = Literal["load_capable", "discover_only", "unavailable"]
 
 BackfillRunner = Callable[["DataEnsureLoadedRequest", EventStore], Mapping[str, Any]]
 """Callable used by explicit non-dry-run backfill requests."""
@@ -48,6 +51,7 @@ class DataProviderCapability:
     bar_types: tuple[str, ...] = (_DEFAULT_BAR_TYPE,)
     canonical_bar_source: str | None = None
     supports_symbol_catalog: bool = False
+    supports_data_loading: bool = False
     requires_network: bool = False
     requires_credentials: bool = False
 
@@ -78,6 +82,7 @@ class DataProviderContext:
     bar_type: str
     legacy_asset_class: str
     supports_symbol_catalog: bool
+    supports_data_loading: bool
     supported_instrument_types: tuple[str, ...]
     supported_bar_types: tuple[str, ...]
     canonical_bar_source: str | None = None
@@ -103,6 +108,7 @@ class DataProviderContext:
             "bar_type": self.bar_type,
             "legacy_asset_class": self.legacy_asset_class,
             "supports_symbol_catalog": self.supports_symbol_catalog,
+            "supports_data_loading": self.supports_data_loading,
             "supported_instrument_types": list(self.supported_instrument_types),
             "supported_bar_types": list(self.supported_bar_types),
             "canonical_bar_source": self.canonical_bar_source,
@@ -138,6 +144,34 @@ class SymbolCatalogResult:
 
     symbols: tuple[Mapping[str, Any], ...]
     truncated: bool = False
+    completeness: DISCOVERY_COMPLETENESS = "complete"
+    freshness: DISCOVERY_FRESHNESS = "fresh"
+    can_discover: bool = True
+    can_load: bool = False
+    load_capability: LOAD_CAPABILITY = "discover_only"
+    reason: str | None = None
+
+    def __post_init__(self) -> None:
+        """Validate provider metadata before it crosses the Data boundary."""
+        if self.completeness not in {"complete", "partial", "stale", "unavailable"}:
+            raise ValueError(f"Unsupported catalogue completeness: {self.completeness}")
+        if self.freshness not in {"fresh", "stale", "unknown"}:
+            raise ValueError(f"Unsupported catalogue freshness: {self.freshness}")
+        if self.load_capability not in {"load_capable", "discover_only", "unavailable"}:
+            raise ValueError(f"Unsupported data load capability: {self.load_capability}")
+        if self.can_load != (self.load_capability == "load_capable"):
+            raise ValueError("can_load must agree with load_capability")
+
+    def capability_dict(self) -> dict[str, Any]:
+        """Return explicit catalogue and load capability evidence."""
+        return {
+            "completeness": self.completeness,
+            "freshness": self.freshness,
+            "can_discover": self.can_discover,
+            "can_load": self.can_load,
+            "load_capability": self.load_capability,
+            "reason": self.reason,
+        }
 
 
 class SymbolCatalogProvider(Protocol):

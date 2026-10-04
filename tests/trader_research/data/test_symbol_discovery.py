@@ -207,6 +207,22 @@ class FakeCatalogProvider:
         )
 
 
+class MetadataCatalogProvider:
+    """Return injected catalogue metadata for capability-state contracts."""
+
+    provider_key = "alpaca"
+
+    def __init__(self, result: SymbolCatalogResult) -> None:
+        self.result = result
+
+    def discover_symbols(
+        self,
+        request: DataSymbolDiscoveryRequest,
+        context: object,
+    ) -> SymbolCatalogResult:
+        return self.result
+
+
 def test_symbol_discovery_uses_injected_provider_catalog_adapter() -> None:
     """Authorized discovery consumes an injected catalogue and reports its normalized provider metadata."""
     envelope = data_discover_symbols(
@@ -225,3 +241,138 @@ def test_symbol_discovery_uses_injected_provider_catalog_adapter() -> None:
     assert report["all_requested_symbols_exist"] is True
     assert report["symbols"][0]["source"] == "provider"
     assert report["symbols"][0]["exchange"] == "TEST"
+
+
+def test_symbol_discovery_publishes_complete_and_load_capable_state() -> None:
+    """A complete provider catalogue keeps discovery evidence separate from load capability."""
+    envelope = data_discover_symbols(
+        NoOpEventStore(),
+        DataSymbolDiscoveryRequest(symbols=("DEMO",), asset_class="stocks", source="provider"),
+        policy=DataSymbolDiscoveryPolicy(
+            allow_provider_discovery=True,
+            catalog_providers={
+                "alpaca": MetadataCatalogProvider(
+                    SymbolCatalogResult(
+                        symbols=({"symbol": "DEMO"},),
+                        completeness="complete",
+                        freshness="fresh",
+                        can_load=True,
+                        load_capability="load_capable",
+                    )
+                )
+            },
+        ),
+    )
+
+    report = envelope.to_dict()["data"]["symbol_discovery_report"]
+    assert report["discovery_capability"] == {
+        "completeness": "complete",
+        "freshness": "fresh",
+        "can_discover": True,
+        "can_load": True,
+        "load_capability": "load_capable",
+        "reason": None,
+    }
+
+
+def test_symbol_discovery_publishes_partial_and_stale_provider_state() -> None:
+    """Bounded or stale catalogues remain explicit instead of appearing complete."""
+    for metadata in (
+        {"completeness": "partial", "freshness": "fresh"},
+        {"completeness": "stale", "freshness": "stale"},
+    ):
+        envelope = data_discover_symbols(
+            NoOpEventStore(),
+            DataSymbolDiscoveryRequest(asset_class="stocks", source="provider"),
+            policy=DataSymbolDiscoveryPolicy(
+                allow_provider_discovery=True,
+                catalog_providers={
+                    "alpaca": MetadataCatalogProvider(
+                        SymbolCatalogResult(symbols=(), **metadata)  # type: ignore[arg-type]
+                    )
+                },
+            ),
+        )
+        report = envelope.to_dict()["data"]["symbol_discovery_report"]
+        assert report["catalogue_completeness"] == metadata["completeness"]
+        assert report["catalogue_freshness"] == metadata["freshness"]
+        assert report["can_load"] is False
+        assert report["load_capability"] == "discover_only"
+
+
+def test_symbol_discovery_preserves_provider_load_capable_stale_state() -> None:
+    """A stale catalogue can still report explicit provider loading capability."""
+    envelope = data_discover_symbols(
+        NoOpEventStore(),
+        DataSymbolDiscoveryRequest(asset_class="stocks", source="provider"),
+        policy=DataSymbolDiscoveryPolicy(
+            allow_provider_discovery=True,
+            catalog_providers={
+                "alpaca": MetadataCatalogProvider(
+                    SymbolCatalogResult(
+                        symbols=(),
+                        completeness="stale",
+                        freshness="stale",
+                        can_load=True,
+                        load_capability="load_capable",
+                    )
+                )
+            },
+        ),
+    )
+
+    report = envelope.to_dict()["data"]["symbol_discovery_report"]
+    assert report["catalogue_completeness"] == "stale"
+    assert report["catalogue_freshness"] == "stale"
+    assert report["can_load"] is True
+    assert report["load_capability"] == "load_capable"
+
+
+def test_symbol_discovery_publishes_provider_unavailable_state() -> None:
+    """A provider policy with no adapter exposes unavailable catalogue and load state."""
+    envelope = data_discover_symbols(
+        NoOpEventStore(),
+        DataSymbolDiscoveryRequest(asset_class="stocks", source="provider"),
+        policy=DataSymbolDiscoveryPolicy(allow_provider_discovery=True),
+    )
+
+    payload = envelope.to_dict()
+    assert payload["ok"] is False
+    assert payload["data"]["discovery_capability"]["completeness"] == "unavailable"
+    assert payload["data"]["discovery_capability"]["load_capability"] == "unavailable"
+
+
+def test_symbol_discovery_publishes_unavailable_state_for_provider_failure() -> None:
+    """Policy or provider failures expose unavailable capability evidence in MCP data."""
+    envelope = data_discover_symbols(
+        NoOpEventStore(),
+        DataSymbolDiscoveryRequest(asset_class="stocks", source="provider"),
+    )
+
+    payload = envelope.to_dict()
+    assert payload["ok"] is False
+    assert payload["data"]["discovery_capability"] == {
+        "completeness": "unavailable",
+        "freshness": "unknown",
+        "can_discover": False,
+        "can_load": False,
+        "load_capability": "unavailable",
+        "reason": "Provider catalogue discovery is not allowed by policy.",
+    }
+
+
+def test_configured_symbol_discovery_publishes_unavailable_state() -> None:
+    """An unavailable configured universe is a typed state rather than a generic validation error."""
+    envelope = data_discover_symbols(
+        NoOpEventStore(),
+        DataSymbolDiscoveryRequest(
+            asset_class="stocks",
+            source="configured",
+            configured_universe_available=False,
+        ),
+    )
+
+    report = envelope.to_dict()["data"]["symbol_discovery_report"]
+    assert report["catalogue_completeness"] == "unavailable"
+    assert report["can_discover"] is False
+    assert report["load_capability"] == "unavailable"

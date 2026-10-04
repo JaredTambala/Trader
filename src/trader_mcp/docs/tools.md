@@ -67,7 +67,7 @@ LangGraph checkpointer, not to MCP or the canonical research store.
 
 | Tool | Side effect | Primary output | Notes |
 | --- | --- | --- | --- |
-| `data_discover_symbols` | `read_only` | Symbol discovery report payload. | Provider-catalog discovery requires explicit policy. |
+| `data_discover_symbols` | `read_only` | Symbol discovery report payload with `discovery_capability` and separate `load_capability` states. | Provider-catalog discovery requires explicit policy; visible symbols never imply a complete catalogue or load support. |
 | `data_get_inventory` | `read_only` | `dataset_manifest` payload. | Reads bounded local/event-store inventory only. |
 | `data_summarize_quality` | `read_only` | `data_quality_report` payload. | Reports gaps, coverage, and completeness. |
 | `data_create_research_snapshot` | `local_mutating` | Canonical `dataset_manifest` and `data_quality_report` refs. | Runs the same exact inventory/quality scope and persists both Data-domain records for resumable workflows. |

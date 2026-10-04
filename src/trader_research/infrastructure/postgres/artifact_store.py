@@ -391,6 +391,22 @@ RESEARCH_ARTIFACT_SCHEMA_STATEMENTS: tuple[str, ...] = (
         payload JSONB NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS research_paper_candidate_admissions (
+        admission_id TEXT PRIMARY KEY,
+        candidate_ref TEXT NOT NULL,
+        strategy_version TEXT NOT NULL,
+        risk_version TEXT NOT NULL,
+        data_version TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        approver TEXT NOT NULL,
+        decided_at TIMESTAMPTZ NOT NULL,
+        expires_at TIMESTAMPTZ,
+        revoked_at TIMESTAMPTZ,
+        status TEXT NOT NULL,
+        payload JSONB NOT NULL
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS research_artifacts_type_status_idx ON research_artifacts(artifact_type, status)",
     (
         "CREATE INDEX IF NOT EXISTS research_workflow_outcomes_plan_status_idx "
@@ -416,6 +432,10 @@ RESEARCH_ARTIFACT_SCHEMA_STATEMENTS: tuple[str, ...] = (
     (
         "CREATE INDEX IF NOT EXISTS research_optimization_runs_plan_status_idx "
         "ON research_parameter_optimization_runs(optimization_plan_id, status)"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS research_paper_candidate_admissions_decision_idx "
+        "ON research_paper_candidate_admissions(decision, expires_at)"
     ),
 )
 

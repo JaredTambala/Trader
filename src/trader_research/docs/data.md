@@ -11,6 +11,15 @@ Provider discovery and loading are separate gated capabilities. A provider may s
 backfill for the requested asset/timeframe. Loading uses cost/limit policy and durable operation identity. After an
 interruption, the caller reconciles prepared or terminal evidence rather than blindly resubmitting.
 
+Every `data_discover_symbols` report includes `discovery_capability` with four explicit decisions:
+`completeness` is `complete`, `partial`, `stale`, or `unavailable`; `freshness` is `fresh`, `stale`, or `unknown`;
+`can_discover` reports whether the catalogue query completed; and `load_capability` is `load_capable`,
+`discover_only`, or `unavailable`. The root report repeats these fields as `catalogue_completeness`,
+`catalogue_freshness`, `can_discover`, `can_load`, and `load_capability` for clients that do not want to unwrap the
+grouped object. A visible symbol is therefore never evidence that the provider catalogue is complete or that a bounded
+backfill can run. Provider adapters own the observed request state; static provider configuration only constrains the
+maximum capability, so a catalogue adapter that has no load evidence remains `discover_only`.
+
 ## Data readiness lifecycle
 
 The public operations form a deliberate sequence:

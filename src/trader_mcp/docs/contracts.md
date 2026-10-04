@@ -235,7 +235,7 @@ the session's scope, side-effect, mutation, and budget policy before the MCP cal
 | `research_record_agent_decision` | Coordinator; canonical local mutation; admitted program/model and remaining budget required. | Content-addressed replay is safe; sequence must append exactly, counters cannot decrease, and terminal branches cannot append. A validated decision is checkpointed before this call. Owning-operator cancellation records a terminal `cancelled` receipt with a public blocker and exact operator identity. | Public decision receipt and ref; evidence, sequence, identity, budget, or terminal conflict; `low_information_loop`, `crash_and_lost_response`, `operator_cancelled`. |
 | `research_get_agent_decision` | Coordinator; read-only; exact receipt ID/ref. | Safe to repeat and required when reconciling a lost response. | Revalidated public receipt; missing or invalid record; `crash_and_lost_response`. |
 | `research_read_artifact` | Coordinator and state-narrowed specialist readers; read-only; exact expected type/ref. | Safe to repeat; owner, type, hash, and byte bound are revalidated. | Bounded payload plus governance metadata; type/owner/size/ref failure; all evidence-review scenarios. |
-| `data_discover_symbols` | Data Research; read-only; approved provider/source discovery envelope. | Safe to repeat against the same catalogue identity. | Bounded symbol/coverage candidates; policy, provider, configuration, or pagination failure; `out_of_envelope_acquisition`. |
+| `data_discover_symbols` | Data Research; read-only; approved provider/source discovery envelope. | Safe to repeat against the same catalogue identity. | Bounded symbol/coverage candidates plus explicit `discovery_capability` (`complete`, `partial`, `stale`, or `unavailable`) and separate `load_capability` (`load_capable`, `discover_only`, or `unavailable`); policy, provider, configuration, or pagination failure; `out_of_envelope_acquisition`. |
 | `data_get_inventory` | Data Research; read-only; exact composite scope. | Safe to repeat; post-mutation reads must use the unchanged scope. | Dataset-manifest payload; runtime/config/scope failure; `exact_reuse`, `unfit_requested_scope`. |
 | `data_summarize_quality` | Data Research; read-only; exact composite scope. | Safe to repeat; quality generation is rechecked after loading. | Quality obligations, gaps, and completeness; runtime/config/scope failure; `exact_reuse`, `unfit_requested_scope`. |
 | `data_ensure_loaded` | Data Research; local mutation only for an approved acquisition envelope and enabled loading gate. Provider backfill first requires a dry-run plan with deterministic request hash, request estimate, configured cost estimate, currency, and exact plan ID. Runtime policy checks that cost against `max_loading_cost`; actual execution must cite the matching plan. | Inspect and dry-run modes are replay-safe. Runtime binds operation/requester/actor lineage. The service writes `data_load_operation` before mutation and `data_load_evidence` afterward; terminal replay never repeats the provider. A prepared operation recovers only from conclusive incomplete-to-complete evidence and otherwise returns `data_load_reconciliation_required`. | Costed plan or canonical load evidence plus refreshed Data payloads; gate/scope/provider/plan/cost/journal/reconciliation/runtime failure; `bounded_backfill_and_adaptation`, `out_of_envelope_acquisition`, `crash_and_lost_response`. |
@@ -451,16 +451,28 @@ promotion will require additional independent gates even though both use the ext
 No research-agent tool may start `TraderService`, submit orders, clear halt state, reconcile broker state, run raw SQL,
 or bypass core platform validation.
 
+The same boundary applies to paper admission: MCP tools may return or inspect the evidence used by a
+`paper_candidate_admission`, but no research-agent tool can create, approve, reject, revoke, or otherwise grant that
+human-owned record.
+
 ## Initial Data Agent Tools
 
 | Tool | Side Effect | Primary artifact |
 | --- | --- | --- |
+| `data_discover_symbols` | `read_only` | provider-scoped symbol catalogue and capability-state report |
 | `data_get_inventory` | `read_only` | `dataset_manifest.json` payload or reference |
 | `data_summarize_quality` | `read_only` | `data_quality_report.json` |
 | `data_create_research_snapshot` | `local_mutating` | canonical matching dataset-manifest and quality-report refs |
 | `data_ensure_loaded` | `local_mutating` | load/backfill evidence plus dataset manifest update |
 
 These tools are implemented first because the Data Agent owns the ingredients that later research agents consume.
+
+`data_discover_symbols` serializes the provider adapter's observed state without upgrading it from static provider
+configuration. A response may be `complete`, `partial`, `stale`, or `unavailable`; `load_capability` is independently
+`load_capable`, `discover_only`, or `unavailable`. The MCP envelope repeats these fields at the report root and keeps
+the grouped `discovery_capability` object for clients that consume nested evidence. A catalogue adapter that only
+discovers symbols therefore remains `discover_only`, even when the configured provider has a separate backfill
+implementation, and an unavailable adapter cannot be represented as an empty successful catalogue.
 
 ## Agent Tool Inventory
 
