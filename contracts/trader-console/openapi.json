@@ -2103,6 +2103,75 @@
         "title": "LivenessResponse",
         "type": "object"
       },
+      "MarketDataDiscovery": {
+        "additionalProperties": false,
+        "description": "Explicit catalogue and provider-load capability for the dataset view.\n\nA Console read model can prove which stored slices are visible, but that\nevidence is separate from a provider catalogue and from permission to run a\nbounded load. Keeping the states together in a typed object prevents the UI\nfrom treating one visible symbol as a complete provider universe.",
+        "properties": {
+          "can_discover": {
+            "title": "Can Discover",
+            "type": "boolean"
+          },
+          "can_load": {
+            "title": "Can Load",
+            "type": "boolean"
+          },
+          "catalogue_completeness": {
+            "enum": [
+              "complete",
+              "partial",
+              "stale",
+              "unavailable"
+            ],
+            "title": "Catalogue Completeness",
+            "type": "string"
+          },
+          "catalogue_freshness": {
+            "enum": [
+              "fresh",
+              "stale",
+              "unknown"
+            ],
+            "title": "Catalogue Freshness",
+            "type": "string"
+          },
+          "load_capability": {
+            "enum": [
+              "load_capable",
+              "discover_only",
+              "unavailable"
+            ],
+            "title": "Load Capability",
+            "type": "string"
+          },
+          "provider": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Provider",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "provider",
+          "catalogue_completeness",
+          "catalogue_freshness",
+          "can_discover",
+          "can_load",
+          "load_capability"
+        ],
+        "title": "MarketDataDiscovery",
+        "type": "object"
+      },
       "MarketDataset": {
         "additionalProperties": false,
         "description": "One available symbol/timeframe/source data slice.",
@@ -2176,6 +2245,9 @@
         "additionalProperties": false,
         "description": "Available market-data slices with bounded pagination.",
         "properties": {
+          "discovery": {
+            "$ref": "#/components/schemas/MarketDataDiscovery"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/MarketDataset"

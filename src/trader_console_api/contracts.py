@@ -409,6 +409,26 @@ class MarketDataset(BaseModel):
     bar_count: int
 
 
+class MarketDataDiscovery(BaseModel):
+    """Explicit catalogue and provider-load capability for the dataset view.
+
+    A Console read model can prove which stored slices are visible, but that
+    evidence is separate from a provider catalogue and from permission to run a
+    bounded load. Keeping the states together in a typed object prevents the UI
+    from treating one visible symbol as a complete provider universe.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    provider: str = Field(min_length=1, max_length=100)
+    catalogue_completeness: Literal["complete", "partial", "stale", "unavailable"]
+    catalogue_freshness: Literal["fresh", "stale", "unknown"]
+    can_discover: bool
+    can_load: bool
+    load_capability: Literal["load_capable", "discover_only", "unavailable"]
+    reason: str | None = None
+
+
 class MarketDatasetsResponse(BaseModel):
     """Available market-data slices with bounded pagination."""
 
@@ -416,6 +436,17 @@ class MarketDatasetsResponse(BaseModel):
 
     items: tuple[MarketDataset, ...]
     page: PageInfo
+    discovery: MarketDataDiscovery = Field(
+        default_factory=lambda: MarketDataDiscovery(
+            provider="unknown",
+            catalogue_completeness="unavailable",
+            catalogue_freshness="unknown",
+            can_discover=False,
+            can_load=False,
+            load_capability="unavailable",
+            reason="No discovery evidence was supplied.",
+        )
+    )
 
 
 class ExperimentSummary(BaseModel):

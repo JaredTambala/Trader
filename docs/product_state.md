@@ -410,7 +410,7 @@ orchestrated canonical write through a contextual artifact-store boundary.
 
 | Capability | Implementation | Qualification | Availability | Product position |
 | --- | --- | --- | --- | --- |
-| Data discovery, inventory and quality | implemented | controlled | registered; loading gated | Produces exact dataset manifests, quality reports and bounded load evidence. `data_create_research_snapshot` persists an exact manifest/quality pair for resumable workflows. Calendar-aware equity gap classification remains open. |
+| Data discovery, inventory and quality | implemented | controlled | registered; loading gated | Produces exact dataset manifests, quality reports and bounded load evidence. `data_discover_symbols` now publishes explicit complete/partial/stale/unavailable catalogue state plus separate discover-only/load-capable/unavailable loading capability. Console dataset responses preserve the same distinction; `data_create_research_snapshot` persists an exact manifest/quality pair for resumable workflows. Calendar-aware equity gap classification remains open. |
 | Knowledge source registration and ingestion | implemented | integration | registered | Full-document text ingestion, evidence units, embeddings, lexical/vector retrieval and bounded dereferencing are operational. |
 | Methodology extraction and method cards | implemented | integration | registered | Reliable for bounded, locally evidenced methods. Composite book-scale frameworks remain outside the represented model. |
 | Implementation admission | implemented | controlled | registered | Handwritten, maintained, AI-produced and method-produced strategy/risk/objective source enters one content-addressed validation path. |

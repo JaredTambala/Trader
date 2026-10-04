@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { datasetKey, loadMarketBars, loadMarketDatasets, type BarPoint, type BarsResponse, type MarketDataset } from "./client";
+import { datasetKey, loadMarketBars, loadMarketDatasets, type BarPoint, type BarsResponse, type MarketDataDiscovery, type MarketDataset } from "./client";
 import { MarketChart } from "./chart";
 import { ConsoleShell } from "../shell/console-shell";
 import styles from "./market-data-workspace.module.css";
@@ -73,6 +73,7 @@ export function MarketDataWorkspace() {
   const [datasetState, setDatasetState] = useState<RequestState>("loading");
   const [datasetError, setDatasetError] = useState<string | null>(null);
   const [datasetRequest, setDatasetRequest] = useState({ offset: 0, append: false, nonce: 0 });
+  const [responseDiscovery, setResponseDiscovery] = useState<MarketDataDiscovery | null>(null);
   const [selectedKey, setSelectedKey] = useState("");
   const selectedKeyRef = useRef("");
   const [draftRange, setDraftRange] = useState<Range>({ start: "", end: "" });
@@ -94,6 +95,7 @@ export function MarketDataWorkspace() {
         const response = await loadMarketDatasets(timed.signal, datasetRequest.offset);
         setDatasets((previous) => datasetRequest.append ? [...previous, ...response.items] : [...response.items]);
         setDatasetPage(response.page);
+        setResponseDiscovery(response.discovery ?? null);
         if (!selectedKeyRef.current && response.items[0]) {
           const firstKey = datasetKey(response.items[0]);
           selectedKeyRef.current = firstKey;
@@ -216,6 +218,13 @@ export function MarketDataWorkspace() {
           {datasetState === "loading" && <p role="status">Discovering available datasets…</p>}
           {datasetState === "error" && <div className={styles.errorBox} role="alert"><p>{datasetError}</p><button className={styles.secondaryButton} type="button" onClick={() => setDatasetRequest({ offset: 0, append: false, nonce: Date.now() })}>Retry datasets</button></div>}
           {datasetState === "ready" && datasets.length === 0 && <p className={styles.empty}>No market datasets are available in this database.</p>}
+          {datasetState === "ready" && responseDiscovery && <div className={styles.datasetCapability} role="status">
+            <strong>Catalogue: {responseDiscovery.catalogue_completeness}</strong>
+            <span>Freshness: {responseDiscovery.catalogue_freshness}</span>
+            <span>Discovery: {responseDiscovery.can_discover ? "available" : "unavailable"}</span>
+            <span>Loading: {responseDiscovery.load_capability === "load_capable" ? "capable" : responseDiscovery.load_capability.replace("_", " ")}</span>
+            <small>{responseDiscovery.reason}</small>
+          </div>}
           {datasets.length > 0 && <>
             <label className={styles.field}><span>Dataset</span><select aria-label="Market dataset" value={selectedKey} onChange={(event) => selectDataset(event.target.value)}>{datasets.map((dataset) => <option value={datasetKey(dataset)} key={datasetKey(dataset)}>{describeDataset(dataset)}</option>)}</select></label>
             {selectedDataset && <div className={styles.datasetMeta}><span><strong>{selectedDataset.symbol}</strong> / {selectedDataset.timeframe}</span><span>{sourceLabel(selectedDataset.source)}</span><span>{selectedDataset.bar_count.toLocaleString("en-US")} bars available</span></div>}

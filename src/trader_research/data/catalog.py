@@ -33,6 +33,7 @@ from .domain import (
     DataProviderResolutionError,
     DataSymbolDiscoveryPolicy,
     DataSymbolDiscoveryRequest,
+    SymbolCatalogResult,
 )
 
 
@@ -42,9 +43,10 @@ _PROVIDER_CAPABILITIES: Mapping[str, DataProviderCapability] = {
         provider_aliases=("alpaca", "alpaca_data"),
         instrument_asset_classes={"stock": "stocks", "crypto": "crypto"},
         canonical_bar_source="alpaca",
-        supports_symbol_catalog=False,
-        requires_network=False,
-        requires_credentials=False,
+        supports_symbol_catalog=True,
+        supports_data_loading=True,
+        requires_network=True,
+        requires_credentials=True,
     ),
 }
 _PROVIDER_ALIAS_TO_KEY: Mapping[str, str] = {
@@ -231,6 +233,7 @@ def resolve_data_provider_context(
         bar_type=resolved_bar_type,
         legacy_asset_class=legacy_asset_class,
         supports_symbol_catalog=capability.supports_symbol_catalog,
+        supports_data_loading=capability.supports_data_loading,
         supported_instrument_types=capability.supported_instrument_types,
         supported_bar_types=capability.bar_types,
         canonical_bar_source=capability.canonical_bar_source,
@@ -262,21 +265,63 @@ def _build_symbol_discovery_report(
     policy: DataSymbolDiscoveryPolicy,
 ) -> dict[str, Any]:
     """Build a provider-scoped symbol discovery report."""
+    capability: dict[str, Any]
     if source == "local":
         symbols, truncated = _discover_local_symbol_rows(event_store, request, context, requested_symbols, limit)
+        capability = _local_capability(context, truncated=truncated)
     elif source == "configured":
         if not request.configured_universe_available:
-            raise ValueError("Configured symbol universe is unavailable.")
+            capability = _unavailable_capability(context, "Configured symbol universe is unavailable.")
+            return _symbol_discovery_report(
+                request=request,
+                context=context,
+                source=source,
+                requested_symbols=requested_symbols,
+                limit=limit,
+                symbols=[],
+                truncated=False,
+                capability=capability,
+            )
         symbols, truncated = _configured_symbol_rows(request, context, requested_symbols, limit)
+        capability = _configured_capability(context, truncated=truncated)
     elif source == "configured_source":
         if request.configured_universe_available and request.configured_symbols:
             symbols, truncated = _configured_symbol_rows(request, context, requested_symbols, limit)
+            capability = _configured_capability(context, truncated=truncated)
         else:
             symbols, truncated = _discover_local_symbol_rows(event_store, request, context, requested_symbols, limit)
+            capability = _local_capability(context, truncated=truncated)
     elif source in {"provider", "merged"}:
-        symbols, truncated = _provider_symbol_rows(request, context, requested_symbols, limit, policy)
+        symbols, truncated, capability = _provider_symbol_rows(
+            request, context, requested_symbols, limit, policy
+        )
     else:
         raise ValueError(f"Unsupported symbol discovery source: {source}")
+
+    return _symbol_discovery_report(
+        request=request,
+        context=context,
+        source=source,
+        requested_symbols=requested_symbols,
+        limit=limit,
+        symbols=symbols,
+        truncated=truncated,
+        capability=capability,
+    )
+
+
+def _symbol_discovery_report(
+    *,
+    request: DataSymbolDiscoveryRequest,
+    context: DataProviderContext,
+    source: str,
+    requested_symbols: tuple[str, ...],
+    limit: int,
+    symbols: list[dict[str, Any]],
+    truncated: bool,
+    capability: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build the shared report shape for every discovery source."""
 
     existing = {str(row["symbol"]) for row in symbols if row.get("exists") is True}
     missing_symbols = [symbol for symbol in requested_symbols if symbol not in existing]
@@ -295,6 +340,14 @@ def _build_symbol_discovery_report(
         "resolved_provider": context.resolved_provider,
         "provider_match": context.provider_match,
         "provider_context": context.to_dict(),
+        "discovery_capability": dict(capability),
+        # Keep the status fields at the report root for simple MCP clients while
+        # retaining one grouped object for API/Console projections.
+        "catalogue_completeness": capability["completeness"],
+        "catalogue_freshness": capability["freshness"],
+        "can_discover": capability["can_discover"],
+        "can_load": capability["can_load"],
+        "load_capability": capability["load_capability"],
         "limit": limit,
         "returned": len(symbols),
         "truncated": truncated,
@@ -406,7 +459,7 @@ def _provider_symbol_rows(
     requested_symbols: tuple[str, ...],
     limit: int,
     policy: DataSymbolDiscoveryPolicy,
-) -> tuple[list[dict[str, Any]], bool]:
+) -> tuple[list[dict[str, Any]], bool, dict[str, Any]]:
     """Discover symbols from an explicit provider catalog adapter."""
     if not policy.allow_provider_discovery:
         raise DataProviderResolutionError(
@@ -417,6 +470,9 @@ def _provider_symbol_rows(
                 "configured_provider": context.configured_provider,
                 "resolved_provider": context.resolved_provider,
                 "provider_match": context.provider_match,
+                "discovery_capability": _unavailable_capability(
+                    context, "Provider catalogue discovery is not allowed by policy."
+                ),
             },
         )
     adapter = policy.catalog_providers.get(context.resolved_provider)
@@ -429,12 +485,29 @@ def _provider_symbol_rows(
                 "configured_provider": context.configured_provider,
                 "resolved_provider": context.resolved_provider,
                 "provider_match": context.provider_match,
+                "discovery_capability": _unavailable_capability(
+                    context, "No provider catalogue adapter is registered."
+                ),
             },
         )
     try:
         result = adapter.discover_symbols(request, context)
-    except DataProviderResolutionError:
-        raise
+    except DataProviderResolutionError as exc:
+        # Provider adapters can supply a more specific reason, but every
+        # failure still carries the same explicit unavailable capability state.
+        raise DataProviderResolutionError(
+            exc.code,
+            str(exc),
+            data={
+                **dict(exc.data),
+                "discovery_capability": dict(
+                    exc.data.get(
+                        "discovery_capability",
+                        _unavailable_capability(context, str(exc)),
+                    )
+                ),
+            },
+        ) from exc
     except Exception as exc:
         raise DataProviderResolutionError(
             "provider_catalog_unavailable",
@@ -444,6 +517,7 @@ def _provider_symbol_rows(
                 "configured_provider": context.configured_provider,
                 "resolved_provider": context.resolved_provider,
                 "provider_match": context.provider_match,
+                "discovery_capability": _unavailable_capability(context, str(exc)),
             },
         ) from exc
     requested_set = set(requested_symbols)
@@ -467,7 +541,53 @@ def _provider_symbol_rows(
             "source": "provider",
         }
         rows.append(row)
-    return rows, result.truncated or len(result.symbols) > limit
+    return rows, result.truncated or len(result.symbols) > limit, _provider_capability(
+        result,
+        context,
+        truncated=result.truncated or len(result.symbols) > limit,
+    )
+
+
+def _provider_capability(
+    result: SymbolCatalogResult,
+    context: DataProviderContext,
+    *,
+    truncated: bool,
+) -> dict[str, Any]:
+    """Combine provider-observed state with the configured static capability.
+
+    The provider adapter owns the result of this particular catalogue request.
+    A static provider capability is only an upper bound: it cannot turn a
+    discover-only or unavailable response into a load-capable one. This keeps
+    provider discovery and requested-asset loading evidence separate at the MCP
+    boundary.
+    """
+    can_discover = bool(result.can_discover and context.supports_symbol_catalog)
+    if not can_discover:
+        load_capability = "unavailable"
+    elif result.load_capability == "unavailable":
+        load_capability = "unavailable"
+    elif result.load_capability == "load_capable" and context.supports_data_loading:
+        load_capability = "load_capable"
+    else:
+        load_capability = "discover_only"
+
+    reason = result.reason
+    if (
+        result.load_capability == "load_capable"
+        and not context.supports_data_loading
+        and reason is None
+    ):
+        reason = "Provider reported load capability, but this configured context is discover-only."
+
+    return {
+        "completeness": "partial" if truncated else result.completeness,
+        "freshness": result.freshness,
+        "can_discover": can_discover,
+        "can_load": load_capability == "load_capable",
+        "load_capability": load_capability,
+        "reason": reason,
+    }
 
 
 def _canonical_requested_symbols(symbols: Sequence[str], context: DataProviderContext) -> tuple[str, ...]:
@@ -567,12 +687,68 @@ def _provider_error_result(
     error: DataProviderResolutionError,
 ) -> ApplicationResult:
     """Build a Data Agent application result from a provider error."""
+    data = dict(error.data)
+    data.setdefault(
+        "discovery_capability",
+        {
+            "completeness": "unavailable",
+            "freshness": "unknown",
+            "can_discover": False,
+            "can_load": False,
+            "load_capability": "unavailable",
+            "reason": str(error),
+        },
+    )
     return error_result(
         command=command,
         code=error.code,
         message=str(error),
-        data=error.data,
+        data=data,
     )
+
+
+def _local_capability(
+    context: DataProviderContext,
+    *,
+    truncated: bool,
+) -> dict[str, Any]:
+    """Describe local coverage discovery without claiming provider completeness."""
+    return {
+        "completeness": "partial" if truncated else "partial",
+        "freshness": "unknown",
+        "can_discover": True,
+        "can_load": False,
+        "load_capability": "discover_only",
+        "reason": "Local rows describe stored coverage; they do not prove provider catalogue completeness or backfill support.",
+    }
+
+
+def _configured_capability(
+    context: DataProviderContext,
+    *,
+    truncated: bool,
+) -> dict[str, Any]:
+    """Describe a configured universe and preserve provider load capability separately."""
+    return {
+        "completeness": "partial" if truncated else "complete",
+        "freshness": "unknown",
+        "can_discover": True,
+        "can_load": context.supports_data_loading,
+        "load_capability": "load_capable" if context.supports_data_loading else "discover_only",
+        "reason": "Configured symbols are an explicit universe; freshness still requires provider evidence.",
+    }
+
+
+def _unavailable_capability(context: DataProviderContext, reason: str) -> dict[str, Any]:
+    """Return explicit capability evidence when catalogue discovery cannot run."""
+    return {
+        "completeness": "unavailable",
+        "freshness": "unknown",
+        "can_discover": False,
+        "can_load": False,
+        "load_capability": "unavailable",
+        "reason": reason,
+    }
 
 
 def _merge_provider_context_fields(payload: dict[str, Any], context: DataProviderContext) -> None:
@@ -586,6 +762,8 @@ def _merge_provider_context_fields(payload: dict[str, Any], context: DataProvide
             "instrument_type": context.instrument_type,
             "bar_type": context.bar_type,
             "legacy_asset_class": context.legacy_asset_class,
+            "supports_symbol_catalog": context.supports_symbol_catalog,
+            "supports_data_loading": context.supports_data_loading,
         }
     )
 

@@ -2,6 +2,7 @@ import { client } from "../connection/client";
 import type { components } from "../../generated/api";
 
 export type MarketDataset = components["schemas"]["MarketDataset"];
+export type MarketDataDiscovery = components["schemas"]["MarketDataDiscovery"];
 export type BarPoint = components["schemas"]["BarPoint"];
 export type PageInfo = components["schemas"]["PageInfo"];
 export type MarketDatasetsResponse = components["schemas"]["MarketDatasetsResponse"];

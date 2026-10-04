@@ -1257,6 +1257,40 @@ export interface components {
             status: "alive";
         };
         /**
+         * MarketDataDiscovery
+         * @description Explicit catalogue and provider-load capability for the dataset view.
+         *
+         *     A Console read model can prove which stored slices are visible, but that
+         *     evidence is separate from a provider catalogue and from permission to run a
+         *     bounded load. Keeping the states together in a typed object prevents the UI
+         *     from treating one visible symbol as a complete provider universe.
+         */
+        MarketDataDiscovery: {
+            /** Can Discover */
+            can_discover: boolean;
+            /** Can Load */
+            can_load: boolean;
+            /**
+             * Catalogue Completeness
+             * @enum {string}
+             */
+            catalogue_completeness: "complete" | "partial" | "stale" | "unavailable";
+            /**
+             * Catalogue Freshness
+             * @enum {string}
+             */
+            catalogue_freshness: "fresh" | "stale" | "unknown";
+            /**
+             * Load Capability
+             * @enum {string}
+             */
+            load_capability: "load_capable" | "discover_only" | "unavailable";
+            /** Provider */
+            provider: string;
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
          * MarketDataset
          * @description One available symbol/timeframe/source data slice.
          */
@@ -1284,6 +1318,7 @@ export interface components {
          * @description Available market-data slices with bounded pagination.
          */
         MarketDatasetsResponse: {
+            discovery?: components["schemas"]["MarketDataDiscovery"];
             /** Items */
             items: components["schemas"]["MarketDataset"][];
             page: components["schemas"]["PageInfo"];
