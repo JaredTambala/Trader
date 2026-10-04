@@ -10,6 +10,7 @@ from .backtest_definitions import (
     InvalidBacktestDefinition,
 )
 from .backtest_executions import BacktestExecutionService, ExecutionDatabaseUnavailable
+from .paper_runtime import PaperRuntimeDatabaseUnavailable, PaperRuntimeService
 
 __all__ = [
     "CompatibilityRepository",
@@ -26,4 +27,6 @@ __all__ = [
     "InvalidBacktestDefinition",
     "BacktestExecutionService",
     "ExecutionDatabaseUnavailable",
+    "PaperRuntimeDatabaseUnavailable",
+    "PaperRuntimeService",
 ]
