@@ -268,8 +268,10 @@ projections, and recursive redaction. The CLI provides human or JSON-lines diagn
 its final public result on `stdout`; every child MCP process keeps JSON-RPC on `stdout` and emits role/process-labelled
 lifecycle logs on `stderr`. Model/schema/domain boundaries, MCP policy and execution, scheduling and joins,
 checkpoint/recovery, specialist returns, evidence review, decision commit, interruption, cancellation, and terminal
-outcomes are instrumented. Approved durable event persistence and retention remain separate follow-on work; canonical
-research artifacts and decision receipts remain authoritative.
+outcomes are instrumented. A retained qualification sink and verifier now compose those public event and checkpoint
+projections, preserving process and branch identity across restart while rejecting duplicate or unsafe records. This is
+deterministic qualification evidence only: approved durable product event persistence remains a separate follow-on
+decision, and canonical research artifacts and decision receipts remain authoritative.
 
 Every specialist return rejoins the coordinator. The coordinator inspects its canonical evidence and
 chooses explicitly whether to advance, request revision, revisit an earlier responsibility, create a separately tracked

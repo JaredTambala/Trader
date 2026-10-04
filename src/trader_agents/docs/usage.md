@@ -81,6 +81,12 @@ limits. `NoOpObservabilityEventSink` and `RecordingObservabilityEventSink` are a
 tests. `ConsoleObservabilityEventSink` is the production console adapter. A shared `AgentEventEmitter` supplies the
 process identity, event clock, and ordered sequence; callers supply semantic correlation and projector output.
 
+For a controlled qualification fixture, compose `RetainedTrajectorySink` as the event sink and call
+`retain_checkpoint(state, process_instance_id=...)` with each complete checkpoint read. The sink stores only detached
+public projections. Query a session or branch with `query(...)`, then call `verify_retained_trajectory(...)` to check
+identity pins, concurrent branch ownership, process-restart markers, redaction, and terminal decision lineage. This
+retention boundary is qualification evidence; it does not replace canonical artifact or decision persistence.
+
 ## Required services
 
 - Ollama serving the exact admitted `lfm2.5:8b` digest

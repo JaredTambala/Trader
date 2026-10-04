@@ -102,6 +102,13 @@ from .observability.console import (
     agent_console_config,
 )
 from .observability.emitter import AgentEventEmitter, EventClock
+from .observability.trajectory import (
+    RetainedCheckpoint,
+    RetainedTrajectory,
+    RetainedTrajectorySink,
+    RetainedTrajectoryUnavailable,
+    verify_retained_trajectory,
+)
 from .observability.projections import (
     project_agent_turn,
     project_budget_usage,
@@ -228,6 +235,10 @@ __all__ = [
     "PublicIssue",
     "ProjectionDetail",
     "RecordingObservabilityEventSink",
+    "RetainedCheckpoint",
+    "RetainedTrajectory",
+    "RetainedTrajectorySink",
+    "RetainedTrajectoryUnavailable",
     "RecordingTraceSink",
     "ResearchCoordinator",
     "RoleScopedMcpRuntime",
@@ -291,6 +302,7 @@ __all__ = [
     "specialist_checkpoint_digest",
     "validate_agent_event_stream",
     "validate_observability_fields",
+    "verify_retained_trajectory",
     "strategy_build_contract_from_session",
     "validate_runtime_pins",
     "validate_agent_checkpoint_state",

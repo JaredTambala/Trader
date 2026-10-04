@@ -49,3 +49,14 @@ remain authoritative.
 Checkpoints store validated public values, stable identities, accepted observations, branch/delegation lineage,
 lifecycle summaries, pending interrupts, terminal results, and cumulative usage. They exclude raw prompts, raw model
 responses, hidden reasoning, credentials, and complete unbounded tool payloads.
+
+## Retained public trajectories
+
+`RetainedTrajectorySink` is the qualification retention boundary over the event and checkpoint projections. It accepts
+validated `AgentObservabilityEvent` values, rejects duplicate process-local stream positions, and stores only the
+detached `agent_public_state` checkpoint projection with its digest, process identity, and transition sequence. A
+`RetainedTrajectory` can be queried by session and branch without treating diagnostic events as canonical research
+records. `verify_retained_trajectory` checks the pinned program/model/catalogue identities, concurrent branch
+attribution, redaction, fresh-process recovery markers, checkpoint coverage, and terminal decision receipt lineage.
+Sink outages and replayed events fail closed. Durable product retention remains a separate persistence decision; this
+boundary supplies the repeatable qualification fixture and its evidence verifier.

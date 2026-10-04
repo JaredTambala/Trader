@@ -37,7 +37,8 @@ The package tree expresses durable control responsibilities rather than developm
 - `model_runtime/` owns provider clients, admitted profiles, agent programs, and strict structured output.
 - `mcp/` owns the code-side catalogue, authorization policy, role-scoped execution, and transport client.
 - `checkpointing/` owns bounded LangGraph state plus the PostgreSQL saver adapter.
-- `observability/` owns semantic events, public projections, emission, console rendering, and trace sinks.
+- `observability/` owns semantic events, public projections, emission, retained qualification trajectories, console
+  rendering, and trace sinks.
 
 Only `trader_agents.__init__` is a public convenience facade. The responsibility packages are canonical internal
 locations; the removed flat module paths are not compatibility entry points.
