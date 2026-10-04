@@ -1546,6 +1546,11 @@ export interface components {
          * @description Broker reconciliation state without inventing an attempt record.
          */
         PaperReconciliation: {
+            /**
+             * Attempts
+             * @default []
+             */
+            attempts: components["schemas"]["PaperReconciliationAttempt"][];
             evidence: components["schemas"]["RuntimeEvidence"];
             /** Last Attempt At */
             last_attempt_at?: string | null;
@@ -1556,6 +1561,20 @@ export interface components {
              * @enum {string}
              */
             status: "reconciled" | "required" | "failed" | "unavailable";
+        };
+        /**
+         * PaperReconciliationAttempt
+         * @description One bounded reconciliation attempt when a producer publishes it.
+         */
+        PaperReconciliationAttempt: {
+            /** Attempt Id */
+            attempt_id: string;
+            /** Attempted At */
+            attempted_at?: string | null;
+            /** Message */
+            message?: string | null;
+            /** Status */
+            status: string;
         };
         /**
          * PaperRiskOutcomes
