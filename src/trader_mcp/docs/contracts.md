@@ -455,12 +455,20 @@ or bypass core platform validation.
 
 | Tool | Side Effect | Primary artifact |
 | --- | --- | --- |
+| `data_discover_symbols` | `read_only` | provider-scoped symbol catalogue and capability-state report |
 | `data_get_inventory` | `read_only` | `dataset_manifest.json` payload or reference |
 | `data_summarize_quality` | `read_only` | `data_quality_report.json` |
 | `data_create_research_snapshot` | `local_mutating` | canonical matching dataset-manifest and quality-report refs |
 | `data_ensure_loaded` | `local_mutating` | load/backfill evidence plus dataset manifest update |
 
 These tools are implemented first because the Data Agent owns the ingredients that later research agents consume.
+
+`data_discover_symbols` serializes the provider adapter's observed state without upgrading it from static provider
+configuration. A response may be `complete`, `partial`, `stale`, or `unavailable`; `load_capability` is independently
+`load_capable`, `discover_only`, or `unavailable`. The MCP envelope repeats these fields at the report root and keeps
+the grouped `discovery_capability` object for clients that consume nested evidence. A catalogue adapter that only
+discovers symbols therefore remains `discover_only`, even when the configured provider has a separate backfill
+implementation, and an unavailable adapter cannot be represented as an empty successful catalogue.
 
 ## Agent Tool Inventory
 

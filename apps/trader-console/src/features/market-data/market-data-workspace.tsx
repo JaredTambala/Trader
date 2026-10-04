@@ -218,7 +218,7 @@ export function MarketDataWorkspace() {
           {datasetState === "loading" && <p role="status">Discovering available datasets…</p>}
           {datasetState === "error" && <div className={styles.errorBox} role="alert"><p>{datasetError}</p><button className={styles.secondaryButton} type="button" onClick={() => setDatasetRequest({ offset: 0, append: false, nonce: Date.now() })}>Retry datasets</button></div>}
           {datasetState === "ready" && datasets.length === 0 && <p className={styles.empty}>No market datasets are available in this database.</p>}
-          {datasetState === "ready" && datasets.length > 0 && responseDiscovery && <div className={styles.datasetCapability} role="status">
+          {datasetState === "ready" && responseDiscovery && <div className={styles.datasetCapability} role="status">
             <strong>Catalogue: {responseDiscovery.catalogue_completeness}</strong>
             <span>Freshness: {responseDiscovery.catalogue_freshness}</span>
             <span>Discovery: {responseDiscovery.can_discover ? "available" : "unavailable"}</span>

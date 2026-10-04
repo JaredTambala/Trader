@@ -33,6 +33,7 @@ from .domain import (
     DataProviderResolutionError,
     DataSymbolDiscoveryPolicy,
     DataSymbolDiscoveryRequest,
+    SymbolCatalogResult,
 )
 
 
@@ -540,13 +541,52 @@ def _provider_symbol_rows(
             "source": "provider",
         }
         rows.append(row)
-    return rows, result.truncated or len(result.symbols) > limit, {
-        **result.capability_dict(),
-        "completeness": (
-            "partial" if result.truncated or len(result.symbols) > limit else result.completeness
-        ),
-        "can_load": context.supports_data_loading,
-        "load_capability": "load_capable" if context.supports_data_loading else "discover_only",
+    return rows, result.truncated or len(result.symbols) > limit, _provider_capability(
+        result,
+        context,
+        truncated=result.truncated or len(result.symbols) > limit,
+    )
+
+
+def _provider_capability(
+    result: SymbolCatalogResult,
+    context: DataProviderContext,
+    *,
+    truncated: bool,
+) -> dict[str, Any]:
+    """Combine provider-observed state with the configured static capability.
+
+    The provider adapter owns the result of this particular catalogue request.
+    A static provider capability is only an upper bound: it cannot turn a
+    discover-only or unavailable response into a load-capable one. This keeps
+    provider discovery and requested-asset loading evidence separate at the MCP
+    boundary.
+    """
+    can_discover = bool(result.can_discover and context.supports_symbol_catalog)
+    if not can_discover:
+        load_capability = "unavailable"
+    elif result.load_capability == "unavailable":
+        load_capability = "unavailable"
+    elif result.load_capability == "load_capable" and context.supports_data_loading:
+        load_capability = "load_capable"
+    else:
+        load_capability = "discover_only"
+
+    reason = result.reason
+    if (
+        result.load_capability == "load_capable"
+        and not context.supports_data_loading
+        and reason is None
+    ):
+        reason = "Provider reported load capability, but this configured context is discover-only."
+
+    return {
+        "completeness": "partial" if truncated else result.completeness,
+        "freshness": result.freshness,
+        "can_discover": can_discover,
+        "can_load": load_capability == "load_capable",
+        "load_capability": load_capability,
+        "reason": reason,
     }
 
 

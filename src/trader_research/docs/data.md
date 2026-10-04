@@ -17,7 +17,8 @@ Every `data_discover_symbols` report includes `discovery_capability` with four e
 `discover_only`, or `unavailable`. The root report repeats these fields as `catalogue_completeness`,
 `catalogue_freshness`, `can_discover`, `can_load`, and `load_capability` for clients that do not want to unwrap the
 grouped object. A visible symbol is therefore never evidence that the provider catalogue is complete or that a bounded
-backfill can run.
+backfill can run. Provider adapters own the observed request state; static provider configuration only constrains the
+maximum capability, so a catalogue adapter that has no load evidence remains `discover_only`.
 
 ## Data readiness lifecycle
 
