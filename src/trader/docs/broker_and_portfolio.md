@@ -143,6 +143,11 @@ trader_service:
       qty: 0
 ```
 
+Paper operation must consume a validated human `paper_candidate_admission` reference before a future startup command
+constructs a live broker service. The admission record is read-only runtime input: it does not place orders, clear
+halts, reconcile brokers, or grant any agent authority. Expiry, revocation, rejected decisions, missing evidence, and
+changed evidence versions must fail closed before broker construction.
+
 Backtest execution-cost config:
 
 <!-- verified: config -->

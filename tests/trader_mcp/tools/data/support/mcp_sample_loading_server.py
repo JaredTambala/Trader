@@ -17,7 +17,7 @@ from trader_research.foundation import InMemoryResearchArtifactStore
 
 def main() -> None:
     """Run an empty DuckDB-backed MCP server for workflow evidence tests."""
-    local_env = load_local_environment()
+    local_env = load_local_environment("env.template")
     with TemporaryDirectory(prefix="trader-mcp-loading-evidence-") as tmp_dir:
         store = DuckDBEventStore(str(Path(tmp_dir) / "events.duckdb"))
         journal = InMemoryResearchArtifactStore()

@@ -6,8 +6,9 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from importlib import import_module
 from threading import Lock
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 import warnings
 
 from .events import validate_observability_fields
@@ -154,7 +155,7 @@ class MlflowTraceSink:
         """Emit one redacted MLflow span through a lazy optional import."""
         _validate_span(name, span_type, attributes)
         try:
-            import mlflow
+            mlflow = cast(Any, import_module("mlflow"))
         except ImportError as exc:
             raise RuntimeError(
                 "MLflow tracing requires the project ml optional dependency"
@@ -189,7 +190,10 @@ class MlflowTraceSink:
         """Initialize one process-local exporter and return its experiment."""
         with self._initialization_lock:
             if self._trace_destination is None:
-                from mlflow.entities.trace_location import MlflowExperimentLocation
+                trace_location = import_module("mlflow.entities.trace_location")
+                mlflow_experiment_location = cast(
+                    Any, getattr(trace_location, "MlflowExperimentLocation")
+                )
 
                 # MLflow caches its OpenTelemetry exporter process-wide. Reset
                 # before the first root so a newly selected controlled backend
@@ -200,7 +204,7 @@ class MlflowTraceSink:
                 object.__setattr__(
                     self,
                     "_trace_destination",
-                    MlflowExperimentLocation(experiment_id=experiment.experiment_id),
+                    mlflow_experiment_location(experiment_id=experiment.experiment_id),
                 )
             else:
                 mlflow.set_tracking_uri(self.tracking_uri)

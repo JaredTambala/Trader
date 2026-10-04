@@ -88,7 +88,7 @@ concrete adapters remain behind it.
 | Context | Owns | Typical question |
 | --- | --- | --- |
 | `foundation` | identities, results, artifact references, and persistence ports | What stable value crosses this boundary? |
-| `governance` | ownership, authority, handoffs, sessions, approvals, and protocol values | Who may create or consume this artifact? |
+| `governance` | ownership, authority, handoffs, sessions, approvals, protocol values, and paper admission | Who may create or consume this artifact? |
 | `data` | symbol discovery, inventory, quality, bounded loading, and dataset evidence | Is the requested market data complete and fit? |
 | `knowledge` | registered sources, chunks, retrieval, claim spans, citations, and method-card state | Which source-backed claims support this method? |
 | `methodology` | method contracts, implementation validation, diagnostics, kernels, and packages | Does a supplied method satisfy its contract? |
@@ -162,6 +162,11 @@ The canonical proposal remains immutable while material assumptions are decided 
 Backtest execution, optimisation scheduling, and risk evaluation do not become agents merely because the coordinator
 invokes them. Deterministic services own those mechanics; Strategy Engineering is a bounded specialist because it must
 reason about catalogue comparison, reuse, adaptation, and source authoring.
+
+Paper operation has a separate human-owned admission boundary. `paper_candidate_admission` records exact candidate,
+strategy, risk, data, and evidence identities plus limits, broker scope, monitoring, expiry, and revocation. Its
+validator re-reads canonical evidence before reporting eligibility; no research agent, MCP adapter, or admission
+projection can create broker state or approve on behalf of a human.
 
 Artifact domain ownership is distinct from the tool that produced the artifact, the workflow that requested it, and
 the actor that invoked it. Governance validates those dimensions before persistence. Existing canonical evidence is

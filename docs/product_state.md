@@ -820,6 +820,11 @@ trading and live trading. This evidence does not apply to the model-backed repla
   exact slice freeze; implementation admission remains a separate deterministic verdict.
 - Backtest, holdout and audit evidence can support a research conclusion; none independently grants deployment
   permission.
+- A human-owned `paper_candidate_admission` governance artifact now records exact strategy/risk/data versions,
+  evidence digests, risk limits, broker/account scope, monitoring policy, unresolved limitations, expiry, rejection, and
+  append-only revocation.
+  Its validator fails closed on missing or changed evidence and rejects agent/MCP principals. Runtime startup and
+  Console paper controls do not yet consume this record; those remain GAP-05-02/03 work.
 
 ## Canonical References
 
