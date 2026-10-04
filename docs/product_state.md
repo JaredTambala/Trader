@@ -186,8 +186,9 @@ next-decision records remain incomplete. UJ-04 now names the governed agent-sess
 agent-directed experiment loop, and UJ-09 covers evidence review and the next decision. The model-backed
 Coordinator/Data/Strategy runtime and recovery contracts exist, but controlled third-party-model acceptance, Console
 intervention, experiment handoff, and the unified evidence-review surface remain open.
-UJ-05 has conservative core paper-runtime and operator-CLI safety behavior, but general paper admission, Console
-operations/controls, and a retained paper qualification campaign remain absent. UJ-06 joins these seams and is tracked
+UJ-05 has conservative core paper-runtime and operator-CLI safety behavior. Human paper admission and the Console's
+read-only paper-operations projection are implemented; authorized Console controls and a retained paper qualification
+campaign remain absent. UJ-06 joins these seams and is tracked
 by the four data-to-backtest work items in its detailed audit.
 
 The 4 October feature diagnosis adds one feature-acceptance work item for each of UJ-04, UJ-07, UJ-08, and UJ-09. The
@@ -835,8 +836,9 @@ trading and live trading. This evidence does not apply to the model-backed repla
 - A human-owned `paper_candidate_admission` governance artifact now records exact strategy/risk/data versions,
   evidence digests, risk limits, broker/account scope, monitoring policy, unresolved limitations, expiry, rejection, and
   append-only revocation.
-  Its validator fails closed on missing or changed evidence and rejects agent/MCP principals. Runtime startup and
-  Console paper controls do not yet consume this record; those remain GAP-05-02/03 work.
+  Its validator fails closed on missing or changed evidence and rejects agent/MCP principals. The Console paper
+  operations read model is now available through `/api/paper/runtime`; it remains read-only and does not consume the
+  admission record for startup. Authorized controls remain GAP-05-03.
 
 ## Canonical References
 
