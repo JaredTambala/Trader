@@ -67,7 +67,31 @@ class _DetailConnection(_Connection):
                 ["experiment_run_id", "experiment_id", "run_id", "status", "comparison_projection_available", "comparison_eligible", "comparison_exclusion_reason"],
                 [("er-1", "exp-1", "run-1", "failed", False, False, "no_comparison_projection")],
             )
+        if "research_review_evidence" in query:
+            return _Cursor(
+                [
+                    "artifact_type", "artifact_id", "domain_owner", "producer_tool", "artifact_status",
+                    "schema_version", "source_hash", "created_at", "updated_at", "run_id", "claim_scope",
+                    "data_roles", "limitations", "blockers", "independent_confirmation", "origin_kind",
+                ],
+                [("robustness_report", "robust-1", "Adversarial Agent", "adversarial_run_robustness", "blocked",
+                  "1", None, None, None, "run-1", {"run_id": "run-1"}, ["protected_holdout"], [], ["variants missing"], False,
+                  "independent_review")],
+            )
         return _Cursor(["run_id"], [])
+
+
+class _EvidenceConnection(_Connection):
+    """Connection double for exact producer evidence lookup."""
+
+    async def execute(self, query: str, parameters: object | None = None) -> _Cursor:
+        self.calls.append((query, parameters))
+        if "data_scope_evidence" in query:
+            return _Cursor(
+                ["manifest_artifact_id", "quality_artifact_id", "evidence_status"],
+                [("manifest-1", "quality-1", "complete")],
+            )
+        return _Cursor([], [])
 
 
 class _RiskDecisionConnection(_Connection):
@@ -145,6 +169,36 @@ def test_experiment_discovery_stays_on_published_run_projection() -> None:
     assert total == 1
 
 
+def test_data_evidence_lookup_uses_exact_scope_and_producer_projection() -> None:
+    """Bind every scope field as a parameter and read only the published evidence view."""
+    connection = _EvidenceConnection()
+    repository = ConsoleResourceRepository(_Database(connection))  # type: ignore[arg-type]
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    end = datetime(2026, 1, 2, tzinfo=timezone.utc)
+
+    row = asyncio.run(
+        repository.get_market_data_evidence(
+            asset_class="stock",
+            symbols=("AAPL", "MSFT"),
+            timeframe="1Min",
+            interval="1Min",
+            bar_type="trade_bar",
+            start=start,
+            end=end,
+            provider="alpaca",
+            source_policy="alpaca",
+        )
+    )
+
+    query, parameters = connection.calls[0]
+    assert "console_read.data_scope_evidence" in query
+    assert "AAPL" not in query
+    assert parameters == [
+        "stock", '["AAPL","MSFT"]', "1Min", "1Min", "trade_bar", start, end, "alpaca", "alpaca"
+    ]
+    assert row == {"manifest_artifact_id": "manifest-1", "quality_artifact_id": "quality-1", "evidence_status": "complete"}
+
+
 def test_backtest_coverage_uses_allowlisted_bar_relation_and_returns_one_row_per_symbol() -> None:
     """Read only aggregate coverage evidence without loading market bars."""
     connection = _Connection()
@@ -197,6 +251,7 @@ def test_run_detail_bounds_each_evidence_section_and_keeps_empty_sections() -> N
     assert detail["run"]["status"] == "failed"
     assert detail["run"]["comparison_exclusion_reason"] == "no_comparison_projection"
     assert detail["comparison_curves"] == []
+    assert detail["review_evidence"][0]["artifact_id"] == "robust-1"
     section_calls = [
         (query, parameters)
         for query, parameters in connection.calls

@@ -25,6 +25,25 @@ Each work item declares a merge strategy:
 The harness records this strategy and order in reports. It does not merge branches automatically, because conflict
 resolution and the decision to preserve or redirect a product change remain human decisions.
 
+## Boundary contract discipline
+
+Create a shared contract only when a capability crosses a process, trust, package-ownership, persistence, recovery, or
+external API boundary, or when a concrete failure mode requires an explicit schema. The work item and branch evidence
+must name the boundary, the canonical semantic owner, the adapter consumers, the identity or version and provenance
+fields, and the contract tests that prove the failure behavior.
+
+The owning domain package defines the meaning. MCP, Console, persistence, and other adapters validate and translate
+that meaning into their wire or storage representations; they do not create competing domain truth. When several
+items in one capability need the same semantic contract, land the contract-owning change first and rebase or merge
+the consumers against it. If the work does not cross a boundary, keep the type local and do not create a DTO merely to
+make layers look symmetrical.
+
+Hard cutover is the default for an internal process, contract, schema, import surface, or persisted state that the new
+work replaces. The work item must update active callers, tests, fixtures, and documentation together and remove the
+obsolete path. A compatibility reader, alias, shim, fallback, dual write, or silent translation is allowed only when
+an explicitly approved work item names a currently supported consumer or bounded migration, an owner, a removal
+condition, and verification that prevents old and new semantics from being confused.
+
 ## Product intent baseline
 
 The canonical intent record is [Trader Product Intent](product_intent.md). It preserves the human's natural-language
@@ -114,12 +133,14 @@ not perform the merge automatically.
 1. Choose a user story and the human decision it serves, then confirm its Notion work item and dependencies.
 2. Audit the repository and current product documentation against the story's acceptance criteria before proposing new implementation.
 3. Turn each unmet criterion into an atomic Notion work item, with an explicit owner, dependency, merge strategy, and verification path.
-4. Start a worktree for one item and keep the branch limited to the declared scope.
-5. If the item uses PostgreSQL, provision its disposable database from the operator-approved admin identity.
-6. Implement the smallest user-visible slice, explaining the low-level change in the item's evidence.
-7. Run the focused checks, then add broader qualification only when the slice crosses a shared contract or external boundary.
-8. Read `report`, inspect the evidence, and record a human decision before merging or redirecting the track.
-9. Reconcile the evidence and status back to Notion and the owning repository documentation.
+4. For every new type or schema, record the boundary or failure mode it protects and select one canonical semantic owner.
+5. Decide whether a replaced path is a hard cutover; record any explicitly approved compatibility exception before implementation.
+6. Start a worktree for one item and keep the branch limited to the declared scope.
+7. If the item uses PostgreSQL, provision its disposable database from the operator-approved admin identity.
+8. Implement the smallest user-visible slice, explaining the low-level change in the item's evidence.
+9. Run the focused checks, then add broader qualification only when the slice crosses a shared contract or external boundary.
+10. Read `report`, inspect the evidence, and record a human decision before merging or redirecting the track.
+11. Reconcile the evidence and status back to Notion and the owning repository documentation.
 
 This loop allows several tracks to progress concurrently while preserving serialized decisions at shared contracts,
 human approvals, and merge points.

@@ -1,0 +1,25 @@
+.main { max-width: 1320px; margin: 0 auto; padding: 44px 48px 72px; }
+.heading { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; margin-bottom: 28px; }
+.eyebrow { color: #718096; font-size: 11px; font-weight: 700; letter-spacing: .16em; margin: 0 0 8px; }
+.heading h1 { font-size: 34px; margin: 0; }
+.subtitle { color: #526273; margin: 10px 0 0; }
+.button { background: #1e3a5f; border: 0; border-radius: 7px; color: white; cursor: pointer; padding: 11px 16px; }
+.button:disabled { cursor: wait; opacity: .6; }
+.banner, .card, .incidents { background: #fff; border: 1px solid #dce3eb; border-radius: 10px; padding: 20px; }
+.banner { align-items: center; display: flex; justify-content: space-between; margin-bottom: 18px; }
+.banner strong { display: block; font-size: 24px; text-transform: capitalize; }
+.banner p { color: #526273; margin: 6px 0 0; }
+.grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.card h2, .incidents h2 { font-size: 16px; margin: 0 0 10px; }
+.card p { color: #526273; line-height: 1.5; }
+.card dl { display: grid; gap: 8px; grid-template-columns: 100px 1fr; margin: 16px 0 0; }
+.card dt { color: #718096; font-size: 12px; }
+.card dd { margin: 0; overflow-wrap: anywhere; }
+.badge { border-radius: 999px; display: inline-block; font-size: 11px; font-weight: 700; margin: 0 6px 6px 0; padding: 4px 8px; text-transform: capitalize; }
+.available, .healthy { background: #dcfce7; color: #166534; }
+.partial, .degraded, .configured { background: #fef3c7; color: #92400e; }
+.stale, .unhealthy, .error { background: #fee2e2; color: #991b1b; }
+.unavailable, .out_of_scope, .not_verified { background: #e5e7eb; color: #374151; }
+.incidents { margin-top: 14px; }
+.incidents p { margin: 8px 0; }
+.error { border-radius: 7px; padding: 12px; }

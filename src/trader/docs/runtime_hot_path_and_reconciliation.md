@@ -4,6 +4,18 @@ This document explains the live execution path in implementation terms. It focus
 cycle, where risk is applied, how broker and local state are reconciled, and where the current runtime already
 optimizes for correctness and latency.
 
+## Console read projection
+
+The Console paper-operations route consumes only the published `console_read` projections for sessions, market bars,
+positions, orders, fills, and risk decisions. It maps them into typed operational sections with source identity,
+timestamps, and explicit `available`, `partial`, `stale`, or `unavailable` evidence states. Configured scope and
+broker-account labels remain configuration evidence; they do not attest to the remote broker account.
+
+Reconciliation attempts and operator halt state are currently explicit `unavailable` sections because no producer-owned
+read projections have been published for them. The Console does not query raw runtime tables or infer either state from
+API readiness. This is a read-only observation boundary; start, pause, stop, halt, and reconcile commands remain a
+separate authorized work item.
+
 ## Hot Path Overview
 
 The live path is triggered by new market data, not by a fixed schedule alone.

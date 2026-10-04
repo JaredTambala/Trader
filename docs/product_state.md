@@ -167,15 +167,23 @@ The first detailed product-intent audit is the instrument-agnostic story in
 [Trader Product Intent](product_intent.md): a researcher qualifies a bounded data scope, carries that exact evidence
 into backtest authoring, and receives a traceable result or an actionable blocker. The Data and MCP layers already
 provide symbol discovery, inventory manifests, quality reports, bounded loading, and matching research snapshots. The
-Console `/data` workflow currently provides aggregate coverage and source rows, while backtest authoring performs its
-own scope and coverage preflight. These are separate boundaries today.
+Console `/data` workflow provides aggregate coverage, source rows, and exact Data manifest/quality evidence, while
+backtest authoring still performs its own scope and coverage preflight. Exact saved-scope handoff remains a separate
+gap.
 
 The audit therefore records four executable gaps: expose the Data quality and provenance evidence in the Console;
 carry the selected scope and source policy into authoring without re-entry; prove that replay bars still match the
 qualified dataset; and qualify the complete selection-to-submission journey with integrated fixtures and failure
-states. The detailed acceptance criteria, repository evidence, and linked Notion work items live in
+states. The Console now has the saved-scope boundary for the second step: it persists an immutable exact scope with
+manifest/quality references and reopens it with explicit `active`, `stale`, or `unavailable` evidence state. The
+authoring handoff and replay identity still remain separate gaps. The detailed acceptance criteria, repository evidence, and linked Notion work items live in
 [product_intent.md](product_intent.md). This audit describes current capability; it does not claim that the end-to-end
 story is qualified.
+
+GAP-06-01 is now delivered in the Console API and market-data workspace. `console_read.data_scope_evidence` resolves
+the Data-owned manifest and quality pair by exact symbols, asset class, timeframe/interval, bar type, UTC window,
+provider and source policy. The UI preserves complete, partial, stale, warning, empty and unavailable states, artifact
+identities, coverage, findings and provenance. It does not infer quality from visible bars or recalculate Data reports.
 
 The same audit loop now covers the nine candidate journeys. UJ-01 has a working bounded data explorer but lacks Console
 quality/provenance, saved-scope, alternative-comparison, and discovery-completeness continuity. UJ-02 has deterministic
@@ -186,9 +194,16 @@ next-decision records remain incomplete. UJ-04 now names the governed agent-sess
 agent-directed experiment loop, and UJ-09 covers evidence review and the next decision. The model-backed
 Coordinator/Data/Strategy runtime and recovery contracts exist, but controlled third-party-model acceptance, Console
 intervention, experiment handoff, and the unified evidence-review surface remain open.
-UJ-05 has conservative core paper-runtime and operator-CLI safety behavior, but general paper admission, Console
-operations/controls, and a retained paper qualification campaign remain absent. UJ-06 joins these seams and is tracked
+UJ-05 has conservative core paper-runtime and operator-CLI safety behavior. Human paper admission and the Console's
+read-only paper-operations projection are implemented; authorized Console controls and a retained paper qualification
+campaign remain absent. UJ-06 joins these seams and is tracked
 by the four data-to-backtest work items in its detailed audit.
+
+GAP-03-02 now delivers the Console projection for review evidence. Run detail reads expose a typed, producer-owned
+three-part review section for Evaluation, multiple-testing, and Adversarial/robustness artifacts, including exact
+identity, claim scope, protected-data roles, limitations, blockers, and explicit missing/incompatible/blocked states.
+Optimisation reports remain labelled exploratory and cannot become independent confirmation. This closes the human
+readout slice; it does not claim that general robustness/WFO producers or model-backed independent review are complete.
 
 The 4 October feature diagnosis adds one feature-acceptance work item for each of UJ-04, UJ-07, UJ-08, and UJ-09. The
 UJ identifiers remain product features; the linked records are delivery work items that implement or qualify those
@@ -835,8 +850,9 @@ trading and live trading. This evidence does not apply to the model-backed repla
 - A human-owned `paper_candidate_admission` governance artifact now records exact strategy/risk/data versions,
   evidence digests, risk limits, broker/account scope, monitoring policy, unresolved limitations, expiry, rejection, and
   append-only revocation.
-  Its validator fails closed on missing or changed evidence and rejects agent/MCP principals. Runtime startup and
-  Console paper controls do not yet consume this record; those remain GAP-05-02/03 work.
+  Its validator fails closed on missing or changed evidence and rejects agent/MCP principals. The Console paper
+  operations read model is now available through `/api/paper/runtime`; it remains read-only and does not consume the
+  admission record for startup. Authorized controls remain GAP-05-03.
 
 ## Canonical References
 

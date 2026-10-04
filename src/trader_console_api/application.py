@@ -28,11 +28,16 @@ from .routers import (
     context_router,
     health_router,
     resource_router,
+    saved_data_scope_router,
+    paper_runtime_router,
 )
 from .services.catalogue import CatalogueService, PreflightService
 from .services.backtest_definitions import BacktestDefinitionService
 from .services.backtest_executions import BacktestExecutionService
 from .services import ContextService, HealthService, ResourceService
+from .services.saved_data_scopes import SavedDataScopeService
+from .services.paper_runtime import PaperRuntimeService
+from .repositories.paper_runtime import PaperRuntimeRepository
 
 
 class AuthenticationProvider(Protocol):
@@ -98,6 +103,13 @@ def create_app(
         comparison_view_service = ComparisonViewService(
             ComparisonViewRepository(database, configured_settings.scope.scope_id)
         )
+        from .repositories.saved_data_scopes import SavedDataScopeRepository
+        saved_data_scope_service = SavedDataScopeService(
+            SavedDataScopeRepository(database, configured_settings.scope.scope_id)
+        )
+        paper_runtime_service = PaperRuntimeService(
+            PaperRuntimeRepository(database), configured_settings.scope
+        )
         opened = False
         app.state.database = database
         app.state.health_service = health_service
@@ -107,6 +119,8 @@ def create_app(
         app.state.backtest_definition_service = backtest_definition_service
         app.state.backtest_execution_service = backtest_execution_service
         app.state.comparison_view_service = comparison_view_service
+        app.state.saved_data_scope_service = saved_data_scope_service
+        app.state.paper_runtime_service = paper_runtime_service
         try:
             try:
                 await pool.open(
@@ -145,6 +159,8 @@ def create_app(
     app.include_router(backtest_definition_router)
     app.include_router(backtest_execution_router)
     app.include_router(resource_router)
+    app.include_router(saved_data_scope_router)
+    app.include_router(paper_runtime_router)
     from .routers.comparison_views import router as comparison_view_router
 
     app.include_router(comparison_view_router)

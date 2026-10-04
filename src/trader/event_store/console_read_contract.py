@@ -22,7 +22,7 @@ except ImportError:  # pragma: no cover - psycopg is a core dependency in produc
 
 CONSOLE_READ_SCHEMA: Final = "console_read"
 CONSOLE_READ_CONTRACT: Final = "trader_console"
-CONSOLE_READ_CONTRACT_VERSION: Final = 9
+CONSOLE_READ_CONTRACT_VERSION: Final = 10
 CONSOLE_READ_MINIMUM_CONSUMER_VERSION: Final = 1
 
 # These are the complete columns exposed by the current contract. Variable configuration,
@@ -94,6 +94,16 @@ CONSOLE_READ_COLUMNS: Final[Mapping[str, tuple[str, ...]]] = {
         "trade_count",
         "vwap",
         "source",
+    ),
+    "data_scope_evidence": (
+        "manifest_artifact_id", "quality_artifact_id", "manifest_uri", "quality_uri",
+        "evidence_status", "evidence_reason", "manifest_status", "quality_status",
+        "manifest_schema_version", "quality_schema_version", "asset_class", "symbols",
+        "timeframe", "interval", "bar_type", "requested_start", "requested_end",
+        "provider", "source_policy", "manifest_created_at", "manifest_updated_at",
+        "quality_created_at", "quality_updated_at", "manifest_source_hash",
+        "quality_source_hash", "manifest_payload", "quality_payload", "coverage",
+        "findings", "warnings", "provenance_refs",
     ),
     "signals": (
         "run_id",
@@ -517,6 +527,24 @@ CONSOLE_READ_COLUMNS: Final[Mapping[str, tuple[str, ...]]] = {
         "before_order",
         "after_order",
     ),
+    "research_review_evidence": (
+        "artifact_type",
+        "artifact_id",
+        "domain_owner",
+        "producer_tool",
+        "artifact_status",
+        "schema_version",
+        "source_hash",
+        "created_at",
+        "updated_at",
+        "run_id",
+        "claim_scope",
+        "data_roles",
+        "limitations",
+        "blockers",
+        "independent_confirmation",
+        "origin_kind",
+    ),
 }
 
 CONSOLE_READ_SOURCES: Final[Mapping[str, str]] = {
@@ -525,6 +553,7 @@ CONSOLE_READ_SOURCES: Final[Mapping[str, str]] = {
     "cycles": "run_events",
     "stock_bars": "stock_bar_events",
     "crypto_bars": "crypto_bar_events",
+    "data_scope_evidence": "research_artifacts",
     "signals": "signal_events",
     "signal_lifecycle": "signal_events",
     "signal_markers": "signal_events",
@@ -552,6 +581,7 @@ CONSOLE_READ_SOURCES: Final[Mapping[str, str]] = {
     "risk_composition": "risk_compositions",
     "risk_summary": "runs",
     "risk_decisions": "risk_decisions",
+    "research_review_evidence": "research_artifacts",
 }
 
 _CONSOLE_READ_INSTALL_ORDER: Final[tuple[str, ...]] = (
@@ -562,7 +592,8 @@ _CONSOLE_READ_INSTALL_ORDER: Final[tuple[str, ...]] = (
     "backtest_trades", "backtest_positions", "backtest_equity_curve", "backtest_performance",
     "backtest_exposure", "backtest_warnings", "backtest_provenance", "backtest_comparison_curves",
     "backtest_comparison_runs",
-    "risk_composition", "risk_summary", "risk_decisions",
+    "risk_composition", "risk_summary", "risk_decisions", "research_review_evidence",
+    "data_scope_evidence",
 )
 CONSOLE_READ_SOURCES = {
     name: CONSOLE_READ_SOURCES[name] for name in _CONSOLE_READ_INSTALL_ORDER
@@ -585,6 +616,77 @@ WITH latest_snapshot AS (
 """
 
 CONSOLE_READ_VIEW_SQL: Final[Mapping[str, str]] = {
+    "data_scope_evidence": """
+CREATE OR REPLACE VIEW console_read.data_scope_evidence
+WITH (security_barrier=true, security_invoker=false) AS
+WITH manifests AS (
+    SELECT * FROM public.research_artifacts
+    WHERE artifact_type = 'dataset_manifest'
+), quality AS (
+    SELECT * FROM public.research_artifacts
+    WHERE artifact_type = 'data_quality_report'
+)
+SELECT
+    manifest.artifact_id AS manifest_artifact_id,
+    report.artifact_id AS quality_artifact_id,
+    'research://postgres/dataset_manifest/' || manifest.artifact_id AS manifest_uri,
+    CASE WHEN report.artifact_id IS NULL THEN NULL
+         ELSE 'research://postgres/data_quality_report/' || report.artifact_id END AS quality_uri,
+    CASE
+        WHEN report.artifact_id IS NULL THEN 'unavailable'
+        WHEN manifest.status IS DISTINCT FROM 'captured' OR report.status IS DISTINCT FROM 'captured' THEN 'stale'
+        WHEN COALESCE(NULLIF(manifest.payload->>'total_rows', '')::bigint, 0) = 0
+          OR COALESCE(NULLIF(report.payload->>'total_bars', '')::bigint, 0) = 0 THEN 'empty'
+        WHEN COALESCE((report.payload->>'complete')::boolean, false) IS FALSE THEN 'partial'
+        WHEN jsonb_array_length(COALESCE(report.payload->'warnings', '[]'::jsonb)) > 0 THEN 'warning'
+        ELSE 'complete'
+    END AS evidence_status,
+    CASE
+        WHEN report.artifact_id IS NULL THEN 'Matching data quality evidence is unavailable.'
+        WHEN manifest.status IS DISTINCT FROM 'captured' OR report.status IS DISTINCT FROM 'captured' THEN 'One or more Data artifacts are stale or not captured.'
+        WHEN COALESCE(NULLIF(manifest.payload->>'total_rows', '')::bigint, 0) = 0
+          OR COALESCE(NULLIF(report.payload->>'total_bars', '')::bigint, 0) = 0 THEN 'The exact scope contains no stored bars.'
+        WHEN COALESCE((report.payload->>'complete')::boolean, false) IS FALSE THEN 'Quality evidence reports incomplete coverage.'
+        WHEN jsonb_array_length(COALESCE(report.payload->'warnings', '[]'::jsonb)) > 0 THEN 'Quality evidence contains warnings.'
+        ELSE 'Manifest and quality evidence match the exact requested scope.'
+    END AS evidence_reason,
+    manifest.status AS manifest_status,
+    report.status AS quality_status,
+    manifest.schema_version AS manifest_schema_version,
+    report.schema_version AS quality_schema_version,
+    manifest.payload->>'asset_class' AS asset_class,
+    manifest.payload->'symbols' AS symbols,
+    manifest.payload->>'timeframe' AS timeframe,
+    COALESCE(manifest.payload->>'interval', manifest.payload->>'timeframe') AS interval,
+    COALESCE(manifest.payload->>'bar_type', 'trade_bar') AS bar_type,
+    NULLIF(manifest.payload #>> '{requested_window,start}', '')::timestamptz AS requested_start,
+    NULLIF(manifest.payload #>> '{requested_window,end}', '')::timestamptz AS requested_end,
+    COALESCE(manifest.payload->>'resolved_provider', manifest.payload->>'configured_provider') AS provider,
+    COALESCE(manifest.payload->>'source_policy', manifest.payload->>'source_filter') AS source_policy,
+    manifest.created_at AS manifest_created_at,
+    manifest.updated_at AS manifest_updated_at,
+    report.created_at AS quality_created_at,
+    report.updated_at AS quality_updated_at,
+    manifest.source_hash AS manifest_source_hash,
+    report.source_hash AS quality_source_hash,
+    manifest.payload AS manifest_payload,
+    report.payload AS quality_payload,
+    jsonb_build_object(
+        'total_rows', COALESCE(manifest.payload->'total_rows', '0'::jsonb),
+        'total_bars', COALESCE(report.payload->'total_bars', '0'::jsonb),
+        'symbols_detail', COALESCE(report.payload->'symbols_detail', '[]'::jsonb)
+    ) AS coverage,
+    COALESCE(report.payload->'warnings', '[]'::jsonb) AS findings,
+    COALESCE(report.payload->'warnings', '[]'::jsonb) AS warnings,
+    jsonb_build_array(
+        'research://postgres/dataset_manifest/' || manifest.artifact_id,
+        CASE WHEN report.artifact_id IS NULL THEN NULL
+             ELSE 'research://postgres/data_quality_report/' || report.artifact_id END
+    ) AS provenance_refs
+FROM manifests AS manifest
+LEFT JOIN quality AS report
+  ON report.metadata->>'dataset_manifest_artifact_id' = manifest.artifact_id
+""",
     "indicator_series": """
 CREATE OR REPLACE VIEW console_read.indicator_series
 WITH (security_barrier=true, security_invoker=false) AS
@@ -1656,6 +1758,46 @@ JOIN LATERAL jsonb_each_text(jsonb_build_object(
 )) AS item(key, value) ON true
 WHERE item.value IS NOT NULL
 """,
+    "research_review_evidence": """
+CREATE OR REPLACE VIEW console_read.research_review_evidence
+WITH (security_barrier=true, security_invoker=false) AS
+SELECT
+    artifact_type,
+    artifact_id,
+    domain_owner,
+    producer_tool,
+    status AS artifact_status,
+    schema_version,
+    source_hash,
+    created_at,
+    updated_at,
+    COALESCE(
+        NULLIF(payload->>'run_id', ''),
+        NULLIF(payload->>'holdout_backtest_run_id', ''),
+        NULLIF(metadata->>'holdout_run_id', '')
+    ) AS run_id,
+    COALESCE(payload->'claim_scope', payload->'claim', '{}'::jsonb) AS claim_scope,
+    COALESCE(payload->'data_roles', payload->'protected_data_roles', '[]'::jsonb) AS data_roles,
+    COALESCE(payload->'limitations', payload->'warnings', '[]'::jsonb) AS limitations,
+    COALESCE(payload->'blockers', '[]'::jsonb) AS blockers,
+    COALESCE(
+        payload->'independent_confirmation',
+        to_jsonb(artifact_type IN ('evaluation_report', 'robustness_report'))
+    ) AS independent_confirmation,
+    CASE
+        WHEN artifact_type LIKE 'parameter_optimization%' THEN 'optimization'
+        WHEN artifact_type = 'multiple_testing_report' THEN 'diagnostic'
+        ELSE 'independent_review'
+    END AS origin_kind
+FROM public.research_artifacts
+WHERE artifact_type IN (
+    'evaluation_report',
+    'parameter_optimization_evaluation_report',
+    'robustness_report',
+    'parameter_optimization_robustness_report',
+    'multiple_testing_report'
+)
+""",
 }
 
 CONSOLE_READ_VIEW_SQL = {
@@ -1665,6 +1807,67 @@ CONSOLE_READ_VIEW_SQL = {
         for name, definition in _CONSOLE_READ_DIRECT_VIEW_SQL.items()
     },
 }
+
+_EMPTY_RESEARCH_REVIEW_EVIDENCE_VIEW_SQL: Final[str] = """
+CREATE OR REPLACE VIEW console_read.research_review_evidence
+WITH (security_barrier=true, security_invoker=false) AS
+SELECT
+    NULL::text AS artifact_type,
+    NULL::text AS artifact_id,
+    NULL::text AS domain_owner,
+    NULL::text AS producer_tool,
+    NULL::text AS artifact_status,
+    NULL::text AS schema_version,
+    NULL::text AS source_hash,
+    NULL::timestamptz AS created_at,
+    NULL::timestamptz AS updated_at,
+    NULL::text AS run_id,
+    '{}'::jsonb AS claim_scope,
+    '[]'::jsonb AS data_roles,
+    '[]'::jsonb AS limitations,
+    '[]'::jsonb AS blockers,
+    false AS independent_confirmation,
+    NULL::text AS origin_kind
+WHERE false
+"""
+
+_EMPTY_DATA_SCOPE_EVIDENCE_VIEW_SQL: Final[str] = """
+CREATE OR REPLACE VIEW console_read.data_scope_evidence
+WITH (security_barrier=true, security_invoker=false) AS
+SELECT
+    NULL::text AS manifest_artifact_id,
+    NULL::text AS quality_artifact_id,
+    NULL::text AS manifest_uri,
+    NULL::text AS quality_uri,
+    NULL::text AS evidence_status,
+    NULL::text AS evidence_reason,
+    NULL::text AS manifest_status,
+    NULL::text AS quality_status,
+    NULL::text AS manifest_schema_version,
+    NULL::text AS quality_schema_version,
+    NULL::text AS asset_class,
+    NULL::jsonb AS symbols,
+    NULL::text AS timeframe,
+    NULL::text AS interval,
+    NULL::text AS bar_type,
+    NULL::timestamptz AS requested_start,
+    NULL::timestamptz AS requested_end,
+    NULL::text AS provider,
+    NULL::text AS source_policy,
+    NULL::timestamptz AS manifest_created_at,
+    NULL::timestamptz AS manifest_updated_at,
+    NULL::timestamptz AS quality_created_at,
+    NULL::timestamptz AS quality_updated_at,
+    NULL::text AS manifest_source_hash,
+    NULL::text AS quality_source_hash,
+    NULL::jsonb AS manifest_payload,
+    NULL::jsonb AS quality_payload,
+    NULL::jsonb AS coverage,
+    NULL::jsonb AS findings,
+    NULL::jsonb AS warnings,
+    NULL::jsonb AS provenance_refs
+WHERE false
+"""
 CONSOLE_READ_CONTRACT_COLUMNS: Final[tuple[str, ...]] = (
     "contract_name",
     "contract_version",
@@ -1773,7 +1976,25 @@ def install_console_read_contract(connection: Any) -> None:
             columns = CONSOLE_READ_COLUMNS[view_name]
             custom_definition = CONSOLE_READ_VIEW_SQL.get(view_name)
             if custom_definition is not None:
-                connection.execute(custom_definition)
+                if view_name == "research_review_evidence":
+                    artifact_table = connection.execute(
+                        "SELECT to_regclass('public.research_artifacts')"
+                    ).fetchone()
+                    connection.execute(
+                        custom_definition
+                        if artifact_table and artifact_table[0] is not None
+                        else _EMPTY_RESEARCH_REVIEW_EVIDENCE_VIEW_SQL
+                    )
+                elif view_name == "data_scope_evidence":
+                    artifact_table = connection.execute(
+                        "SELECT to_regclass('public.research_artifacts')"
+                    ).fetchone()
+                    if artifact_table in (None, (None,)):
+                        connection.execute(_EMPTY_DATA_SCOPE_EVIDENCE_VIEW_SQL)
+                        continue
+                    connection.execute(custom_definition)
+                else:
+                    connection.execute(custom_definition)
                 continue
             connection.execute(
                 sql.SQL(

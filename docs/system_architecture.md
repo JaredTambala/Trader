@@ -203,6 +203,34 @@ The agent path adds model interpretation and routing above role-scoped MCP tools
 - Keep protected evaluation data out of authoring and tuning context.
 - Require operator action for scope expansion, approvals, and any future paper-candidate promotion.
 
+## Contract and adapter principle
+
+Strongly typed contracts protect every process, trust, package-ownership, persistence, recovery, and external API
+boundary. A boundary contract states the accepted input, normalized output, authority, side effects, identity and
+provenance, version or digest, idempotency, and fail-closed behavior needed to validate or recover the transition.
+
+Each meaning has one canonical semantic owner. `trader_research` owns research-domain semantics; `trader_mcp` and the
+Console application boundary adapt those semantics to MCP, HTTP, and storage representations; `trader_agents` consumes
+the admitted public contracts. Adapters may validate, authorize, serialize, and project bounded data, but they must not
+recalculate domain truth or create a competing model of the same artifact.
+
+This principle does not require a type for every internal helper. Same-package code can use ordinary typed functions
+and value objects when no trust, ownership, persistence, or recovery boundary is crossed. New contracts require a
+concrete boundary or failure mode and focused tests for malformed data, authority, provenance, identity drift, replay,
+recovery, and degraded states where relevant.
+
+## Hard-cutover principle
+
+When Trader replaces an internal process, contract, schema, import surface, or persisted state, the replacement is a
+hard cutover by default. Active callers, tests, fixtures, and documentation move together, and obsolete modules,
+readers, aliases, fallback paths, and dual-write behavior are removed. This keeps one executable meaning and prevents
+old state from silently re-entering a new trust or evidence boundary.
+
+Compatibility is retained only for an explicitly supported product-versioning contract or a bounded migration approved
+in a work item or canonical design. That exception must identify the current consumer or migration scope, owner,
+removal condition, and fail-closed tests. Preserving old code merely because it might be useful later is not a reason
+to add a compatibility surface.
+
 For internal topology, use the owning package's architecture page. For what is currently implemented and qualified, use
 [Product State](product_state.md).
 

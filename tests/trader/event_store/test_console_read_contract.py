@@ -97,7 +97,7 @@ def test_console_read_compatibility_fails_closed(
 
 def test_console_read_contract_version_includes_standalone_backtest_runs() -> None:
     """Anchor standalone runs alongside lifecycle and typed chart evidence."""
-    assert CONSOLE_READ_CONTRACT_VERSION == 9
+    assert CONSOLE_READ_CONTRACT_VERSION == 10
     assert CONSOLE_READ_COLUMNS["signal_lifecycle"][0] == "signal_event_id"
     assert "signal_event_id" in CONSOLE_READ_COLUMNS["order_lifecycle"]
     assert CONSOLE_READ_COLUMNS["fill_lifecycle"][0] == "fill_event_id"
@@ -112,6 +112,7 @@ def test_console_read_contract_version_includes_standalone_backtest_runs() -> No
     assert "manager_parameters" in CONSOLE_READ_COLUMNS["risk_composition"]
     assert "blocked_count" in CONSOLE_READ_COLUMNS["risk_summary"]
     assert "before_order" in CONSOLE_READ_COLUMNS["risk_decisions"]
+    assert "claim_scope" in CONSOLE_READ_COLUMNS["research_review_evidence"]
     standalone_view = CONSOLE_READ_VIEW_SQL["backtest_runs"]
     assert "standalone_backtests" in standalone_view
     assert "runs.run_type = 'backtest'" in standalone_view

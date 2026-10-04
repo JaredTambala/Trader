@@ -11,6 +11,15 @@ Optimisation records every trial, search space, objective, engine identity, budg
 Selection evidence is not independent confirmation. Protected evaluation and walk-forward data remain sealed from
 tuning, and material changes create a successor protocol.
 
+## Review projection boundary
+
+Evaluation, multiple-testing, and Adversarial/robustness artifacts remain owned by their producer contexts. The Console
+consumes a typed `research_review_evidence` projection keyed by exact run identity; it receives artifact identity,
+producer, digest, claim scope, protected-data roles, limitations, blockers, and status. Missing or incompatible
+references are first-class review outcomes. Optimisation reports can explain search and selection, but their projection
+always records `independent_confirmation: false`; a Console review cannot upgrade exploratory output into independent
+confirmation. Multiple-testing output that is not persisted as a run-linked artifact remains unavailable.
+
 `OptimizationEngine` is the provider-neutral suggestion boundary, `OptimizationTrialExecutor` runs one exact trial,
 and `ExperimentTrackingSink` receives a non-authoritative projection. The built-in grid/random engines, optional Optuna
 adapter, and MLflow sink all implement these inward-owned ports; experiment logic never queries the tracking sink to

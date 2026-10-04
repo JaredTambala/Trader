@@ -81,6 +81,19 @@ Superset is an independent database consumer, not an API downstream service. The
 Superset datasets, or require Superset-specific contract relations for its own startup. Both consumers may read
 producer-owned PostgreSQL views independently, with each consumer declaring only the relations it actually needs.
 
+## Paper operations read model
+
+`routers.paper_runtime` → `services.paper_runtime` → `repositories.paper_runtime` maps the producer-owned
+`console_read` session, bars, positions, orders, fills, and risk-decision projections into one bounded read-only
+response. Every subsection carries a `RuntimeEvidence` qualifier and an observation timestamp. The service filters
+freshness to the published session scope when one exists and never treats API readiness, configured account labels, or
+visible rows as proof of broker identity. Reconciliation attempts and halt state remain explicit `unavailable` until
+the producer publishes those projections; the API does not query raw runtime tables or infer them from health.
+
+The route is `GET /api/paper/runtime` and uses the same enforced `READ ONLY` transaction as other Console resources.
+Its response is safe to render during partial startup, stale feed, missing session, empty portfolio, bounded fill
+history, and database outage cases. It has no command sibling and cannot mutate broker or runtime state.
+
 ## Capability growth
 
 Read-only is a property of the currently implemented schema queries, not the API's identity. Future operational
@@ -155,6 +168,14 @@ API:
 
 - `GET /api/market-data/datasets` discovers available symbol/timeframe/source slices.
 - `GET /api/market-data/bars` returns bounded, ordered OHLCV observations for one asset class and time range.
+- `GET /api/market-data/evidence` resolves the exact Data manifest/quality pair through the producer-owned
+  `console_read.data_scope_evidence` projection. The service returns artifact identity, coverage, findings, warnings,
+  provenance, and producer qualification state without recalculating Data quality.
+- `POST/GET /api/data-scopes` and `GET/POST /api/data-scopes/{saved_scope_id}` persist and reopen exact Data scope
+  handoffs. `SavedDataScopeService` owns fingerprinting and evidence-state transitions; its repository writes only the
+  additive `console_app.saved_data_scopes` table and reads the optional producer-owned
+  `console_read.data_scope_evidence` projection. Missing, stale, superseded, or unavailable evidence is explicit and
+  never replaced with a broader query.
 - `GET /api/experiments` derives groups from `console_read.backtest_runs`. Experiment-linked runs retain their
   published experiment ID; standalone `BacktestRunner` runs appear under the stable `standalone_backtests` group.
   Experiment name, description, and tags are not currently published by the Console contract, so the response reports
@@ -169,6 +190,10 @@ API:
 - `GET /api/runs/{run_id}/risk-decisions` reads the same producer-owned risk projection as a separate bounded page.
   Manager, outcome, cycle, and client-order filters remain parameterized and the route checks run existence so an empty
   trace for a known run stays distinct from an unknown run.
+- The run detail also returns `review_evidence`, a fixed projection of the producer-owned Evaluation,
+  multiple-testing, and Adversarial/robustness artifacts. The producer view joins only exact run references and exposes
+  claim scope, data roles, limitations, blockers, identity, and digest. The service supplies explicit missing states;
+  it never calculates statistics or promotes optimisation output to independent confirmation.
 
 The service boundary filters producer-only columns from the repository's `runs.*` selection before validating the
 closed run-summary contract. Standalone runs retain their canonical `run_id`; the stable group label only supplies the

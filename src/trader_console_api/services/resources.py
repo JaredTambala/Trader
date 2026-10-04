@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Any
+from datetime import datetime
+from typing import Any, Literal, cast
 
 from ..contracts import (
     BarPoint,
     BarsResponse,
+    DataEvidenceArtifact,
+    DataEvidenceScope,
     ExperimentRunSummary,
     ExperimentRunsResponse,
     ExperimentSummary,
@@ -15,6 +18,7 @@ from ..contracts import (
     IndicatorSeriesPoint,
     MarketDataset,
     MarketDataDiscovery,
+    MarketDataEvidenceResponse,
     MarketDatasetsResponse,
     PageInfo,
     ResourceRecord,
@@ -22,6 +26,7 @@ from ..contracts import (
     RiskDecision,
     RiskDecisionsResponse,
     RiskSummary,
+    ReviewEvidence,
     RunDetail,
     SignalMarker,
 )
@@ -57,6 +62,92 @@ def _run_summary(row: dict[str, Any]) -> ExperimentRunSummary:
     )
 
 
+ReviewEvidenceKind = Literal["evaluation", "multiple_testing", "adversarial"]
+ReviewEvidenceStatus = Literal["available", "missing", "incompatible", "blocked"]
+ReviewEvidenceOrigin = Literal["independent_review", "optimization", "diagnostic"]
+
+_REVIEW_KINDS: dict[str, ReviewEvidenceKind] = {
+    "evaluation_report": "evaluation",
+    "parameter_optimization_evaluation_report": "evaluation",
+    "multiple_testing_report": "multiple_testing",
+    "robustness_report": "adversarial",
+    "parameter_optimization_robustness_report": "adversarial",
+}
+_REVIEW_LABELS = {
+    "evaluation": "Evaluation evidence",
+    "multiple_testing": "Multiple-testing evidence",
+    "adversarial": "Adversarial/robustness evidence",
+}
+
+
+def _string_tuple(value: Any) -> tuple[str, ...]:
+    """Normalize producer arrays into safe human-readable reason text."""
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    if isinstance(value, dict):
+        return (str(value),)
+    return tuple(str(item) for item in value if item is not None)
+
+
+def _review_evidence(rows: Iterable[dict[str, Any]]) -> tuple[ReviewEvidence, ...]:
+    """Map producer artifacts to a complete, claim-scoped review projection."""
+    by_kind: dict[ReviewEvidenceKind, ReviewEvidence] = {}
+    for row in rows:
+        artifact_type = str(row.get("artifact_type") or "")
+        kind = _REVIEW_KINDS.get(artifact_type)
+        if kind is None:
+            continue
+        blockers = _string_tuple(row.get("blockers"))
+        limitations = _string_tuple(row.get("limitations"))
+        artifact_status = str(row.get("artifact_status") or "")
+        origin_value = str(row.get("origin_kind") or "")
+        origin: ReviewEvidenceOrigin | None = cast(
+            ReviewEvidenceOrigin | None,
+            origin_value if origin_value in {"independent_review", "optimization", "diagnostic"} else None,
+        )
+        if artifact_status in {"blocked", "failed", "error"}:
+            status: ReviewEvidenceStatus = "blocked"
+            reason = blockers[0] if blockers else f"{_REVIEW_LABELS[kind]} is blocked"
+        elif artifact_status not in {"passed", "completed", "complete"}:
+            status = "incompatible"
+            reason = f"{_REVIEW_LABELS[kind]} status is {artifact_status or 'unknown'}"
+        else:
+            status = "available"
+            reason = "Producer artifact is available for the declared claim scope"
+        independent = bool(row.get("independent_confirmation", False))
+        if origin == "optimization":
+            independent = False
+            limitations = (*limitations, "Optimisation-derived evidence is not independent confirmation")
+        by_kind[kind] = ReviewEvidence(
+            evidence_kind=kind, artifact_type=artifact_type,
+            artifact_id=str(row.get("artifact_id") or "") or None,
+            status=status, reason=reason,
+            domain_owner=str(row.get("domain_owner") or "") or None,
+            producer_tool=str(row.get("producer_tool") or "") or None,
+            schema_version=str(row.get("schema_version") or "") or None,
+            source_hash=str(row.get("source_hash") or "") or None,
+            claim_scope=dict(row.get("claim_scope") or {}) if isinstance(row.get("claim_scope"), dict) else {},
+            data_roles=tuple(item if isinstance(item, (str, dict)) else str(item) for item in (row.get("data_roles") or ())),
+            limitations=limitations,
+            blockers=blockers,
+            independent_confirmation=independent,
+            origin_kind=origin,
+        )
+    missing_reasons: dict[ReviewEvidenceKind, str] = {
+        "evaluation": "No Evaluation artifact is linked to this run",
+        "multiple_testing": "No multiple-testing report is linked to this run",
+        "adversarial": "No Adversarial/robustness artifact is linked to this run",
+    }
+    review_kinds: tuple[ReviewEvidenceKind, ...] = ("evaluation", "multiple_testing", "adversarial")
+    return tuple(
+        by_kind.get(kind)
+        or ReviewEvidence(evidence_kind=kind, status="missing", reason=missing_reasons[kind])
+        for kind in review_kinds
+    )
+
+
 class ResourceService:
     """Normalize repository rows into stable public response contracts."""
 
@@ -70,6 +161,67 @@ class ResourceService:
             items=tuple(_market_dataset(row) for row in rows),
             page=_page(limit=limit, offset=offset, total=total),
             discovery=_market_data_discovery(rows=rows, total=total),
+        )
+
+    async def market_data_evidence(
+        self,
+        *,
+        asset_class: AssetClass,
+        symbols: tuple[str, ...],
+        timeframe: str,
+        interval: str,
+        bar_type: str,
+        start: datetime,
+        end: datetime,
+        provider: str | None,
+        source_policy: str | None,
+    ) -> MarketDataEvidenceResponse:
+        """Return Data-owned evidence for one exact bounded market-data scope."""
+        scope = DataEvidenceScope(
+            asset_class=asset_class,
+            symbols=tuple(symbols),
+            timeframe=timeframe,
+            interval=interval,
+            bar_type=bar_type,
+            start=start,
+            end=end,
+            provider=provider,
+            source_policy=source_policy,
+        )
+        row = await self._repository.get_market_data_evidence(
+            asset_class=asset_class,
+            symbols=scope.symbols,
+            timeframe=scope.timeframe,
+            interval=scope.interval,
+            bar_type=scope.bar_type,
+            start=scope.start,
+            end=scope.end,
+            provider=scope.provider,
+            source_policy=scope.source_policy,
+        )
+        if row is None:
+            return MarketDataEvidenceResponse(
+                scope=scope,
+                state="unavailable",
+                evidence_reason="No matching Data manifest and quality evidence was published for this exact scope.",
+                provider=provider,
+                source_policy=source_policy,
+                warnings=("Data evidence is unavailable for the selected exact scope.",),
+            )
+        manifest = _data_evidence_artifact(row, "manifest")
+        quality = _data_evidence_artifact(row, "quality")
+        return MarketDataEvidenceResponse(
+            scope=scope,
+            state=str(row.get("evidence_status") or "unavailable"),  # type: ignore[arg-type]
+            evidence_reason=str(row.get("evidence_reason") or "Data evidence state was not published."),
+            manifest=manifest,
+            quality=quality,
+            provider=row.get("provider") or provider,
+            source_policy=row.get("source_policy") or source_policy,
+            coverage=_json_mapping(row.get("coverage")),
+            findings=_json_strings(row.get("findings")),
+            warnings=_json_strings(row.get("warnings")),
+            provenance=_json_strings(row.get("provenance_refs")),
         )
 
     async def bars(
@@ -201,6 +353,7 @@ class ResourceService:
                 RiskDecision.model_validate(item)
                 for item in row.get("risk_decisions", ())
             ),
+            review_evidence=_review_evidence(row.get("review_evidence", ())),
             signals=tuple(row.get("signals", ())),
             orders=tuple(row.get("orders", ())),
             fills=tuple(row.get("fills", ())),
@@ -217,6 +370,39 @@ def _market_dataset(row: dict[str, Any]) -> MarketDataset:
     return MarketDataset.model_validate(
         {name: value for name, value in row.items() if name in fields}
     )
+
+
+def _data_evidence_artifact(row: dict[str, Any], prefix: str) -> DataEvidenceArtifact | None:
+    """Map one producer artifact projection into the bounded public contract."""
+    artifact_id = row.get(f"{prefix}_artifact_id")
+    if artifact_id is None:
+        return None
+    created_at = row.get(f"{prefix}_created_at")
+    updated_at = row.get(f"{prefix}_updated_at")
+    if not isinstance(created_at, datetime) or not isinstance(updated_at, datetime):
+        raise ValueError(f"{prefix} evidence is missing artifact timestamps")
+    return DataEvidenceArtifact(
+        artifact_id=str(artifact_id),
+        uri=str(row.get(f"{prefix}_uri") or ""),
+        status=row.get(f"{prefix}_status"),
+        schema_version=str(row.get(f"{prefix}_schema_version") or ""),
+        source_hash=row.get(f"{prefix}_source_hash"),
+        created_at=created_at,
+        updated_at=updated_at,
+        payload=_json_mapping(row.get(f"{prefix}_payload")),
+    )
+
+
+def _json_mapping(value: Any) -> dict[str, Any]:
+    """Normalize JSONB mapping values at the repository/service boundary."""
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _json_strings(value: Any) -> tuple[str, ...]:
+    """Normalize JSONB arrays into stable public text findings/references."""
+    if not isinstance(value, (list, tuple)):
+        return ()
+    return tuple(str(item) for item in value if item is not None)
 
 
 def _market_data_discovery(

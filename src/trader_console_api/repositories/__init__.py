@@ -27,6 +27,12 @@ from .backtest_executions import (
     BacktestExecutionRepository,
     BacktestExecutionSession,
 )
+from .saved_data_scopes import (
+    SavedDataScopeConflict,
+    SavedDataScopeNotFound,
+    SavedDataScopeRepository,
+    SavedDataScopeSession,
+)
 
 __all__ = [
     "EXPECTED_CONTRACT_COLUMNS",
@@ -42,6 +48,10 @@ __all__ = [
     "BacktestExecutionNotFound",
     "BacktestExecutionRepository",
     "BacktestExecutionSession",
+    "SavedDataScopeConflict",
+    "SavedDataScopeNotFound",
+    "SavedDataScopeRepository",
+    "SavedDataScopeSession",
     "DatabaseTransactionManager",
     "PoolFactory",
     "SchemaCompatibility",

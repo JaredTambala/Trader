@@ -10,7 +10,7 @@ Non-goals: Repository SQL and PostgreSQL compatibility admission.
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from trader_console_api.contracts import BarsResponse, PageInfo, RiskDecision, RiskDecisionsResponse
+from trader_console_api.contracts import BarsResponse, MarketDataEvidenceResponse, PageInfo, RiskDecision, RiskDecisionsResponse
 from trader_console_api.routers.resources import get_resource_service, router
 
 
@@ -21,6 +21,18 @@ class _Service:
     async def bars(self, **_kwargs: object) -> BarsResponse:
         self.bar_calls.append(_kwargs)
         return BarsResponse(items=(), page=PageInfo(limit=1000, offset=0, total=0, has_more=False))
+
+    async def market_data_evidence(self, **_kwargs: object) -> MarketDataEvidenceResponse:
+        return MarketDataEvidenceResponse(
+            scope={
+                "asset_class": "stock", "symbols": ("AAPL",), "timeframe": "1Min",
+                "interval": "1Min", "bar_type": "trade_bar",
+                "start": "2026-01-01T00:00:00Z", "end": "2026-01-02T00:00:00Z",
+            },
+            state="unavailable",
+            evidence_reason="No matching evidence.",
+            warnings=("Data evidence is unavailable.",),
+        )
 
     async def run_detail(self, **_kwargs: object) -> None:
         return None
@@ -81,6 +93,22 @@ def test_bar_limit_rejects_values_above_the_50k_window() -> None:
     """Keep oversized chart windows outside the API contract."""
     response = TestClient(_app(_Service())).get("/api/market-data/bars?symbol=AAPL&limit=50001")
     assert response.status_code == 422
+
+
+def test_data_evidence_route_requires_an_exact_utc_window_and_preserves_state() -> None:
+    """Reject unbounded evidence requests and expose producer qualification state."""
+    response = TestClient(_app(_Service())).get(
+        "/api/market-data/evidence?asset_class=stock&symbols=AAPL&timeframe=1Min&start=2026-01-01T00:00:00Z&end=2026-01-02T00:00:00Z"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["state"] == "unavailable"
+    assert response.json()["scope"]["symbols"] == ["AAPL"]
+
+    missing_window = TestClient(_app(_Service())).get(
+        "/api/market-data/evidence?asset_class=stock&symbols=AAPL&timeframe=1Min"
+    )
+    assert missing_window.status_code == 422
 
 
 def test_risk_decisions_route_exposes_typed_filters_and_page() -> None:

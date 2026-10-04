@@ -37,6 +37,16 @@
 .statusFailed { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); }
 .scopeNotice { margin: 20px 0 0; padding: 13px 15px; border-left: 3px solid var(--warning); background: #201e19; color: var(--warning); font-size: 13px; line-height: 1.5; }
 .scopeNotice strong { color: var(--text); }
+.reviewEvidenceGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.reviewEvidenceCard { background: var(--raised); border: 1px solid var(--border); border-radius: 8px; padding: 15px; min-width: 0; }
+.reviewEvidenceHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.reviewEvidenceHeader h3 { margin: 0; font-size: 15px; }
+.reviewEvidenceReason { color: var(--muted); font-size: 12px; line-height: 1.45; min-height: 36px; }
+.reviewEvidenceMeta { margin: 0; }
+.reviewEvidenceMeta > div { border-top: 1px solid var(--border); padding: 9px 0; }
+.reviewEvidenceMeta dt { color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+.reviewEvidenceMeta dd { margin: 4px 0 0; font-size: 12px; overflow-wrap: anywhere; }
+.reviewEvidenceList { color: var(--warning); font-size: 12px; line-height: 1.45; padding-left: 18px; }
 .statusList { margin: 8px 0 0; padding-left: 19px; }
 .metricGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .metric { background: var(--raised); border: 1px solid var(--border); border-radius: 8px; padding: 15px; min-width: 0; }
@@ -69,6 +79,7 @@
 @media (max-width: 860px) {
   .metricGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .definitionGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .reviewEvidenceGrid { grid-template-columns: 1fr; }
 }
 @media (max-width: 650px) {
   .header { padding: 0 5vw; }

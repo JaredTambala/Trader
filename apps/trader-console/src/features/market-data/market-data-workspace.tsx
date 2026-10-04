@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { datasetKey, loadMarketBars, loadMarketDatasets, type BarPoint, type BarsResponse, type MarketDataDiscovery, type MarketDataset } from "./client";
+import { datasetKey, loadMarketBars, loadMarketDataEvidence, loadMarketDatasets, loadSavedDataScope, loadSavedDataScopes, revalidateSavedDataScope, saveDataScope, type BarPoint, type BarsResponse, type MarketDataDiscovery, type MarketDataset, type MarketDataEvidenceResponse, type SavedDataScope } from "./client";
 import { MarketChart } from "./chart";
 import { ConsoleShell } from "../shell/console-shell";
 import styles from "./market-data-workspace.module.css";
@@ -84,6 +84,17 @@ export function MarketDataWorkspace() {
   const [barsError, setBarsError] = useState<string | null>(null);
   const [barsOffset, setBarsOffset] = useState(0);
   const [barsRevision, setBarsRevision] = useState(0);
+  const [savedScopes, setSavedScopes] = useState<SavedDataScope[]>([]);
+  const [savedScopeId, setSavedScopeId] = useState("");
+  const [savedScopeState, setSavedScopeState] = useState<RequestState>("loading");
+  const [savedScopeError, setSavedScopeError] = useState<string | null>(null);
+  const [saveName, setSaveName] = useState("Research data scope");
+  const [manifestRef, setManifestRef] = useState("");
+  const [qualityRef, setQualityRef] = useState("");
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const [evidence, setEvidence] = useState<MarketDataEvidenceResponse | null>(null);
+  const [evidenceState, setEvidenceState] = useState<RequestState>("idle");
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
 
   useEffect(() => {
     const source = new AbortController();
@@ -119,6 +130,25 @@ export function MarketDataWorkspace() {
       timed.clear();
     };
   }, [deadline, datasetRequest]);
+
+  useEffect(() => {
+    const source = new AbortController();
+    async function requestSavedScopes() {
+      setSavedScopeState("loading");
+      setSavedScopeError(null);
+      try {
+        const response = await loadSavedDataScopes(source.signal);
+        setSavedScopes(response.items);
+        setSavedScopeState("ready");
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setSavedScopeState("error");
+        setSavedScopeError(errorMessage(error, "Saved data scopes"));
+      }
+    }
+    void requestSavedScopes();
+    return () => source.abort();
+  }, []);
 
   const selectedDataset = useMemo(
     () => datasets.find((dataset) => datasetKey(dataset) === selectedKey) ?? null,
@@ -160,6 +190,43 @@ export function MarketDataWorkspace() {
     };
   }, [appliedRange, barsOffset, barsRevision, deadline, selectedDataset]);
 
+  useEffect(() => {
+    if (!selectedDataset || !appliedRange.start || !appliedRange.end) return;
+    const dataset = selectedDataset;
+    const source = new AbortController();
+    const timed = deadline(source.signal);
+    async function requestEvidence() {
+      setEvidenceState("loading");
+      setEvidenceError(null);
+      try {
+        const response = await loadMarketDataEvidence(timed.signal, {
+          asset_class: dataset.asset_class,
+          symbols: [dataset.symbol],
+          timeframe: dataset.timeframe,
+          interval: dataset.timeframe,
+          bar_type: "trade_bar",
+          provider: dataset.source ?? undefined,
+          source_policy: dataset.source ?? undefined,
+          start: inputToIso(appliedRange.start) ?? appliedRange.start,
+          end: inputToIso(appliedRange.end) ?? appliedRange.end,
+        });
+        setEvidence(response);
+        setEvidenceState("ready");
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setEvidenceState("error");
+        setEvidenceError(errorMessage(error, "Market data evidence"));
+      } finally {
+        timed.clear();
+      }
+    }
+    void requestEvidence();
+    return () => {
+      source.abort();
+      timed.clear();
+    };
+  }, [appliedRange, deadline, selectedDataset]);
+
   const selectDataset = (key: string) => {
     const dataset = datasets.find((candidate) => datasetKey(candidate) === key);
     if (!dataset) return;
@@ -196,6 +263,93 @@ export function MarketDataWorkspace() {
     setDraftRange(nextRange);
     setAppliedRange(nextRange);
     setBarsOffset(0);
+  };
+
+  const saveScope = async () => {
+    if (!selectedDataset) {
+      setSaveNotice("Choose a dataset before saving an exact scope.");
+      return;
+    }
+    if (!manifestRef.trim() || !qualityRef.trim()) {
+      setSaveNotice("Enter the matching Data manifest and quality artifact references.");
+      return;
+    }
+    setSavedScopeState("loading");
+    setSaveNotice(null);
+    const source = new AbortController();
+    try {
+      const saved = await saveDataScope(source.signal, {
+        name: saveName.trim() || "Research data scope",
+        asset_class: selectedDataset.asset_class,
+        symbols: [selectedDataset.symbol],
+        universe: null,
+        timeframe: selectedDataset.timeframe,
+        interval: selectedDataset.timeframe,
+        start: inputToIso(appliedRange.start) ?? selectedDataset.first_ts ?? new Date(0).toISOString(),
+        end: inputToIso(appliedRange.end) ?? selectedDataset.last_ts ?? new Date().toISOString(),
+        source_policy: { provider: responseDiscovery?.provider ?? "unknown", source: selectedDataset.source, allow_fallback: false },
+        research_role: "backtest_authoring",
+        manifest_artifact_id: manifestRef.trim(),
+        quality_artifact_id: qualityRef.trim(),
+        evidence_status: "active",
+        evidence_reason: null,
+        created_by: "console-operator",
+        idempotency_key: typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${selectedDataset.symbol}`,
+      });
+      setSavedScopes((previous) => [saved, ...previous.filter((item) => item.saved_scope_id !== saved.saved_scope_id)]);
+      setSavedScopeId(saved.saved_scope_id);
+      setSavedScopeState("ready");
+      setSaveNotice(`Saved exact scope ${saved.saved_scope_id}.`);
+    } catch (error: unknown) {
+      setSavedScopeState("error");
+      setSavedScopeError(errorMessage(error, "Saved data scope"));
+    } finally {
+      source.abort();
+    }
+  };
+
+  const reopenScope = async (id: string) => {
+    if (!id) return;
+    setSavedScopeId(id);
+    setSavedScopeState("loading");
+    setSaveNotice(null);
+    const source = new AbortController();
+    try {
+      const saved = await loadSavedDataScope(source.signal, id);
+      setSavedScopes((previous) => previous.map((item) => item.saved_scope_id === saved.saved_scope_id ? saved : item));
+      const matching = datasets.find((dataset) => dataset.asset_class === saved.asset_class && dataset.symbol === saved.symbols[0] && dataset.timeframe === saved.timeframe && (dataset.source ?? null) === (saved.source_policy.source ?? null));
+      if (matching) {
+        selectDataset(datasetKey(matching));
+        setDraftRange({ start: formatInputDate(saved.start), end: formatInputDate(saved.end) });
+        setAppliedRange({ start: formatInputDate(saved.start), end: formatInputDate(saved.end) });
+      }
+      setManifestRef(saved.manifest_artifact_id);
+      setQualityRef(saved.quality_artifact_id);
+      setSavedScopeState("ready");
+      setSaveNotice(matching ? `Reopened exact scope (${saved.evidence_status}).` : `Scope reopened as ${saved.evidence_status}; its exact dataset is not currently visible.`);
+    } catch (error: unknown) {
+      setSavedScopeState("error");
+      setSavedScopeError(errorMessage(error, "Saved data scope"));
+    } finally {
+      source.abort();
+    }
+  };
+
+  const revalidateScope = async () => {
+    if (!savedScopeId) return;
+    const source = new AbortController();
+    setSavedScopeState("loading");
+    try {
+      const saved = await revalidateSavedDataScope(source.signal, savedScopeId);
+      setSavedScopes((previous) => previous.map((item) => item.saved_scope_id === saved.saved_scope_id ? saved : item));
+      setSavedScopeState("ready");
+      setSaveNotice(`Evidence revalidated as ${saved.evidence_status}.`);
+    } catch (error: unknown) {
+      setSavedScopeState("error");
+      setSavedScopeError(errorMessage(error, "Saved data scope evidence"));
+    } finally {
+      source.abort();
+    }
   };
 
   const refreshBars = () => setBarsRevision((revision) => revision + 1);
@@ -237,6 +391,40 @@ export function MarketDataWorkspace() {
             {rangeError && <p className={styles.fieldError} role="alert">{rangeError}</p>}
             {hasMoreDatasets && <button className={styles.textButton} type="button" onClick={() => setDatasetRequest({ offset: datasets.length, append: true, nonce: Date.now() })} disabled={datasetState === "loading"}>Load more datasets</button>}
           </>}
+        </section>
+
+        <section className={styles.evidencePanel} aria-labelledby="evidence-heading">
+          <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>QUALIFICATION</p><h2 id="evidence-heading">Data evidence</h2></div>{evidence && <span className={styles.evidenceState}>{evidence.state}</span>}</div>
+          {evidenceState === "loading" && <p role="status">Resolving manifest and quality evidence…</p>}
+          {evidenceState === "error" && <p className={styles.fieldError} role="alert">{evidenceError}</p>}
+          {evidenceState === "ready" && evidence && <>
+            <p className={styles.evidenceReason}>{evidence.evidence_reason}</p>
+            <div className={styles.evidenceMeta}>
+              <span><strong>Provider</strong> {evidence.provider ?? "Unspecified"}</span>
+              <span><strong>Source policy</strong> {evidence.source_policy ?? "Unspecified"}</span>
+              <span><strong>Manifest</strong> {evidence.manifest?.artifact_id ?? "Unavailable"}</span>
+              <span><strong>Quality</strong> {evidence.quality?.artifact_id ?? "Unavailable"}</span>
+            </div>
+            {Object.keys(evidence.coverage ?? {}).length > 0 && <pre className={styles.evidenceCode}>{JSON.stringify(evidence.coverage ?? {}, null, 2)}</pre>}
+            {(evidence.warnings ?? []).length > 0 && <div className={styles.evidenceWarnings} role="status"><strong>Warnings</strong><ul>{(evidence.warnings ?? []).map((warning) => <li key={warning}>{warning}</li>)}</ul></div>}
+            {(evidence.provenance ?? []).length > 0 && <p className={styles.provenance}>Provenance: {(evidence.provenance ?? []).join(" · ")}</p>}
+          </>}
+        </section>
+
+        <section className={styles.controls} aria-labelledby="saved-scope-heading">
+          <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>EXACT HANDOFF</p><h2 id="saved-scope-heading">Save or reopen a data scope</h2></div><span className={styles.utc}>Immutable scope identity</span></div>
+          {savedScopeState === "error" && savedScopeError && <div className={styles.errorBox} role="alert"><p>{savedScopeError}</p></div>}
+          <div className={styles.rangeRow}>
+            <label className={styles.field}><span>Name</span><input aria-label="Saved scope name" value={saveName} onChange={(event) => setSaveName(event.target.value)} /></label>
+            <label className={styles.field}><span>Manifest artifact ref</span><input aria-label="Manifest artifact reference" value={manifestRef} onChange={(event) => setManifestRef(event.target.value)} placeholder="dataset manifest ref" /></label>
+            <label className={styles.field}><span>Quality artifact ref</span><input aria-label="Quality artifact reference" value={qualityRef} onChange={(event) => setQualityRef(event.target.value)} placeholder="quality report ref" /></label>
+          </div>
+          <div className={styles.presetRow}>
+            <button className={styles.secondaryButton} type="button" onClick={() => void saveScope()} disabled={!selectedDataset || savedScopeState === "loading"}>Save exact scope</button>
+            <label className={styles.field}><span>Reopen saved scope</span><select aria-label="Reopen saved scope" value={savedScopeId} onChange={(event) => void reopenScope(event.target.value)}><option value="">Choose a saved scope</option>{savedScopes.map((scope) => <option value={scope.saved_scope_id} key={scope.saved_scope_id}>{scope.name} · {scope.evidence_status}</option>)}</select></label>
+            <button className={styles.secondaryButton} type="button" onClick={() => void revalidateScope()} disabled={!savedScopeId || savedScopeState === "loading"}>Revalidate evidence</button>
+          </div>
+          {saveNotice && <p className={styles.status} role="status">{saveNotice}</p>}
         </section>
 
         <section className={styles.chartPanel} aria-labelledby="chart-heading">

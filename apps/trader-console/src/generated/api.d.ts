@@ -167,6 +167,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/data-scopes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Saved Data Scopes
+         * @description List saved scopes without changing their evidence state.
+         */
+        get: operations["list_saved_data_scopes_api_data_scopes_get"];
+        put?: never;
+        /**
+         * Create Saved Data Scope
+         * @description Persist one exact scope and matching manifest/quality references.
+         */
+        post: operations["create_saved_data_scope_api_data_scopes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data-scopes/{saved_scope_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Saved Data Scope
+         * @description Reopen one saved scope with its persisted evidence qualification.
+         */
+        get: operations["get_saved_data_scope_api_data_scopes__saved_scope_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data-scopes/{saved_scope_id}/revalidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revalidate Saved Data Scope
+         * @description Re-read exact producer evidence and persist active/stale/unavailable state.
+         */
+        post: operations["revalidate_saved_data_scope_api_data_scopes__saved_scope_id__revalidate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/experiments": {
         parameters: {
             query?: never;
@@ -307,6 +371,46 @@ export interface paths {
          * @description List available symbol/timeframe/source market-data slices.
          */
         get: operations["market_datasets_api_market_data_datasets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/market-data/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Market Data Evidence
+         * @description Return qualified Data evidence for one exact bounded scope.
+         */
+        get: operations["market_data_evidence_api_market_data_evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/paper/runtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Paper Runtime
+         * @description Return read-only paper operational evidence with explicit qualifiers.
+         */
+        get: operations["paper_runtime_api_paper_runtime_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1068,6 +1172,104 @@ export interface components {
             scope_id: string;
         };
         /**
+         * DataEvidenceArtifact
+         * @description Bounded public reference and payload projection for one Data artifact.
+         */
+        DataEvidenceArtifact: {
+            /** Artifact Id */
+            artifact_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Schema Version */
+            schema_version: string;
+            /** Source Hash */
+            source_hash?: string | null;
+            /** Status */
+            status?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Uri */
+            uri: string;
+        };
+        /**
+         * DataEvidenceScope
+         * @description Exact bounded scope used to resolve Data-owned evidence.
+         */
+        DataEvidenceScope: {
+            /**
+             * Asset Class
+             * @enum {string}
+             */
+            asset_class: "stock" | "crypto";
+            /** Bar Type */
+            bar_type: string;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Interval */
+            interval: string;
+            /** Provider */
+            provider?: string | null;
+            /** Source Policy */
+            source_policy?: string | null;
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /** Symbols */
+            symbols: string[];
+            /** Timeframe */
+            timeframe: string;
+        };
+        /**
+         * DataScopeEvidenceStatus
+         * @description Current qualification state of the referenced Data evidence.
+         * @enum {string}
+         */
+        DataScopeEvidenceStatus: "active" | "stale" | "unavailable";
+        /**
+         * DataScopePageInfo
+         * @description Pagination evidence for saved scope collections.
+         */
+        DataScopePageInfo: {
+            /** Has More */
+            has_more: boolean;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * DataScopeSourcePolicy
+         * @description Provider and source policy frozen into a saved data scope.
+         */
+        DataScopeSourcePolicy: {
+            /**
+             * Allow Fallback
+             * @default false
+             */
+            allow_fallback: boolean;
+            /** Provider */
+            provider: string;
+            /** Source */
+            source?: string | null;
+        };
+        /**
          * ExperimentRunSummary
          * @description A backtest run and its current comparison eligibility.
          */
@@ -1291,6 +1493,45 @@ export interface components {
             reason?: string | null;
         };
         /**
+         * MarketDataEvidenceResponse
+         * @description Qualified Data manifest and quality evidence for one exact scope.
+         */
+        MarketDataEvidenceResponse: {
+            /** Coverage */
+            coverage?: {
+                [key: string]: unknown;
+            };
+            /** Evidence Reason */
+            evidence_reason: string;
+            /**
+             * Findings
+             * @default []
+             */
+            findings: string[];
+            manifest?: components["schemas"]["DataEvidenceArtifact"] | null;
+            /**
+             * Provenance
+             * @default []
+             */
+            provenance: string[];
+            /** Provider */
+            provider?: string | null;
+            quality?: components["schemas"]["DataEvidenceArtifact"] | null;
+            scope: components["schemas"]["DataEvidenceScope"];
+            /** Source Policy */
+            source_policy?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "complete" | "partial" | "stale" | "warning" | "unavailable" | "empty";
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
+        };
+        /**
          * MarketDataset
          * @description One available symbol/timeframe/source data slice.
          */
@@ -1336,6 +1577,342 @@ export interface components {
             offset: number;
             /** Total */
             total: number;
+        };
+        /**
+         * PaperDataFreshness
+         * @description Aggregate market-data freshness with explicit missing/stale states.
+         */
+        PaperDataFreshness: {
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            evidence: components["schemas"]["RuntimeEvidence"];
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["PaperFreshnessItem"][];
+            /**
+             * Missing Count
+             * @default 0
+             */
+            missing_count: number;
+            /**
+             * Stale Count
+             * @default 0
+             */
+            stale_count: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "partial" | "stale" | "unavailable" | "out_of_scope";
+        };
+        /**
+         * PaperFill
+         * @description One persisted fill evidence row.
+         */
+        PaperFill: {
+            /** Client Order Id */
+            client_order_id?: string | null;
+            /** Fee Amount */
+            fee_amount?: number | null;
+            /** Fill Price */
+            fill_price?: number | null;
+            /** Fill Qty */
+            fill_qty?: number | null;
+            /** Fill Ts */
+            fill_ts?: string | null;
+            /** Slippage Amount */
+            slippage_amount?: number | null;
+        };
+        /**
+         * PaperFills
+         * @description Bounded fills projection with partial-history qualification.
+         */
+        PaperFills: {
+            evidence: components["schemas"]["RuntimeEvidence"];
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["PaperFill"][];
+        };
+        /**
+         * PaperFreshnessItem
+         * @description Freshness evidence for one observed market-data stream.
+         */
+        PaperFreshnessItem: {
+            /** Age Seconds */
+            age_seconds?: number | null;
+            /**
+             * Asset Class
+             * @enum {string}
+             */
+            asset_class: "stock" | "crypto";
+            /** Latest Ts */
+            latest_ts?: string | null;
+            /** Stale */
+            stale: boolean;
+            /** Symbol */
+            symbol: string;
+            /** Timeframe */
+            timeframe: string;
+        };
+        /**
+         * PaperHaltState
+         * @description Operator halt state, or an explicit unavailable qualification.
+         */
+        PaperHaltState: {
+            evidence: components["schemas"]["RuntimeEvidence"];
+            /** Halted */
+            halted?: boolean | null;
+            /** Reason */
+            reason?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
+         * PaperIncident
+         * @description Actionable issue derived from published runtime evidence.
+         */
+        PaperIncident: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Observed At */
+            observed_at?: string | null;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "warning" | "error";
+        };
+        /**
+         * PaperOpenOrder
+         * @description One latest non-terminal local order lifecycle state.
+         */
+        PaperOpenOrder: {
+            /** Broker Order Id */
+            broker_order_id?: string | null;
+            /** Client Order Id */
+            client_order_id: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Order Type */
+            order_type?: string | null;
+            /** Qty */
+            qty?: number | null;
+            /** Rejection Reason */
+            rejection_reason?: string | null;
+            /** Side */
+            side?: string | null;
+            /** Status */
+            status: string;
+            /** Symbol */
+            symbol?: string | null;
+        };
+        /**
+         * PaperOrders
+         * @description Bounded open-order evidence and its freshness qualifier.
+         */
+        PaperOrders: {
+            evidence: components["schemas"]["RuntimeEvidence"];
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["PaperOpenOrder"][];
+            /**
+             * Stale Count
+             * @default 0
+             */
+            stale_count: number;
+        };
+        /**
+         * PaperPortfolio
+         * @description Cash and position snapshot read from published runtime evidence.
+         */
+        PaperPortfolio: {
+            /** Asof Ts */
+            asof_ts?: string | null;
+            /** Cash */
+            cash?: number | null;
+            evidence: components["schemas"]["RuntimeEvidence"];
+            /**
+             * Positions
+             * @default []
+             */
+            positions: components["schemas"]["PaperPosition"][];
+        };
+        /**
+         * PaperPosition
+         * @description One broker-backed position snapshot.
+         */
+        PaperPosition: {
+            /** Asof Ts */
+            asof_ts?: string | null;
+            /** Avg Price */
+            avg_price?: number | null;
+            /** Qty */
+            qty: number;
+            /** Symbol */
+            symbol: string;
+        };
+        /**
+         * PaperReconciliation
+         * @description Broker reconciliation state without inventing an attempt record.
+         */
+        PaperReconciliation: {
+            /**
+             * Attempts
+             * @default []
+             */
+            attempts: components["schemas"]["PaperReconciliationAttempt"][];
+            evidence: components["schemas"]["RuntimeEvidence"];
+            /** Last Attempt At */
+            last_attempt_at?: string | null;
+            /** Message */
+            message?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "reconciled" | "required" | "failed" | "unavailable";
+        };
+        /**
+         * PaperReconciliationAttempt
+         * @description One bounded reconciliation attempt when a producer publishes it.
+         */
+        PaperReconciliationAttempt: {
+            /** Attempt Id */
+            attempt_id: string;
+            /** Attempted At */
+            attempted_at?: string | null;
+            /** Message */
+            message?: string | null;
+            /** Status */
+            status: string;
+        };
+        /**
+         * PaperRiskOutcomes
+         * @description Risk outcome counts for the latest paper runtime.
+         */
+        PaperRiskOutcomes: {
+            /**
+             * Approved Count
+             * @default 0
+             */
+            approved_count: number;
+            /**
+             * Blocked Count
+             * @default 0
+             */
+            blocked_count: number;
+            /**
+             * Evaluated Count
+             * @default 0
+             */
+            evaluated_count: number;
+            evidence: components["schemas"]["RuntimeEvidence"];
+            /**
+             * Rejected Count
+             * @default 0
+             */
+            rejected_count: number;
+            /**
+             * Transformed Count
+             * @default 0
+             */
+            transformed_count: number;
+        };
+        /**
+         * PaperRuntimeHealth
+         * @description Derived health classification with reasons and evidence freshness.
+         */
+        PaperRuntimeHealth: {
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            evidence: components["schemas"]["RuntimeEvidence"];
+            /**
+             * Reasons
+             * @default []
+             */
+            reasons: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "healthy" | "degraded" | "unhealthy" | "unavailable";
+        };
+        /**
+         * PaperRuntimeOperations
+         * @description Read-only paper operations projection for the Console workspace.
+         */
+        PaperRuntimeOperations: {
+            broker_account_binding: components["schemas"]["BrokerAccountBinding"];
+            /** Broker Account Display Label */
+            broker_account_display_label?: string | null;
+            /**
+             * Broker Identity Verified
+             * @default false
+             */
+            broker_identity_verified: boolean;
+            data_freshness: components["schemas"]["PaperDataFreshness"];
+            fills: components["schemas"]["PaperFills"];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            halt: components["schemas"]["PaperHaltState"];
+            health: components["schemas"]["PaperRuntimeHealth"];
+            /**
+             * Incidents
+             * @default []
+             */
+            incidents: components["schemas"]["PaperIncident"][];
+            open_orders: components["schemas"]["PaperOrders"];
+            portfolio: components["schemas"]["PaperPortfolio"];
+            reconciliation: components["schemas"]["PaperReconciliation"];
+            risk: components["schemas"]["PaperRiskOutcomes"];
+            /** Scope Id */
+            scope_id: string;
+            session: components["schemas"]["PaperRuntimeSession"];
+        };
+        /**
+         * PaperRuntimeSession
+         * @description Latest paper session identity and lifecycle evidence.
+         */
+        PaperRuntimeSession: {
+            /** Error Message */
+            error_message?: string | null;
+            evidence: components["schemas"]["RuntimeEvidence"];
+            /** Finished At */
+            finished_at?: string | null;
+            /** Mode */
+            mode?: string | null;
+            /** Session Id */
+            session_id?: string | null;
+            /** Started At */
+            started_at?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Strategy Id */
+            strategy_id?: string | null;
+            /**
+             * Symbols
+             * @default []
+             */
+            symbols: string[];
+            /** Timeframe */
+            timeframe?: string | null;
         };
         /**
          * PreflightIssue
@@ -1387,6 +1964,67 @@ export interface components {
             run_id?: string | null;
         } & {
             [key: string]: unknown;
+        };
+        /**
+         * ReviewEvidence
+         * @description One producer-owned review artifact or an explicit missing-state receipt.
+         *
+         *     The Console presents producer claims and limitations; it never calculates a
+         *     statistical verdict or promotes optimisation output to independent evidence.
+         */
+        ReviewEvidence: {
+            /** Artifact Id */
+            artifact_id?: string | null;
+            /** Artifact Type */
+            artifact_type?: string | null;
+            /**
+             * Blockers
+             * @default []
+             */
+            blockers: string[];
+            /** Claim Scope */
+            claim_scope?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Data Roles
+             * @default []
+             */
+            data_roles: ({
+                [key: string]: unknown;
+            } | string)[];
+            /** Domain Owner */
+            domain_owner?: string | null;
+            /**
+             * Evidence Kind
+             * @enum {string}
+             */
+            evidence_kind: "evaluation" | "multiple_testing" | "adversarial";
+            /**
+             * Independent Confirmation
+             * @default false
+             */
+            independent_confirmation: boolean;
+            /**
+             * Limitations
+             * @default []
+             */
+            limitations: string[];
+            /** Origin Kind */
+            origin_kind?: ("independent_review" | "optimization" | "diagnostic") | null;
+            /** Producer Tool */
+            producer_tool?: string | null;
+            /** Reason */
+            reason: string;
+            /** Schema Version */
+            schema_version?: string | null;
+            /** Source Hash */
+            source_hash?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "missing" | "incompatible" | "blocked";
         };
         /**
          * RiskCompositionEntry
@@ -1544,6 +2182,11 @@ export interface components {
              */
             provenance: components["schemas"]["ResourceRecord"][];
             /**
+             * Review Evidence
+             * @default []
+             */
+            review_evidence: components["schemas"]["ReviewEvidence"][];
+            /**
              * Risk Composition
              * @default []
              */
@@ -1580,6 +2223,23 @@ export interface components {
             warnings: components["schemas"]["ResourceRecord"][];
         };
         /**
+         * RuntimeEvidence
+         * @description Evidence qualifier attached to every paper-runtime read model.
+         */
+        RuntimeEvidence: {
+            /** Observed At */
+            observed_at?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /** Source */
+            source: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "partial" | "stale" | "unavailable" | "out_of_scope";
+        };
+        /**
          * SavedComparisonView
          * @description Durable definition with server-owned identity and revision.
          */
@@ -1612,6 +2272,131 @@ export interface components {
              * Format: uuid
              */
             view_id: string;
+        };
+        /**
+         * SavedDataScope
+         * @description Immutable scope identity plus revalidated evidence state.
+         */
+        SavedDataScope: {
+            /**
+             * Asset Class
+             * @enum {string}
+             */
+            asset_class: "stock" | "crypto";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Evidence Reason */
+            evidence_reason?: string | null;
+            evidence_status: components["schemas"]["DataScopeEvidenceStatus"];
+            /** Fingerprint */
+            fingerprint: string;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Interval */
+            interval: string;
+            /** Manifest Artifact Id */
+            manifest_artifact_id: string;
+            /** Name */
+            name: string;
+            /** Quality Artifact Id */
+            quality_artifact_id: string;
+            /** Research Role */
+            research_role: string;
+            /**
+             * Revision
+             * @default 1
+             * @constant
+             */
+            revision: 1;
+            /**
+             * Saved Scope Id
+             * Format: uuid
+             */
+            saved_scope_id: string;
+            /** Scope Id */
+            scope_id: string;
+            source_policy: components["schemas"]["DataScopeSourcePolicy"];
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /** Symbols */
+            symbols: string[];
+            /** Timeframe */
+            timeframe: string;
+            /** Universe */
+            universe?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * SavedDataScopeCreate
+         * @description Request to persist one exact Data evidence handoff.
+         */
+        SavedDataScopeCreate: {
+            /**
+             * Asset Class
+             * @enum {string}
+             */
+            asset_class: "stock" | "crypto";
+            /** Created By */
+            created_by: string;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Evidence Reason */
+            evidence_reason?: string | null;
+            /** @default active */
+            evidence_status: components["schemas"]["DataScopeEvidenceStatus"];
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Interval */
+            interval: string;
+            /** Manifest Artifact Id */
+            manifest_artifact_id: string;
+            /** Name */
+            name: string;
+            /** Quality Artifact Id */
+            quality_artifact_id: string;
+            /** Research Role */
+            research_role: string;
+            source_policy: components["schemas"]["DataScopeSourcePolicy"];
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /** Symbols */
+            symbols: string[];
+            /** Timeframe */
+            timeframe: string;
+            /** Universe */
+            universe?: string | null;
+        };
+        /**
+         * SavedDataScopesResponse
+         * @description Bounded page of saved exact data scopes.
+         */
+        SavedDataScopesResponse: {
+            /** Items */
+            items: components["schemas"]["SavedDataScope"][];
+            page: components["schemas"]["DataScopePageInfo"];
         };
         /**
          * SignalMarker
@@ -2085,6 +2870,196 @@ export interface operations {
             };
         };
     };
+    list_saved_data_scopes_api_data_scopes_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedDataScopesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    create_saved_data_scope_api_data_scopes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedDataScopeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedDataScope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_saved_data_scope_api_data_scopes__saved_scope_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                saved_scope_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedDataScope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    revalidate_saved_data_scope_api_data_scopes__saved_scope_id__revalidate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                saved_scope_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedDataScope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     experiments_api_experiments_get: {
         parameters: {
             query?: {
@@ -2507,6 +3482,83 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    market_data_evidence_api_market_data_evidence_get: {
+        parameters: {
+            query: {
+                symbols: string;
+                asset_class?: "stock" | "crypto";
+                timeframe?: string;
+                interval?: string | null;
+                bar_type?: string;
+                provider?: string | null;
+                source_policy?: string | null;
+                start?: string | null;
+                end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketDataEvidenceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    paper_runtime_api_paper_runtime_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaperRuntimeOperations"];
                 };
             };
             /** @description Service Unavailable */

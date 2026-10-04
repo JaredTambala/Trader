@@ -95,6 +95,12 @@ RELEASES: Final = (
         ("risk_composition", "risk_summary", "risk_decisions"),
         ("risk_compositions", "risk_decisions", "runs"),
     ),
+    ContractRelease(
+        10,
+        "Publish exact Data manifest and quality evidence plus Evaluation, multiple-testing, and Adversarial/robustness review evidence with explicit qualification, claim, and limitation fields.",
+        ("data_scope_evidence", "research_review_evidence"),
+        ("research_artifacts",),
+    ),
 )
 
 

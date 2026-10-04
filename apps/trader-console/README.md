@@ -6,7 +6,10 @@ OpenAPI artifact and run as separate processes.
 
 The root screen is a dark, responsive connection view. `/data` discovers the published datasets, selects a
 symbol/timeframe/source slice, applies a UTC range, renders producer OHLC values as a candlestick chart with a linked
-volume pane, and shows a bounded source-row sample. `/backtests` selects an experiment and run, then renders run
+volume pane, shows a bounded source-row sample, and resolves exact manifest/quality evidence with coverage, findings,
+warnings and provenance. It also saves or reopens an exact scope with its manifest and quality
+artifact references. Reopening preserves the recorded UTC window and provider policy and displays active, stale, or
+unavailable evidence without silently widening or replacing the scope. `/backtests` selects an experiment and run, then renders run
 identity, assumptions, SQL-derived strategy metrics and curves, drawdown, trades, positions, warnings, evidence
 coverage, and the published risk-manager composition plus bounded per-manager decision trace. `/backtests/new`
 provides the local catalogue-driven authoring flow: preflight a UTC replay, save an immutable definition, submit one
@@ -49,7 +52,8 @@ The frontend is an independent npm package with its own lockfile/build/process; 
 artifact, not application code or a runtime process. The Python package build does not include this frontend.
 
 `TRADER_CONSOLE_API_ORIGIN` is a **server-only** HTTP(S) origin, default `http://127.0.0.1:8001` (see `.env.example`).
-Next rewrites exactly `/api/context`, `/api/market-data/datasets`, `/api/market-data/bars`, the experiment/run review
+Next rewrites exactly `/api/context`, `/api/market-data/datasets`, `/api/market-data/bars`, `/api/market-data/evidence`, `/api/data-scopes` and
+its saved-scope/revalidation routes, the experiment/run review
 and comparison-view resources, `/health/live`, and `/health/ready` to that origin. Restart development, or rebuild
 the production app, after changing it. No browser-supplied upstream, wildcard proxy, extra gateway or CORS policy exists.
 This unauthenticated setup is for local development, not remote exposure.
@@ -81,6 +85,11 @@ slider are intentional exploration affordances. Zoom filters the visible window 
 to the selected bars. A backtest review can pass the API's typed `indicator_series` and `signal_markers` into the same
 adapter: producer-declared price series overlay OHLC, declared secondary series get separate scale groups, and markers
 use recorded event timestamps. Unknown or missing display metadata is left out of plotted panes rather than inferred.
+
+The backtest review's **Claims and limitations** panel presents producer-owned Evaluation, multiple-testing, and
+Adversarial/robustness evidence with explicit available, missing, incompatible, and blocked states. It shows exact
+artifact identity, claim scope, protected-data roles, limitations and blockers. Optimisation-derived reports remain
+labelled as exploratory context and cannot be displayed as independent confirmation.
 
 The backtest review keeps run identity, scope and replay dates visible above every metric and curve. Missing scope
 identity remains visible in the run context, while metrics are shown when the persisted runtime evidence supports a
