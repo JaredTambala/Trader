@@ -654,3 +654,209 @@ class RunDetail(BaseModel):
     signals: tuple[dict[str, Any], ...] = ()
     orders: tuple[dict[str, Any], ...] = ()
     fills: tuple[dict[str, Any], ...] = ()
+
+
+RuntimeEvidenceStatus = Literal["available", "partial", "stale", "unavailable", "out_of_scope"]
+
+
+class RuntimeEvidence(BaseModel):
+    """Evidence qualifier attached to every paper-runtime read model."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: RuntimeEvidenceStatus
+    source: str
+    observed_at: datetime | None = None
+    reason: str | None = None
+
+
+class PaperRuntimeSession(BaseModel):
+    """Latest paper session identity and lifecycle evidence."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    session_id: str | None = None
+    strategy_id: str | None = None
+    status: str | None = None
+    mode: str | None = None
+    symbols: tuple[str, ...] = ()
+    timeframe: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    error_message: str | None = None
+    evidence: RuntimeEvidence
+
+
+class PaperRuntimeHealth(BaseModel):
+    """Derived health classification with reasons and evidence freshness."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: Literal["healthy", "degraded", "unhealthy", "unavailable"]
+    reasons: tuple[str, ...] = ()
+    checked_at: datetime
+    evidence: RuntimeEvidence
+
+
+class PaperFreshnessItem(BaseModel):
+    """Freshness evidence for one observed market-data stream."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    asset_class: Literal["stock", "crypto"]
+    symbol: str
+    timeframe: str
+    latest_ts: datetime | None = None
+    age_seconds: float | None = None
+    stale: bool
+
+
+class PaperDataFreshness(BaseModel):
+    """Aggregate market-data freshness with explicit missing/stale states."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: RuntimeEvidenceStatus
+    items: tuple[PaperFreshnessItem, ...] = ()
+    stale_count: int = 0
+    missing_count: int = 0
+    checked_at: datetime
+    evidence: RuntimeEvidence
+
+
+class PaperPosition(BaseModel):
+    """One broker-backed position snapshot."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    symbol: str
+    qty: float
+    avg_price: float | None = None
+    asof_ts: datetime | None = None
+
+
+class PaperPortfolio(BaseModel):
+    """Cash and position snapshot read from published runtime evidence."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    cash: float | None = None
+    asof_ts: datetime | None = None
+    positions: tuple[PaperPosition, ...] = ()
+    evidence: RuntimeEvidence
+
+
+class PaperOpenOrder(BaseModel):
+    """One latest non-terminal local order lifecycle state."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    client_order_id: str
+    broker_order_id: str | None = None
+    symbol: str | None = None
+    side: str | None = None
+    qty: float | None = None
+    order_type: str | None = None
+    status: str
+    created_at: datetime | None = None
+    rejection_reason: str | None = None
+
+
+class PaperOrders(BaseModel):
+    """Bounded open-order evidence and its freshness qualifier."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    items: tuple[PaperOpenOrder, ...] = ()
+    stale_count: int = 0
+    evidence: RuntimeEvidence
+
+
+class PaperFill(BaseModel):
+    """One persisted fill evidence row."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    client_order_id: str | None = None
+    fill_ts: datetime | None = None
+    fill_qty: float | None = None
+    fill_price: float | None = None
+    fee_amount: float | None = None
+    slippage_amount: float | None = None
+
+
+class PaperFills(BaseModel):
+    """Bounded fills projection with partial-history qualification."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    items: tuple[PaperFill, ...] = ()
+    evidence: RuntimeEvidence
+
+
+class PaperRiskOutcomes(BaseModel):
+    """Risk outcome counts for the latest paper runtime."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    evaluated_count: int = 0
+    approved_count: int = 0
+    transformed_count: int = 0
+    rejected_count: int = 0
+    blocked_count: int = 0
+    evidence: RuntimeEvidence
+
+
+class PaperReconciliation(BaseModel):
+    """Broker reconciliation state without inventing an attempt record."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: Literal["reconciled", "required", "failed", "unavailable"]
+    last_attempt_at: datetime | None = None
+    message: str | None = None
+    evidence: RuntimeEvidence
+
+
+class PaperHaltState(BaseModel):
+    """Operator halt state, or an explicit unavailable qualification."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    halted: bool | None = None
+    reason: str | None = None
+    updated_at: datetime | None = None
+    evidence: RuntimeEvidence
+
+
+class PaperIncident(BaseModel):
+    """Actionable issue derived from published runtime evidence."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    code: str
+    severity: Literal["warning", "error"]
+    message: str
+    observed_at: datetime | None = None
+
+
+class PaperRuntimeOperations(BaseModel):
+    """Read-only paper operations projection for the Console workspace."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    scope_id: str
+    generated_at: datetime
+    broker_account_binding: BrokerAccountBinding
+    broker_account_display_label: str | None = None
+    broker_identity_verified: bool = False
+    session: PaperRuntimeSession
+    health: PaperRuntimeHealth
+    data_freshness: PaperDataFreshness
+    portfolio: PaperPortfolio
+    open_orders: PaperOrders
+    fills: PaperFills
+    risk: PaperRiskOutcomes
+    reconciliation: PaperReconciliation
+    halt: PaperHaltState
+    incidents: tuple[PaperIncident, ...] = ()
