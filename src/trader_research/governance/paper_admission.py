@@ -442,6 +442,7 @@ def _save_immutable(
     try:
         existing = store.load_artifact_record(PAPER_CANDIDATE_ADMISSION, admission.admission_id)
     except ResearchArtifactNotFound:
+        _validate_successor_lineage(store, admission)
         return store.save_artifact(
             artifact_type=PAPER_CANDIDATE_ADMISSION,
             artifact_id=admission.admission_id,
@@ -459,6 +460,37 @@ def _save_immutable(
     if existing.requested_by != requested_by or existing.actor != actor or existing.source_hash != admission.digest:
         raise ResearchArtifactStoreError(f"immutable {PAPER_CANDIDATE_ADMISSION} governance metadata drift: {admission.admission_id}")
     return existing
+
+
+def _validate_successor_lineage(
+    store: ResearchArtifactStore,
+    admission: PaperCandidateAdmission,
+) -> None:
+    """Require an explicit predecessor when a candidate is admitted again.
+
+    Admission identities are immutable, so a material change must be represented
+    by a new record linked to the prior candidate record. This check prevents an
+    unlinked second decision for the same candidate from looking like an update.
+    """
+    prior_records = [
+        record
+        for record in store.list_artifacts(artifact_type=PAPER_CANDIDATE_ADMISSION)
+        if record.payload.get("candidate_ref") == admission.candidate_ref
+        and record.payload.get("admission_id") != admission.admission_id
+    ]
+    predecessor_id = admission.supersedes_admission_id
+    if prior_records and not predecessor_id:
+        raise ValueError(
+            "material changes to a paper candidate require supersedes_admission_id"
+        )
+    if not predecessor_id:
+        return
+    try:
+        predecessor = store.load_artifact_record(PAPER_CANDIDATE_ADMISSION, predecessor_id)
+    except ResearchArtifactNotFound as exc:
+        raise ValueError(f"successor predecessor does not exist: {predecessor_id}") from exc
+    if predecessor.payload.get("candidate_ref") != admission.candidate_ref:
+        raise ValueError("successor predecessor must reference the same candidate_ref")
 
 
 def _load_record(store: ResearchArtifactStore, ref: str) -> ResearchArtifactRecord:

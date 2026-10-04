@@ -38,7 +38,9 @@ work. Never make an execution decision from an LLM-authored restatement of an ar
 
 Content-derived IDs make equivalent deterministic artifacts converge. Operations with external or filesystem side
 effects also use stable operation records. A changed material input creates a new identity or successor record. Accepted
-records are not edited to make a later run appear prospective.
+records are not edited to make a later run appear prospective. A later admission for the same candidate must carry
+`supersedes_admission_id` pointing to an existing admission for that candidate; unlinked material changes are rejected
+at the persistence boundary.
 
 ## Projection
 
@@ -53,5 +55,6 @@ owned by the Orchestration domain, but only a human principal may create, approv
 pins the candidate reference, exact strategy/risk/data versions, evidence references and payload digests, risk limits,
 broker/account scope, monitoring policy, unresolved limitations, decision, approver, decision time, and expiry. A changed evidence payload or
 source hash blocks revalidation; approved records also block after expiry or revocation. Revocation creates an
-append-only successor and does not mutate the original record. Agents and MCP identities have no admission authority,
+append-only successor and does not mutate the original record. Any later material admission change follows the same
+successor rule. Agents and MCP identities have no admission authority,
 and this contract performs no broker or runtime mutation.

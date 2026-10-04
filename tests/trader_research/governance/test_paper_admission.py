@@ -156,6 +156,7 @@ def test_rejection_and_expiry_are_not_paper_eligible(decision: str, expected: st
 
     expired = _admission_payload()
     expired["admission_id"] = "admission-expired"
+    expired["candidate_ref"] = "strategy-candidate-expired"
     expired["expires_at"] = "2026-10-03T10:00:00Z"
     assert create_paper_candidate_admission(
         expired,
@@ -193,6 +194,65 @@ def test_revocation_creates_human_owned_successor_without_mutating_original() ->
     assert store.load_artifact_record(PAPER_CANDIDATE_ADMISSION, payload["admission_id"]).payload["decision"] == "approved"
     assert validate_paper_candidate_admission(payload["admission_id"], artifact_store=store, now=NOW).ok is False
     assert validate_paper_candidate_admission(successor["admission_id"], artifact_store=store, now=NOW).ok is False
+
+
+def test_material_change_requires_successor_lineage() -> None:
+    """A second admission for one candidate must identify its predecessor."""
+    store = InMemoryResearchArtifactStore()
+    _seed_evidence(store)
+    original = _admission_payload()
+    assert create_paper_candidate_admission(
+        original,
+        artifact_store=store,
+        requested_by="human:jared",
+        actor="human:jared",
+    ).ok is True
+
+    changed = _admission_payload()
+    changed["admission_id"] = "admission-changed"
+    changed["risk_version"] = "risk-v2"
+    unlinked = create_paper_candidate_admission(
+        changed,
+        artifact_store=store,
+        requested_by="human:jared",
+        actor="human:jared",
+    )
+    assert unlinked.ok is False
+    assert "require supersedes_admission_id" in unlinked.errors[0]["message"]
+
+    changed["supersedes_admission_id"] = original["admission_id"]
+    linked = create_paper_candidate_admission(
+        changed,
+        artifact_store=store,
+        requested_by="human:jared",
+        actor="human:jared",
+    )
+    assert linked.ok is True
+
+
+def test_successor_must_reference_existing_same_candidate() -> None:
+    """A successor cannot invent a predecessor or cross candidate lineage."""
+    store = InMemoryResearchArtifactStore()
+    _seed_evidence(store)
+    original = _admission_payload()
+    assert create_paper_candidate_admission(
+        original,
+        artifact_store=store,
+        requested_by="human:jared",
+        actor="human:jared",
+    ).ok is True
+
+    unknown = _admission_payload()
+    unknown["admission_id"] = "admission-unknown-parent"
+    unknown["supersedes_admission_id"] = "missing-admission"
+    result = create_paper_candidate_admission(
+        unknown,
+        artifact_store=store,
+        requested_by="human:jared",
+        actor="human:jared",
+    )
+    assert result.ok is False
+    assert "predecessor does not exist" in result.errors[0]["message"]
 
 
 @pytest.mark.parametrize("principal", ["Data Agent", "Research Coordinator", "mcp:paper_create_candidate_admission"])

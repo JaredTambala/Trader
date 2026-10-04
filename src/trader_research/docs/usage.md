@@ -54,8 +54,9 @@ broker scope, monitoring policy, unresolved limitations, and a decision. Pass a 
 `ResearchArtifactStore` to `create_paper_candidate_admission`; the service resolves and pins every evidence digest
 before persisting `research://postgres/paper_candidate_admission/...`. Use `validate_paper_candidate_admission` before
 paper startup to re-read those references. Rejection, expiry, revocation, missing evidence, changed versions, and
-agent/MCP principals fail closed. The service records governance evidence only; it does not construct a broker or
-submit an order.
+agent/MCP principals fail closed. Admission identities are immutable; a later admission for the same candidate must
+name its predecessor with `supersedes_admission_id`, so material changes remain auditable. The service records
+governance evidence only; it does not construct a broker or submit an order.
 
 Context services return transport-neutral results. MCP ownership, side-effect classification, schema metadata, and
 JSON-RPC conversion are added only by `trader_mcp`.
