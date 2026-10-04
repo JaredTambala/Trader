@@ -451,6 +451,10 @@ promotion will require additional independent gates even though both use the ext
 No research-agent tool may start `TraderService`, submit orders, clear halt state, reconcile broker state, run raw SQL,
 or bypass core platform validation.
 
+The same boundary applies to paper admission: MCP tools may return or inspect the evidence used by a
+`paper_candidate_admission`, but no research-agent tool can create, approve, reject, revoke, or otherwise grant that
+human-owned record.
+
 ## Initial Data Agent Tools
 
 | Tool | Side Effect | Primary artifact |

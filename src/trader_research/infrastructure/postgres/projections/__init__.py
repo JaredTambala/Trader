@@ -11,6 +11,7 @@ from .ml import PROJECTION_WRITERS as ML_PROJECTION_WRITERS
 from .orchestration import (
     PROJECTION_WRITERS as ORCHESTRATION_PROJECTION_WRITERS,
 )
+from .paper import PROJECTION_WRITERS as PAPER_PROJECTION_WRITERS
 from .registry import ProjectionRegistry, combine_projection_writers
 from .review import PROJECTION_WRITERS as REVIEW_PROJECTION_WRITERS
 
@@ -27,6 +28,7 @@ def default_projection_registry() -> ProjectionRegistry:
         EXPERIMENT_PROJECTION_WRITERS,
         REVIEW_PROJECTION_WRITERS,
         ORCHESTRATION_PROJECTION_WRITERS,
+        PAPER_PROJECTION_WRITERS,
     )
 
 
@@ -35,6 +37,7 @@ __all__ = [
     "METHODOLOGY_PROJECTION_WRITERS",
     "ML_PROJECTION_WRITERS",
     "ORCHESTRATION_PROJECTION_WRITERS",
+    "PAPER_PROJECTION_WRITERS",
     "ProjectionRegistry",
     "REVIEW_PROJECTION_WRITERS",
     "combine_projection_writers",

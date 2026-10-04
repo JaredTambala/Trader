@@ -146,6 +146,11 @@ trader_service:
 positions; use `db` when local snapshots are the intended runtime state. Periodic reconciliation runs in loop/realtime
 modes when `order_reconciliation_interval_seconds` is positive; set it to `0` to disable.
 
+Paper startup admission is a governance prerequisite for the eventual operator command path. A valid
+`paper_candidate_admission` record must pin the candidate's strategy, risk, data, and evidence versions, broker/account
+scope, risk limits, monitoring policy, and non-expired human decision. The current admission slice only records and
+revalidates this evidence; Console startup controls and broker mutation remain separate delivery work.
+
 Backtest wrappers also read:
 
 <!-- verified: config -->

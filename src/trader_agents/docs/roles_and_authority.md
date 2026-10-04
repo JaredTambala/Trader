@@ -90,7 +90,9 @@ artifact authority.
 - The Experiment Design Agent must expose material assumptions for approval and cannot silently invent costs, risk
   limits, search spaces, budgets or holdout boundaries.
 - Robustness findings feed Evaluation; the Robustness Agent does not issue the final strategy-quality assessment.
-- Promotion to paper trading remains a human-reviewed proposal, not an autonomous action.
+- Promotion to paper trading remains a human-reviewed `paper_candidate_admission` record, not an autonomous action.
+  Agents and MCP identities may produce or review evidence, but they cannot create, approve, reject, or revoke the
+  admission record and cannot use it to mutate broker state.
 
 ## Model-Backed Orchestration Boundary
 
