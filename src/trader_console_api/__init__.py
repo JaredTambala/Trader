@@ -51,6 +51,7 @@ from .contracts import (
     TraderPrincipal,
 )
 from .data_scope_contracts import (
+    BacktestDataScopeHandoff,
     DataScopeEvidenceStatus,
     DataScopePageInfo,
     DataScopeSourcePolicy,
@@ -112,6 +113,7 @@ __all__ = [
     "SavedComparisonView",
     "TraderPrincipal",
     "DataScopeEvidenceStatus",
+    "BacktestDataScopeHandoff",
     "DataScopePageInfo",
     "DataScopeSourcePolicy",
     "SavedDataScope",

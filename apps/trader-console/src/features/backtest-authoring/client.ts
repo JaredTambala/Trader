@@ -13,6 +13,7 @@ export type PreflightRequest = components["schemas"]["BacktestPreflightRequest"]
 export type PreflightResponse = components["schemas"]["BacktestPreflightResponse"];
 export type DefinitionRevision = components["schemas"]["BacktestDefinitionRevision"];
 export type ExecutionRecord = components["schemas"]["BacktestExecutionRecord"];
+export type SavedDataScope = components["schemas"]["SavedDataScope"];
 
 export class BacktestAuthoringRequestError extends Error {
   readonly status?: number;
@@ -38,6 +39,15 @@ function requestError(result: { response: Response; error?: unknown }, resource:
 export async function loadCatalogue(signal: AbortSignal): Promise<Catalogue> {
   const result = await client.GET("/api/backtests/catalogue", { signal });
   if (!result.response.ok || !result.data) throw requestError(result, "Backtest catalogue");
+  return result.data;
+}
+
+export async function loadSavedDataScope(signal: AbortSignal, savedScopeId: string): Promise<SavedDataScope> {
+  const result = await client.GET("/api/data-scopes/{saved_scope_id}", {
+    signal,
+    params: { path: { saved_scope_id: savedScopeId } },
+  });
+  if (!result.response.ok || !result.data) throw requestError(result, "Saved data scope");
   return result.data;
 }
 

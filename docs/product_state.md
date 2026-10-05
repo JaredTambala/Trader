@@ -167,18 +167,19 @@ The first detailed product-intent audit is the instrument-agnostic story in
 [Trader Product Intent](product_intent.md): a researcher qualifies a bounded data scope, carries that exact evidence
 into backtest authoring, and receives a traceable result or an actionable blocker. The Data and MCP layers already
 provide symbol discovery, inventory manifests, quality reports, bounded loading, and matching research snapshots. The
-Console `/data` workflow provides aggregate coverage, source rows, and exact Data manifest/quality evidence, while
-backtest authoring still performs its own scope and coverage preflight. Exact saved-scope handoff remains a separate
-gap.
+Console `/data` workflow provides aggregate coverage, source rows, and exact Data manifest/quality evidence. The
+backtest authoring route now accepts the selected saved scope through a typed handoff and preserves its provider
+policy, manifest/quality references, and UTC window while performing coverage preflight. Exact scope drift, stale
+evidence, unavailable evidence, and missing scope are explicit blockers.
 
 The audit therefore records four executable gaps: expose the Data quality and provenance evidence in the Console;
 carry the selected scope and source policy into authoring without re-entry; prove that replay bars still match the
 qualified dataset; and qualify the complete selection-to-submission journey with integrated fixtures and failure
-states. The Console now has the saved-scope boundary for the second step: it persists an immutable exact scope with
-manifest/quality references and reopens it with explicit `active`, `stale`, or `unavailable` evidence state. The
-authoring handoff and replay identity still remain separate gaps. The detailed acceptance criteria, repository evidence, and linked Notion work items live in
-[product_intent.md](product_intent.md). This audit describes current capability; it does not claim that the end-to-end
-story is qualified.
+states. GAP-06-02 delivers the typed handoff for the second step: it persists the immutable scope identity in the
+definition, checks server-owned manifest/quality evidence before coverage, and blocks stale, unavailable, or changed
+selections. Replay identity and complete journey qualification remain separate gaps. The detailed acceptance criteria,
+repository evidence, and linked Notion work items live in [product_intent.md](product_intent.md). This audit describes
+current capability; it does not claim that the end-to-end story is qualified.
 
 GAP-06-01 is now delivered in the Console API and market-data workspace. `console_read.data_scope_evidence` resolves
 the Data-owned manifest and quality pair by exact symbols, asset class, timeframe/interval, bar type, UTC window,

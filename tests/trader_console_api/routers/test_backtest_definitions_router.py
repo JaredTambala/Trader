@@ -21,6 +21,7 @@ from trader_console_api.contracts import (
     BacktestPreflightResponse,
     PageInfo,
 )
+from trader_console_api.data_scope_contracts import BacktestDataScopeHandoff, DataScopeEvidenceStatus, DataScopeSourcePolicy
 from trader_console_api.routers.backtest_definitions import router
 from trader_console_api.services.backtest_definitions import InvalidBacktestDefinition
 
@@ -80,6 +81,14 @@ def _revision() -> BacktestDefinitionRevision:
         start=datetime(2026, 1, 1, tzinfo=UTC),
         end=datetime(2026, 1, 1, 1, tzinfo=UTC),
         initial_cash=100_000,
+        data_scope=BacktestDataScopeHandoff(
+            saved_scope_id=uuid4(), fingerprint="a" * 64, asset_class="stock",
+            symbols=("AAPL",), timeframe="1Min", interval="1Min",
+            start=datetime(2026, 1, 1, tzinfo=UTC), end=datetime(2026, 1, 1, 1, tzinfo=UTC),
+            source_policy=DataScopeSourcePolicy(provider="fixture", source="fixture"),
+            manifest_artifact_id="manifest-1", quality_artifact_id="quality-1",
+            evidence_status=DataScopeEvidenceStatus.ACTIVE,
+        ),
     )
     now = datetime(2026, 1, 1, tzinfo=UTC)
     return BacktestDefinitionRevision(
@@ -102,6 +111,15 @@ def _payload() -> dict[str, object]:
         "timeframe": "1Min",
         "start": "2026-01-01T00:00:00Z",
         "end": "2026-01-01T01:00:00Z",
+        "data_scope": {
+            "saved_scope_id": str(uuid4()), "fingerprint": "a" * 64,
+            "asset_class": "stock", "symbols": ["AAPL"], "universe": None,
+            "timeframe": "1Min", "interval": "1Min",
+            "start": "2026-01-01T00:00:00Z", "end": "2026-01-01T01:00:00Z",
+            "source_policy": {"provider": "fixture", "source": "fixture", "allow_fallback": False},
+            "manifest_artifact_id": "manifest-1", "quality_artifact_id": "quality-1",
+            "evidence_status": "active", "evidence_reason": None,
+        },
     }
 
 

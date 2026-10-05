@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from trader_console_api.contracts import BacktestDefinition, BacktestExecutionRecord
+from trader_console_api.data_scope_contracts import BacktestDataScopeHandoff, DataScopeEvidenceStatus, DataScopeSourcePolicy
 from trader_console_api.worker import (
     AmbiguousExecutionError,
     BacktestExecutionWorker,
@@ -37,6 +38,14 @@ def _definition() -> BacktestDefinition:
         start=datetime(2026, 1, 1, tzinfo=UTC),
         end=datetime(2026, 1, 1, 1, tzinfo=UTC),
         initial_cash=100_000,
+        data_scope=BacktestDataScopeHandoff(
+            saved_scope_id="00000000-0000-0000-0000-000000000001", fingerprint="a" * 64,
+            asset_class="stock", symbols=("AAPL",), timeframe="1Min", interval="1Min",
+            start=datetime(2026, 1, 1, tzinfo=UTC), end=datetime(2026, 1, 1, 1, tzinfo=UTC),
+            source_policy=DataScopeSourcePolicy(provider="fixture", source="fixture"),
+            manifest_artifact_id="manifest-1", quality_artifact_id="quality-1",
+            evidence_status=DataScopeEvidenceStatus.ACTIVE,
+        ),
     )
 
 

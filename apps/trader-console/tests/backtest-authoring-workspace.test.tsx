@@ -1,11 +1,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BacktestAuthoringWorkspace } from "../src/features/backtest-authoring/backtest-authoring-workspace";
-import { createDefinition, loadCatalogue, loadExecution, preflight, submitExecution } from "../src/features/backtest-authoring/client";
+import { createDefinition, loadCatalogue, loadExecution, loadSavedDataScope, preflight, submitExecution } from "../src/features/backtest-authoring/client";
 
 vi.mock("../src/features/backtest-authoring/client", () => ({
   createDefinition: vi.fn(),
   loadCatalogue: vi.fn(),
+  loadSavedDataScope: vi.fn(),
   loadExecution: vi.fn(),
   preflight: vi.fn(),
   submitExecution: vi.fn(),
@@ -33,6 +34,7 @@ const preflightResponse = {
   coverage: [{ symbol: "BTC/USD", asset_class: "crypto", timeframe: "1Min", first_ts: "2026-06-21T00:00:00Z", last_ts: "2026-06-21T00:30:00Z", bar_count: 31, required_start: "2026-06-20T23:39:00Z", requested_end: "2026-06-21T00:30:00Z", warmup_bars: 21, available: true, warmup_satisfied: true }],
   issues: [],
 };
+const savedScope = { saved_scope_id: "scope-1", scope_id: "console-local", revision: 1, fingerprint: "a".repeat(64), name: "Fixture scope", asset_class: "crypto", symbols: ["BTC/USD"], universe: null, timeframe: "1Min", interval: "1Min", start: "2026-06-21T00:00:00Z", end: "2026-06-21T00:30:00Z", source_policy: { provider: "fixture", source: "fixture", allow_fallback: false }, research_role: "backtest_authoring", manifest_artifact_id: "manifest-1", quality_artifact_id: "quality-1", evidence_status: "active", evidence_reason: null, created_by: "fixture", idempotency_key: "fixture", created_at: "2026-06-21T00:00:00Z", updated_at: "2026-06-21T00:00:00Z" };
 
 const definition = { definition_id: "definition-1", scope_id: "console-local", definition_version: 1, revision: 1, fingerprint: "a".repeat(64), definition: {}, created_at: "2026-06-21T00:00:00Z", updated_at: "2026-06-21T00:00:00Z" };
 const queued = { execution_id: "execution-1", scope_id: "console-local", definition_id: "definition-1", definition_revision: 1, definition_fingerprint: "a".repeat(64), idempotency_key: "key", status: "queued", attempt: 0, worker_id: null, run_id: null, processed_cycles: 0, total_cycles: 31, last_decision_at: null, heartbeat_at: null, lease_expires_at: null, created_at: "2026-06-21T00:00:00Z", started_at: null, finished_at: null, warning_summary: [], terminal_error_code: null, terminal_error_message: null };
@@ -40,6 +42,7 @@ const completed = { ...queued, status: "completed", run_id: "run-1", processed_c
 
 beforeEach(() => {
   vi.mocked(loadCatalogue).mockResolvedValue(catalogue as never);
+  vi.mocked(loadSavedDataScope).mockResolvedValue(savedScope as never);
   vi.mocked(preflight).mockResolvedValue(preflightResponse as never);
   vi.mocked(createDefinition).mockResolvedValue(definition as never);
   vi.mocked(submitExecution).mockResolvedValue(queued as never);
@@ -52,6 +55,7 @@ afterEach(() => {
 
 describe("backtest authoring workflow", () => {
   it("preflights, saves, submits and observes terminal execution state", async () => {
+    window.history.replaceState(null, "", "/backtests/new?saved_scope_id=scope-1");
     render(<BacktestAuthoringWorkspace />);
     expect(await screen.findByRole("heading", { name: "Define and run a local backtest" })).toBeVisible();
     expect(screen.getByRole("combobox", { name: "Strategy profile" })).toBeVisible();
@@ -74,6 +78,7 @@ describe("backtest authoring workflow", () => {
   });
 
   it("keeps invalid preflight explicit and does not enable persistence", async () => {
+    window.history.replaceState(null, "", "/backtests/new?saved_scope_id=scope-1");
     vi.mocked(preflight).mockResolvedValue({ ...preflightResponse, valid: false, definition_fingerprint: null, issues: [{ severity: "error", code: "invalid_window", path: "end", message: "end must be after start" }], coverage: [] } as never);
     render(<BacktestAuthoringWorkspace />);
     await screen.findByRole("heading", { name: "Define and run a local backtest" });

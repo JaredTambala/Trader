@@ -9,7 +9,10 @@ symbol/timeframe/source slice, applies a UTC range, renders producer OHLC values
 volume pane, shows a bounded source-row sample, and resolves exact manifest/quality evidence with coverage, findings,
 warnings and provenance. It also saves or reopens an exact scope with its manifest and quality
 artifact references. Reopening preserves the recorded UTC window and provider policy and displays active, stale, or
-unavailable evidence without silently widening or replacing the scope. `/backtests` selects an experiment and run, then renders run
+unavailable evidence without silently widening or replacing the scope. From a selected saved scope, “Author backtest with this scope”
+opens `/backtests/new?saved_scope_id=…`; authoring carries the exact symbols/universe, asset class, timeframe, UTC window,
+provider policy, and manifest/quality references into a typed preflight handoff. Stale, unavailable, missing, or changed
+evidence remains an actionable blocker. `/backtests` selects an experiment and run, then renders run
 identity, assumptions, SQL-derived strategy metrics and curves, drawdown, trades, positions, warnings, evidence
 coverage, and the published risk-manager composition plus bounded per-manager decision trace. `/backtests/new`
 provides the local catalogue-driven authoring flow: preflight a UTC replay, save an immutable definition, submit one

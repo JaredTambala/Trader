@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import math
-from typing import Literal, Mapping, cast
+from typing import Literal, Mapping, Protocol, cast
+from uuid import UUID
 
 from trader_standard.catalogue import (
     Catalogue,
@@ -28,12 +29,20 @@ from ..contracts import (
     CatalogueProfile,
     PreflightIssue,
 )
+from ..data_scope_contracts import BacktestDataScopeHandoff, DataScopeEvidenceStatus, SavedDataScope
 from ..repositories.database import ConsoleDatabaseUnavailable
 from ..repositories.resources import ConsoleResourceRepository
 
 
 CatalogueDatabaseUnavailable = ConsoleDatabaseUnavailable
 AssetClass = Literal["stock", "crypto"]
+
+
+class SavedScopeLookup(Protocol):
+    """Read-only saved-scope lookup used to qualify an authoring handoff."""
+
+    async def get(self, saved_scope_id: UUID) -> SavedDataScope:
+        """Resolve one saved scope in the server-owned Console scope."""
 
 
 class CatalogueService:
@@ -60,15 +69,25 @@ class CatalogueService:
 class PreflightService:
     """Normalize and validate definitions before persistence or execution."""
 
-    def __init__(self, repository: ConsoleResourceRepository, catalogue: Catalogue) -> None:
+    def __init__(
+        self,
+        repository: ConsoleResourceRepository,
+        catalogue: Catalogue,
+        saved_scope_lookup: SavedScopeLookup,
+    ) -> None:
         """Bind read-only coverage access and an immutable catalogue snapshot."""
         self._repository = repository
         self._catalogue = catalogue
+        self._saved_scope_lookup = saved_scope_lookup
 
     @classmethod
-    def default(cls, repository: ConsoleResourceRepository) -> "PreflightService":
+    def default(
+        cls,
+        repository: ConsoleResourceRepository,
+        saved_scope_lookup: SavedScopeLookup,
+    ) -> "PreflightService":
         """Bind the current maintained catalogue to a resource repository."""
-        return cls(repository, maintained_catalogue())
+        return cls(repository, maintained_catalogue(), saved_scope_lookup)
 
     async def preflight(self, request: BacktestPreflightRequest) -> BacktestPreflightResponse:
         """Return normalized definition, coverage, and field-level issues."""
@@ -82,6 +101,8 @@ class PreflightService:
         risk: ProfileDefinition | None = None
         strategy_parameters: dict[str, object] = {}
         risk_parameters: dict[str, object] = {}
+
+        await self._qualify_data_scope(request, issues)
 
         try:
             normalized_symbols = normalize_symbols(request.symbols)
@@ -195,6 +216,7 @@ class PreflightService:
                 assumptions=request.assumptions,
                 benchmark_id=request.benchmark_id,
                 resource_limits=request.resource_limits,
+                data_scope=request.data_scope,
             )
             if request.assumptions.allow_price_carry_forward:
                 issues.append(
@@ -263,6 +285,65 @@ class PreflightService:
             issues=tuple(issues),
         )
 
+    async def _qualify_data_scope(
+        self,
+        request: BacktestPreflightRequest,
+        issues: list[PreflightIssue],
+    ) -> None:
+        """Require the selected saved scope and reject drift or non-active evidence."""
+        handoff = request.data_scope
+        request_mismatches = _request_scope_mismatches(request, handoff)
+        if request_mismatches:
+            issues.append(
+                _error(
+                    "data_scope",
+                    "data_scope_mismatch",
+                    "Backtest fields do not match the selected saved scope: "
+                    + ", ".join(request_mismatches),
+                )
+            )
+        if handoff.evidence_status is not DataScopeEvidenceStatus.ACTIVE:
+            code = (
+                "data_scope_stale"
+                if handoff.evidence_status is DataScopeEvidenceStatus.STALE
+                else "data_scope_unavailable"
+            )
+            issues.append(
+                _error(
+                    "data_scope.evidence_status",
+                    code,
+                    handoff.evidence_reason or f"Selected data scope evidence is {handoff.evidence_status.value}.",
+                )
+            )
+        try:
+            saved = await self._saved_scope_lookup.get(handoff.saved_scope_id)
+        except Exception as exc:
+            issues.append(_error("data_scope.saved_scope_id", "data_scope_unavailable", str(exc)))
+            return
+        mismatches = _scope_mismatches(handoff, saved)
+        if mismatches:
+            issues.append(
+                _error(
+                    "data_scope",
+                    "data_scope_mismatch",
+                    "Selected saved scope does not match the server-owned evidence: "
+                    + ", ".join(mismatches),
+                )
+            )
+        if saved.evidence_status is not DataScopeEvidenceStatus.ACTIVE:
+            code = (
+                "data_scope_stale"
+                if saved.evidence_status is DataScopeEvidenceStatus.STALE
+                else "data_scope_unavailable"
+            )
+            issues.append(
+                _error(
+                    "data_scope.evidence_status",
+                    code,
+                    saved.evidence_reason or f"Saved data scope evidence is {saved.evidence_status.value}.",
+                )
+            )
+
 
 def _profile(profile: ProfileDefinition) -> CatalogueProfile:
     return CatalogueProfile(
@@ -287,6 +368,47 @@ def _error(path: str, code: str, message: str) -> PreflightIssue:
 
 def _warning(path: str, code: str, message: str) -> PreflightIssue:
     return PreflightIssue(severity="warning", code=code, path=path, message=message)
+
+
+def _scope_mismatches(handoff: BacktestDataScopeHandoff, saved: SavedDataScope) -> list[str]:
+    """Return immutable handoff fields that differ from persisted scope identity."""
+    comparisons = (
+        ("fingerprint", handoff.fingerprint, saved.fingerprint),
+        ("asset_class", handoff.asset_class, saved.asset_class),
+        ("symbols", handoff.symbols, saved.symbols),
+        ("universe", handoff.universe, saved.universe),
+        ("timeframe", handoff.timeframe, saved.timeframe),
+        ("interval", handoff.interval, saved.interval),
+        ("start", handoff.start, saved.start),
+        ("end", handoff.end, saved.end),
+        ("source_policy", handoff.source_policy, saved.source_policy),
+        ("manifest_artifact_id", handoff.manifest_artifact_id, saved.manifest_artifact_id),
+        ("quality_artifact_id", handoff.quality_artifact_id, saved.quality_artifact_id),
+        ("evidence_status", handoff.evidence_status, saved.evidence_status),
+        ("evidence_reason", handoff.evidence_reason, saved.evidence_reason),
+    )
+    return [name for name, selected, persisted in comparisons if selected != persisted]
+
+
+def _request_scope_mismatches(
+    request: BacktestPreflightRequest,
+    handoff: BacktestDataScopeHandoff,
+) -> list[str]:
+    """Compare editable draft scope fields to the immutable handoff payload."""
+    try:
+        request_timeframe = normalize_timeframe(request.timeframe)
+    except CatalogueValidationError:
+        request_timeframe = request.timeframe
+    request_start = request.start.astimezone(timezone.utc)
+    request_end = request.end.astimezone(timezone.utc)
+    values = (
+        ("asset_class", request.asset_class.lower(), handoff.asset_class),
+        ("symbols", tuple(sorted({symbol.strip().upper() for symbol in request.symbols})), handoff.symbols),
+        ("timeframe", request_timeframe, handoff.timeframe),
+        ("start", request_start, handoff.start),
+        ("end", request_end, handoff.end),
+    )
+    return [name for name, request_value, handoff_value in values if request_value != handoff_value]
 
 
 def _lookback_bars(profile: ProfileDefinition | None, parameters: Mapping[str, object]) -> int:
@@ -315,4 +437,4 @@ def _as_utc(value: object) -> datetime | None:
     return value.astimezone(timezone.utc) if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
-__all__ = ["CatalogueDatabaseUnavailable", "CatalogueService", "PreflightService"]
+__all__ = ["CatalogueDatabaseUnavailable", "CatalogueService", "PreflightService", "SavedScopeLookup"]

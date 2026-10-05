@@ -21,6 +21,7 @@ from trader_console_api.contracts import (
     BacktestPreflightRequest,
     BacktestPreflightResponse,
 )
+from trader_console_api.data_scope_contracts import BacktestDataScopeHandoff, DataScopeEvidenceStatus, DataScopeSourcePolicy
 from trader_console_api.services.backtest_definitions import (
     BacktestDefinitionService,
     InvalidBacktestDefinition,
@@ -36,6 +37,14 @@ def _draft() -> BacktestPreflightRequest:
         timeframe="1Min",
         start=datetime(2026, 1, 1, tzinfo=UTC),
         end=datetime(2026, 1, 1, 1, tzinfo=UTC),
+        data_scope=BacktestDataScopeHandoff(
+            saved_scope_id=uuid4(), fingerprint="a" * 64, asset_class="stock",
+            symbols=("AAPL",), timeframe="1Min", interval="1Min",
+            start=datetime(2026, 1, 1, tzinfo=UTC), end=datetime(2026, 1, 1, 1, tzinfo=UTC),
+            source_policy=DataScopeSourcePolicy(provider="fixture", source="fixture"),
+            manifest_artifact_id="manifest-1", quality_artifact_id="quality-1",
+            evidence_status=DataScopeEvidenceStatus.ACTIVE,
+        ),
     )
 
 
@@ -134,7 +143,34 @@ def test_valid_preflight_persists_normalized_definition_and_revision() -> None:
                 "last_ts": datetime(2026, 1, 1, 1, tzinfo=UTC), "bar_count": 100,
             }]
 
-    normalized = asyncio.run(PreflightService(_Coverage(), maintained_catalogue()).preflight(_draft()))
+    class _ScopeLookup:
+        async def get(self, saved_scope_id):
+            from trader_console_api.data_scope_contracts import SavedDataScope
+
+            draft = _draft()
+            return SavedDataScope(
+                saved_scope_id=saved_scope_id,
+                scope_id="scope-a",
+                fingerprint=draft.data_scope.fingerprint,
+                name="Fixture scope",
+                asset_class="stock",
+                symbols=("AAPL",),
+                timeframe="1Min",
+                interval="1Min",
+                start=draft.data_scope.start,
+                end=draft.data_scope.end,
+                source_policy=draft.data_scope.source_policy,
+                research_role="backtest_authoring",
+                manifest_artifact_id="manifest-1",
+                quality_artifact_id="quality-1",
+                evidence_status="active",
+                created_by="fixture",
+                idempotency_key="fixture",
+                created_at=draft.data_scope.start,
+                updated_at=draft.data_scope.start,
+            )
+
+    normalized = asyncio.run(PreflightService(_Coverage(), maintained_catalogue(), _ScopeLookup()).preflight(_draft()))
     session = _Session()
     service = BacktestDefinitionService(_Repository(session), _Preflight(normalized))
 
