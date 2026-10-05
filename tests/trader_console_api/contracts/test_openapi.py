@@ -60,6 +60,9 @@ def test_checked_schema_matches_registered_routes_and_response_models() -> None:
         "/api/paper/runtime",
         "/api/paper/commands",
         "/api/paper/commands/{command_id}",
+        "/api/agent-sessions/{session_id}",
+        "/api/agent-sessions/{session_id}/commands",
+        "/api/agent-sessions/{session_id}/commands/{command_id}",
         "/health/live",
         "/health/ready",
     }
