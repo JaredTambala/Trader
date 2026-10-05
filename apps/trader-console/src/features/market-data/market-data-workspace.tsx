@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { datasetKey, loadMarketBars, loadMarketDataEvidence, loadMarketDatasets, loadSavedDataScope, loadSavedDataScopes, revalidateSavedDataScope, saveDataScope, type BarPoint, type BarsResponse, type MarketDataDiscovery, type MarketDataset, type MarketDataEvidenceResponse, type SavedDataScope } from "./client";
+import { compareSavedDataScopes, datasetKey, loadMarketBars, loadMarketDataEvidence, loadMarketDatasets, loadSavedDataScope, loadSavedDataScopes, revalidateSavedDataScope, saveDataScope, type BarPoint, type BarsResponse, type DataScopeComparisonResponse, type MarketDataDiscovery, type MarketDataset, type MarketDataEvidenceResponse, type SavedDataScope } from "./client";
 import { MarketChart } from "./chart";
 import { ConsoleShell } from "../shell/console-shell";
 import styles from "./market-data-workspace.module.css";
@@ -95,6 +95,10 @@ export function MarketDataWorkspace() {
   const [evidence, setEvidence] = useState<MarketDataEvidenceResponse | null>(null);
   const [evidenceState, setEvidenceState] = useState<RequestState>("idle");
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const [comparisonScopeIds, setComparisonScopeIds] = useState<string[]>([]);
+  const [comparison, setComparison] = useState<DataScopeComparisonResponse | null>(null);
+  const [comparisonState, setComparisonState] = useState<RequestState>("idle");
+  const [comparisonError, setComparisonError] = useState<string | null>(null);
 
   useEffect(() => {
     const source = new AbortController();
@@ -139,6 +143,11 @@ export function MarketDataWorkspace() {
       try {
         const response = await loadSavedDataScopes(source.signal);
         setSavedScopes(response.items);
+        setComparisonScopeIds((previous) => {
+          const available = new Set(response.items.map((item) => item.saved_scope_id));
+          const retained = previous.filter((id) => available.has(id));
+          return retained.length > 0 ? retained : response.items.slice(0, 2).map((item) => item.saved_scope_id);
+        });
         setSavedScopeState("ready");
       } catch (error: unknown) {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -352,6 +361,35 @@ export function MarketDataWorkspace() {
     }
   };
 
+  const toggleComparisonScope = (id: string) => {
+    setComparisonScopeIds((previous) => previous.includes(id) ? previous.filter((item) => item !== id) : [...previous, id]);
+    setComparison(null);
+    setComparisonError(null);
+  };
+
+  const compareScopes = async () => {
+    if (comparisonScopeIds.length < 2) {
+      setComparisonError("Select at least two saved scopes to compare.");
+      return;
+    }
+    const source = new AbortController();
+    setComparisonState("loading");
+    setComparisonError(null);
+    try {
+      const result = await compareSavedDataScopes(source.signal, {
+        saved_scope_ids: comparisonScopeIds,
+        comparison_dimensions: ["source", "window"],
+      });
+      setComparison(result);
+      setComparisonState("ready");
+    } catch (error: unknown) {
+      setComparisonState("error");
+      setComparisonError(errorMessage(error, "Data scope comparison"));
+    } finally {
+      source.abort();
+    }
+  };
+
   const refreshBars = () => setBarsRevision((revision) => revision + 1);
   const hasMoreDatasets = datasetPage?.has_more ?? false;
   const hasMoreBars = bars?.page.has_more ?? false;
@@ -426,6 +464,25 @@ export function MarketDataWorkspace() {
             {savedScopeId && <a className={styles.button} href={`/backtests/new?saved_scope_id=${encodeURIComponent(savedScopeId)}`}>Author backtest with this scope</a>}
           </div>
           {saveNotice && <p className={styles.status} role="status">{saveNotice}</p>}
+        </section>
+
+        <section className={styles.controls} aria-labelledby="comparison-heading">
+          <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>ALTERNATIVES</p><h2 id="comparison-heading">Compare saved data scopes</h2></div><span className={styles.utc}>No preferred source</span></div>
+          <p className={styles.status}>Select two or more exact scopes. Each source, window, quality report, and provenance trail remains separate.</p>
+          {savedScopes.length < 2 && <p className={styles.empty}>Save at least two exact scopes to compare alternatives.</p>}
+          {savedScopes.length >= 2 && <>
+            <fieldset className={styles.scopeChoices}>
+              <legend className={styles.srOnly}>Saved scopes to compare</legend>
+              {savedScopes.map((scope) => <label className={styles.scopeChoice} key={scope.saved_scope_id}><input type="checkbox" checked={comparisonScopeIds.includes(scope.saved_scope_id)} onChange={() => toggleComparisonScope(scope.saved_scope_id)} /><span><strong>{scope.name}</strong><small>{scope.source_policy.provider} · {scope.timeframe} · {scope.evidence_status}</small></span></label>)}
+            </fieldset>
+            <button className={styles.secondaryButton} type="button" onClick={() => void compareScopes()} disabled={comparisonState === "loading" || comparisonScopeIds.length < 2}>{comparisonState === "loading" ? "Comparing…" : "Compare selected scopes"}</button>
+          </>}
+          {comparisonError && <p className={styles.fieldError} role="alert">{comparisonError}</p>}
+          {comparisonState === "ready" && comparison && <div className={styles.comparisonResult} role="status">
+            <p><strong>Comparison state:</strong> {comparison.state} · {comparison.comparable_pair_count} comparable pair(s) · {comparison.excluded_pair_count} excluded pair(s)</p>
+            <div className={styles.comparisonAlternatives}>{comparison.alternatives.map((alternative) => <article key={alternative.scope.saved_scope_id}><h3>{alternative.scope.name}</h3><p>{alternative.evidence.state}: {alternative.evidence.evidence_reason}</p><p className={styles.provenance}>Provider {alternative.scope.source_policy.provider} · {alternative.scope.source_policy.source ?? "unspecified source"} · {alternative.scope.start} → {alternative.scope.end}</p>{alternative.exclusion_reasons.length > 0 && <ul>{alternative.exclusion_reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}</article>)}</div>
+            {comparison.pairs.map((pair) => <article className={styles.comparisonPair} key={`${pair.left_scope_id}-${pair.right_scope_id}`}><strong>{pair.eligible ? "Comparable alternatives" : "Excluded comparison"}</strong>{pair.exclusion_reasons.length > 0 && <ul>{pair.exclusion_reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}{pair.eligible && <pre className={styles.evidenceCode}>{JSON.stringify(pair.differences, null, 2)}</pre>}</article>)}
+          </div>}
         </section>
 
         <section className={styles.chartPanel} aria-labelledby="chart-heading">
