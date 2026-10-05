@@ -30,5 +30,7 @@ The deterministic retained trajectory fixture uses `RetainedTrajectorySink` with
 projections. Its optional atomic JSON `storage_path` is reloaded by a fresh Python process in the qualification test,
 so process replacement proves recovery from retained public evidence rather than only changing an in-memory process ID.
 It also proves concurrent Data and Strategy branch attribution, terminal decision receipt lineage, recursive redaction,
-duplicate rejection, and fail-closed sink outage handling. This fixture qualifies the public evidence boundary; it does
-not promote a model profile or make diagnostic events canonical research artifacts.
+duplicate rejection, and fail-closed sink outage handling. The UJ-04 session qualification fixture runs isolated completed,
+failed, and cancelled cases with stable session, branch, run, and artifact identities; it includes a missing-checkpoint
+case whose recovery and terminal-lineage verdicts remain false. This fixture qualifies the public evidence boundary; it
+does not promote a model profile or make diagnostic events canonical research artifacts.
