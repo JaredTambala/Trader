@@ -1,9 +1,9 @@
 # Trader Product Intent
 
-Status: **Draft for human review**. The vision below is Jared's statement on 2 October 2026. The journeys and
-requirements are an assistant interpretation to refine together. They are desired product behavior, not claims about
-what the current repository already delivers. [Product State](product_state.md) records implemented and qualified
-behavior; Notion owns work priority and delivery status. The synchronized Notion copy is [Trader Product
+This is a human-review draft of Jared's 2 October 2026 vision. The journeys and requirements are an assistant
+interpretation to refine together. They are desired product behavior, not claims about what the current repository
+already delivers. [Product State](product_state.md) records implemented and qualified
+behavior. The synchronized Notion copy is [Trader Product
 Intent](https://app.notion.com/p/3ede5fad-e831-815a-a559-e89534eefe62).
 
 ## Human-authored vision
@@ -29,9 +29,8 @@ real-world trading. These are distinct reasons for building Trader, and both sho
 ## Candidate user journeys
 
 The UJ records below are product features expressed as user journeys. Each feature defines an actor, trigger, behavior,
-outcome, failure path, and evidence needed to judge whether the product serves the human purpose. A Notion work item is
-a delivery unit that implements a component, closes a gap, updates documentation, or qualifies one or more features. It
-must link back to the feature(s) it serves, but its title and status do not redefine the feature.
+outcome, failure path, and evidence needed to judge whether the product serves the human purpose. Delivery slices implement
+these features, but their planning records and status do not redefine the product intent.
 
 ### UJ-01 — Explore financial data
 
@@ -169,7 +168,7 @@ its hash checks detect changed snapshots, not changes to the underlying bar rows
 inventory `dataset_id` is derived from the query scope, not bar content. Current frontend/API tests qualify individual
 boundaries; they do not prove the complete Console handoff against real services.
 
-| Acceptance point | Current status | Repository evidence |
+| Acceptance point | Evidence coverage | Repository evidence |
 | --- | --- | --- |
 | Discover bounded candidates | Implemented through Data/MCP; partial in Console | `src/trader_research/data/catalog.py`, `src/trader_mcp/runtime/server.py`, `apps/trader-console/src/features/market-data/market-data-workspace.tsx` |
 | Inspect per-item coverage and quality | Implemented in Data; aggregate coverage only in Console | `src/trader_research/data/inventory.py`, `src/trader_research/data/quality.py`, `src/trader_console_api/repositories/resources.py` |
@@ -178,16 +177,16 @@ boundaries; they do not prove the complete Console handoff against real services
 | Verify replay data identity | Partial | `src/trader_research/experiments/specifications/common.py`, `src/trader_research/experiments/specifications/backtest.py` |
 | Qualify the full human workflow | Absent | `apps/trader-console/tests/e2e/market-data.spec.ts`, `apps/trader-console/tests/e2e/backtest-authoring.spec.ts` are separate mocked journeys |
 
-### Executable gaps
+### Open capability behavior
 
 - **GAP-06-01 — Console data evidence:** expose quality, completeness, provider/source, and provenance evidence for the
-  selected dataset. [Notion work item](https://app.notion.com/p/3ede5fade831813493e9f5c3dae8d403).
+  selected dataset.
 - **GAP-06-02 — Exact scope handoff:** carry a typed scope and source policy from `/data` to authoring; resolve matching
-  manifest/quality evidence rather than silently replacing it with aggregate coverage. [Notion work item](https://app.notion.com/p/3ede5fade8318102abbade7d1545fd95).
+  manifest/quality evidence rather than silently replacing it with aggregate coverage.
 - **GAP-06-03 — Replay data identity:** define and enforce how a backtest proves that the bars it runs over still match
-  the qualified dataset, including source semantics and post-inspection changes. [Notion work item](https://app.notion.com/p/3ede5fade83181b7bb99cd42dce2dabb).
+  the qualified dataset, including source semantics and post-inspection changes.
 - **GAP-06-04 — End-to-end qualification:** add an integrated fixture journey covering selection, evidence review,
-  preflight, persistence, execution submission, and failure states. [Notion work item](https://app.notion.com/p/3ede5fade83181e6b44ee332bdfa6975).
+  preflight, persistence, execution submission, and failure states.
 
 ## Detailed story audit — UJ-01 / US-01-01
 
@@ -222,7 +221,7 @@ resolution, ingestion lineage, catalogue completeness, or canonical snapshot ide
 window selections as evidence, and it does not save a selected scope for later authoring. The same missing evidence
 continuity is captured by the UJ-06 audit where this journey feeds a backtest.
 
-| Acceptance point | Current status | Repository evidence |
+| Acceptance point | Evidence coverage | Repository evidence |
 | --- | --- | --- |
 | Discover bounded datasets | Implemented in Data/MCP; implemented as aggregate slices in Console | `src/trader_research/data/catalog.py`, `src/trader_mcp/docs/tools.md`, `src/trader_console_api/repositories/resources.py` |
 | Inspect bars and bounded windows | Implemented and browser-tested | `apps/trader-console/src/features/market-data/market-data-workspace.tsx`, `apps/trader-console/tests/e2e/market-data.spec.ts` |
@@ -230,16 +229,16 @@ continuity is captured by the UJ-06 audit where this journey feeds a backtest.
 | Compare alternatives | Absent as a product workflow | `src/trader_console_api/docs/usage.md` has no comparison resource for data scopes |
 | Preserve and reuse an exact snapshot | Implemented as a research service; absent from Console handoff | `src/trader_research/data/evidence.py`, `apps/trader-console/src/features/market-data` |
 
-### Executable gaps
+### Open capability behavior
 
 - **GAP-01-01 — Data fitness readout:** expose matching quality, completeness, provider/source, and provenance evidence
   in the Console. This is shared with GAP-06-01 rather than a second implementation.
 - **GAP-01-02 — Saved data scope:** let a researcher persist and reopen an exact scope/snapshot, with immutable identity
-  and explicit stale or unavailable states, before handing it to authoring. [Notion work item](https://app.notion.com/p/3ede5fad-e831-81f0-89d3-d95664c5654a).
+  and explicit stale or unavailable states, before handing it to authoring.
 - **GAP-01-03 — Data alternative comparison:** provide a bounded comparison of source or window alternatives that keeps
-  coverage, quality, and provenance evidence separate and explains why an alternative is or is not comparable. [Notion work item](https://app.notion.com/p/3ede5fad-e831-8197-bfad-efec589cfb90).
+  coverage, quality, and provenance evidence separate and explains why an alternative is or is not comparable.
 - **GAP-01-04 — Discovery completeness contract:** make provider/catalogue completeness and source capability explicit
-  in the Console response and tutorial, including the distinction between catalogue discovery and load capability. [Notion work item](https://app.notion.com/p/3ede5fad-e831-8187-ab3c-c59b4cf35e37).
+  in the Console response and tutorial, including the distinction between catalogue discovery and load capability.
 
 ## Detailed story audit — UJ-02 / US-02-01
 
@@ -275,7 +274,7 @@ agentic Strategy Engineering loop is implemented but controlled third-party-mode
 The current first agentic slice stops at an admitted strategy/risk candidate and does not design or execute an
 experiment.
 
-| Acceptance point | Current status | Repository evidence |
+| Acceptance point | Evidence coverage | Repository evidence |
 | --- | --- | --- |
 | Hypothesis and falsifier record | Partial in Experiment Design contracts; no complete Console authoring path | `src/trader_research/governance`, `src/trader_agents/docs/roles_and_authority.md` |
 | Catalogue search and compatibility | Implemented and focused-tested | `src/trader_research/experiments/implementations/catalog.py`, `tests/trader_research/experiments/test_implementation_catalog.py` |
@@ -283,18 +282,18 @@ experiment.
 | Immutable strategy/risk specs | Implemented and controlled | `src/trader_research/experiments/specifications/strategy.py`, `src/trader_research/experiments/specifications/risk.py` |
 | Human-facing lineage and agent qualification | Absent/partial | `apps/trader-console/src/features/backtest-authoring`, `src/trader_agents/docs/qualification.md` |
 
-### Executable gaps
+### Open capability behavior
 
 - **GAP-02-01 — Hypothesis and experiment brief:** settle the Experiment Design boundary and persist a typed,
-  falsifiable brief that can be handed to Data, Strategy, and later Evaluation without losing the intended decision. [Notion work item](https://app.notion.com/p/3ede5fad-e831-81f0-aa8d-fece8b2bd5f0).
+  falsifiable brief that can be handed to Data, Strategy, and later Evaluation without losing the intended decision.
 - **GAP-02-02 — Console implementation lineage:** carry an admitted implementation/version, validation report,
   strategy/risk specification, and provenance into authoring and display their blockers; keep the existing allowlist and
-  preflight authority intact. [Notion work item](https://app.notion.com/p/3ede5fad-e831-8112-9365-cc4c2788d08e).
+  preflight authority intact.
 - **GAP-02-03 — Controlled Strategy Engineering qualification:** execute the real MCP/model matrix against the pinned
   third-party model profile, including exact reuse, adaptation, new authorship, failed admission, repair, interruption,
-  and restart evidence. Existing [IMP-07](https://app.notion.com/p/3d0e5fade83181debc89d6222479f75a) and the agentic implementation slice are design and implementation context, not controlled acceptance. [Notion work item](https://app.notion.com/p/3ede5fad-e831-81c6-b550-dc5bc151e3b8).
+  and restart evidence. Existing IMP-07 and the agentic implementation slice are design and implementation context, not controlled acceptance.
 - **GAP-02-04 — Hypothesis-to-candidate handoff:** qualify one integrated path from a brief through catalogue
-  comparison, isolated authoring or reuse, admission, and a reviewable candidate record. [Notion work item](https://app.notion.com/p/3ede5fad-e831-81e1-a348-c5c953304284).
+  comparison, isolated authoring or reuse, admission, and a reviewable candidate record.
 
 ## Detailed story audit — UJ-03 / US-03-01
 
@@ -331,7 +330,7 @@ Evaluation/Adversarial readout and a first-class human next-decision command/rea
 walk-forward optimization remain absent.
 The data identity handoff and replay-bar identity are covered by GAP-06-02 and GAP-06-03.
 
-| Acceptance point | Current status | Repository evidence |
+| Acceptance point | Evidence coverage | Repository evidence |
 | --- | --- | --- |
 | Immutable run inputs and deterministic execution | Implemented and controlled in research/core | `src/trader_research/docs/experiments.md`, `src/trader/docs/runtime.md` |
 | Durable Console submission/lifecycle | Implemented; successful producer path qualified | `src/trader_console_api/docs/usage.md`, `src/trader_console_api/services/backtest_worker.py`, `tests/cross_package/workflows/test_console_execution_to_review.py` |
@@ -339,18 +338,18 @@ The data identity handoff and replay-bar identity are covered by GAP-06-02 and G
 | Compatible comparison | Implemented with explicit exclusions | `apps/trader-console/src/features/comparisons`, `src/trader_console_api/docs/usage.md` |
 | Inference, robustness, and next decision | Next-decision contract and Console path implemented; independent inference/robustness remains partial | `docs/product_state.md` capability matrix and known limits |
 
-### Executable gaps
+### Open capability behavior
 
 - **GAP-03-01 — Producer-backed Console execution qualification:** finish the real worker-to-BacktestRunner path and
   qualify restart, stale-worker, partial, failed, outage, and reconciliation-required states against isolated Postgres.
-  This narrows the existing [TRD-273](https://app.notion.com/p/3ebe5fade83181a48eb8ec296c9d71e1)/[TRD-274](https://app.notion.com/p/3ebe5fade831814c93adfe68fe401894) work rather than replacing it.
+  This narrows the existing TRD-273/TRD-274 work rather than replacing it.
 - **GAP-03-02 — Review statistical and robustness evidence:** expose Evaluation, multiple-testing, and Adversarial
-  artifacts with their protected-data roles, limitations, and claim-level blockers in run/comparison review. [Notion work item](https://app.notion.com/p/3ede5fad-e831-81b5-bca0-d0db1c47e09e).
+  artifacts with their protected-data roles, limitations, and claim-level blockers in run/comparison review.
 - **GAP-03-03 — Next-decision record:** let the researcher record reject/refine/continue and the next bounded experiment,
-  linked to exact run, data, implementation, assumptions, and review artifacts. [Notion work item](https://app.notion.com/p/3ede5fad-e831-8185-b650-c982315ae1c9).
+  linked to exact run, data, implementation, assumptions, and review artifacts.
 - **GAP-03-04 — Research execution journey qualification:** delivered for the successful data-to-definition-to-worker-
   to-review path with scope identity continuity. Broader worker failure campaigns and replay/bar-content identity remain
-  separate requirements under GAP-03-01 and GAP-06-03. [Notion work item](https://app.notion.com/p/3ede5fad-e831-813c-8f09-f9112b203ac6).
+  separate requirements under GAP-03-01 and GAP-06-03.
 
 ## Detailed story audit — UJ-04 / US-04-01
 
@@ -383,7 +382,7 @@ failed strict turn-schema validation before MCP calls. Controlled behavioral qua
 The runtime is CLI-oriented; the Console has no session agenda, public-event, checkpoint, interrupt, or terminal-decision
 workspace. These are session-governance gaps, separate from the specialist and experiment journeys below.
 
-| Acceptance point | Current status | Repository evidence |
+| Acceptance point | Evidence coverage | Repository evidence |
 | --- | --- | --- |
 | Session identity, authority, and budgets | Implemented and focused-tested | `src/trader_agents/docs/architecture.md`, `tests/trader_agents/contracts_state` |
 | Agenda, delegation, and lifecycle controls | Implemented in runtime; human Console surface absent | `src/trader_agents/coordination`, `src/trader_agents/application_runtime` |
@@ -391,7 +390,7 @@ workspace. These are session-governance gaps, separate from the specialist and e
 | Controlled model qualification | Failed gate / not accepted | `src/trader_agents/docs/qualification.md`, `tests/cross_package/qualification/test_agentic_real_model_campaign.py` |
 | Console intervention and terminal review | Absent | `apps/trader-console/src/features`, `docs/product_state.md` |
 
-### Executable gaps
+### Open capability behavior
 
 - **GAP-04-01 — Controlled third-party model qualification:** complete the pinned model/provider/tool/environment
   campaign for Coordinator, Data, and Strategy, including ambiguity, denial, recovery, and repeatability gates. The
@@ -431,7 +430,7 @@ candidate.
 handoffs; the current slice does not continue into Experiment Design or independent evaluation. Data evidence continuity
 is shared with UJ-01/UJ-06 rather than duplicated here.
 
-### Executable gaps and existing work
+### Open capability behavior
 
 - **GAP-02-03 — Controlled Strategy Engineering qualification:** qualify exact reuse, adaptation, new authorship,
   failed admission, repair, interruption, and restart against the pinned model/tool environment.
@@ -467,7 +466,7 @@ execution, evaluation/optimisation artifacts, and robustness-related artifact co
 execute experiments, request independent Evaluation/Robustness work, or expose the full lifecycle in the Console. The
 Console worker-to-runner qualification and replay-bar identity are also incomplete.
 
-### Executable gaps and existing work
+### Open capability behavior
 
 - **GAP-04-03 — Agent-to-experiment handoff:** add the approved proposal, deterministic execution request, evidence joins,
   and terminal outcome while preserving specialist ownership.
@@ -501,7 +500,7 @@ and bounded checkpoint recovery exist in separate product/runtime slices.
 artifacts and retained concurrent trajectory qualification remain open. The human next-decision contract and Console
 command/read surface now preserve exact refs, limitations, actor/time, and bounded successor inputs.
 
-### Executable gaps and existing work
+### Open capability behavior
 
 - **GAP-03-02 — Review statistical and robustness evidence:** project Evaluation, multiple-testing, and Adversarial
   artifacts with protected-data roles and claim-level limitations.
@@ -512,20 +511,20 @@ command/read surface now preserve exact refs, limitations, actor/time, and bound
 
 ## Agent-journey gap allocation
 
-| Journey | Primary human decision | Existing gap work items |
+| Journey | Primary human decision | Existing gap slices |
 | --- | --- | --- |
 | UJ-04 — Govern a delegated research session | May this bounded session run, continue, pause, resume, or stop? | GAP-04-01, GAP-04-02, GAP-04-04 |
 | UJ-07 — Delegate specialist investigation | Are the requested data and strategy inputs qualified enough to design an experiment? | GAP-02-03, GAP-04-01, GAP-04-04, plus shared GAP-06-01/02 and GAP-02-02 |
 | UJ-08 — Run a governed agent-directed experiment | Should this approved protocol be executed and what evidence did it produce? | GAP-04-03, GAP-03-01/02/04, GAP-06-03 |
 | UJ-09 — Review agent evidence and choose the next action | What does the evidence support, and what should happen next? | GAP-03-02/03, GAP-04-02/04 |
 
-## Agent-journey gap diagnosis and delivery plan — 4 October 2026
+## Agent-journey gap diagnosis and next-step orientation — 4 October 2026
 
 The four product features share runtime components, but they do not share the same acceptance claim. A passing
 specialist contract does not prove a governed session is usable; a deterministic protocol service does not prove an
 agent can propose and hand it off; and a stored artifact does not prove that a human can review it and choose the next
-action. The diagnosis therefore separates implementation, qualification, and human-surface gaps. The work items below
-are delivery tasks that qualify these features; they do not redefine the features or replace component work.
+action. The diagnosis therefore separates implementation, qualification, and human-surface gaps. The next-step notes below
+describe the capability needed to qualify these features; they do not redefine the features or replace component work.
 
 ### Session-governance gap diagnosis (UJ-04)
 
@@ -536,15 +535,15 @@ shows that the real-model gate is still failed, while the Console has no session
 
 **Gaps to fill:**
 
-| Gap | Diagnosis | Plan and owner | Closure evidence |
+| Gap | Diagnosis | Next product step | Closure evidence |
 | --- | --- | --- | --- |
 | Controlled real-model behavior | Qualification gap, not a missing deterministic contract. The active LFM profile failed material-ambiguity selection and strict turn-schema diagnostics. | Continue existing IMP-05 and GAP-04-01. Freeze model/provider, program, catalogue, environment, and fixture; repair or replace the model/profile through the qualification process; rerun ambiguity, denial, recovery, interruption, and repeatability phases. | A retained campaign result passes every mandatory gate with exact identities; until then the capability remains unqualified. |
 | Human session control surface | Product-surface gap. Runtime methods exist, but no typed Console read/command projection exposes agenda, progress, public events, checkpoint state, or operator controls. | GAP-04-02 owns the public projection and Console router/service/repository/UI. Existing Console session discovery and exact-session-link work is supporting context; it must consume the agent projection rather than invent one. | API and browser fixture can inspect, interrupt, resume, cancel, and show terminal state without prompts, hidden reasoning, or raw payloads. |
 | Retained public trajectory | Qualification/evidence gap. Public event and checkpoint projections exist, but concurrent branch attribution and fresh-process evidence need one retained verifier. | GAP-04-04 defines the fixture, redaction sink, branch identity, and recovery assertions. | Queryable fixture reconstructs session lifecycle and branch ownership after restart while excluding hidden state. |
-| Feature acceptance and implementation gap | No single acceptance item proves the human feature across those components. | The [feature-qualification work item](https://app.notion.com/p/3eee5fade83181b4af11fa900cdf2c5e) qualifies UJ-04 with an isolated Postgres/API/browser journey and records the model gate status. | One report covers create → inspect → interrupt/resume → cancel/terminal outcome, with explicit qualification exclusions. |
+| Feature acceptance and implementation gap | No single acceptance item proves the human feature across those components. | The feature-qualification slice qualifies UJ-04 with an isolated Postgres/API/browser journey and records the model gate status. | One report covers create → inspect → interrupt/resume → cancel/terminal outcome, with explicit qualification exclusions. |
 
 **Dependency order:** establish the public projection and trajectory contract; resolve the model gate; implement the
-Console workspace; then complete the UJ-04 feature-qualification work item. The UI can be developed against deterministic fixtures while the real-model gate
+Console workspace; then complete the UJ-04 feature-qualification slice. The UI can be developed against deterministic fixtures while the real-model gate
 is blocked, but the journey cannot be described as controlled until the campaign passes.
 
 ### Specialist-investigation gap diagnosis (UJ-07)
@@ -557,15 +556,15 @@ handoffs.
 
 **Gaps to fill:**
 
-| Gap | Diagnosis | Plan and owner | Closure evidence |
+| Gap | Diagnosis | Next product step | Closure evidence |
 | --- | --- | --- | --- |
 | Data and Strategy model qualification | Shared external qualification gap. IMP-06 is explicitly blocked by IMP-05; GAP-02-03 covers Strategy but not the shared Coordinator/Data gate. | Resolve GAP-04-01/IMP-05 first, then run IMP-06 and GAP-02-03 against one frozen profile and isolated MCP/Postgres/coding environment. | Campaign retains ready, backfill, out-of-envelope, unfit, reuse, adaptation, authorship, failed-admission, repair, interruption, and restart outcomes. |
 | Concurrent branch and handoff proof | Existing branch contracts are focused-tested; one retained cross-branch acceptance path is still required. | GAP-04-04 owns public branch attribution; extend the guarded `test_postgres_agentic_end_to_end.py` fixture for disjoint concurrent branches, digest mismatch, lost responses, and fresh-process resume. | Coordinator accepts only matching owner/producer/requester/actor/type/digest and preserves separate branch evidence. |
 | Human visibility and lineage | Console gap, shared with data and strategy journeys. A specialist return exists as an artifact, but the human cannot inspect its branch, blockers, admission, or exact Data lineage in one place. | GAP-04-02 provides the session projection; GAP-02-02 provides implementation/admission lineage; GAP-06-01/02 provide Data evidence and scope continuity. | Console review shows branch status and exact artifact refs, with actionable partial/blocked states and no silent scope changes. |
-| Feature acceptance and implementation gap | Existing tests prove components, not a stable human outcome under the accepted qualification profile. | The [feature-qualification work item](https://app.notion.com/p/3eee5fade83181eb972af2bf3f54c1f0) qualifies UJ-07 with one pinned session and Data/Strategy branches, including concurrent attribution and recovery. | A retained handoff graph distinguishes ready, partial, blocked, reused, adapted, authored, and failed-admission results. |
+| Feature acceptance and implementation gap | Existing tests prove components, not a stable human outcome under the accepted qualification profile. | The feature-qualification slice qualifies UJ-07 with one pinned session and Data/Strategy branches, including concurrent attribution and recovery. | A retained handoff graph distinguishes ready, partial, blocked, reused, adapted, authored, and failed-admission results. |
 
 **Dependency order:** unblock Coordinator qualification; run Data and Strategy qualification together; fix the public
-handoff/lineage projection; then complete the UJ-07 feature-qualification work item. UJ-07 does not require Experiment Design or Evaluation to decide whether
+handoff/lineage projection; then complete the UJ-07 feature-qualification slice. UJ-07 does not require Experiment Design or Evaluation to decide whether
 the specialist inputs are ready, but it must return explicit blockers when those later stages are unavailable.
 
 ### Agent-directed experiment gap diagnosis (UJ-08)
@@ -577,17 +576,17 @@ planned; and the real Console worker/replay identity path remains incomplete.
 
 **Gaps to fill:**
 
-| Gap | Diagnosis | Plan and owner | Closure evidence |
+| Gap | Diagnosis | Next product step | Closure evidence |
 | --- | --- | --- | --- |
-| Experiment Design authority and graph | Architecture and implementation gap. The design is still in review; deterministic proposal services are not a model-backed specialist. | Complete the canonical `plans/agent_designs/experiment_design.md` review and its existing Notion architecture work; implement only the approved proposal loop and preserve human approval. GAP-04-03 owns the first bounded handoff. | A typed proposal contains claims, assumptions, protected-data roles, budgets, stage gates, and exact inputs; approval changes status without changing design identity. |
-| Long-running execution boundary | Open platform decision. TRD-105 still leaves synchronous bounded calls versus MCP jobs unresolved, while this journey requires durable queued/running/partial/failed/reconciliation receipts. | Resolve [TRD-105](https://app.notion.com/p/3d0e5fade83181a797adf62893e657b4) before claiming general agent-directed execution; align GAP-04-03 with GAP-03-01 worker lifecycle and the chosen job contract. | A fresh process can inspect and recover a long operation without duplicate mutation; lifecycle and ambiguous-outcome receipts are durable. |
+| Experiment Design authority and graph | Architecture and implementation gap. The design is still in review; deterministic proposal services are not a model-backed specialist. | Complete the canonical `plans/agent_designs/experiment_design.md` review and its existing architecture decision; implement only the approved proposal loop and preserve human approval. GAP-04-03 owns the first bounded handoff. | A typed proposal contains claims, assumptions, protected-data roles, budgets, stage gates, and exact inputs; approval changes status without changing design identity. |
+| Long-running execution boundary | Open platform decision. TRD-105 still leaves synchronous bounded calls versus MCP jobs unresolved, while this journey requires durable queued/running/partial/failed/reconciliation receipts. | Resolve TRD-105 before claiming general agent-directed execution; align GAP-04-03 with GAP-03-01 worker lifecycle and the chosen job contract. | A fresh process can inspect and recover a long operation without duplicate mutation; lifecycle and ambiguous-outcome receipts are durable. |
 | Exact replay identity | Core/research gap. A protocol can pin snapshots, but bar-content identity after inspection is not yet enforced. | GAP-06-03 defines the digest/source/revalidation policy and gates GAP-03-01/04 and this journey. | Execution refuses changed bars/source or records the permitted environmental difference explicitly. |
-| Independent Evaluation and Robustness | Producer capability gap, separate from GAP-03-02's Console projection. Parameter-optimisation reports exist, but general model-backed Evaluation and Robustness/WFO paths remain absent and their architecture records are still in review. | Progress the existing Evaluation architecture work and [Robustness/WFO architecture](https://app.notion.com/p/3d0e5fad-e831-8112-9024-efb99cc9d95e); keep the blocked roadmap initiative visible. GAP-03-02 consumes whatever artifacts are actually available and must preserve absence/limitations. | Independent artifacts identify claim scope, protected data, limitations, negative findings, and dissent; no Coordinator verdict substitutes for either authority. |
+| Independent Evaluation and Robustness | Producer capability gap, separate from GAP-03-02's Console projection. Parameter-optimisation reports exist, but general model-backed Evaluation and Robustness/WFO paths remain absent and their architecture records are still in review. | Progress the existing Evaluation architecture work and Robustness/WFO architecture; keep the blocked roadmap initiative visible. GAP-03-02 consumes whatever artifacts are actually available and must preserve absence/limitations. | Independent artifacts identify claim scope, protected data, limitations, negative findings, and dissent; no Coordinator verdict substitutes for either authority. |
 | Agent-to-experiment integration | Cross-boundary gap. GAP-04-03 must join approved Data/Strategy returns to proposal, execution, review, and terminal outcome without granting the Coordinator experiment or quality authority. | Implement GAP-04-03 after the upstream model and protocol/job decisions; qualify denial, mismatch, retry, recovery, and approval paths. | Public trajectory ends in a reproducible experiment/evidence bundle or typed blocker, with canonical refs at every handoff. |
-| Feature acceptance and implementation gap | No single acceptance item currently proves the complete agent-to-experiment path. | The [feature-qualification work item](https://app.notion.com/p/3eee5fade8318166a59cdf5a60303f4d) qualifies UJ-08 by composing GAP-04-03, GAP-03-01/02/04, and GAP-06-03. | Isolated workflow fixture proves proposal → approval → job/run → independent evidence or blocker → terminal outcome. |
+| Feature acceptance and implementation gap | No single acceptance item currently proves the complete agent-to-experiment path. | The feature-qualification slice qualifies UJ-08 by composing GAP-04-03, GAP-03-01/02/04, and GAP-06-03. | Isolated workflow fixture proves proposal → approval → job/run → independent evidence or blocker → terminal outcome. |
 
 **Dependency order:** settle Experiment Design authority and TRD-105; resolve replay identity; implement the bounded
-agent handoff; make independent review artifacts available; then complete the UJ-08 feature-qualification work item. Until independent Evaluation/Robustness
+agent handoff; make independent review artifacts available; then complete the UJ-08 feature-qualification slice. Until independent Evaluation/Robustness
 artifacts exist, the journey may prove deterministic execution and explicit absence, but cannot support a full research
 quality claim.
 
@@ -595,19 +594,19 @@ quality claim.
 
 **Baseline:** canonical artifact references, public agent decisions, rich backtest review, comparison exclusions, and
 bounded checkpoint recovery exist separately. The Console has no unified agent evidence graph; GAP-03-02 and GAP-03-03
-are Ready; and retained trajectory plus session projections remain open.
+remain open: independent review evidence and retained trajectory/session projections are still needed.
 
 **Gaps to fill:**
 
-| Gap | Diagnosis | Plan and owner | Closure evidence |
+| Gap | Diagnosis | Next product step | Closure evidence |
 | --- | --- | --- | --- |
 | Evidence graph projection | Human-surface gap. Existing artifacts are queryable by producer, but the reviewer needs one exact session/branch/run graph with claim scope and limitations. | GAP-03-02 projects Evaluation/multiple-testing/Adversarial evidence; GAP-04-02/04 supply session and trajectory refs. Keep producer calculations outside the Console. | API and UI resolve exact refs and preserve missing, incompatible, negative, and incomplete states with claim-level blockers. |
 | Next-decision artifact | Product-contract gap. The human can inspect run evidence, but reject/refine/continue and successor inputs are not yet a durable first-class record. | GAP-03-03 defines the revisioned command/read path with exact run/data/implementation/assumption/evidence refs. | A fresh process reopens the decision, its rationale, actor/time, limitations, and bounded successor experiment. |
 | Independent review boundary | Maturity dependency. A model conclusion or Coordinator receipt is not the Evaluation Agent's independent research-quality verdict. | Complete the existing Evaluation and Robustness architecture records and their producer paths before presenting stronger claims; GAP-03-02 must label unavailable maturity. | Review distinguishes agent recommendation, deterministic diagnostics, independent Evaluation, Robustness findings, and human decision. |
-| Feature acceptance and implementation gap | No single acceptance item proves the review surface works after session recovery and evidence gaps. | The [feature-qualification work item](https://app.notion.com/p/3eee5fade83181f8bc2dd6ca8f3c1673) qualifies UJ-09 by composing GAP-03-02/03 and GAP-04-02/04. | Browser/API fixture opens the evidence graph, records reject/refine/continue or successor, and reconstructs the decision after restart. |
+| Feature acceptance and implementation gap | No single acceptance item proves the review surface works after session recovery and evidence gaps. | The feature-qualification slice qualifies UJ-09 by composing GAP-03-02/03 and GAP-04-02/04. | Browser/API fixture opens the evidence graph, records reject/refine/continue or successor, and reconstructs the decision after restart. |
 
 **Dependency order:** establish public session/trajectory projections; land evidence and next-decision contracts; add
-independent review artifacts as their own maturity gates; then complete the UJ-09 feature-qualification work item. UJ-09 can be useful before all review agents
+independent review artifacts as their own maturity gates; then complete the UJ-09 feature-qualification slice. UJ-09 can be useful before all review agents
 exist if the UI explicitly labels missing evidence; it must never convert absence into a positive verdict.
 
 ### Cross-journey delivery sequence
@@ -615,14 +614,13 @@ exist if the UI explicitly labels missing evidence; it must never convert absenc
 1. **Unblock qualification:** resolve the Coordinator model gate, then rerun Data and Strategy specialist campaigns.
 2. **Fix public observability:** settle the session/trajectory projection and Console command boundary, including fresh
    process and concurrent branch identity.
-3. **Close specialist investigation:** complete the UJ-04 and UJ-07 feature-qualification work items against the same pinned environment and record their
+3. **Close specialist investigation:** complete the UJ-04 and UJ-07 feature-qualification slices against the same pinned environment and record their
    exclusions.
 4. **Settle experiment authority:** review Experiment Design and Robustness architecture, resolve TRD-105's job model,
    and enforce replay identity before expanding the agent loop.
 5. **Build experiment/review path:** deliver GAP-04-03, GAP-03-01/02/03/04, and independent review artifacts; preserve
    explicit blockers where a producer is not yet available.
-6. **Qualify the human outcomes:** complete the UJ-08 and UJ-09 feature-qualification work items, and link their retained evidence to Product State and
-   the work items. A feature is complete only when its own decision can be made and reconstructed, even if the result is
+6. **Qualify the human outcomes:** complete the UJ-08 and UJ-09 feature-qualification slices, and link their retained evidence to Product State. A feature is complete only when its own decision can be made and reconstructed, even if the result is
    a justified stop.
 
 ## Detailed story audit — UJ-05 / US-05-01
@@ -661,7 +659,7 @@ broker scope, runtime/session identities, broker and risk outcomes, reconciliati
 each phase. External Alpaca-paper checks remain explicitly optional, and funded-live execution still needs a separate
 admission standard. Research agents and MCP tools remain prohibited from broker mutation.
 
-| Acceptance point | Current status | Repository evidence |
+| Acceptance point | Evidence coverage | Repository evidence |
 | --- | --- | --- |
 | Runtime safety and reconciliation | Implemented and covered by the retained paper incident campaign | `src/trader/docs/runtime.md`, `src/trader/docs/runtime_hot_path_and_reconciliation.md`, `src/trader/runtime`, `tests/cross_package/qualification/test_paper_trading_admission_campaign.py` |
 | Paper broker and risk path | Implemented and tested through runtime contracts | `src/trader/docs/broker_and_portfolio.md`, `tests/trader/runtime` |
@@ -669,53 +667,52 @@ admission standard. Research agents and MCP tools remain prohibited from broker 
 | Console operational observability/control | Implemented for the current read-only and authorized paper-command surface | `src/trader_console_api/docs/usage.md`, `apps/trader-console/src/features/paper-operations` |
 | Controlled paper qualification | Deterministic internal-paper campaign retained; external Alpaca-paper checks are not part of the offline gate | `tests/cross_package/qualification/test_paper_trading_admission_campaign.py`, `src/trader/docs/runtime.md` |
 
-### Executable gaps
+### Open capability behavior
 
 - **GAP-05-01 — Paper-candidate admission record:** delivered as the human decision, evidence refs, exact versions,
-  risk limits, broker/account scope, monitoring policy, and explicit paper eligibility for a general strategy candidate. [Notion work item](https://app.notion.com/p/3ede5fad-e831-812c-a51d-c5b7bc665a93).
+  risk limits, broker/account scope, monitoring policy, and explicit paper eligibility for a general strategy candidate.
 - **GAP-05-02 — Console paper operations read model:** delivered for runtime heartbeat/health, data freshness, session,
-  orders, fills, positions, risk outcomes, reconciliation, and incident history with unavailable/incomplete states preserved. [Notion work item](https://app.notion.com/p/3ede5fad-e831-814e-874e-f9a23d0eac9e).
+  orders, fills, positions, risk outcomes, reconciliation, and incident history with unavailable/incomplete states preserved.
 - **GAP-05-03 — Authorized paper controls:** delivered as the explicit API/service boundary for operator-owned start,
-  pause, stop, and halt/reconcile actions with audit receipts and no agent/MCP access to broker mutation. [Notion work item](https://app.notion.com/p/3ede5fad-e831-81b1-8149-c0d762f3e6a7).
+  pause, stop, and halt/reconcile actions with audit receipts and no agent/MCP access to broker mutation.
 - **GAP-05-04 — Paper qualification campaign:** completed for the current paper horizon through a retained deterministic
   internal-paper campaign. The campaign covers startup recovery, stale data, mismatch, duplicate triggers, rejected
-  orders, restart, halt, reconciliation, and operator intervention; its threshold and limits remain explicit. [Notion
-  work item](https://app.notion.com/p/3ede5fad-e831-8127-9464-e1edcf2b5f2a).
+  orders, restart, halt, reconciliation, and operator intervention; its threshold and limits remain explicit.
 
 ## Functional requirement audit — FR-01 through FR-14
 
 The journeys above are the user-facing order of work. This index checks the existing functional requirements against the
 same repository evidence and prevents a journey gap from hiding a cross-cutting contract gap.
 
-| Requirement | Current state | Evidence and remaining gap |
+| Requirement | Evidence coverage | Evidence and remaining gap |
 | --- | --- | --- |
-| **FR-01 — Data identity and provenance** | Partial at the Console boundary | Data/MCP snapshots, manifests, and provenance exist; Console quality/lineage and reusable scope are missing. Owned by GAP-01-01, GAP-01-02, GAP-06-02, and GAP-06-03. |
-| **FR-02 — Data exploration and fitness** | Partial | Console discovery, bars, windows, and chart states exist; quality, completeness, provider capability, and alternative comparison are not exposed. Owned by GAP-01-01 through GAP-01-04. |
-| **FR-03 — Versioned strategy construction** | Partial | Admission, immutable specifications, isolated coding, and catalogue discovery exist; the hypothesis brief, Console lineage, controlled model path, and integrated handoff are missing. Owned by GAP-02-01 through GAP-02-04. |
-| **FR-04 — Reproducible backtest execution** | Partial at Console execution | Research/core execution is controlled and deterministic; Console worker qualification and replay-bar identity continuity remain open. Owned by GAP-03-01, GAP-03-04, and GAP-06-03. |
-| **FR-05 — Backtest evidence and limits** | Partial at review decision | Core and Console expose rich run evidence; Evaluation/Adversarial readout, next-decision capture, and a fully qualified worker journey remain open. Owned by GAP-03-02 through GAP-03-04. |
-| **FR-06 — Fair comparison and inference** | Partial | Compatible comparison and optimisation/evaluation artifacts exist; Console claim-level inference and robustness presentation is incomplete. Owned by GAP-03-02 and GAP-03-03. |
-| **FR-07 — Bounded agent research** | Partial | Session, authority, budgets, specialist loops, and MCP policy exist; controlled third-party model acceptance and extension into experiment execution remain open. Owned by GAP-02-03, GAP-04-01, and GAP-04-03. |
+| **FR-01 — Data identity and provenance** | Partial at the Console boundary | Data/MCP snapshots, manifests, and provenance exist; Console quality/lineage and reusable scope are missing. |
+| **FR-02 — Data exploration and fitness** | Partial | Console discovery, bars, windows, and chart states exist; quality, completeness, provider capability, and alternative comparison are not exposed. |
+| **FR-03 — Versioned strategy construction** | Partial | Admission, immutable specifications, isolated coding, and catalogue discovery exist; the hypothesis brief, Console lineage, controlled model path, and integrated handoff are missing. |
+| **FR-04 — Reproducible backtest execution** | Partial at Console execution | Research/core execution is controlled and deterministic; Console worker qualification and replay-bar identity continuity remain open. |
+| **FR-05 — Backtest evidence and limits** | Partial at review decision | Core and Console expose rich run evidence; Evaluation/Adversarial readout, next-decision capture, and a fully qualified worker journey remain open. |
+| **FR-06 — Fair comparison and inference** | Partial | Compatible comparison and optimisation/evaluation artifacts exist; Console claim-level inference and robustness presentation is incomplete. |
+| **FR-07 — Bounded agent research** | Partial | Session, authority, budgets, specialist loops, and MCP policy exist; controlled third-party model acceptance and extension into experiment execution remain open. |
 | **FR-08 — Governed MCP access** | Implemented for the registered research surface; qualification remains scoped | Typed registration, envelopes, ownership, side-effect policy, and research-agent prohibitions are documented and tested. Real-model campaign evidence remains part of GAP-04-01. |
-| **FR-09 — Research trace and recoverability** | Partial as a human product surface | Redacted public events, bounded checkpoints, fresh-process recovery, and canonical receipts exist; retained trajectory qualification and Console inspection are open. Owned by GAP-04-02 and GAP-04-04. |
-| **FR-10 — Console research workflow** | Partial | Data, authoring, execution, review, and comparison screens exist as separate slices; exact handoffs, agent session visibility, next decisions, and operational continuity are missing. Owned by GAP-02-02, GAP-03-03/04, GAP-04-02, GAP-05-02/03, and GAP-06-02/04. |
+| **FR-09 — Research trace and recoverability** | Partial as a human product surface | Redacted public events, bounded checkpoints, fresh-process recovery, and canonical receipts exist; retained trajectory qualification and Console inspection are open. |
+| **FR-10 — Console research workflow** | Partial | Data, authoring, execution, review, and comparison screens exist as separate slices; exact handoffs, agent session visibility, next decisions, and operational continuity are missing. |
 | **FR-11 — Controlled deployment** | Implemented for the current paper horizon; funded-live admission remains future | Human paper admission records exact versions, evidence, limits, broker scope, monitoring policy, expiry, and human approval; the retained campaign supports paper admission without claiming funded-live readiness. |
 | **FR-12 — Trading observability and intervention** | Implemented for core and Console paper operation; external broker qualification remains bounded | Runtime status, health, reconciliation, halt, read-only operational evidence, and authorized human commands are covered by the retained campaign's incident matrix. |
-| **FR-13 — Auditability across the lifecycle** | Partial across seams | Domain artifacts and actor/producer lineage exist, but data-to-authoring continuity, next-decision records, agent trajectory retention, and paper admission lineage are not yet one inspectable chain. Owned across GAP-01-02, GAP-03-03, GAP-04-04, and GAP-05-01. |
-| **FR-14 — Demonstrable quantitative development evidence** | Partial | The repository contains reproducible implementation, backtest, agent, and runtime evidence; an integrated case study with reviewed limitations and an operational next decision is still a product outcome. Owned by GAP-02-04, GAP-03-03/04, GAP-04-04, and GAP-05-04. |
+| **FR-13 — Auditability across the lifecycle** | Partial across seams | Domain artifacts and actor/producer lineage exist, but data-to-authoring continuity, next-decision records, agent trajectory retention, and paper admission lineage are not yet one inspectable chain.  |
+| **FR-14 — Demonstrable quantitative development evidence** | Partial | The repository contains reproducible implementation, backtest, agent, and runtime evidence; an integrated case study with reviewed limitations and an operational next decision is still a product outcome. |
 
 FR-08 is the only requirement whose registered deterministic contract is currently implemented without a new product
 surface in this tranche. Its real-world utility still depends on the model qualification and human workflow gaps that
 consume it. This audit therefore treats implementation, qualification, and human usability as separate claims.
 
-## Gap size and delivery decomposition
+## Capability gaps and next-step orientation
 
 These are relative delivery sizes, not calendar promises. **S** is a bounded change inside one package with a known
 contract and focused tests. **M** crosses a small number of package or persistence seams and needs an integration check.
 **L** crosses several packages, introduces a new authority or evidence boundary, or requires controlled model/broker
 qualification. The size includes implementation, documentation, and verification; it is not a measure of product value.
 
-| Requirement | Gap size | Why the gap has this size | Required delivery units and dependency gate |
+| Requirement | Gap size | Why the gap has this size | Capability steps and dependency |
 | --- | --- | --- | --- |
 | FR-01 — Data identity and provenance | **L** | Identity must survive Data, Console, authoring, replay, and research persistence; the current query-scope ID is not bar-content identity. | **GAP-01-02 (M):** persist/reopen exact snapshot; **GAP-06-01 (M):** expose quality/provenance; **GAP-06-02 (M):** typed authoring handoff; **GAP-06-03 (L):** define/enforce replay identity; **GAP-06-04 (L):** qualify the chain. The replay decision gates execution qualification. |
 | FR-02 — Data exploration and fitness | **M** | Data services are strong; the missing work is a Console evidence projection, provider capability state, and bounded alternative comparison. | **GAP-01-01 / GAP-06-01 (M):** quality readout; **GAP-01-03 (M):** alternative comparison; **GAP-01-04 (S):** discovery/load capability contract. Browser qualification follows the response contract. |
@@ -732,7 +729,7 @@ qualification. The size includes implementation, documentation, and verification
 | FR-13 — Auditability across the lifecycle | **L** | Each domain has artifacts, but one inspectable chain across data, strategy, agent, experiment, review, decision, and paper admission is not yet preserved. | **GAP-01-02 (M):** saved data identity; **GAP-03-03 (M):** decision artifact; **GAP-04-04 (M):** trajectory evidence; **GAP-05-01 (L):** admission lineage; then **GAP-03-04 (L)** for integrated reconstruction. |
 | FR-14 — Demonstrable quantitative development evidence | **M** after the foundations | The raw evidence exists; the missing product outcome is a reproducible case study that explains choices, tests, limitations, and revisions. | **GAP-02-04 (L):** candidate handoff; **GAP-03-03/04 (M/L):** reviewed decision and integrated run; **GAP-04-04 (M):** public trajectory evidence; **GAP-05-04 (L):** paper qualification case. This is downstream of the preceding evidence chain. |
 
-### Delivery sequence implied by the sizes
+### Sequence implied by capability dependencies
 
 1. **Fix identity contracts:** complete the data snapshot, quality projection, hypothesis brief, implementation lineage,
    and public agent-event projections. These are the inputs that later work must carry without re-entry.
@@ -745,13 +742,13 @@ qualification. The size includes implementation, documentation, and verification
 5. **Assemble professional evidence:** use the accepted artifacts and decisions to produce a reproducible case study with
    explicit limitations and revisions, satisfying FR-14 without making an unsupported profitability claim.
 
-## Implementation playbook for executable gaps
+## Next-step orientation for executable capability gaps
 
-The audit above describes the product gap; this section describes how to close it. Every gap is implementation-ready
-when its contract owner, data flow, repository surfaces, verification fixtures, documentation changes, dependencies,
-and completion evidence are known. The paths below are the intended seams, not permission to bypass package ownership.
-Each implementation should first create or update its linked Notion work item, then land the smallest contract and
-focused tests before adding the next adapter or UI projection. A gap closes only when the contract tests, package docs,
+The audit above describes the product gap; this section records the next implementation steps. Every gap has a named
+contract boundary, data flow, repository surface, verification fixture, documentation change, dependency, and completion
+evidence. The paths below are the intended seams, not permission to bypass package ownership.
+Each implementation should first align its contract and focused tests with this playbook, then add the next adapter
+or UI projection. A gap closes only when the contract tests, package docs,
 and the stated integrated evidence all pass.
 
 ### Data identity and exploration (UJ-06 / UJ-01)
@@ -924,7 +921,7 @@ and the stated integrated evidence all pass.
    exact evidence handoff; map queued, running, completed, partial, failed, stale-worker, outage, and
    reconciliation-required outcomes without inventing a second execution engine.
 2. **Owning surfaces:** existing `src/trader_console_api/services/{backtest_worker.py,backtest_executor.py}` and
-   execution repositories, `src/trader/` runner contracts, and the TRD-273/TRD-274 work items.
+   execution repositories, `src/trader/` runner contracts, and the TRD-273/TRD-274 scope.
 3. **Verification:** isolated Postgres worker fixtures with restart, duplicate submission, lost response, partial
    persistence, and reconciliation cases; broaden `tests/trader_console_api/services/test_backtest_worker.py` and the
    cross-package qualification suite.
@@ -1071,13 +1068,10 @@ and the stated integrated evidence all pass.
    with thresholds, environment markers, and known limits. Completion is a retained campaign report that supports or
    rejects paper admission; it does not claim funded-live readiness.
 
-### Definition of implementation-ready
+### Definition of a closed capability gap
 
-Before a gap moves from Ready to In progress, its Notion work item must link this playbook and name the applicable
-contract owner, dependency gate, test module or fixture, documentation authority, and completion evidence. During
-implementation, the work item records the actual module paths and any contract decision that changes the playbook. It
-can move to Done only after focused tests, required cross-package or external qualification, documentation checks, and
-the evidence artifact are linked. This keeps a “partial” status measurable: the remaining work is the unchecked steps
+A gap closes only after its focused tests, required cross-package or external qualification, documentation checks, and
+evidence artifact are complete. This keeps a “partial” capability measurable: the remaining work is the unchecked steps
 above, not an unbounded feeling that the feature is incomplete.
 
 ## Candidate functional requirements
