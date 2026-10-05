@@ -649,31 +649,34 @@ order reconciliation; metrics; health/status payloads; and operator commands for
 halt status/set/clear, and reconciliation. Backtests always force the internal paper broker. ML deployment manifests
 and parity validation can produce bounded model paper eligibility, but do not grant trading authority.
 
-**Partial:** the Console exposes configured scope and connection/readiness information only; it has no paper-runtime
-status, order/position/reconciliation view, deployment admission flow, or authorized halt/stop controls. There is no
-general candidate-to-paper admission artifact or end-to-end paper qualification in the current product state. Research
-agents and MCP tools are correctly prohibited from broker mutation, so this journey cannot be completed by agent
-automation alone.
+**Implemented for the current paper horizon:** the Console exposes paper-runtime status and read-only operational
+evidence, a human-owned candidate admission pins the strategy/risk/data and evidence versions, and the authorized
+command path covers start, pause, stop, halt, and reconciliation with audited receipts. A retained deterministic
+internal-paper campaign now exercises the runtime incident matrix and records the admission, exact configuration and
+broker scope, runtime/session identities, broker and risk outcomes, reconciliation result, and incident receipt for
+each phase. External Alpaca-paper checks remain explicitly optional, and funded-live execution still needs a separate
+admission standard. Research agents and MCP tools remain prohibited from broker mutation.
 
 | Acceptance point | Current status | Repository evidence |
 | --- | --- | --- |
-| Runtime safety and reconciliation | Implemented as core/operator CLI behavior | `src/trader/docs/runtime.md`, `src/trader/docs/runtime_hot_path_and_reconciliation.md`, `src/trader/runtime` |
+| Runtime safety and reconciliation | Implemented and covered by the retained paper incident campaign | `src/trader/docs/runtime.md`, `src/trader/docs/runtime_hot_path_and_reconciliation.md`, `src/trader/runtime`, `tests/cross_package/qualification/test_paper_trading_admission_campaign.py` |
 | Paper broker and risk path | Implemented and tested through runtime contracts | `src/trader/docs/broker_and_portfolio.md`, `tests/trader/runtime` |
-| Candidate/deployment admission | Partial for ML; absent as general paper admission | `src/trader_mcp/docs/tools.md`, `docs/product_state.md` capability matrix |
-| Console operational observability/control | Absent beyond configured context and health | `src/trader_console_api/docs/usage.md`, `apps/trader-console/src/features/connection` |
-| Controlled paper qualification | Absent | `docs/product_state.md` known limits |
+| Candidate/deployment admission | Human paper admission is implemented; funded-live admission remains future | `src/trader_research/governance/paper_admission.py`, `src/trader_console_api/services/paper_operator_commands.py` |
+| Console operational observability/control | Implemented for the current read-only and authorized paper-command surface | `src/trader_console_api/docs/usage.md`, `apps/trader-console/src/features/paper-operations` |
+| Controlled paper qualification | Deterministic internal-paper campaign retained; external Alpaca-paper checks are not part of the offline gate | `tests/cross_package/qualification/test_paper_trading_admission_campaign.py`, `src/trader/docs/runtime.md` |
 
 ### Executable gaps
 
-- **GAP-05-01 — Paper-candidate admission record:** define and persist the human decision, evidence refs, exact versions,
+- **GAP-05-01 — Paper-candidate admission record:** delivered as the human decision, evidence refs, exact versions,
   risk limits, broker/account scope, monitoring policy, and explicit paper eligibility for a general strategy candidate. [Notion work item](https://app.notion.com/p/3ede5fad-e831-812c-a51d-c5b7bc665a93).
-- **GAP-05-02 — Console paper operations read model:** expose runtime heartbeat/health, data freshness, session, orders,
-  fills, positions, risk outcomes, reconciliation, and incident history with unavailable/incomplete states preserved. [Notion work item](https://app.notion.com/p/3ede5fad-e831-814e-874e-f9a23d0eac9e).
-- **GAP-05-03 — Authorized paper controls:** add an explicit API/service boundary for operator-owned start, pause, stop,
-  and halt/reconcile actions with audit receipts and no agent/MCP access to broker mutation. [Notion work item](https://app.notion.com/p/3ede5fad-e831-81b1-8149-c0d762f3e6a7).
-- **GAP-05-04 — Paper qualification campaign:** run isolated paper fixtures and, where permitted, controlled Alpaca-paper
-  scenarios for startup recovery, stale data, mismatch, duplicate triggers, rejected orders, restart, halt, and
-  reconciliation; document the admission threshold and known limits. [Notion work item](https://app.notion.com/p/3ede5fad-e831-8127-9464-e1edcf2b5f2a).
+- **GAP-05-02 — Console paper operations read model:** delivered for runtime heartbeat/health, data freshness, session,
+  orders, fills, positions, risk outcomes, reconciliation, and incident history with unavailable/incomplete states preserved. [Notion work item](https://app.notion.com/p/3ede5fad-e831-814e-874e-f9a23d0eac9e).
+- **GAP-05-03 — Authorized paper controls:** delivered as the explicit API/service boundary for operator-owned start,
+  pause, stop, and halt/reconcile actions with audit receipts and no agent/MCP access to broker mutation. [Notion work item](https://app.notion.com/p/3ede5fad-e831-81b1-8149-c0d762f3e6a7).
+- **GAP-05-04 — Paper qualification campaign:** completed for the current paper horizon through a retained deterministic
+  internal-paper campaign. The campaign covers startup recovery, stale data, mismatch, duplicate triggers, rejected
+  orders, restart, halt, reconciliation, and operator intervention; its threshold and limits remain explicit. [Notion
+  work item](https://app.notion.com/p/3ede5fad-e831-8127-9464-e1edcf2b5f2a).
 
 ## Functional requirement audit — FR-01 through FR-14
 
@@ -692,8 +695,8 @@ same repository evidence and prevents a journey gap from hiding a cross-cutting 
 | **FR-08 — Governed MCP access** | Implemented for the registered research surface; qualification remains scoped | Typed registration, envelopes, ownership, side-effect policy, and research-agent prohibitions are documented and tested. Real-model campaign evidence remains part of GAP-04-01. |
 | **FR-09 — Research trace and recoverability** | Partial as a human product surface | Redacted public events, bounded checkpoints, fresh-process recovery, and canonical receipts exist; retained trajectory qualification and Console inspection are open. Owned by GAP-04-02 and GAP-04-04. |
 | **FR-10 — Console research workflow** | Partial | Data, authoring, execution, review, and comparison screens exist as separate slices; exact handoffs, agent session visibility, next decisions, and operational continuity are missing. Owned by GAP-02-02, GAP-03-03/04, GAP-04-02, GAP-05-02/03, and GAP-06-02/04. |
-| **FR-11 — Controlled deployment** | Partial for model evidence; absent for general paper admission | ML deployment manifests can establish bounded model paper eligibility, while a general human candidate admission and paper transition record is absent. Owned by GAP-05-01 and GAP-05-04. |
-| **FR-12 — Trading observability and intervention** | Partial in core/operator CLI; absent in Console | Runtime status, health, reconciliation, halt, and operator commands exist in core; Console read models and authorized controls are missing. Owned by GAP-05-02 and GAP-05-03. |
+| **FR-11 — Controlled deployment** | Implemented for the current paper horizon; funded-live admission remains future | Human paper admission records exact versions, evidence, limits, broker scope, monitoring policy, expiry, and human approval; the retained campaign supports paper admission without claiming funded-live readiness. |
+| **FR-12 — Trading observability and intervention** | Implemented for core and Console paper operation; external broker qualification remains bounded | Runtime status, health, reconciliation, halt, read-only operational evidence, and authorized human commands are covered by the retained campaign's incident matrix. |
 | **FR-13 — Auditability across the lifecycle** | Partial across seams | Domain artifacts and actor/producer lineage exist, but data-to-authoring continuity, next-decision records, agent trajectory retention, and paper admission lineage are not yet one inspectable chain. Owned across GAP-01-02, GAP-03-03, GAP-04-04, and GAP-05-01. |
 | **FR-14 — Demonstrable quantitative development evidence** | Partial | The repository contains reproducible implementation, backtest, agent, and runtime evidence; an integrated case study with reviewed limitations and an operational next decision is still a product outcome. Owned by GAP-02-04, GAP-03-03/04, GAP-04-04, and GAP-05-04. |
 

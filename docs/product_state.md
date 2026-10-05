@@ -206,7 +206,11 @@ intervention, experiment handoff, and the unified evidence-review surface remain
 UJ-05 has conservative core paper-runtime and operator-CLI safety behavior. Human paper admission, the Console's
 read-only paper-operations projection, and an admission-validated, human-only audited command queue for
 start/pause/stop/halt/reconcile are implemented. Runtime consumption records terminal or ambiguous outcomes; the
-retained paper qualification campaign remains absent. UJ-06 joins these seams and is tracked
+retained paper qualification campaign now passes as a deterministic internal-paper gate. Its matrix covers startup
+recovery, stale data, broker/universe mismatch, duplicate triggers, risk and broker rejection, fresh-service restart,
+halt, reconciliation, and operator intervention, with admission/configuration/broker scope, runtime/session identity,
+responses, risk actions, reconciliation results, and incident receipts retained per phase. An Alpaca-paper account
+check is optional and separate; no funded-live or profitability claim follows. UJ-06 joins these seams and is tracked
 by the four data-to-backtest work items in its detailed audit.
 
 GAP-03-02 now delivers the Console projection for review evidence. Run detail reads expose a typed, producer-owned
@@ -863,8 +867,10 @@ trading and live trading. This evidence does not apply to the model-backed repla
   Its validator fails closed on missing or changed evidence and rejects agent/MCP principals. The Console paper
   operations read model is available through `/api/paper/runtime`; authorized human operators can submit admission-
   validated commands through `/api/paper/commands`, and the core runtime consumes them through existing halt, stop,
-  and reconciliation primitives. The read projection remains separate from producer runtime mutation, and a retained
-  paper qualification campaign remains GAP-05-04.
+  and reconciliation primitives. The read projection remains separate from producer runtime mutation. The retained
+  deterministic paper qualification campaign is implemented in
+  `tests/cross_package/qualification/test_paper_trading_admission_campaign.py`; it supports the current paper horizon
+  and does not establish funded-live readiness.
 
 ## Canonical References
 

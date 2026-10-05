@@ -132,6 +132,24 @@ Agent, MCP, and non-human identities cannot submit these commands.
 Health classification is computed as a typed pure assessment from normalized run, cycle, market-data, halt, and
 open-order subsections before it is serialized for CLI/API output.
 
+## Paper qualification campaign
+
+The retained campaign in
+`tests/cross_package/qualification/test_paper_trading_admission_campaign.py` is the repeatable admission gate for the
+current paper horizon. It uses a fresh event-store fixture and broker double per scenario, creates and revalidates one
+human-owned admission, and records the exact configuration and broker/account scope. The matrix covers startup order
+recovery, stale market data, broker/universe mismatch, duplicate notification, risk rejection, broker rejection,
+fresh-service restart, global halt, reconciliation success/ambiguity, and human operator intervention.
+
+The threshold is operational and fail-closed: stale or mismatched state blocks execution; duplicate notifications do
+not produce duplicate cycles or orders; risk and broker rejections retain their reasons; a restart creates a new
+session without re-adopting an existing order; a halt prevents strategy and broker submission; and reconciliation
+success or unknown outcome is explicit. Each phase retains the admission ID, runtime/session IDs, broker response,
+risk action, reconciliation result, and incident receipt in the typed campaign report. The report is paper evidence only.
+The repeatable gate uses deterministic internal-paper fixtures; an Alpaca-paper account check is a separate explicitly
+available environment and is not implied by this campaign. No funded-live readiness or profitability claim follows from
+the result.
+
 AI/tool discovery may read JSON emitted by these operator commands as context. Recommendation and promotion readiness
 will surface halted, stale, or unhealthy runtime state, but the discovery tools do not clear halt state, reconcile broker
 orders, or start `TraderService`.
@@ -160,11 +178,11 @@ trader_service:
 positions; use `db` when local snapshots are the intended runtime state. Periodic reconciliation runs in loop/realtime
 modes when `order_reconciliation_interval_seconds` is positive; set it to `0` to disable.
 
-Paper startup admission is a governance prerequisite for the eventual operator command path. A valid
+Paper startup admission is a governance prerequisite for the operator command path. A valid
 `paper_candidate_admission` record must pin the candidate's strategy, risk, data, and evidence versions, broker/account
-scope, risk limits, monitoring policy, and non-expired human decision. The current admission slice only records and
-revalidates this evidence and retains any unresolved limitations; Console startup controls and broker mutation remain
-separate delivery work.
+scope, risk limits, monitoring policy, and non-expired human decision. The admission validator and retained campaign
+revalidate this evidence before paper qualification; Console startup controls and broker mutation remain separate
+authority boundaries.
 
 Backtest wrappers also read:
 

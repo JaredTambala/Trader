@@ -17,6 +17,21 @@ are a separate authorized queue: a human-authenticated Console request is admiss
 `paper_operator_commands`, and consumed by `TraderService` between cycles. The runtime applies halt, stop, and broker
 reconciliation through its existing primitives and records ambiguous broker outcomes without guessing.
 
+## Paper qualification evidence
+
+The retained offline campaign at
+`tests/cross_package/qualification/test_paper_trading_admission_campaign.py` runs the safety boundary with isolated
+event stores and broker fixtures. It creates and revalidates one human paper admission, then exercises startup recovery,
+stale data, broker/universe mismatch, duplicate triggers, risk and broker rejection, fresh-service restart, global halt,
+reconciliation, and operator intervention. Every phase records the admission ID, runtime/session identity, broker
+response, risk action, reconciliation result, and incident receipt.
+
+Admission support requires all phases to pass these safety gates: stale or mismatched state is blocked, duplicate
+triggers cannot create duplicate cycles, rejected orders retain their reason, restart recovery is idempotent across
+unique sessions, halt prevents strategy and broker submission, and reconciliation reports completed or unknown rather
+than guessing. The repeatable campaign is deterministic internal-paper evidence. An approved Alpaca-paper environment
+may add a separate check, while funded-live execution and profitability remain outside this evidence.
+
 ## Hot Path Overview
 
 The live path is triggered by new market data, not by a fixed schedule alone.
