@@ -105,7 +105,26 @@ the original scope and evidence references. `POST /api/data-scopes/{saved_scope_
 qualification state; it reports `active`, `stale`, or `unavailable` instead of silently refreshing or widening the
 request. The market-data workspace exposes the same save/reopen actions.
 
-## 5. Preflight and persist a definition
+## 5. Compare saved source or window alternatives
+
+Select at least two saved scope IDs in the market-data workspace, or submit them directly to the read-only comparison
+route. Source and window are the only dimensions that may vary by default; asset class, symbols, timeframe, interval,
+universe, and research role must remain equal. Each alternative retains its own manifest/quality state, coverage,
+findings, and provenance.
+
+<!-- verified: integration:console tests/trader_console_api/services/test_data_scope_comparisons.py -->
+```bash
+curl --fail -X POST http://127.0.0.1:8001/api/data-scope-comparisons \
+  -H 'content-type: application/json' \
+  -d '{"saved_scope_ids":["00000000-0000-0000-0000-000000000001","00000000-0000-0000-0000-000000000002"],"comparison_dimensions":["source","window"]}'
+```
+
+The response contains every unordered pair. A pair with an incompatible timeframe, an unrequested source/window
+difference, or unavailable/stale evidence is returned with `eligible: false` and explicit exclusion reasons. Eligible
+pairs expose bounded coverage deltas and separate quality/provenance evidence; the API never merges bars or chooses a
+preferred source.
+
+## 6. Preflight and persist a definition
 
 Discover the maintained profiles, submit a typed draft to preflight, then persist it only after the response is valid:
 
@@ -207,7 +226,7 @@ The database, schema installation, and processes are test-owned and removed afte
 and unavailable command states remain covered by the focused worker and API suites; this qualification establishes the
 successful producer path and its review evidence boundary only.
 
-## 6. Install saved comparison storage when needed
+## 7. Install saved comparison storage when needed
 
 Comparison views are an additive Console-owned feature. Install their table as an explicit operator action after the
 producer `console_read` contract is ready:
@@ -221,7 +240,7 @@ TRADER_CONSOLE_DATABASE_URL="$TRADER_CONSOLE_DATABASE_URL" \
 Use the API's comparison-view endpoints from [the usage reference](usage.md#saved-comparison-views). The API stores
 the definition only and evaluates selected runs from current published evidence whenever it previews or loads a view.
 
-## 7. Shut down and clear local secrets
+## 8. Shut down and clear local secrets
 
 Stopping the process closes its one connection pool. Clear the local DSN from the shell afterward:
 
