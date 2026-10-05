@@ -54,6 +54,14 @@ from .next_research_decisions import (
     NextResearchDecisionSession,
     NextResearchDecisionStorageUnavailable,
 )
+from .agent_sessions import (
+    AgentSessionCommandConflict,
+    AgentSessionNotFound,
+    AgentSessionRepository,
+    AgentSessionRepositorySession,
+    AgentSessionSource,
+)
+from .agent_session_worker import AgentSessionWorkerRepository, AgentSessionWorkerSession
 
 __all__ = [
     "EXPECTED_CONTRACT_COLUMNS",
@@ -94,4 +102,11 @@ __all__ = [
     "SchemaCompatibilityRepository",
     "assess_schema_compatibility",
     "create_connection_pool",
+    "AgentSessionCommandConflict",
+    "AgentSessionNotFound",
+    "AgentSessionRepository",
+    "AgentSessionRepositorySession",
+    "AgentSessionSource",
+    "AgentSessionWorkerRepository",
+    "AgentSessionWorkerSession",
 ]
