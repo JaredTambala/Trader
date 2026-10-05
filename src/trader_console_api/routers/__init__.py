@@ -9,6 +9,7 @@ from .resources import router as resource_router
 from .saved_data_scopes import router as saved_data_scope_router
 from .paper_runtime import router as paper_runtime_router
 from .paper_operator_commands import router as paper_operator_command_router
+from .next_research_decisions import router as next_research_decision_router
 __all__ = [
     "backtest_definition_router",
     "backtest_execution_router",
@@ -19,4 +20,5 @@ __all__ = [
     "saved_data_scope_router",
     "paper_runtime_router",
     "paper_operator_command_router",
+    "next_research_decision_router",
 ]

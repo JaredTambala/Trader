@@ -199,7 +199,8 @@ quality/provenance, saved-scope, alternative-comparison, and discovery-completen
 implementation admission and a catalogue-first Strategy loop but lacks a complete hypothesis-to-candidate and
 human-facing lineage path; real-model qualification remains outstanding. UJ-03 has canonical backtests, rich review,
 comparison, and durable worker boundaries, but Console execution qualification, inference/robustness readouts, and
-next-decision records remain incomplete. UJ-04 now names the governed agent-session journey; UJ-07 covers specialist investigation, UJ-08 covers the
+integrated next-decision qualification remain incomplete. The human next-decision artifact and Console command/read
+surface are delivered; UJ-04 now names the governed agent-session journey; UJ-07 covers specialist investigation, UJ-08 covers the
 agent-directed experiment loop, and UJ-09 covers evidence review and the next decision. The model-backed
 Coordinator/Data/Strategy runtime and recovery contracts exist, but controlled third-party-model acceptance, Console
 intervention, experiment handoff, and the unified evidence-review surface remain open.
@@ -218,6 +219,13 @@ three-part review section for Evaluation, multiple-testing, and Adversarial/robu
 identity, claim scope, protected-data roles, limitations, blockers, and explicit missing/incompatible/blocked states.
 Optimisation reports remain labelled exploratory and cannot become independent confirmation. This closes the human
 readout slice; it does not claim that general robustness/WFO producers or model-backed independent review are complete.
+
+GAP-03-03 now delivers the human next-decision boundary. The research artifact contract records immutable
+reject/refine/continue revisions with operator/time, exact run/Data/implementation/assumption/review references,
+limitations, and a bounded successor experiment for refine or continue. The Console API and backtest-review panel
+resolve those references again, reject missing/stale/cross-run evidence and agent identities, and reopen the latest
+revision after a fresh process. The record is a research choice only; it does not start execution, approve paper
+trading, or imply profitability. Integrated UJ-09 qualification and retained agent trajectory evidence remain open.
 
 The 4 October feature diagnosis adds one feature-acceptance work item for each of UJ-04, UJ-07, UJ-08, and UJ-09. The
 UJ identifiers remain product features; the linked records are delivery work items that implement or qualify those

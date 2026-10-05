@@ -67,3 +67,19 @@ source hash blocks revalidation; approved records also block after expiry or rev
 append-only successor and does not mutate the original record. Any later material admission change follows the same
 successor rule. Agents and MCP identities have no admission authority,
 and this contract performs no broker or runtime mutation.
+
+## Human next-decision revisions
+
+`research_next_decision` is the human-owned review boundary after a backtest. A revision records exactly one
+`reject`, `refine`, or `continue` outcome, rationale, operator, decision time, source `backtest_run`, Data artifact,
+implementation references, assumptions, review artifacts, and explicit limitations. `refine` and `continue` must carry
+a `BoundedNextExperiment` with its own Data and implementation references, evaluation window, run limit, and success
+criteria; `reject` cannot carry a successor. The constructor resolves every reference through the canonical store,
+checks pinned source or payload hashes, rejects missing or incompatible review evidence, and permits only a human or
+operator principal to write.
+
+Decision identity is content-derived. The first revision is `1`; later revisions append a contiguous revision and point
+to the immediately preceding artifact through `supersedes_artifact_id`. Existing revisions remain immutable and exact
+replays return the original record. The Postgres projection `research_next_decisions` exposes query fields for the
+Console while the full payload in `research_artifacts` remains authoritative. The record is a research decision only:
+it does not approve deployment, paper trading, profitability, or broker mutation.

@@ -21,8 +21,9 @@
 .muted, .contextLine, .resultCount { color: var(--muted); font-size: 12px; }
 .selectorGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
 .field { display: flex; flex-direction: column; gap: 8px; color: var(--muted); font-size: 12px; min-width: 0; }
-.field select, .field input { min-height: 42px; padding: 0 12px; color: var(--text); background: var(--background); border: 1px solid var(--border); border-radius: 6px; font: inherit; }
-.field select:focus, .field input:focus { border-color: var(--accent); outline: 2px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+.field select, .field input, .field textarea { min-height: 42px; padding: 10px 12px; color: var(--text); background: var(--background); border: 1px solid var(--border); border-radius: 6px; font: inherit; }
+.field textarea { resize: vertical; min-height: 86px; line-height: 1.45; }
+.field select:focus, .field input:focus, .field textarea:focus { border-color: var(--accent); outline: 2px solid color-mix(in srgb, var(--accent) 30%, transparent); }
 .contextLine { margin: 18px 0 0; display: flex; flex-wrap: wrap; gap: 8px 18px; }
 .errorBox { color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--border)); border-radius: 7px; padding: 13px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .errorBox p { margin: 0; }

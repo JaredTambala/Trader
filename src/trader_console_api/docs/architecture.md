@@ -137,6 +137,23 @@ queries and mutations belong in dedicated routers, services, and repositories. E
 authority, validation, idempotency, transaction, and failure semantics; it is not routed through the compatibility
 repository or inferred from the current health behavior.
 
+## Human next-decision boundary
+
+The reviewed-run decision path is composed as `routers.next_research_decisions` →
+`services.NextResearchDecisionService` → `repositories.NextResearchDecisionRepository`. The Console service accepts
+only a human/operator principal for writes, converts the request into the research-owned `NextResearchDecision` value,
+and asks the repository to resolve every canonical reference in the same repeatable-read command transaction. The route
+run ID must match the cited `backtest_run`; the run's published scope fingerprint is compared with the cited Data
+artifact, and review artifacts must be available and belong to that run. Missing, stale, cross-run, or incompatible
+evidence produces a typed blocker before either table is written.
+
+The research artifact store remains authoritative. A successful command writes the immutable payload to
+`research_artifacts` and the query identity/payload projection to `research_next_decisions` atomically. The repository
+does not install that schema; the research package owns its explicit schema statements and the Console only checks the
+catalog shape. Revision lineage is contiguous and append-only, with `supersedes_artifact_id` pointing to the prior
+revision. The read routes return the latest stream revision or an exact revision and never infer a decision from a
+model conclusion. No route starts execution, mutates a broker, admits paper trading, or makes a profitability claim.
+
 ## IAM extension points
 
 Local development supplies `TRADER_CONSOLE_DATABASE_URL`. The app factory accepts a pool factory so later deployment

@@ -1156,6 +1156,71 @@
         "title": "BarsResponse",
         "type": "object"
       },
+      "BoundedNextExperimentContract": {
+        "additionalProperties": false,
+        "description": "Bounded successor experiment attached to a refine or continue decision.",
+        "properties": {
+          "assumptions": {
+            "additionalProperties": true,
+            "title": "Assumptions",
+            "type": "object"
+          },
+          "data_ref": {
+            "$ref": "#/components/schemas/NextDecisionArtifactReference"
+          },
+          "evaluation_end": {
+            "format": "date-time",
+            "title": "Evaluation End",
+            "type": "string"
+          },
+          "evaluation_start": {
+            "format": "date-time",
+            "title": "Evaluation Start",
+            "type": "string"
+          },
+          "implementation_refs": {
+            "items": {
+              "$ref": "#/components/schemas/NextDecisionArtifactReference"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Implementation Refs",
+            "type": "array"
+          },
+          "max_runs": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Max Runs",
+            "type": "integer"
+          },
+          "question": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "success_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Success Criteria",
+            "type": "array"
+          }
+        },
+        "required": [
+          "question",
+          "data_ref",
+          "implementation_refs",
+          "evaluation_start",
+          "evaluation_end",
+          "max_runs",
+          "success_criteria"
+        ],
+        "title": "BoundedNextExperimentContract",
+        "type": "object"
+      },
       "BrokerAccountBinding": {
         "description": "Evidence level for the scope's configured brokerage binding.",
         "enum": [
@@ -2891,6 +2956,301 @@
           "page"
         ],
         "title": "MarketDatasetsResponse",
+        "type": "object"
+      },
+      "NextDecisionArtifactReference": {
+        "additionalProperties": false,
+        "description": "Exact canonical artifact identity cited by a human next decision.",
+        "properties": {
+          "artifact_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "artifact_type": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Artifact Type",
+            "type": "string"
+          },
+          "domain_owner": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Domain Owner",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "uri": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "artifact_type",
+          "domain_owner",
+          "uri"
+        ],
+        "title": "NextDecisionArtifactReference",
+        "type": "object"
+      },
+      "NextResearchDecisionRecord": {
+        "additionalProperties": false,
+        "description": "Stored human next-decision revision returned by Console.",
+        "properties": {
+          "artifact_id": {
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "artifact_type": {
+            "const": "research_next_decision",
+            "title": "Artifact Type",
+            "type": "string"
+          },
+          "assumptions": {
+            "additionalProperties": true,
+            "title": "Assumptions",
+            "type": "object"
+          },
+          "data_ref": {
+            "$ref": "#/components/schemas/NextDecisionArtifactReference"
+          },
+          "decided_at": {
+            "format": "date-time",
+            "title": "Decided At",
+            "type": "string"
+          },
+          "decision_digest": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Decision Digest",
+            "type": "string"
+          },
+          "decision_id": {
+            "title": "Decision Id",
+            "type": "string"
+          },
+          "implementation_refs": {
+            "items": {
+              "$ref": "#/components/schemas/NextDecisionArtifactReference"
+            },
+            "title": "Implementation Refs",
+            "type": "array"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "next_experiment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BoundedNextExperimentContract"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operator": {
+            "title": "Operator",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "reject",
+              "refine",
+              "continue"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "review_refs": {
+            "items": {
+              "$ref": "#/components/schemas/NextDecisionArtifactReference"
+            },
+            "title": "Review Refs",
+            "type": "array"
+          },
+          "revision": {
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "source_run_ref": {
+            "$ref": "#/components/schemas/NextDecisionArtifactReference"
+          },
+          "supersedes_artifact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Artifact Id"
+          }
+        },
+        "required": [
+          "artifact_type",
+          "artifact_id",
+          "decision_id",
+          "revision",
+          "outcome",
+          "rationale",
+          "operator",
+          "decided_at",
+          "source_run_ref",
+          "data_ref",
+          "implementation_refs",
+          "assumptions",
+          "review_refs",
+          "limitations",
+          "decision_digest"
+        ],
+        "title": "NextResearchDecisionRecord",
+        "type": "object"
+      },
+      "NextResearchDecisionRequest": {
+        "additionalProperties": false,
+        "description": "Human command for recording one immutable next-decision revision.",
+        "properties": {
+          "assumptions": {
+            "additionalProperties": true,
+            "title": "Assumptions",
+            "type": "object"
+          },
+          "data_ref": {
+            "$ref": "#/components/schemas/NextDecisionArtifactReference"
+          },
+          "decision_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Decision Id",
+            "type": "string"
+          },
+          "implementation_refs": {
+            "items": {
+              "$ref": "#/components/schemas/NextDecisionArtifactReference"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Implementation Refs",
+            "type": "array"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Limitations",
+            "type": "array"
+          },
+          "next_experiment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BoundedNextExperimentContract"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outcome": {
+            "enum": [
+              "reject",
+              "refine",
+              "continue"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "rationale": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "review_refs": {
+            "items": {
+              "$ref": "#/components/schemas/NextDecisionArtifactReference"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Review Refs",
+            "type": "array"
+          },
+          "revision": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "source_run_ref": {
+            "$ref": "#/components/schemas/NextDecisionArtifactReference"
+          },
+          "supersedes_artifact_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Artifact Id"
+          }
+        },
+        "required": [
+          "decision_id",
+          "outcome",
+          "rationale",
+          "source_run_ref",
+          "data_ref",
+          "implementation_refs",
+          "review_refs",
+          "limitations"
+        ],
+        "title": "NextResearchDecisionRequest",
+        "type": "object"
+      },
+      "NextResearchDecisionsResponse": {
+        "additionalProperties": false,
+        "description": "Bounded next-decision history for one reviewed run.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NextResearchDecisionRecord"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "NextResearchDecisionsResponse",
         "type": "object"
       },
       "PageInfo": {
@@ -7421,6 +7781,310 @@
         "summary": "Run Detail",
         "tags": [
           "resources"
+        ]
+      }
+    },
+    "/api/runs/{run_id}/next-decisions": {
+      "get": {
+        "description": "List the latest decision revision for each decision stream on a run.",
+        "operationId": "list_next_research_decisions_api_runs__run_id__next_decisions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NextResearchDecisionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Next Research Decisions",
+        "tags": [
+          "research-decisions"
+        ]
+      },
+      "post": {
+        "description": "Record one human-owned reject, refine, or continue decision.",
+        "operationId": "record_next_research_decision_api_runs__run_id__next_decisions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NextResearchDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NextResearchDecisionRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Record Next Research Decision",
+        "tags": [
+          "research-decisions"
+        ]
+      }
+    },
+    "/api/runs/{run_id}/next-decisions/{decision_id}": {
+      "get": {
+        "description": "Read the latest or one exact immutable decision revision.",
+        "operationId": "get_next_research_decision_api_runs__run_id__next_decisions__decision_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "decision_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Decision Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revision"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NextResearchDecisionRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Next Research Decision",
+        "tags": [
+          "research-decisions"
         ]
       }
     },

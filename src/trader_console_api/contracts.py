@@ -835,6 +835,115 @@ class ReviewEvidence(BaseModel):
     origin_kind: Literal["independent_review", "optimization", "diagnostic"] | None = None
 
 
+class NextDecisionArtifactReference(BaseModel):
+    """Exact canonical artifact identity cited by a human next decision."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    artifact_id: str = Field(min_length=1, max_length=200)
+    artifact_type: str = Field(min_length=1, max_length=100)
+    domain_owner: str = Field(min_length=1, max_length=100)
+    uri: str = Field(min_length=1, max_length=500)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class BoundedNextExperimentContract(BaseModel):
+    """Bounded successor experiment attached to a refine or continue decision."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    question: str = Field(min_length=1, max_length=4000)
+    data_ref: NextDecisionArtifactReference
+    implementation_refs: tuple[NextDecisionArtifactReference, ...] = Field(min_length=1, max_length=16)
+    assumptions: dict[str, Any] = Field(default_factory=dict)
+    evaluation_start: datetime
+    evaluation_end: datetime
+    max_runs: int = Field(ge=1, le=100)
+    success_criteria: tuple[str, ...] = Field(min_length=1, max_length=16)
+
+    @model_validator(mode="after")
+    def validate_window(self) -> BoundedNextExperimentContract:
+        """Require a forward evaluation window and non-empty criteria."""
+        if self.evaluation_end <= self.evaluation_start:
+            raise ValueError("next experiment evaluation_end must be after evaluation_start")
+        if any(not item.strip() for item in self.success_criteria):
+            raise ValueError("next experiment success criteria are required")
+        return self
+
+
+class NextResearchDecisionRequest(BaseModel):
+    """Human command for recording one immutable next-decision revision."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    decision_id: str = Field(min_length=1, max_length=200)
+    revision: int = Field(default=1, ge=1)
+    outcome: Literal["reject", "refine", "continue"]
+    rationale: str = Field(min_length=1, max_length=4000)
+    source_run_ref: NextDecisionArtifactReference
+    data_ref: NextDecisionArtifactReference
+    implementation_refs: tuple[NextDecisionArtifactReference, ...] = Field(min_length=1, max_length=16)
+    assumptions: dict[str, Any] = Field(default_factory=dict)
+    review_refs: tuple[NextDecisionArtifactReference, ...] = Field(min_length=1, max_length=32)
+    limitations: tuple[str, ...] = Field(min_length=1, max_length=32)
+    next_experiment: BoundedNextExperimentContract | None = None
+    supersedes_artifact_id: str | None = Field(default=None, max_length=200)
+
+    @field_validator("limitations")
+    @classmethod
+    def validate_limitations(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        """Require limitations to remain explicit and non-empty."""
+        if any(not item.strip() for item in value):
+            raise ValueError("limitations are required")
+        return value
+
+    @model_validator(mode="after")
+    def validate_successor(self) -> NextResearchDecisionRequest:
+        """Require the successor experiment exactly when the outcome advances."""
+        if self.outcome in {"refine", "continue"} and self.next_experiment is None:
+            raise ValueError(f"{self.outcome} decisions require next_experiment")
+        if self.outcome == "reject" and self.next_experiment is not None:
+            raise ValueError("reject decisions cannot include next_experiment")
+        if self.revision == 1 and self.supersedes_artifact_id is not None:
+            raise ValueError("first decision revision cannot supersede another artifact")
+        if self.revision > 1 and not self.supersedes_artifact_id:
+            raise ValueError("later decision revisions must supersede the previous artifact")
+        return self
+
+
+class NextResearchDecisionRecord(BaseModel):
+    """Stored human next-decision revision returned by Console."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    artifact_type: Literal["research_next_decision"]
+    artifact_id: str
+    decision_id: str
+    revision: int = Field(ge=1)
+    outcome: Literal["reject", "refine", "continue"]
+    rationale: str
+    operator: str
+    decided_at: datetime
+    source_run_ref: NextDecisionArtifactReference
+    data_ref: NextDecisionArtifactReference
+    implementation_refs: tuple[NextDecisionArtifactReference, ...]
+    assumptions: dict[str, Any]
+    review_refs: tuple[NextDecisionArtifactReference, ...]
+    limitations: tuple[str, ...]
+    next_experiment: BoundedNextExperimentContract | None = None
+    supersedes_artifact_id: str | None = None
+    decision_digest: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+
+
+class NextResearchDecisionsResponse(BaseModel):
+    """Bounded next-decision history for one reviewed run."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    items: tuple[NextResearchDecisionRecord, ...]
+    page: PageInfo
+
+
 class RunDetail(BaseModel):
     """Published evidence for one backtest run, grouped by projection."""
 

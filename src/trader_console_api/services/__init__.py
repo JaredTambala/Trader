@@ -32,6 +32,12 @@ from .paper_operator_commands import (
     PaperOperatorCommandStorageUnavailable,
     PaperOperatorScopeError,
 )
+from .next_research_decisions import (
+    NextDecisionAuthorityError,
+    NextDecisionDatabaseUnavailable,
+    NextDecisionRevisionConflict,
+    NextResearchDecisionService,
+)
 
 __all__ = [
     "CompatibilityRepository",
@@ -63,4 +69,8 @@ __all__ = [
     "PaperOperatorCommandService",
     "PaperOperatorCommandStorageUnavailable",
     "PaperOperatorScopeError",
+    "NextDecisionAuthorityError",
+    "NextDecisionDatabaseUnavailable",
+    "NextDecisionRevisionConflict",
+    "NextResearchDecisionService",
 ]

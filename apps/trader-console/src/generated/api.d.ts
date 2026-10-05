@@ -483,6 +483,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{run_id}/next-decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Next Research Decisions
+         * @description List the latest decision revision for each decision stream on a run.
+         */
+        get: operations["list_next_research_decisions_api_runs__run_id__next_decisions_get"];
+        put?: never;
+        /**
+         * Record Next Research Decision
+         * @description Record one human-owned reject, refine, or continue decision.
+         */
+        post: operations["record_next_research_decision_api_runs__run_id__next_decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}/next-decisions/{decision_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Next Research Decision
+         * @description Read the latest or one exact immutable decision revision.
+         */
+        get: operations["get_next_research_decision_api_runs__run_id__next_decisions__decision_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{run_id}/risk-decisions": {
         parameters: {
             query?: never;
@@ -1037,6 +1081,35 @@ export interface components {
             /** Items */
             items: components["schemas"]["BarPoint"][];
             page: components["schemas"]["PageInfo"];
+        };
+        /**
+         * BoundedNextExperimentContract
+         * @description Bounded successor experiment attached to a refine or continue decision.
+         */
+        BoundedNextExperimentContract: {
+            /** Assumptions */
+            assumptions?: {
+                [key: string]: unknown;
+            };
+            data_ref: components["schemas"]["NextDecisionArtifactReference"];
+            /**
+             * Evaluation End
+             * Format: date-time
+             */
+            evaluation_end: string;
+            /**
+             * Evaluation Start
+             * Format: date-time
+             */
+            evaluation_start: string;
+            /** Implementation Refs */
+            implementation_refs: components["schemas"]["NextDecisionArtifactReference"][];
+            /** Max Runs */
+            max_runs: number;
+            /** Question */
+            question: string;
+            /** Success Criteria */
+            success_criteria: string[];
         };
         /**
          * BrokerAccountBinding
@@ -1726,6 +1799,116 @@ export interface components {
             discovery?: components["schemas"]["MarketDataDiscovery"];
             /** Items */
             items: components["schemas"]["MarketDataset"][];
+            page: components["schemas"]["PageInfo"];
+        };
+        /**
+         * NextDecisionArtifactReference
+         * @description Exact canonical artifact identity cited by a human next decision.
+         */
+        NextDecisionArtifactReference: {
+            /** Artifact Id */
+            artifact_id: string;
+            /** Artifact Type */
+            artifact_type: string;
+            /** Domain Owner */
+            domain_owner: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Uri */
+            uri: string;
+        };
+        /**
+         * NextResearchDecisionRecord
+         * @description Stored human next-decision revision returned by Console.
+         */
+        NextResearchDecisionRecord: {
+            /** Artifact Id */
+            artifact_id: string;
+            /**
+             * Artifact Type
+             * @constant
+             */
+            artifact_type: "research_next_decision";
+            /** Assumptions */
+            assumptions: {
+                [key: string]: unknown;
+            };
+            data_ref: components["schemas"]["NextDecisionArtifactReference"];
+            /**
+             * Decided At
+             * Format: date-time
+             */
+            decided_at: string;
+            /** Decision Digest */
+            decision_digest: string;
+            /** Decision Id */
+            decision_id: string;
+            /** Implementation Refs */
+            implementation_refs: components["schemas"]["NextDecisionArtifactReference"][];
+            /** Limitations */
+            limitations: string[];
+            next_experiment?: components["schemas"]["BoundedNextExperimentContract"] | null;
+            /** Operator */
+            operator: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "reject" | "refine" | "continue";
+            /** Rationale */
+            rationale: string;
+            /** Review Refs */
+            review_refs: components["schemas"]["NextDecisionArtifactReference"][];
+            /** Revision */
+            revision: number;
+            source_run_ref: components["schemas"]["NextDecisionArtifactReference"];
+            /** Supersedes Artifact Id */
+            supersedes_artifact_id?: string | null;
+        };
+        /**
+         * NextResearchDecisionRequest
+         * @description Human command for recording one immutable next-decision revision.
+         */
+        NextResearchDecisionRequest: {
+            /** Assumptions */
+            assumptions?: {
+                [key: string]: unknown;
+            };
+            data_ref: components["schemas"]["NextDecisionArtifactReference"];
+            /** Decision Id */
+            decision_id: string;
+            /** Implementation Refs */
+            implementation_refs: components["schemas"]["NextDecisionArtifactReference"][];
+            /** Limitations */
+            limitations: string[];
+            next_experiment?: components["schemas"]["BoundedNextExperimentContract"] | null;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "reject" | "refine" | "continue";
+            /** Rationale */
+            rationale: string;
+            /** Review Refs */
+            review_refs: components["schemas"]["NextDecisionArtifactReference"][];
+            /**
+             * Revision
+             * @default 1
+             */
+            revision: number;
+            source_run_ref: components["schemas"]["NextDecisionArtifactReference"];
+            /** Supersedes Artifact Id */
+            supersedes_artifact_id?: string | null;
+        };
+        /**
+         * NextResearchDecisionsResponse
+         * @description Bounded next-decision history for one reviewed run.
+         */
+        NextResearchDecisionsResponse: {
+            /** Items */
+            items: components["schemas"]["NextResearchDecisionRecord"][];
             page: components["schemas"]["PageInfo"];
         };
         /**
@@ -4022,6 +4205,208 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunDetail"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    list_next_research_decisions_api_runs__run_id__next_decisions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NextResearchDecisionsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    record_next_research_decision_api_runs__run_id__next_decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NextResearchDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NextResearchDecisionRecord"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_next_research_decision_api_runs__run_id__next_decisions__decision_id__get: {
+        parameters: {
+            query?: {
+                revision?: number | null;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+                decision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NextResearchDecisionRecord"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
             /** @description Not Found */

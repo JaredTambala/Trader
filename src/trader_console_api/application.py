@@ -31,6 +31,7 @@ from .routers import (
     saved_data_scope_router,
     paper_runtime_router,
     paper_operator_command_router,
+    next_research_decision_router,
 )
 from .services.catalogue import (
     CatalogueService,
@@ -45,6 +46,8 @@ from .services.paper_runtime import PaperRuntimeService
 from .repositories.paper_runtime import PaperRuntimeRepository
 from .repositories.paper_operator_commands import PaperOperatorCommandRepository
 from .services.paper_operator_commands import PaperOperatorCommandService
+from .repositories.next_research_decisions import NextResearchDecisionRepository
+from .services.next_research_decisions import NextResearchDecisionService
 
 
 class AuthenticationProvider(Protocol):
@@ -129,6 +132,9 @@ def create_app(
             PaperOperatorCommandRepository(database, configured_settings.scope.scope_id),
             configured_settings.scope,
         )
+        next_research_decision_service = NextResearchDecisionService(
+            NextResearchDecisionRepository(database, configured_settings.scope.scope_id)
+        )
         opened = False
         app.state.database = database
         app.state.health_service = health_service
@@ -141,6 +147,7 @@ def create_app(
         app.state.saved_data_scope_service = saved_data_scope_service
         app.state.paper_runtime_service = paper_runtime_service
         app.state.paper_operator_command_service = paper_operator_command_service
+        app.state.next_research_decision_service = next_research_decision_service
         try:
             try:
                 await pool.open(
@@ -182,6 +189,7 @@ def create_app(
     app.include_router(saved_data_scope_router)
     app.include_router(paper_runtime_router)
     app.include_router(paper_operator_command_router)
+    app.include_router(next_research_decision_router)
     from .routers.comparison_views import router as comparison_view_router
 
     app.include_router(comparison_view_router)

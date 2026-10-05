@@ -174,6 +174,19 @@ definition write. The browser qualification in
 `apps/trader-console/tests/e2e/data-to-backtest.spec.ts` exercises the successful journey and the stale-evidence
 blocker with deterministic isolated responses.
 
+### Review and choose the next research action
+
+Open the review page for a published run and inspect the producer-owned Evaluation, multiple-testing, and robustness
+cards before recording a decision. The **Choose what happens next** panel requires the qualified Data artifact ID,
+implementation artifact ID, rationale, and limitations. Select **Reject** when the evidence does not support the
+hypothesis. Select **Refine** or **Continue** only after entering a bounded successor question, UTC evaluation window,
+maximum run count, and success criteria. The API resolves these references again when the command is submitted, so a
+stale or cross-run artifact is a visible blocker rather than a silently widened experiment.
+
+After recording, refresh the review page: the latest immutable revision reopens with its operator/time, exact run and
+Data references, limitations, and successor inputs. Revisions are appended through the API and point to their immediate
+predecessor; this panel never starts a backtest, admits paper trading, or implies profitability.
+
 ## 6. Install saved comparison storage when needed
 
 Comparison views are an additive Console-owned feature. Install their table as an explicit operator action after the

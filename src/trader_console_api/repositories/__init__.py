@@ -39,6 +39,14 @@ from .paper_operator_commands import (
     PaperOperatorCommandRepository,
     PaperOperatorCommandSession,
 )
+from .next_research_decisions import (
+    NextResearchDecisionConflict,
+    NextResearchDecisionEvidenceUnavailable,
+    NextResearchDecisionNotFound,
+    NextResearchDecisionRepository,
+    NextResearchDecisionSession,
+    NextResearchDecisionStorageUnavailable,
+)
 
 __all__ = [
     "EXPECTED_CONTRACT_COLUMNS",
@@ -62,6 +70,12 @@ __all__ = [
     "PaperOperatorCommandNotFound",
     "PaperOperatorCommandRepository",
     "PaperOperatorCommandSession",
+    "NextResearchDecisionConflict",
+    "NextResearchDecisionEvidenceUnavailable",
+    "NextResearchDecisionNotFound",
+    "NextResearchDecisionRepository",
+    "NextResearchDecisionSession",
+    "NextResearchDecisionStorageUnavailable",
     "DatabaseTransactionManager",
     "PoolFactory",
     "SchemaCompatibility",
