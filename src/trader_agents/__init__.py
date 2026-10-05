@@ -110,6 +110,15 @@ from .observability.trajectory import (
     RetainedTrajectoryUnavailable,
     verify_retained_trajectory,
 )
+from .observability.evidence_graph import (
+    EvidenceEdge,
+    EvidenceGraphStore,
+    EvidenceGraphUnavailable,
+    EvidenceNode,
+    EvidenceStatus,
+    SessionEvidenceGraph,
+    verify_session_evidence_graph,
+)
 from .observability.projections import (
     project_agent_turn,
     project_budget_usage,
@@ -241,6 +250,12 @@ __all__ = [
     "RetainedTrajectory",
     "RetainedTrajectorySink",
     "RetainedTrajectoryUnavailable",
+    "EvidenceEdge",
+    "EvidenceGraphStore",
+    "EvidenceGraphUnavailable",
+    "EvidenceNode",
+    "EvidenceStatus",
+    "SessionEvidenceGraph",
     "RecordingTraceSink",
     "ResearchCoordinator",
     "RoleScopedMcpRuntime",
@@ -305,6 +320,7 @@ __all__ = [
     "validate_agent_event_stream",
     "validate_observability_fields",
     "verify_retained_trajectory",
+    "verify_session_evidence_graph",
     "strategy_build_contract_from_session",
     "validate_runtime_pins",
     "validate_agent_checkpoint_state",

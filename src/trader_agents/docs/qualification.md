@@ -34,3 +34,12 @@ duplicate rejection, and fail-closed sink outage handling. The UJ-04 session qua
 failed, and cancelled cases with stable session, branch, run, and artifact identities; it includes a missing-checkpoint
 case whose recovery and terminal-lineage verdicts remain false. This fixture qualifies the public evidence boundary; it
 does not promote a model profile or make diagnostic events canonical research artifacts.
+
+The UJ-09 evidence-graph fixture composes those retained identities with exact
+revisioned artifact references. `SessionEvidenceGraph` preserves branch and
+edge identity while `verify_session_evidence_graph` reports complete, partial,
+or blocked evidence without converting missing, incompatible, or negative
+producer results into a positive claim. Its atomic JSON store is reopened in a
+fresh process by `tests/trader_agents/observability/test_evidence_graph.py`;
+the resulting projection is deterministic for Console rendering and contains
+no prompts, hidden reasoning, or raw tool payloads.

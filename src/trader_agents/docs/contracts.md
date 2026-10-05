@@ -62,3 +62,16 @@ Supplying `storage_path` writes the same bounded JSON document through an atomic
 construct a sink with that path and recover the retained trajectory. Sink outages and replayed events fail closed. This
 local file retention is a repeatable qualification fixture, not approved durable product event persistence, and does
 not replace canonical research artifacts or decision receipts.
+
+## Session evidence graph
+
+`SessionEvidenceGraph` is the small UJ-09 review projection over retained public
+session evidence and canonical artifact identities. `EvidenceNode` records the
+exact artifact type, ID, immutable revision, URI, claim scope, limitations, and
+one of the explicit `available`, `partial`, `negative`, `missing`, or
+`incompatible` states. `EvidenceEdge` joins those exact revisions without
+embedding artifact payloads. `verify_session_evidence_graph` returns a stable
+Console-safe result: missing or incompatible evidence is `blocked`, partial or
+negative evidence is `partial`, and only complete available evidence is
+`complete`. `EvidenceGraphStore` is an atomic JSON qualification fixture for
+fresh-process reopen; it is not canonical research persistence.
