@@ -120,6 +120,26 @@ def normalized_dataset_manifest(payload: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("dataset_manifest.total_rows must be positive")
     if manifest.get("source_filter") not in {None, ""}:
         raise ValueError("dataset_manifest.source_filter is not supported by canonical backtests")
+    replay_identity = manifest.get("replay_data_identity")
+    if replay_identity is not None:
+        if not isinstance(replay_identity, Mapping):
+            raise ValueError("dataset_manifest.replay_data_identity must be an object")
+        if str(replay_identity.get("algorithm") or "") != "sha256:bar-content-v1":
+            raise ValueError("dataset_manifest.replay_data_identity.algorithm is unsupported")
+        if not str(replay_identity.get("content_digest") or "").startswith("sha256:"):
+            raise ValueError("dataset_manifest.replay_data_identity.content_digest is required")
+        row_count = replay_identity.get("row_count")
+        if isinstance(row_count, bool) or not isinstance(row_count, int) or row_count < 0:
+            raise ValueError("dataset_manifest.replay_data_identity.row_count must be a non-negative integer")
+        source_semantics = replay_identity.get("source_semantics")
+        if not isinstance(source_semantics, Mapping):
+            raise ValueError("dataset_manifest.replay_data_identity.source_semantics is required")
+        for field in ("source_policy", "asset_class", "timeframe", "bar_type"):
+            if not str(source_semantics.get(field) or "").strip():
+                raise ValueError(f"dataset_manifest.replay_data_identity.source_semantics.{field} is required")
+        observed_sources = source_semantics.get("observed_sources")
+        if not isinstance(observed_sources, SequenceABC) or isinstance(observed_sources, (str, bytes)):
+            raise ValueError("dataset_manifest.replay_data_identity.source_semantics.observed_sources is required")
     return {
         **manifest,
         "dataset_id": dataset_id,

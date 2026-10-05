@@ -41,6 +41,19 @@ be available. A load operation must cite its matching plan and remains identifia
 The resulting manifest and quality evidence describe what the next context may use. They do not claim that the data is
 economically useful, and they do not authorize a backtest with a different scope.
 
+## Qualified replay identity
+
+An inventory manifest also carries `replay_data_identity` when rows are available. This is separate from `dataset_id`:
+the dataset ID identifies the normalized query scope, while the replay identity is a `sha256:bar-content-v1` digest over
+every returned symbol, timestamp, timeframe, source, and OHLCV field in canonical order. Its typed `source_semantics`
+records the provider, requested source policy, observed sources, asset class, symbols, timeframe, and bar type, together
+with the UTC `inspected_at` timestamp.
+
+Research backtest execution re-reads the same bounded scope and recomputes this identity before loading the runner. A
+changed row, partial reload, source substitution, malformed identity, or scope mismatch raises an explicit identity
+failure and prevents execution. The inspection timestamp is evidence of when the rows were qualified; it is not folded
+into the content digest, so equivalent reads remain deterministic.
+
 ## Failure and recovery
 
 Malformed scope, unsupported provider capabilities, over-limit or over-cost requests, stale data, and incomplete

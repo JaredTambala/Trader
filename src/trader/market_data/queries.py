@@ -61,6 +61,7 @@ __all__ = [
     "fetch_bar_ranges",
     "fetch_bar_timestamps",
     "fetch_bars",
+    "fetch_all_bars",
     "normalize_bar_query",
     "normalize_bar_symbol_discovery_query",
 ]
@@ -91,7 +92,7 @@ def count_bar_rows(event_store: EventStore, query: BarQuery) -> tuple[BarCount, 
         """,
         _where_params(normalized),
     )
-    counts = {str(row[0]): int(row[1] or 0) for row in rows}
+    counts = {str(row[0]): int(str(row[1] or 0)) for row in rows}
     return tuple(BarCount(symbol=symbol, row_count=counts.get(symbol, 0)) for symbol in normalized.symbols)
 
 
@@ -119,7 +120,7 @@ def count_bar_symbols(event_store: EventStore, query: BarQuery) -> int:
         """,
         _where_params(normalized),
     )
-    return int(row[0] or 0) if row is not None else 0
+    return int(str(row[0] or 0)) if row is not None else 0
 
 
 def fetch_bar_ranges(event_store: EventStore, query: BarQuery) -> tuple[BarRange, ...]:
@@ -219,7 +220,7 @@ def count_bar_sources(event_store: EventStore, query: BarQuery) -> tuple[BarSour
         BarSourceCount(
             symbol=str(row[0]),
             source=str(row[1]),
-            row_count=int(row[2] or 0),
+            row_count=int(str(row[2] or 0)),
         )
         for row in rows
     )
@@ -251,6 +252,28 @@ def fetch_bars(event_store: EventStore, query: BarQuery) -> tuple[BarRecord, ...
         LIMIT %s
         """,
         [*_where_params(normalized), normalized.limit],
+    )
+    return tuple(_bar_record_from_row(row) for row in rows)
+
+
+def fetch_all_bars(event_store: EventStore, query: BarQuery) -> tuple[BarRecord, ...]:
+    """Fetch every bar in an exact query scope for qualification digests.
+
+    Unlike the bounded chart-oriented :func:`fetch_bars`, this read has no
+    pagination limit. It is reserved for deterministic evidence calculation;
+    callers must already have a bounded symbol and UTC window in ``query``.
+    """
+    normalized = normalize_bar_query(query)
+    rows = _fetchall(
+        _queryable_connection(event_store),
+        f"""
+        SELECT symbol, COALESCE(timeframe, '1Min') AS timeframe, ts,
+               open, high, low, close, volume, trade_count, vwap, source
+        FROM {_bar_table_name(normalized.asset_class)}
+        WHERE {_where_clause(normalized)}
+        ORDER BY ts ASC, symbol ASC, source ASC
+        """,
+        _where_params(normalized),
     )
     return tuple(_bar_record_from_row(row) for row in rows)
 
@@ -312,7 +335,7 @@ def _queryable_connection(event_store: EventStore) -> Any:
     return connection
 
 
-def _fetchone(connection: Any, query: str, params: list[object]) -> object | None:
+def _fetchone(connection: Any, query: str, params: list[object]) -> tuple[object, ...] | None:
     """Execute a parameterized read query and fetch one row.
 
     Args:
@@ -328,7 +351,7 @@ def _fetchone(connection: Any, query: str, params: list[object]) -> object | Non
         return cursor.fetchone()
 
 
-def _fetchall(connection: Any, query: str, params: list[object]) -> list[object]:
+def _fetchall(connection: Any, query: str, params: list[object]) -> list[tuple[object, ...]]:
     """Execute a parameterized read query and fetch all rows.
 
     Args:

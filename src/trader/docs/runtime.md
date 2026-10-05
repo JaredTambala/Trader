@@ -39,6 +39,12 @@ Flow:
 9. Run, cycle, signal, order, fill, and position records are persisted.
 10. The runner builds `BacktestResult`.
 
+When research execution supplies a qualified Data manifest, the runner is preceded by a read-only identity preflight. The
+exact scope is re-read and its typed bar-content digest/source semantics are compared with the qualified identity. The
+research service persists the result in the execution receipt and refuses to start replay when rows changed, coverage is
+partial, a source changed, or the identity is malformed. The receipt's inspection timestamp records when the preflight
+observed the rows; it does not change the deterministic digest.
+
 Canonical research orchestration is exposed through MCP. It validates registered implementation versions and immutable
 strategy/risk/backtest specifications before invoking this same runner, then stores complete run evidence in Postgres
 research artifacts. See [Research Workflows](../../../docs/workflows/research.md).

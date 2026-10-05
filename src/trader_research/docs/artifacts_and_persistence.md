@@ -48,6 +48,15 @@ MLflow and filesystem exports are non-authoritative projections unless a contrac
 canonical Postgres artifact remains the source of workflow truth, while projections support observation, comparison,
 and interoperability.
 
+## Replay identity evidence
+
+`dataset_manifest.replay_data_identity` is the Data-owned proof attached to a qualified scope. It uses the
+`sha256:bar-content-v1` algorithm and records a canonical content digest, row count, source semantics, and inspection
+timestamp. A backtest specification snapshots this payload. A successful `backtest_run` adds an execution receipt with
+the qualified and observed digests, observed row count/source semantics, and validation timestamp. Consumers must treat
+missing or mismatching identity evidence as a refusal to execute; a query-scope `dataset_id` or a copied manifest hash
+alone does not prove the bars that the runner replayed.
+
 ## Human paper-candidate admission
 
 `paper_candidate_admission` is the governance record between research evidence and paper-runtime startup. It is

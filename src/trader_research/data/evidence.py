@@ -9,6 +9,7 @@ repeating discovery.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Any
 
 from trader.event_store import EventStore
 
@@ -17,13 +18,19 @@ from trader_research.foundation import (
     DATA_DOMAIN_OWNER,
     ResearchArtifactStore,
     ResearchArtifactStoreError,
+    ReplayDataIdentity,
     SCHEMA_VERSION,
     error_result,
+    build_replay_data_identity as _build_replay_data_identity,
     stable_research_id,
     success_result,
+    validate_replay_data_identity as _validate_replay_data_identity,
 )
 
-from .domain import DataInventoryRequest, DataQualityRequest
+from .domain import (
+    DataInventoryRequest,
+    DataQualityRequest,
+)
 from .inventory import get_data_inventory
 from .quality import data_summarize_quality
 
@@ -32,6 +39,15 @@ DATA_CREATE_RESEARCH_SNAPSHOT = "data_create_research_snapshot"
 _DATASET_MANIFEST_ARTIFACT_TYPE = "dataset_manifest"
 _DATA_QUALITY_REPORT_ARTIFACT_TYPE = "data_quality_report"
 
+
+def build_replay_data_identity(*args: Any, **kwargs: Any) -> ReplayDataIdentity:
+    """Build the Data-owned canonical identity for a qualified replay scope."""
+    return _build_replay_data_identity(*args, **kwargs)
+
+
+def validate_replay_data_identity(*args: Any, **kwargs: Any) -> ReplayDataIdentity:
+    """Validate the Data-owned identity before a replay starts."""
+    return _validate_replay_data_identity(*args, **kwargs)
 
 def create_data_research_snapshot(
     *,

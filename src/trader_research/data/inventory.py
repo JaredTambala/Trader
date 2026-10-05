@@ -18,6 +18,7 @@ from trader.market_data.queries import (
     EventStoreConnectionUnavailable,
     count_bar_rows,
     count_bar_sources,
+    fetch_all_bars,
     fetch_bar_ranges,
     normalize_bar_query,
 )
@@ -45,7 +46,12 @@ def get_data_inventory(event_store: EventStore, request: DataInventoryRequest) -
     try:
         provider_context = _provider_context_from_request(request)
         query = _bar_query_from_request(request)
-        manifest, warnings = _build_manifest(event_store, query)
+        manifest, warnings = _build_manifest(
+            event_store,
+            query,
+            provider=provider_context.resolved_provider,
+            bar_type=provider_context.bar_type,
+        )
         manifest["provider_context"] = provider_context.to_dict()
         _merge_provider_context_fields(manifest, provider_context)
     except DataProviderResolutionError as exc:
@@ -134,7 +140,13 @@ def _bar_query_from_fields(
     )
 
 
-def _build_manifest(event_store: EventStore, query: BarQuery) -> tuple[dict[str, Any], tuple[str, ...]]:
+def _build_manifest(
+    event_store: EventStore,
+    query: BarQuery,
+    *,
+    provider: str | None = None,
+    bar_type: str = "trade_bar",
+) -> tuple[dict[str, Any], tuple[str, ...]]:
     """Build an embedded dataset manifest from typed market-data queries.
 
     Args:
@@ -151,6 +163,10 @@ def _build_manifest(event_store: EventStore, query: BarQuery) -> tuple[dict[str,
     counts = {item.symbol: item.row_count for item in count_bar_rows(event_store, query)}
     ranges = {item.symbol: item for item in fetch_bar_ranges(event_store, query)}
     source_counts = _source_counts_by_symbol(event_store, query)
+    records = fetch_all_bars(event_store, query)
+    # Import lazily because evidence also composes the inventory and quality
+    # services for snapshot creation.
+    from .evidence import build_replay_data_identity
 
     symbol_rows: list[dict[str, Any]] = []
     warnings: list[str] = []
@@ -183,6 +199,15 @@ def _build_manifest(event_store: EventStore, query: BarQuery) -> tuple[dict[str,
         "total_rows": total_rows,
         "complete": not warnings,
         "symbols_detail": symbol_rows,
+        "replay_data_identity": build_replay_data_identity(
+            records,
+            provider=provider,
+            source_policy=query.source or "observed",
+            asset_class=query.asset_class,
+            symbols=query.symbols,
+            timeframe=query.timeframe,
+            bar_type=bar_type,
+        ).to_dict(),
     }
     return manifest, tuple(warnings)
 

@@ -14,7 +14,9 @@ from trader_research.foundation import (
     PredictionMapperCatalog,
     error_result,
     json_payload_hash,
+    ReplayDataIdentityMismatch,
     success_result,
+    validate_replay_data_identity,
 )
 from trader_research.foundation.artifacts import ArtifactReference, SCHEMA_VERSION
 
@@ -26,6 +28,7 @@ from trader.backtest import BacktestResult, BacktestRunner, BacktestSpec, build_
 from trader.backtest.export_payloads import _build_equity_curve_csv_rows, _build_trade_csv_rows, serialize_backtest_result
 from trader.config import Config
 from trader.event_store import EventStore
+from trader.market_data.queries import BarQuery, fetch_all_bars
 from trader.predictions import PredictionRuntimeResolver
 from trader.portfolio import Position
 from trader.risk import RiskContext, RiskManager
@@ -163,6 +166,10 @@ def run_backtest_specification(
             )
         )
         dataset = dict(specification["dataset"]["payload"])
+        replay_identity, replay_validation = _validate_replay_data_identity(
+            event_store,
+            dataset,
+        )
         binding_evidence = list(strategy_specification.get("prediction_bindings") or [])
         if binding_evidence and prediction_runtime_resolver is None:
             raise ValueError("prediction runtime resolver is required for model-backed backtests")
@@ -246,6 +253,8 @@ def run_backtest_specification(
         backtest_result = runner.run(
             log_cycle_details=bool(specification.get("log_cycle_details"))
         )
+    except ReplayDataIdentityMismatch as exc:
+        return _error(command, f"replay_data_identity_{exc.code}", str(exc))
     except (ValueError, KeyError, ResearchArtifactStoreError, RuntimeError) as exc:
         return _error(command, "backtest_specification_execution_failed", str(exc))
     except Exception as exc:
@@ -286,6 +295,8 @@ def run_backtest_specification(
         "dataset_id": dataset["dataset_id"],
         "dataset_hash": specification["dataset"]["sha256"],
         "quality_hash": specification["data_quality"]["sha256"],
+        "replay_data_identity": replay_identity,
+        "replay_data_identity_validation": replay_validation,
         "selection_origin_ref": specification.get("selection_origin_ref"),
         "parent_specification_ref": specification.get("parent_specification_ref"),
         "variant_reason": specification.get("variant_reason"),
@@ -309,6 +320,8 @@ def run_backtest_specification(
                 "strategy_source_hash": strategy_implementation.source_hash,
                 "risk_lineage": risk_lineage,
                 "prediction_bindings": binding_evidence,
+                "replay_data_identity": replay_identity,
+                "replay_data_identity_validation": replay_validation,
             },
         },
     }
@@ -332,6 +345,58 @@ def run_backtest_specification(
         command=command,
         payload=payload,
         artifact_reference=record.reference().to_dict(),
+    )
+
+
+def _validate_replay_data_identity(
+    event_store: EventStore,
+    dataset: Mapping[str, Any],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Re-read qualified bars and return the execution receipt identity pair."""
+    raw_expected = dataset.get("replay_data_identity")
+    if raw_expected is None:
+        return None, None
+    if not isinstance(raw_expected, Mapping):
+        raise ReplayDataIdentityMismatch("identity_malformed", "qualified replay identity is not an object")
+    raw_semantics = raw_expected.get("source_semantics")
+    if not isinstance(raw_semantics, Mapping):
+        raise ReplayDataIdentityMismatch("identity_missing_source_semantics", "qualified replay identity has no source semantics")
+    window = dataset.get("time_range")
+    if not isinstance(window, Mapping):
+        raise ReplayDataIdentityMismatch("identity_scope_mismatch", "qualified replay identity has no replay window")
+    records = fetch_all_bars(
+        event_store,
+        BarQuery(
+            symbols=tuple(str(symbol) for symbol in dataset.get("symbols", ())),
+            asset_class=str(dataset.get("asset_class") or ""),
+            timeframe=str(dataset.get("timeframe") or ""),
+            start=parse_datetime(window.get("start"), "dataset.start"),
+            end=parse_datetime(window.get("end"), "dataset.end"),
+        ),
+    )
+    actual = validate_replay_data_identity(
+        raw_expected,
+        records,
+        provider=(str(raw_semantics.get("provider")) if raw_semantics.get("provider") is not None else None),
+        source_policy=str(raw_semantics.get("source_policy") or "observed"),
+        asset_class=str(dataset.get("asset_class") or ""),
+        symbols=tuple(str(symbol) for symbol in dataset.get("symbols", ())),
+        timeframe=str(dataset.get("timeframe") or ""),
+        bar_type=str(raw_semantics.get("bar_type") or "trade_bar"),
+    )
+    expected_digest = str(raw_expected.get("content_digest") or "")
+    return (
+        dict(raw_expected),
+        {
+            "status": "passed",
+            "algorithm": actual.algorithm,
+            "qualified_content_digest": expected_digest,
+            "observed_content_digest": actual.content_digest,
+            "qualified_row_count": raw_expected.get("row_count"),
+            "observed_row_count": actual.row_count,
+            "observed_source_semantics": actual.source_semantics.to_dict(),
+            "validated_at": actual.inspected_at.isoformat(),
+        },
     )
 
 
@@ -367,6 +432,7 @@ def _load_persisted_backtest_run(
         "dataset_id": specification["dataset"]["payload"]["dataset_id"],
         "dataset_hash": specification["dataset"]["sha256"],
         "quality_hash": specification["data_quality"]["sha256"],
+        "replay_data_identity": specification["dataset"]["payload"].get("replay_data_identity"),
         "selection_origin_ref": specification.get("selection_origin_ref"),
         "parent_specification_ref": specification.get("parent_specification_ref"),
         "variant_reason": specification.get("variant_reason"),
@@ -418,13 +484,22 @@ def _load_persisted_backtest_run(
     if bundle.get("metrics") != summary:
         raise ValueError("persisted backtest metrics drifted from its summary")
     provenance = bundle.get("provenance")
-    expected_provenance = {
+    expected_provenance: dict[str, Any] = {
         "backtest_specification": specification,
         "backtest_specification_validation": validation,
         "strategy_source_hash": strategy_implementation.source_hash,
         "risk_lineage": list(risk_lineage),
         "prediction_bindings": list(strategy_specification.get("prediction_bindings") or []),
     }
+    if specification["dataset"]["payload"].get("replay_data_identity") is not None:
+        receipt = payload.get("replay_data_identity_validation")
+        if not isinstance(receipt, Mapping) or receipt.get("status") != "passed":
+            raise ValueError("persisted backtest replay identity receipt is missing or blocked")
+        expected_receipt = bundle.get("provenance", {}).get("replay_data_identity_validation")
+        if receipt != expected_receipt:
+            raise ValueError("persisted backtest replay identity receipt drifted")
+        expected_provenance["replay_data_identity"] = payload.get("replay_data_identity")
+        expected_provenance["replay_data_identity_validation"] = receipt
     if not isinstance(provenance, Mapping) or dict(provenance) != expected_provenance:
         raise ValueError("persisted backtest run provenance drifted")
     return record

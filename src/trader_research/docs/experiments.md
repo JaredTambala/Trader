@@ -48,6 +48,12 @@ An experiment is reproducible because each stage names its inputs instead of fil
 6. Treat optimisation and tracking projections as evidence about the declared search, then send the run to independent
    Evaluation and Adversarial review.
 
+For a qualified Data manifest, step 3 also seals `replay_data_identity`. Step 4 re-reads the exact scope before invoking
+`BacktestRunner`; the run receipt records the qualified digest, observed digest, row counts, source semantics, and
+validation time. Any bar-content, source-policy, partial-reload, or post-inspection mutation fails closed with a
+machine-readable `replay_data_identity_*` error. The existing backtest scope fingerprint remains a comparison identity;
+it does not replace this Data-owned qualification contract.
+
 The context owns execution mechanics, not the scientific conclusion. A successful backtest proves that the declared
 simulation completed; it does not prove live profitability or authorize paper trading.
 

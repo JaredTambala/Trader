@@ -68,6 +68,9 @@ def test_data_inventory_returns_dataset_manifest_for_sample_data(
     assert "table" not in manifest
     assert manifest["total_rows"] == 12
     assert manifest["complete"] is True
+    assert manifest["replay_data_identity"]["algorithm"] == "sha256:bar-content-v1"
+    assert manifest["replay_data_identity"]["row_count"] == 12
+    assert manifest["replay_data_identity"]["source_semantics"]["observed_sources"] == ["sample"]
     assert manifest["symbols_detail"] == [
         {
             "symbol": "DEMO",

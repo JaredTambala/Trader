@@ -40,6 +40,11 @@ Because the replayed bar set is loaded before the run, the backtest sees a stabl
 repeatable, but it also means the result is only as good as the stored bars, the selected timeframe, and the configured
 fallback assumptions.
 
+Research qualification adds a read-only `fetch_all_bars` query for one bounded scope. Data records a canonical
+`sha256:bar-content-v1` identity over those rows, including source, before a research backtest is submitted. The
+research execution preflight recomputes the identity and refuses to replay when rows, coverage, or source semantics
+changed after inspection; ordinary chart reads remain bounded by their pagination limit.
+
 ## Live operation
 
 Realtime operation normally uses a separate market-data stream process:
