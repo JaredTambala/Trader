@@ -200,8 +200,17 @@ cannot create a definition. The qualification is deterministic and route-isolate
 worker, persisted-result, standalone-review, and human-decision qualification; GAP-06-03 still owns proof that replay
 bars match the qualified source content.
 
-The same audit loop now covers the nine candidate journeys. UJ-01 has a working bounded data explorer but lacks Console
-quality/provenance, saved-scope, alternative-comparison, and discovery-completeness continuity. UJ-02 has deterministic
+GAP-01-03 now provides the saved-scope alternative comparison read model. `POST /api/data-scope-comparisons` loads two
+or more immutable scopes and their exact producer evidence, compares every unordered pair, and admits only pairs whose
+non-source/window dimensions match. Source and window differences are explicit when requested; timeframe, symbol,
+universe, interval, asset-class, research-role, and evidence mismatches remain excluded with reasons. Coverage deltas
+are bounded numeric projections, while each alternative keeps its own quality findings, warnings, artifact identities,
+and provenance. The Console market-data workspace renders the alternatives without merging bars or silently choosing a
+preferred provider.
+
+The same audit loop now covers the nine candidate journeys. UJ-01 has a working bounded data explorer with saved-scope
+and alternative-comparison continuity, but discovery completeness and broader quality/provenance continuity remain
+partial. UJ-02 has deterministic
 implementation admission and a catalogue-first Strategy loop but lacks a complete hypothesis-to-candidate and
 human-facing lineage path; real-model qualification remains outstanding. UJ-03 has canonical backtests, rich review,
 comparison, and a qualified Console worker-to-review path, while broader failure campaigns, inference, and robustness
