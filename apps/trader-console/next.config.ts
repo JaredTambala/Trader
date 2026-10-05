@@ -23,6 +23,8 @@ const config: NextConfig = {
       "/api/experiments/:experiment_id/comparison-views",
       "/api/experiments/:experiment_id/comparison-views/:view_id",
       "/api/experiments/:experiment_id/comparison-views/preview",
+      "/api/agent-sessions/:session_id",
+      "/api/agent-sessions/:session_id/commands",
       "/api/backtests/catalogue",
       "/api/backtests/preflight",
       "/api/backtests/definitions",
