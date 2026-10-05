@@ -145,37 +145,40 @@ test("backtest review shows scoped metrics, curves, and execution evidence", asy
   let storedDecision: Record<string, unknown> | null = null;
   await page.route("**/api/experiments?**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [experiment], page: { limit: 100, offset: 0, total: 1, has_more: false } }) }));
   await page.route("**/api/experiments/exp-bollinger/runs**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [run], page: { limit: 100, offset: 0, total: 1, has_more: false } }) }));
-  await page.route("**/api/runs/run-1**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(detail) }));
+  await page.route("**/api/runs/run-1**", (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname.endsWith("/next-decisions")) {
+      if (route.request().method() === "GET") {
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: storedDecision ? [storedDecision] : [], page: { limit: 20, offset: 0, total: storedDecision ? 1 : 0, has_more: false } }) });
+      }
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      storedDecision = {
+        artifact_type: "research_next_decision",
+        artifact_id: "research_next_decision_fixture",
+        decision_id: String(body.decision_id),
+        revision: 1,
+        outcome: body.outcome,
+        rationale: body.rationale,
+        operator: "human:jared",
+        decided_at: "2026-10-05T10:00:00Z",
+        source_run_ref: body.source_run_ref,
+        data_ref: body.data_ref,
+        implementation_refs: body.implementation_refs,
+        assumptions: body.assumptions ?? {},
+        review_refs: body.review_refs,
+        limitations: body.limitations,
+        next_experiment: null,
+        supersedes_artifact_id: null,
+        decision_digest: "a".repeat(64),
+      };
+      return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify(storedDecision) });
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(detail) });
+  });
   await page.route("**/api/runs/run-1/risk-decisions?**", (route) => {
     const outcome = new URL(route.request().url()).searchParams.get("outcome");
     const items = outcome === "approved" ? [] : detail.risk_decisions;
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items, page: { limit: 25, offset: 0, total: items.length, has_more: false } }) });
-  });
-  await page.route("**/api/runs/run-1/next-decisions", async (route) => {
-    if (route.request().method() === "GET") {
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: storedDecision ? [storedDecision] : [], page: { limit: 20, offset: 0, total: storedDecision ? 1 : 0, has_more: false } }) });
-    }
-    const body = route.request().postDataJSON() as Record<string, unknown>;
-    storedDecision = {
-      artifact_type: "research_next_decision",
-      artifact_id: "research_next_decision_fixture",
-      decision_id: String(body.decision_id),
-      revision: 1,
-      outcome: body.outcome,
-      rationale: body.rationale,
-      operator: "human:jared",
-      decided_at: "2026-10-05T10:00:00Z",
-      source_run_ref: body.source_run_ref,
-      data_ref: body.data_ref,
-      implementation_refs: body.implementation_refs,
-      assumptions: body.assumptions ?? {},
-      review_refs: body.review_refs,
-      limitations: body.limitations,
-      next_experiment: null,
-      supersedes_artifact_id: null,
-      decision_digest: "a".repeat(64),
-    };
-    return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify(storedDecision) });
   });
 
   await page.goto("/backtests");
