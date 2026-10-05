@@ -22,6 +22,7 @@ from trader_console_api.worker import (
     ExecutionOutcome,
     deterministic_execution_run_id,
 )
+from tests.trader_console_api.support import implementation_lineage
 
 
 def _definition() -> BacktestDefinition:
@@ -30,8 +31,10 @@ def _definition() -> BacktestDefinition:
         display_name="Smoke",
         strategy_profile_id="noop",
         strategy_catalogue_version="standard-1",
+        strategy_implementation_lineage=implementation_lineage(),
         risk_profile_id="noop",
         risk_catalogue_version="standard-1",
+        risk_implementation_lineage=implementation_lineage(kind="risk", suffix="risk"),
         asset_class="stock",
         symbols=("AAPL",),
         timeframe="1Min",

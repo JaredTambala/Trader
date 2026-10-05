@@ -3,7 +3,12 @@
 from .context import ContextService
 from .health import CompatibilityRepository, HealthService, IncompatibleDatabaseSchema
 from .resources import ResourceDatabaseUnavailable, ResourceService
-from .catalogue import CatalogueDatabaseUnavailable, CatalogueService, PreflightService
+from .catalogue import (
+    CatalogueDatabaseUnavailable,
+    CatalogueService,
+    ImplementationLineageResolver,
+    PreflightService,
+)
 from .backtest_definitions import (
     BacktestDefinitionService,
     DefinitionDatabaseUnavailable,
@@ -37,6 +42,7 @@ __all__ = [
     "ResourceDatabaseUnavailable",
     "CatalogueDatabaseUnavailable",
     "CatalogueService",
+    "ImplementationLineageResolver",
     "PreflightService",
     "BacktestDefinitionService",
     "DefinitionDatabaseUnavailable",

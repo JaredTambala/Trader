@@ -375,6 +375,9 @@
             "title": "Risk Catalogue Version",
             "type": "string"
           },
+          "risk_implementation_lineage": {
+            "$ref": "#/components/schemas/ImplementationLineage"
+          },
           "risk_parameters": {
             "additionalProperties": true,
             "title": "Risk Parameters",
@@ -396,6 +399,9 @@
             "minLength": 1,
             "title": "Strategy Catalogue Version",
             "type": "string"
+          },
+          "strategy_implementation_lineage": {
+            "$ref": "#/components/schemas/ImplementationLineage"
           },
           "strategy_parameters": {
             "additionalProperties": true,
@@ -428,8 +434,10 @@
           "display_name",
           "strategy_profile_id",
           "strategy_catalogue_version",
+          "strategy_implementation_lineage",
           "risk_profile_id",
           "risk_catalogue_version",
+          "risk_implementation_lineage",
           "asset_class",
           "symbols",
           "timeframe",
@@ -828,6 +836,16 @@
             ],
             "title": "Risk Catalogue Version"
           },
+          "risk_implementation_lineage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImplementationLineage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "risk_parameters": {
             "additionalProperties": true,
             "title": "Risk Parameters",
@@ -856,6 +874,16 @@
               }
             ],
             "title": "Strategy Catalogue Version"
+          },
+          "strategy_implementation_lineage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImplementationLineage"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "strategy_parameters": {
             "additionalProperties": true,
@@ -2218,6 +2246,160 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ImplementationLineage": {
+        "additionalProperties": false,
+        "description": "Exact admitted implementation and specification lineage for authoring.",
+        "properties": {
+          "decision": {
+            "enum": [
+              "exact_reuse",
+              "adaptation",
+              "new_authorship"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "implementation_kind": {
+            "enum": [
+              "strategy",
+              "risk_manager"
+            ],
+            "title": "Implementation Kind",
+            "type": "string"
+          },
+          "implementation_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Implementation Name",
+            "type": "string"
+          },
+          "implementation_validation_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Implementation Validation Id",
+            "type": "string"
+          },
+          "implementation_version": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Implementation Version",
+            "type": "string"
+          },
+          "implementation_version_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Implementation Version Id",
+            "type": "string"
+          },
+          "profile_id": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "source_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "specification_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Specification Id",
+            "type": "string"
+          },
+          "validation_report": {
+            "$ref": "#/components/schemas/ImplementationValidationReport"
+          }
+        },
+        "required": [
+          "profile_id",
+          "implementation_version_id",
+          "implementation_kind",
+          "implementation_name",
+          "implementation_version",
+          "source_hash",
+          "implementation_validation_id",
+          "specification_id",
+          "decision",
+          "validation_report"
+        ],
+        "title": "ImplementationLineage",
+        "type": "object"
+      },
+      "ImplementationValidationReport": {
+        "additionalProperties": false,
+        "description": "Immutable admission evidence for one executable implementation.",
+        "properties": {
+          "blockers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "implementation_kind": {
+            "enum": [
+              "strategy",
+              "risk_manager"
+            ],
+            "title": "Implementation Kind",
+            "type": "string"
+          },
+          "implementation_version_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Implementation Version Id",
+            "type": "string"
+          },
+          "source_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "blocked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          },
+          "validation_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Validation Id",
+            "type": "string"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "validation_id",
+          "implementation_version_id",
+          "implementation_kind",
+          "source_hash",
+          "status",
+          "valid"
+        ],
+        "title": "ImplementationValidationReport",
         "type": "object"
       },
       "IndicatorSeriesPoint": {

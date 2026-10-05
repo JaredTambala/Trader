@@ -17,6 +17,7 @@ from trader_console_api.contracts import BacktestPreflightRequest
 from trader_console_api.data_scope_contracts import BacktestDataScopeHandoff, DataScopeEvidenceStatus, DataScopeSourcePolicy, SavedDataScope
 from trader_console_api.services.catalogue import PreflightService
 from trader_standard.catalogue import maintained_catalogue
+from tests.trader_console_api.support import implementation_lineage
 
 
 class _CoverageRepository:
@@ -38,8 +39,12 @@ def _request(**overrides: object) -> BacktestPreflightRequest:
         "display_name": "Bollinger smoke",
         "strategy_profile_id": "bollinger_band",
         "strategy_parameters": {"period": 20, "stddev_multiplier": 2, "target_qty_when_long": 0.01},
+        "strategy_implementation_lineage": implementation_lineage("bollinger_band"),
         "risk_profile_id": "max_orders_per_run",
         "risk_parameters": {"limit": 10},
+        "risk_implementation_lineage": implementation_lineage(
+            "max_orders_per_run", kind="risk", suffix="max-orders"
+        ),
         "asset_class": "crypto",
         "symbols": (" btc/usd ",),
         "timeframe": "1m",
@@ -164,6 +169,60 @@ def test_preflight_rejects_unknown_profile_before_coverage_lookup() -> None:
     assert repository.calls == []
 
 
+def test_preflight_requires_both_admitted_lineages() -> None:
+    """A catalogue profile alone cannot become an executable Console definition."""
+    repository = _CoverageRepository([])
+    result = asyncio.run(
+        _service(repository).preflight(
+            _request(strategy_implementation_lineage=None, risk_implementation_lineage=None)
+        )
+    )
+
+    assert result.valid is False
+    assert {issue.code for issue in result.issues} >= {"implementation_lineage_missing"}
+    assert repository.calls == []
+
+
+def test_preflight_preserves_blocked_validation_report_as_actionable_issue() -> None:
+    """Blocked admission evidence is surfaced before coverage access or persistence."""
+    repository = _CoverageRepository([])
+    result = asyncio.run(
+        _service(repository).preflight(
+            _request(
+                strategy_implementation_lineage=implementation_lineage(
+                    "bollinger_band", blockers=("fixture failed",), status="blocked"
+                )
+            )
+        )
+    )
+
+    assert result.valid is False
+    issue = next(issue for issue in result.issues if issue.code == "implementation_validation_blocked")
+    assert "fixture failed" in issue.message
+    assert repository.calls == []
+
+
+def test_preflight_rejects_resolver_source_hash_drift() -> None:
+    """A research resolver can fail closed when the admitted record has changed."""
+    class _DriftResolver:
+        def resolve(self, lineage, *, profile_id, expected_kind):
+            return lineage.model_copy(update={"source_hash": "c" * 64})
+
+    repository = _CoverageRepository([])
+    result = asyncio.run(
+        PreflightService(
+            repository,
+            maintained_catalogue(),
+            lineage_resolver=_DriftResolver(),
+            saved_scope_lookup=_SavedScopeLookup(),
+        ).preflight(_request())
+    )
+
+    assert result.valid is False
+    assert any(issue.code == "implementation_lineage_drifted" for issue in result.issues)
+    assert repository.calls == []
+
+
 def test_preflight_blocks_stale_scope_before_coverage_lookup() -> None:
     """Stale selected evidence is an actionable blocker and cannot be widened."""
     repository = _CoverageRepository([])
@@ -210,7 +269,7 @@ def test_preflight_rejects_client_scope_drift_against_persisted_evidence() -> No
             )
 
     repository = _CoverageRepository([])
-    result = asyncio.run(PreflightService(repository, maintained_catalogue(), _Lookup()).preflight(request))
+    result = asyncio.run(PreflightService(repository, maintained_catalogue(), saved_scope_lookup=_Lookup()).preflight(request))
 
     assert result.valid is False
     assert any(issue.code == "data_scope_mismatch" for issue in result.issues)
