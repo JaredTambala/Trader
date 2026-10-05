@@ -24,7 +24,17 @@ from .domain import (
     SymbolCatalogProvider,
     SymbolCatalogResult,
 )
-from .evidence import DATA_CREATE_RESEARCH_SNAPSHOT, create_data_research_snapshot
+from .evidence import (
+    DATA_CREATE_RESEARCH_SNAPSHOT,
+    build_replay_data_identity,
+    create_data_research_snapshot,
+    validate_replay_data_identity,
+)
+from trader_research.foundation import (
+    ReplayDataIdentity,
+    ReplayDataIdentityMismatch,
+    ReplayDataSourceSemantics,
+)
 from .inventory import get_data_inventory
 from .loading import data_ensure_loaded
 from .quality import data_summarize_quality
@@ -45,10 +55,15 @@ __all__ = [
     "DataQualityRequest",
     "DataSymbolDiscoveryPolicy",
     "DataSymbolDiscoveryRequest",
+    "ReplayDataIdentity",
+    "ReplayDataIdentityMismatch",
+    "ReplayDataSourceSemantics",
     "SymbolCatalogProvider",
     "SymbolCatalogResult",
     "data_discover_symbols",
     "create_data_research_snapshot",
+    "build_replay_data_identity",
+    "validate_replay_data_identity",
     "data_ensure_loaded",
     "data_summarize_quality",
     "get_data_inventory",

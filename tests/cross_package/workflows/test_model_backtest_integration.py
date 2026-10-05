@@ -22,6 +22,7 @@ from trader.predictions import (
     PredictionRequest,
     Predictor,
 )
+from trader.market_data.queries import BarQuery, fetch_all_bars
 from trader_research.experiments import (
     create_backtest_specification,
     create_strategy_specification,
@@ -31,6 +32,7 @@ from trader_research.experiments import (
     validate_strategy_implementation,
     validate_strategy_specification,
 )
+from trader_research.data import build_replay_data_identity
 from trader_research.foundation import InMemoryResearchArtifactStore
 from trader_research.governance.artifacts import (
     DOMAIN_OWNER_BY_ARTIFACT_TYPE,
@@ -411,6 +413,24 @@ def test_model_deployment_binding_executes_backtest_with_prediction_lineage(
         "complete": True,
         "source_filter": None,
     }
+    manifest["replay_data_identity"] = build_replay_data_identity(
+        fetch_all_bars(
+            event_store,
+            BarQuery(
+                symbols=("EURUSD",),
+                asset_class="stocks",
+                timeframe="1Min",
+                start=start,
+                end=start + timedelta(minutes=1),
+            ),
+        ),
+        provider="fixture",
+        source_policy="observed",
+        asset_class="stocks",
+        symbols=("EURUSD",),
+        timeframe="1Min",
+        inspected_at=start,
+    ).to_dict()
     quality = {
         "symbols": ["EURUSD"],
         "asset_class": "stocks",
@@ -457,6 +477,10 @@ def test_model_deployment_binding_executes_backtest_with_prediction_lineage(
     assert run["status"] == "passed"
     assert run["summary"]["trade_count"] >= 2
     assert run["prediction_bindings"][0]["model_version_id"] == "model_version_1"
+    assert run["replay_data_identity_validation"]["status"] == "passed"
+    assert run["replay_data_identity_validation"]["qualified_content_digest"] == (
+        manifest["replay_data_identity"]["content_digest"]
+    )
     prediction_rows = (
         event_store.connection()
         .execute(

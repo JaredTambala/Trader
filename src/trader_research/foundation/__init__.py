@@ -31,6 +31,14 @@ from .errors import ResearchApplicationError, ResearchFailure
 from .identity import json_payload_hash, jsonable, source_hash, stable_research_id
 from .results import ApplicationResult, error_result, success_result
 from .predictions import PredictionDeploymentReader, PredictionMapperCatalog
+from .replay_identity import (
+    REPLAY_DATA_IDENTITY_ALGORITHM,
+    ReplayDataIdentity,
+    ReplayDataIdentityMismatch,
+    ReplayDataSourceSemantics,
+    build_replay_data_identity,
+    validate_replay_data_identity,
+)
 
 __all__ = [
     "ApplicationResult",
@@ -41,6 +49,10 @@ __all__ = [
     "ORCHESTRATION_DOMAIN_OWNER",
     "PredictionDeploymentReader",
     "PredictionMapperCatalog",
+    "REPLAY_DATA_IDENTITY_ALGORITHM",
+    "ReplayDataIdentity",
+    "ReplayDataIdentityMismatch",
+    "ReplayDataSourceSemantics",
     "ArtifactReference",
     "ContextualResearchArtifactStore",
     "InMemoryResearchArtifactStore",
@@ -55,6 +67,7 @@ __all__ = [
     "SUPPORTED_DOMAIN_OWNERS",
     "UnavailableResearchArtifactStore",
     "build_artifact_record",
+    "build_replay_data_identity",
     "error_result",
     "json_payload_hash",
     "jsonable",
@@ -64,4 +77,5 @@ __all__ = [
     "source_hash",
     "stable_research_id",
     "success_result",
+    "validate_replay_data_identity",
 ]
