@@ -33,6 +33,7 @@ Documentation = "https://github.com/JaredTambala/Trader/tree/main/docs"
 trader-agent = "trader_agents.application.cli:main"
 trader-console-api = "trader_console_api.application:main"
 trader-console-worker = "trader_console_api.worker_entrypoint:main"
+trader-agent-session-worker = "trader_console_api.agent_session_worker_entrypoint:main"
 trader-console-read-contract = "trader.event_store.console_read_contract:main"
 
 [project.optional-dependencies]
