@@ -62,6 +62,14 @@ from .data_scope_contracts import (
     SavedDataScopeCreate,
     SavedDataScopesResponse,
 )
+from .data_scope_comparison_contracts import (
+    DataComparisonDimension,
+    DataComparisonState,
+    DataScopeComparisonAlternative,
+    DataScopeComparisonPair,
+    DataScopeComparisonRequest,
+    DataScopeComparisonResponse,
+)
 from .worker import (
     AmbiguousExecutionError,
     BacktestExecutionWorker,
@@ -125,6 +133,12 @@ __all__ = [
     "SavedDataScope",
     "SavedDataScopeCreate",
     "SavedDataScopesResponse",
+    "DataComparisonDimension",
+    "DataComparisonState",
+    "DataScopeComparisonAlternative",
+    "DataScopeComparisonPair",
+    "DataScopeComparisonRequest",
+    "DataScopeComparisonResponse",
     "create_app",
     "AmbiguousExecutionError",
     "BacktestExecutionWorker",
