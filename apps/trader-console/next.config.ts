@@ -34,6 +34,8 @@ const config: NextConfig = {
       "/api/paper/commands/:command_id",
       "/api/runs/:run_id",
       "/api/runs/:run_id/risk-decisions",
+      "/api/runs/:run_id/next-decisions",
+      "/api/runs/:run_id/next-decisions/:decision_id",
       "/health/live",
       "/health/ready",
     ].map((path) => ({

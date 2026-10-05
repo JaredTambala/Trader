@@ -97,12 +97,14 @@ def test_console_read_compatibility_fails_closed(
 
 def test_console_read_contract_version_includes_standalone_backtest_runs() -> None:
     """Anchor standalone runs alongside lifecycle and typed chart evidence."""
-    assert CONSOLE_READ_CONTRACT_VERSION == 10
+    assert CONSOLE_READ_CONTRACT_VERSION == 11
     assert CONSOLE_READ_COLUMNS["signal_lifecycle"][0] == "signal_event_id"
     assert "signal_event_id" in CONSOLE_READ_COLUMNS["order_lifecycle"]
     assert CONSOLE_READ_COLUMNS["fill_lifecycle"][0] == "fill_event_id"
     assert CONSOLE_READ_COLUMNS["backtest_evidence_coverage"][-1] == "risk_evidence_status"
     assert "scope_fingerprint" in CONSOLE_READ_COLUMNS["backtest_scope"]
+    assert "data_scope_fingerprint" in CONSOLE_READ_COLUMNS["backtest_scope"]
+    assert "saved_scope_id" in CONSOLE_READ_COLUMNS["backtest_scope"]
     assert "variant_parameters_fingerprint" in CONSOLE_READ_COLUMNS["backtest_scope"]
     assert "strategy_normalized" in CONSOLE_READ_COLUMNS["backtest_comparison_curves"]
     assert "scope_fingerprint" in CONSOLE_READ_COLUMNS["backtest_comparison_runs"]

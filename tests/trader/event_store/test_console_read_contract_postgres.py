@@ -9,6 +9,7 @@ Non-goals: API transaction behavior, deployment authentication, roles, grants, o
 
 from __future__ import annotations
 
+import json
 from typing import Iterator
 
 import pytest
@@ -81,7 +82,7 @@ def test_console_contract_reports_compatible_catalog_and_rolls_back(
     version = connection.execute(CONSOLE_READ_VERSION_QUERY, [CONSOLE_READ_CONTRACT]).fetchone()
     assert inspection.ready is True
     assert inspection.issues == ()
-    assert version == (10, 1)
+    assert version == (11, 1)
 
 
 def test_console_contract_derives_backtest_evidence_without_metrics_snapshot(
@@ -164,3 +165,85 @@ def test_console_contract_derives_backtest_evidence_without_metrics_snapshot(
     assert performance[0] == 1000.0
     assert performance[1] == pytest.approx(1000.88)
     assert performance[2] == pytest.approx(0.1)
+
+
+def test_console_contract_projects_standalone_result_identity_and_warnings(
+    installed_console_read_contract: PostgresEventStore,
+) -> None:
+    """A completed Console run preserves exact scope, benchmark and warning evidence."""
+    connection = installed_console_read_contract.connection()
+    run_id = "console_result_projection_run"
+    ts = "2026-01-01T00:00:00+00:00"
+    end_ts = "2026-01-01T00:01:00+00:00"
+    snapshot = {
+        "strategy": {"id": "noop", "version": "standard-1"},
+        "market_data": {"asset_class": "stock", "source": "fixture"},
+        "logging": {"persist": {"signals": True, "orders": True, "fills": True, "positions": True}},
+        "backtest": {
+            "asset_class": "stock", "timeframe": "1Min", "initial_cash": 1000,
+            "initial_positions": [],
+            "assumptions": {"fill_model": "full_fill", "fees": {"bps": 1.0}},
+            "benchmark": {"id": "buy_hold", "method": "buy_and_hold", "allocation": "equal_weight"},
+            "data_scope": {
+                "saved_scope_id": "00000000-0000-0000-0000-000000000001",
+                "fingerprint": "a" * 64,
+            },
+        },
+    }
+    result = {
+        "total_runs": 1,
+        "failed_runs": 0,
+        "warnings": ["Skipped an incomplete bar"],
+        "strategy_performance": {"start_equity": 1000.0, "end_equity": 1001.0},
+        "benchmark_performance": {"start_equity": 1000.0, "end_equity": 1000.5},
+        "equity_curve": [{"ts": ts, "equity": 1000.0}, {"ts": end_ts, "equity": 1001.0}],
+        "benchmark_curve": [{"ts": ts, "equity": 1000.0}, {"ts": end_ts, "equity": 1000.5}],
+        "review_scope": {"scope_fingerprint": "scope:" + "b" * 64, "data_scope_id": "sha256:" + "c" * 64},
+    }
+    connection.execute(
+        """
+        INSERT INTO runs (run_id, run_type, started_at, finished_at, status,
+                          config_snapshot, mode, symbols, timeframe, start_ts, end_ts)
+        VALUES (%s, 'backtest', %s, %s, 'success', %s, 'backtest', %s, '1Min', %s, %s)
+        """,
+        [run_id, ts, end_ts, snapshot, ["AAPL"], ts, end_ts],
+    )
+    connection.execute(
+        "INSERT INTO metrics_snapshots (run_id, session_id, ts, payload) VALUES (%s, %s, %s, %s)",
+        [run_id, run_id, end_ts, json.dumps(result)],
+    )
+
+    scope = connection.execute(
+        """
+        SELECT scope_fingerprint, data_scope_id, data_scope_fingerprint,
+               saved_scope_id, benchmark_id, benchmark_method, fill_model, fee_bps
+        FROM console_read.backtest_scope WHERE run_id = %s
+        """,
+        [run_id],
+    ).fetchone()
+    performance = connection.execute(
+        """
+        SELECT strategy_end_equity, benchmark_end_equity, warnings_count
+        FROM console_read.backtest_performance WHERE run_id = %s
+        """,
+        [run_id],
+    ).fetchone()
+    warnings = connection.execute(
+        "SELECT warning FROM console_read.backtest_warnings WHERE run_id = %s", [run_id]
+    ).fetchall()
+    curves = connection.execute(
+        """
+        SELECT strategy_equity, benchmark_equity FROM console_read.backtest_equity_curve
+        WHERE run_id = %s ORDER BY point_index
+        """,
+        [run_id],
+    ).fetchall()
+
+    assert scope == (
+        "scope:" + "b" * 64, "sha256:" + "c" * 64, "a" * 64,
+        "00000000-0000-0000-0000-000000000001", "buy_hold", "buy_and_hold",
+        "full_fill", 1.0,
+    )
+    assert performance == (1001.0, 1000.5, 1)
+    assert warnings == [("Skipped an incomplete bar",)]
+    assert curves == [(1000.0, 1000.0), (1001.0, 1000.5)]

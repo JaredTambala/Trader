@@ -173,6 +173,12 @@ provenance references. Its qualification state is explicit (`complete`, `partial
 `unavailable`); the Console API projects this evidence without recalculating Data quality. When the research artifact
 table is not installed, the contract installs an empty typed view so consumers fail closed to `unavailable`.
 
+Contract version 11 carries the Console handoff's exact data-scope fingerprint and saved-scope identity through
+standalone backtest review. The producer worker also persists the typed `BacktestResult` metrics snapshot; scope,
+assumptions, benchmark fields, performance metrics, curves, trades, positions, and warning evidence remain available
+when a review is reopened after worker completion or runtime evidence is incomplete. Runtime evidence still takes
+precedence when it is present, and the snapshot is an explicit producer fallback rather than an untyped Console read.
+
 `console_read.contract_versions` records the installed version and the oldest admitted consumer. A consumer is
 compatible when its supported version is between `minimum_consumer_version` and `contract_version`, inclusive. Missing
 or malformed metadata, catalog drift, or unavailable views fails readiness. Relation and Python symbol names do not

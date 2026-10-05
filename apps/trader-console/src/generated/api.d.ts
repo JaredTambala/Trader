@@ -1464,6 +1464,8 @@ export interface components {
             comparison_projection_available: boolean;
             /** Created At */
             created_at?: string | null;
+            /** Data Scope Fingerprint */
+            data_scope_fingerprint?: string | null;
             /** Data Scope Id */
             data_scope_id?: string | null;
             /** End Ts */
@@ -1478,6 +1480,8 @@ export interface components {
             mode?: string | null;
             /** Run Id */
             run_id: string;
+            /** Saved Scope Id */
+            saved_scope_id?: string | null;
             /** Scope Fingerprint */
             scope_fingerprint?: string | null;
             /** Session Id */

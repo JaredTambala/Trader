@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import Any, cast
 
 from trader_console_api.backtest_executor import BacktestDefinitionExecutor, _core_assumptions
 from trader_console_api.contracts import BacktestDefinition
@@ -73,7 +74,15 @@ def test_adapter_resolves_catalogue_and_bridges_runner_progress(monkeypatch) -> 
     async def progress(processed, total, last_ts):
         seen.append((processed, total))
 
-    executor = BacktestDefinitionExecutor(config=object(), catalogue=maintained_catalogue())  # type: ignore[arg-type]
+    config = SimpleNamespace(
+        event_store="noop",
+        log_signal_events=False,
+        log_indicator_events=True,
+        log_order_events=False,
+        log_fill_events=True,
+        log_position_snapshots=False,
+    )
+    executor = BacktestDefinitionExecutor(config=config, catalogue=maintained_catalogue())  # type: ignore[arg-type]
     outcome = asyncio.run(executor.execute(_definition(), run_id="run-a", progress=progress))
 
     assert outcome.status == "completed"
@@ -83,3 +92,46 @@ def test_adapter_resolves_catalogue_and_bridges_runner_progress(monkeypatch) -> 
     assert calls["run_id"] == "run-a"
     assert calls["strategy"].__class__.__name__ == "NoOpStrategy"
     assert calls["risk_manager"].__class__.__name__ == "NoOpRiskManager"
+    snapshot = cast(dict[str, Any], calls["config_snapshot"])
+    assert snapshot["strategy"] == {
+        "id": "noop", "version": "standard-1", "parameters": {},
+    }
+    assert snapshot["market_data"]["source"] == "fixture"
+    assert snapshot["market_data"]["provider"] == "fixture"
+    assert snapshot["logging"]["persist"] == {
+        "signals": False, "indicators": True, "orders": False,
+        "fills": True, "positions": False,
+    }
+    assert snapshot["backtest"]["data_scope"]["fingerprint"] == "a" * 64
+    assert snapshot["backtest"]["data_scope"]["saved_scope_id"] == (
+        "00000000-0000-0000-0000-000000000001"
+    )
+
+
+def test_adapter_persists_typed_result_for_postgres_only(monkeypatch) -> None:
+    """A durable Console worker records the completed typed result once."""
+    result = SimpleNamespace(total_runs=1, failed_runs=0, warnings=())
+    persisted: list[tuple[str, object, object]] = []
+
+    class _Runner:
+        def __init__(self, **kwargs):
+            del kwargs
+
+        def run(self, *, progress_callback):
+            del progress_callback
+            return result
+
+    def persist(run_id, typed_result, config):
+        persisted.append((run_id, typed_result, config))
+
+    monkeypatch.setattr("trader_console_api.backtest_executor.BacktestRunner", _Runner)
+    monkeypatch.setattr("trader_console_api.backtest_executor.persist_backtest_result", persist)
+    config = SimpleNamespace(event_store="postgres")
+
+    async def progress(processed, total, last_ts):
+        del processed, total, last_ts
+
+    executor = BacktestDefinitionExecutor(config=config, catalogue=maintained_catalogue())  # type: ignore[arg-type]
+    asyncio.run(executor.execute(_definition(), run_id="run-pg", progress=progress))
+
+    assert persisted == [("run-pg", result, config)]

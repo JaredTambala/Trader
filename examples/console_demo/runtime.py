@@ -9,16 +9,36 @@ from pydantic import SecretStr
 
 from trader.event_store.console_read_contract import install_console_read_contract
 from trader.event_store.schema import POSTGRES_SCHEMA_STATEMENTS
+from trader_research.infrastructure.postgres import RESEARCH_ARTIFACT_SCHEMA_STATEMENTS
 from trader_console_api import (
     BrokerAccountBinding,
     ConsoleApiSettings,
     ConsoleEnvironment,
     ConsoleScope,
+    TraderPrincipal,
+)
+from trader_console_api.repositories.backtest_definitions_schema import (
+    install_backtest_definition_schema,
+)
+from trader_console_api.repositories.backtest_executions_schema import (
+    install_backtest_execution_schema,
+)
+from trader_console_api.repositories.saved_data_scopes_schema import (
+    install_saved_data_scope_schema,
 )
 
 
 DATABASE_NAME = "trader_console_demo"
 DATABASE_USER = "console_demo"
+
+
+class DemoAuthenticationProvider:
+    """Return the named synthetic-demo operator for local qualification only."""
+
+    async def authenticate(self, request: object) -> TraderPrincipal:
+        """Authenticate the loopback demo as its explicit human operator."""
+        del request
+        return TraderPrincipal(principal_id="human:console-demo")
 
 
 def demo_dsn(port: int = 55432) -> str:
@@ -48,11 +68,22 @@ def demo_connection(port: int = 55432) -> Iterator[psycopg.Connection]:
 
 
 def bootstrap(port: int = 55432) -> None:
-    """Idempotently install producer schemas without inserting or deleting trading data."""
+    """Install the complete local Console qualification surface explicitly.
+
+    The API still never migrates on startup.  The demo/bootstrap owner installs
+    the core read contract, Console command tables, and research artifact
+    projection together so an execution-to-review fixture can use a fresh
+    database and a separate worker process.
+    """
     with demo_connection(port) as connection:
         for statement in POSTGRES_SCHEMA_STATEMENTS:
             connection.execute(statement)
+        for statement in RESEARCH_ARTIFACT_SCHEMA_STATEMENTS:
+            connection.execute(statement)
         install_console_read_contract(connection)
+        install_saved_data_scope_schema(connection)  # type: ignore[arg-type]
+        install_backtest_definition_schema(connection)  # type: ignore[arg-type]
+        install_backtest_execution_schema(connection)  # type: ignore[arg-type]
 
 
 def break_schema(port: int = 55432) -> None:

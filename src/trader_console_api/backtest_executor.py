@@ -13,7 +13,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, cast
 
-from trader.backtest import BacktestRunner, BacktestSpec
+from trader.backtest import BacktestResult, BacktestRunner, BacktestSpec
+from trader.backtest.persistence import persist_backtest_result
 from trader.backtest.models import (
     BacktestAssumptions as CoreBacktestAssumptions,
     DataAssumptions,
@@ -94,9 +95,10 @@ class BacktestDefinitionExecutor:
             initial_cash=definition.initial_cash,
             assumptions=assumptions,
             run_id=run_id,
-            config_snapshot={"console_definition": definition.model_dump(mode="json")},
+            config_snapshot=_canonical_config_snapshot(definition, self.config),
         )
         result = await asyncio.to_thread(runner.run, progress_callback=emit_progress)
+        _persist_result_for_durable_store(self.config, run_id=run_id, result=result)
         status: Literal["partial", "completed"] = (
             "partial" if result.failed_runs else "completed"
         )
@@ -143,6 +145,85 @@ def _core_assumptions(definition: BacktestDefinition) -> CoreBacktestAssumptions
             allow_price_carry_forward=assumptions.allow_price_carry_forward,
         ),
     )
+
+
+def _canonical_config_snapshot(definition: BacktestDefinition, config: Config) -> dict[str, object]:
+    """Build the producer config shape consumed by runtime evidence views.
+
+    Console definitions are immutable API contracts, while the core event
+    store expects the same nested ``strategy``, ``market_data``, ``logging``
+    and ``backtest`` paths used by normal runtime configuration.  Keeping this
+    translation at the worker boundary gives standalone runs one canonical
+    snapshot without asking the read contract to understand Console payloads.
+    """
+    scope = definition.data_scope.model_dump(mode="json")
+    assumptions = definition.assumptions.model_dump(mode="json")
+    initial_positions = [position.model_dump(mode="json") for position in definition.initial_positions]
+    return {
+        "strategy": {
+            "id": definition.strategy_profile_id,
+            "version": definition.strategy_catalogue_version,
+            "parameters": definition.strategy_parameters,
+        },
+        "risk": {
+            "id": definition.risk_profile_id,
+            "version": definition.risk_catalogue_version,
+            "parameters": definition.risk_parameters,
+        },
+        "market_data": {
+            "asset_class": definition.asset_class,
+            "symbols": list(definition.symbols),
+            "timeframe": definition.timeframe,
+            "source": definition.data_scope.source_policy.source
+            or definition.data_scope.source_policy.provider,
+            "provider": definition.data_scope.source_policy.provider,
+            "source_policy": scope["source_policy"],
+        },
+        "logging": {
+            "persist": {
+                "signals": bool(getattr(config, "log_signal_events", True)),
+                "indicators": bool(getattr(config, "log_indicator_events", True)),
+                "orders": bool(getattr(config, "log_order_events", True)),
+                "fills": bool(getattr(config, "log_fill_events", True)),
+                "positions": bool(getattr(config, "log_position_snapshots", True)),
+            }
+        },
+        "backtest": {
+            "asset_class": definition.asset_class,
+            "symbols": list(definition.symbols),
+            "timeframe": definition.timeframe,
+            "start": definition.start.isoformat(),
+            "end": definition.end.isoformat(),
+            "initial_cash": definition.initial_cash,
+            "initial_positions": initial_positions,
+            "assumptions": assumptions,
+            "benchmark_id": definition.benchmark_id,
+            "benchmark": {
+                "id": definition.benchmark_id,
+                "method": "buy_and_hold" if definition.benchmark_id == "buy_hold" else "none",
+                "allocation": "equal_weight" if definition.benchmark_id == "buy_hold" else "none",
+            },
+            "data_scope": scope,
+            "resource_limits": definition.resource_limits.model_dump(mode="json"),
+        },
+    }
+
+
+def _persist_result_for_durable_store(
+    config: object,
+    *,
+    run_id: str,
+    result: BacktestResult,
+) -> None:
+    """Persist a typed result only when the worker uses PostgreSQL.
+
+    Unit and adapter tests inject lightweight config/runner fakes.  Checking the
+    explicit backend setting keeps those tests side-effect free while ensuring a
+    real Console worker leaves one durable metrics snapshot after completion.
+    """
+    if str(getattr(config, "event_store", "")).strip().lower() != "postgres":
+        return
+    persist_backtest_result(run_id, result, cast(Config, config))
 
 
 __all__ = ["BacktestDefinitionExecutor"]

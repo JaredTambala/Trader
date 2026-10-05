@@ -674,6 +674,8 @@ class ExperimentRunSummary(BaseModel):
     end_ts: datetime | None = None
     scope_fingerprint: str | None = None
     data_scope_id: str | None = None
+    data_scope_fingerprint: str | None = None
+    saved_scope_id: str | None = None
     benchmark_id: str | None = None
     variant_fingerprint: str | None = None
     variant_strategy_id: str | None = None

@@ -101,6 +101,12 @@ RELEASES: Final = (
         ("data_scope_evidence", "research_review_evidence"),
         ("research_artifacts",),
     ),
+    ContractRelease(
+        11,
+        "Carry Console data-scope identity, benchmark, assumptions, and persisted backtest warnings into standalone review projections.",
+        ("backtest_scope", "backtest_assumptions", "backtest_performance", "backtest_warnings"),
+        ("runs", "metrics_snapshots", "run_events"),
+    ),
 )
 
 

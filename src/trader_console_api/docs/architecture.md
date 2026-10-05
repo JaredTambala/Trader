@@ -218,6 +218,20 @@ expired unstarted commands, reserves a deterministic run ID, renews leases throu
 records terminal or explicit reconciliation-required outcomes. The injected `BacktestExecutor` owns core imports,
 catalogue resolution and internal-broker enforcement; the API process does not construct that adapter.
 
+The completed execution-to-review path keeps that process boundary explicit. The demo/bootstrap owner installs the
+core event tables, the producer research-artifact projection, the `console_read` contract, and the three Console
+command tables in one fresh database. A worker process reads the immutable definition, translates it into the canonical
+core configuration snapshot, runs `BacktestRunner` against the configured PostgreSQL event store, and persists one
+typed aggregate metrics snapshot. The standalone `console_read` projections then derive scope identity, assumptions,
+performance, fills, warnings, and provenance from the run and its persisted evidence. The API process remains a read
+and command boundary: it does not run the worker, migrate schemas, or infer missing producer evidence.
+
+The end-to-end qualification uses a disposable Compose database and separate API, worker, and browser processes. It
+replays the same execution idempotency key to prove one durable run, checks the published review after worker
+completion, and records a human next-decision against canonical artifacts. Focused worker tests continue to own failed,
+ambiguous, unavailable, and lease-recovery states; this fixture does not turn a deterministic local run into a live or
+profitability claim.
+
 `routers.resources` currently exposes a general resource surface rather than a permanently named experiment/comparison
 API:
 
