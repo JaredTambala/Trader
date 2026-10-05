@@ -274,6 +274,7 @@ def test_openapi_exposes_no_client_database_or_scope_override() -> None:
             "/api/data-scopes",
             "/api/data-scopes/{saved_scope_id}",
             "/api/data-scopes/{saved_scope_id}/revalidate",
+            "/api/data-scope-comparisons",
             "/api/experiments",
             "/api/experiments/{experiment_id}/runs",
                 "/api/runs/{run_id}",
