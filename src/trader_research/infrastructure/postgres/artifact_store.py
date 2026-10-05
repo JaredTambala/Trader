@@ -101,6 +101,21 @@ RESEARCH_ARTIFACT_SCHEMA_STATEMENTS: tuple[str, ...] = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS research_next_decisions (
+        artifact_id TEXT PRIMARY KEY,
+        decision_id TEXT NOT NULL,
+        revision INTEGER NOT NULL CHECK (revision >= 1),
+        outcome TEXT NOT NULL CHECK (outcome IN ('reject', 'refine', 'continue')),
+        source_run_id TEXT NOT NULL,
+        operator TEXT NOT NULL,
+        decided_at TIMESTAMPTZ NOT NULL,
+        supersedes_artifact_id TEXT,
+        decision_digest TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        UNIQUE (decision_id, revision)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS research_experiment_protocol_proposals (
         proposal_id TEXT PRIMARY KEY,
         protocol_id TEXT NOT NULL,
@@ -415,6 +430,10 @@ RESEARCH_ARTIFACT_SCHEMA_STATEMENTS: tuple[str, ...] = (
     (
         "CREATE INDEX IF NOT EXISTS research_agent_decisions_session_branch_idx "
         "ON research_agent_decision_receipts(session_id, branch_id, sequence)"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS research_next_decisions_run_revision_idx "
+        "ON research_next_decisions(source_run_id, decision_id, revision)"
     ),
     (
         "CREATE INDEX IF NOT EXISTS research_methodology_candidates_status_idx "

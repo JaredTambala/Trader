@@ -1,13 +1,15 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BacktestReviewWorkspace } from "../src/features/backtest-review/backtest-review-workspace";
-import { loadExperimentRuns, loadExperiments, loadRiskDecisions, loadRunDetail, type RunDetail } from "../src/features/backtest-review/client";
+import { createNextResearchDecision, loadExperimentRuns, loadExperiments, loadNextResearchDecisions, loadRiskDecisions, loadRunDetail, type RunDetail } from "../src/features/backtest-review/client";
 
 vi.mock("../src/features/backtest-review/client", () => ({
   loadExperimentRuns: vi.fn(),
   loadExperiments: vi.fn(),
   loadRunDetail: vi.fn(),
   loadRiskDecisions: vi.fn(),
+  loadNextResearchDecisions: vi.fn(),
+  createNextResearchDecision: vi.fn(),
 }));
 
 const experiment = { experiment_id: "exp-bollinger", run_count: 1, latest_created_at: "2026-09-21T21:25:00Z", statuses: ["completed"], metadata_available: false };
@@ -40,6 +42,8 @@ beforeEach(() => {
   vi.mocked(loadExperimentRuns).mockResolvedValue({ items: [run], page: { limit: 100, offset: 0, total: 1, has_more: false } });
   vi.mocked(loadRunDetail).mockResolvedValue(detail);
   vi.mocked(loadRiskDecisions).mockResolvedValue({ items: detail.risk_decisions, page: { limit: 25, offset: 0, total: detail.risk_decisions.length, has_more: false } });
+  vi.mocked(loadNextResearchDecisions).mockResolvedValue({ items: [], page: { limit: 20, offset: 0, total: 0, has_more: false } });
+  vi.mocked(createNextResearchDecision).mockRejectedValue(new Error("Decision command not configured in this unit fixture."));
 });
 
 describe("single-backtest review workflow", () => {

@@ -325,8 +325,9 @@ indicator/signal evidence, and comparison eligibility. The Console has single-ru
 durable definition/execution records, a local worker, bounded retries, and explicit ambiguous-outcome reconciliation.
 
 **Partial:** the worker-to-canonical-BacktestRunner path and live producer qualification remain incomplete for the
-Console authoring slice. Console review does not yet provide a complete Evaluation/Adversarial/statistical inference
-readout or a first-class next-decision record. General robustness attacks and walk-forward optimization remain absent.
+Console authoring slice. Console review now provides a typed Evaluation/Adversarial readout and a first-class human
+next-decision command/read path, but integrated qualification and complete statistical inference remain open. General
+robustness attacks and walk-forward optimization remain absent.
 The data identity handoff and replay-bar identity are covered by GAP-06-02 and GAP-06-03.
 
 | Acceptance point | Current status | Repository evidence |
@@ -335,7 +336,7 @@ The data identity handoff and replay-bar identity are covered by GAP-06-02 and G
 | Durable Console submission/lifecycle | Implemented; end-to-end producer qualification pending | `src/trader_console_api/docs/usage.md`, `src/trader_console_api/services/backtest_worker.py` |
 | Rich single-run review | Implemented and browser-qualified for published evidence | `apps/trader-console/src/features/backtest-review/backtest-review-workspace.tsx` |
 | Compatible comparison | Implemented with explicit exclusions | `apps/trader-console/src/features/comparisons`, `src/trader_console_api/docs/usage.md` |
-| Inference, robustness, and next decision | Partial/absent in Console | `docs/product_state.md` capability matrix and known limits |
+| Inference, robustness, and next decision | Next-decision contract and Console path implemented; independent inference/robustness remains partial | `docs/product_state.md` capability matrix and known limits |
 
 ### Executable gaps
 
@@ -494,8 +495,9 @@ research without silently becoming the decision-maker.
 **Implemented:** rich backtest review, compatible comparison exclusions, canonical artifact refs, public agent decisions,
 and bounded checkpoint recovery exist in separate product/runtime slices.
 
-**Partial:** the Console does not yet provide a unified agent evidence workspace; statistical/robustness artifacts and
-next-decision capture are incomplete at the human boundary; retained concurrent trajectory qualification remains open.
+**Partial:** the Console does not yet provide a unified agent evidence workspace; independent statistical/robustness
+artifacts and retained concurrent trajectory qualification remain open. The human next-decision contract and Console
+command/read surface now preserve exact refs, limitations, actor/time, and bounded successor inputs.
 
 ### Executable gaps and existing work
 

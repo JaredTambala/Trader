@@ -13,6 +13,7 @@ from trader_research.foundation.artifacts import ResearchArtifactRecord
 from trader_research.governance.artifacts import (
     AGENT_DECISION_RECEIPT,
     EXPERIMENT_PROTOCOL,
+    RESEARCH_NEXT_DECISION,
     RESEARCH_OBJECTIVE,
     RESEARCH_SESSION,
     WORKFLOW_OUTCOME,
@@ -90,6 +91,51 @@ def write_agent_decision_receipt(
             payload.get("status") or record.status,
             payload.get("decision_digest"),
             len(payload.get("evidence_refs") or ()),
+            json_value(payload),
+        ],
+    )
+
+
+def write_next_research_decision(
+    connection: Any,
+    record: ResearchArtifactRecord,
+    json_value: Any,
+) -> None:
+    """Project one immutable human next-decision revision for Console reads.
+
+    The complete decision payload remains authoritative in ``research_artifacts``;
+    this projection only flattens identity and query fields.  The caller owns the
+    surrounding transaction and has already validated the evidence chain.
+    """
+    payload = dict(record.payload)
+    source_run = dict(payload.get("source_run_ref") or {})
+    connection.execute(
+        """
+        INSERT INTO research_next_decisions (
+            artifact_id, decision_id, revision, outcome, source_run_id, operator,
+            decided_at, supersedes_artifact_id, decision_digest, payload
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (artifact_id) DO UPDATE SET
+            decision_id = EXCLUDED.decision_id,
+            revision = EXCLUDED.revision,
+            outcome = EXCLUDED.outcome,
+            source_run_id = EXCLUDED.source_run_id,
+            operator = EXCLUDED.operator,
+            decided_at = EXCLUDED.decided_at,
+            supersedes_artifact_id = EXCLUDED.supersedes_artifact_id,
+            decision_digest = EXCLUDED.decision_digest,
+            payload = EXCLUDED.payload
+        """,
+        [
+            record.artifact_id,
+            payload.get("decision_id"),
+            payload.get("revision"),
+            payload.get("outcome") or record.status,
+            source_run.get("artifact_id"),
+            payload.get("operator") or record.actor,
+            payload.get("decided_at"),
+            payload.get("supersedes_artifact_id"),
+            payload.get("decision_digest") or record.source_hash,
             json_value(payload),
         ],
     )
@@ -250,6 +296,7 @@ def write_workflow_outcome(
 PROJECTION_WRITERS = {
     RESEARCH_SESSION: write_research_session,
     AGENT_DECISION_RECEIPT: write_agent_decision_receipt,
+    RESEARCH_NEXT_DECISION: write_next_research_decision,
     RESEARCH_OBJECTIVE: write_research_objective,
     EXPERIMENT_PROTOCOL: write_experiment_protocol,
     WORKFLOW_PLAN: write_workflow_plan,

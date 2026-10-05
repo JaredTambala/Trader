@@ -307,7 +307,13 @@ async function installJourneyRoutes(page: Page, options: { stale?: boolean } = {
   await page.route("**/api/backtests/executions/execution-1", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(queuedExecution) }));
   await page.route("**/api/experiments?**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [{ experiment_id: "standalone_backtests", run_count: 1, latest_created_at: savedScope.end, statuses: ["completed"], metadata_available: false }], page: { limit: 100, offset: 0, total: 1, has_more: false } }) }));
   await page.route("**/api/experiments/standalone_backtests/runs**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [reviewDetail().run], page: { limit: 100, offset: 0, total: 1, has_more: false } }) }));
-  await page.route("**/api/runs/run-1**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(reviewDetail()) }));
+  await page.route("**/api/runs/run-1*", (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    const body = pathname.endsWith("/next-decisions")
+      ? { items: [], page: { limit: 20, offset: 0, total: 0, has_more: false } }
+      : reviewDetail();
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  });
   return { requests };
 }
 

@@ -12,6 +12,8 @@ export type RunDetail = components["schemas"]["RunDetail"];
 export type ResourceRecord = components["schemas"]["ResourceRecord"];
 export type RiskDecisionsResponse = components["schemas"]["RiskDecisionsResponse"];
 export type RiskDecisionOutcome = components["schemas"]["RiskDecision"]["outcome"];
+export type NextResearchDecisionRecord = components["schemas"]["NextResearchDecisionRecord"];
+export type NextResearchDecisionRequest = components["schemas"]["NextResearchDecisionRequest"];
 
 export class BacktestReviewRequestError extends Error {
   readonly status?: number;
@@ -81,5 +83,41 @@ export async function loadRiskDecisions(
     signal,
   });
   if (!result.response.ok || !result.data) throw errorFrom(result, "Risk decisions");
+  return result.data;
+}
+
+export async function loadNextResearchDecisions(signal: AbortSignal, runId: string) {
+  const result = await client.GET("/api/runs/{run_id}/next-decisions", {
+    params: { path: { run_id: runId }, query: { limit: 20, offset: 0 } },
+    signal,
+  });
+  if (!result.response.ok || !result.data) throw errorFrom(result, "Research decisions");
+  return result.data;
+}
+
+export async function createNextResearchDecision(
+  signal: AbortSignal,
+  runId: string,
+  request: NextResearchDecisionRequest,
+) {
+  const result = await client.POST("/api/runs/{run_id}/next-decisions", {
+    params: { path: { run_id: runId } },
+    body: request,
+    signal,
+  });
+  if (!result.response.ok || !result.data) throw errorFrom(result, "Research decision");
+  return result.data;
+}
+
+export async function loadNextResearchDecision(
+  signal: AbortSignal,
+  runId: string,
+  decisionId: string,
+) {
+  const result = await client.GET("/api/runs/{run_id}/next-decisions/{decision_id}", {
+    params: { path: { run_id: runId, decision_id: decisionId } },
+    signal,
+  });
+  if (!result.response.ok || !result.data) throw errorFrom(result, "Research decision");
   return result.data;
 }

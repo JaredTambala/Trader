@@ -142,9 +142,39 @@ test("backtest review shows scoped metrics, curves, and execution evidence", asy
     risk_summary: { run_id: "run-1", composition_fingerprint: "risk-fingerprint", risk_evidence_status: "recorded", evaluated_count: 1, approved_count: 0, transformed_count: 0, rejected_count: 1, blocked_count: 1 },
     risk_decisions: [{ risk_decision_id: "riskdec-1", composition_fingerprint: "risk-fingerprint", run_id: "run-1", session_id: "session-1", cycle_id: "cycle-1", client_order_id: "order-1", decision_ts: run.end_ts, manager_id: "max_orders_per_run", manager_type: "trader_standard.risk.MaxOrdersPerRunRiskManager", manager_position: 0, outcome: "rejected", reason_code: "limit_exceeded", before_qty: 0.1, after_qty: null, before_order: { qty: 0.1 }, after_order: null }],
   };
+  let storedDecision: Record<string, unknown> | null = null;
   await page.route("**/api/experiments?**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [experiment], page: { limit: 100, offset: 0, total: 1, has_more: false } }) }));
   await page.route("**/api/experiments/exp-bollinger/runs**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [run], page: { limit: 100, offset: 0, total: 1, has_more: false } }) }));
-  await page.route("**/api/runs/run-1**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(detail) }));
+  await page.route("**/api/runs/run-1**", (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname.endsWith("/next-decisions")) {
+      if (route.request().method() === "GET") {
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: storedDecision ? [storedDecision] : [], page: { limit: 20, offset: 0, total: storedDecision ? 1 : 0, has_more: false } }) });
+      }
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      storedDecision = {
+        artifact_type: "research_next_decision",
+        artifact_id: "research_next_decision_fixture",
+        decision_id: String(body.decision_id),
+        revision: 1,
+        outcome: body.outcome,
+        rationale: body.rationale,
+        operator: "human:jared",
+        decided_at: "2026-10-05T10:00:00Z",
+        source_run_ref: body.source_run_ref,
+        data_ref: body.data_ref,
+        implementation_refs: body.implementation_refs,
+        assumptions: body.assumptions ?? {},
+        review_refs: body.review_refs,
+        limitations: body.limitations,
+        next_experiment: null,
+        supersedes_artifact_id: null,
+        decision_digest: "a".repeat(64),
+      };
+      return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify(storedDecision) });
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(detail) });
+  });
   await page.route("**/api/runs/run-1/risk-decisions?**", (route) => {
     const outcome = new URL(route.request().url()).searchParams.get("outcome");
     const items = outcome === "approved" ? [] : detail.risk_decisions;
@@ -162,6 +192,15 @@ test("backtest review shows scoped metrics, curves, and execution evidence", asy
   await expect(page.getByRole("heading", { name: "Composition and decisions" })).toBeVisible();
   await expect(page.getByText("Risk block recorded", { exact: true })).toBeVisible();
   await expect(page.getByText('{"limit":0}', { exact: true })).toBeVisible();
+  await page.getByRole("textbox", { name: "Qualified data artifact ID" }).fill("data-1");
+  await page.getByRole("textbox", { name: "Implementation artifact ID" }).fill("impl-1");
+  await page.getByRole("textbox", { name: "Decision rationale" }).fill("The reviewed result does not survive the stated limitations.");
+  await page.getByRole("textbox", { name: "Decision limitations" }).fill("Single holdout window");
+  await page.getByRole("button", { name: "Record decision" }).click();
+  await expect(page.getByText("Revision 1", { exact: true })).toBeVisible();
+  await expect(page.getByText("The reviewed result does not survive the stated limitations.", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("Revision 1", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Open risk decision for cycle cycle-1" })).toHaveAttribute("href", "/backtests?experiment_id=exp-bollinger&run_id=run-1&cycle_id=cycle-1&client_order_id=order-1");
   await page.getByRole("link", { name: "Open risk decision for cycle cycle-1" }).click();
   await expect(page).toHaveURL(/cycle_id=cycle-1/);

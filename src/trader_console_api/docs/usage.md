@@ -189,6 +189,26 @@ the review can inspect a long trace without loading it into one run-detail paylo
 `unavailable` means the run predates the risk evidence contract or did not publish it. The API does not infer a risk
 block from a broker rejection or an absent fill.
 
+### Human next-decision record
+
+The review workspace records a human research decision only after the run exposes a qualified scope and at least one
+available review artifact. `POST /api/runs/{run_id}/next-decisions` accepts a strict `NextResearchDecisionRequest`
+with `reject`, `refine`, or `continue`, rationale, exact canonical references for the run/Data/implementation/review
+chain, assumptions, and limitations. `refine` and `continue` additionally require a bounded successor experiment
+with exact Data and implementation references, an evaluation window, a maximum run count, and success criteria.
+
+The request's `source_run_ref` must identify the route's run. The service resolves every reference from the research
+artifact store, compares pinned payload/source hashes, checks the published run scope, and rejects missing, stale,
+incompatible, or cross-run review evidence with a typed blocker. Only an authenticated `human:` or `operator:`
+principal can record a decision; an agent or MCP identity receives HTTP 403. The complete immutable artifact is stored
+in `research_artifacts` and its query projection in `research_next_decisions`.
+
+`GET /api/runs/{run_id}/next-decisions` returns the latest revision for each decision stream, while
+`GET /api/runs/{run_id}/next-decisions/{decision_id}` reopens the latest or an exact `revision`. Revision numbers are
+contiguous and later records must name the immediately preceding `supersedes_artifact_id`; the original revision is
+never edited. The response carries operator/time, rationale, exact references, limitations, and any bounded successor.
+These records guide research only and never imply deployment, paper admission, or profitability.
+
 `review_evidence` is a fixed three-part projection of Evaluation, multiple-testing, and Adversarial/robustness
 artifacts. Each item carries its producer identity, artifact digest, claim scope, data roles, limitations, blockers,
 and an explicit `available`, `missing`, `incompatible`, or `blocked` status. Optimisation-derived Evaluation and
