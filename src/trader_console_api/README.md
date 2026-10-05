@@ -21,6 +21,7 @@ The current application provides:
   reconciliation (the concrete BacktestRunner adapter remains deployment composition); and
 - a `trader-console-worker` entrypoint that binds the explicit core YAML config and polls the local queue; and
 - saved comparison-view definitions bound to one experiment and scope, with live eligibility explanations; and
+- saved data-scope alternative comparisons that retain independent evidence and explicit compatibility exclusions; and
 - a read-only `/api/paper/runtime` projection for paper session, freshness, portfolio, orders, fills, risk, and
   explicitly unavailable reconciliation/halt evidence; and
 - an authenticated `/api/paper/commands` boundary for human-authorized, admission-validated, idempotent paper
