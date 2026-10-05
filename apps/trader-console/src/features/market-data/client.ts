@@ -12,6 +12,8 @@ export type IndicatorSeriesPoint = components["schemas"]["IndicatorSeriesPoint"]
 export type SignalMarker = components["schemas"]["SignalMarker"];
 export type SavedDataScope = components["schemas"]["SavedDataScope"];
 export type SavedDataScopeCreate = components["schemas"]["SavedDataScopeCreate"];
+export type DataScopeComparisonRequest = components["schemas"]["DataScopeComparisonRequest"];
+export type DataScopeComparisonResponse = components["schemas"]["DataScopeComparisonResponse"];
 
 export const MARKET_DATA_BARS_PAGE_SIZE = 50_000;
 
@@ -135,6 +137,14 @@ export async function revalidateSavedDataScope(signal: AbortSignal, savedScopeId
     signal,
   });
   return requireResponse(result, "Saved data scope evidence");
+}
+
+export async function compareSavedDataScopes(
+  signal: AbortSignal,
+  body: DataScopeComparisonRequest,
+): Promise<DataScopeComparisonResponse> {
+  const result = await client.POST("/api/data-scope-comparisons", { body, signal });
+  return requireResponse(result, "Data scope comparison");
 }
 
 export function datasetKey(dataset: MarketDataset): string {
