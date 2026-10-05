@@ -160,9 +160,9 @@ identity without re-entry; research backtest preflight revalidates replay identi
 The integrated API and browser qualification now proves selection, evidence review, saved-scope handoff, authoring,
 execution submission, review, and stale/mismatch blockers against isolated persistence.
 
-**Remaining behavior:** bounded comparison of source or window alternatives is still a separate UJ-01 capability. The
-successful data-to-review journey is qualified, while broader worker failure and ambiguous-outcome campaigns remain in
-the UJ-03 execution boundary.
+**Remaining behavior:** bounded comparison of source or window alternatives is delivered with independent evidence
+and explicit exclusion reasons. The successful data-to-review journey is qualified, while broader worker failure and
+ambiguous-outcome campaigns remain in the UJ-03 execution boundary.
 
 | Acceptance point | Evidence coverage | Repository evidence |
 | --- | --- | --- |
