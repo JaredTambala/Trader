@@ -294,6 +294,20 @@ installed explicitly; it does not run DDL at startup. `TRADER_CONSOLE_WORKER_ID`
 `TRADER_CONSOLE_WORKER_POLL_SECONDS` are bounded worker settings. An expired lease with a reserved run is marked
 `reconciliation_required`; an unreserved command is requeued until its bounded retry count is exhausted.
 
+### Complete data-to-backtest qualification
+
+The qualified Console journey is deliberately ordered: select a bounded dataset in `/data`, inspect its Data-owned
+manifest and quality evidence, save the exact scope, follow **Author backtest with this scope**, run authoring
+preflight, persist the immutable definition, submit its durable execution command, and open the published run review.
+The browser qualification captures the POST bodies and checks that the saved scope fingerprint, provider/source
+policy, UTC window, manifest reference, and quality reference are unchanged in both preflight and definition
+persistence. The review fixture carries the same scope ID and fingerprint into the published run context.
+
+The journey fails closed when the saved scope cannot be reopened, evidence is stale or unavailable, or authoring
+changes any scope field. These blockers are shown as actionable preflight issues; a failed preflight cannot create a
+definition or execution command. Replay/bar-content identity remains producer-owned by GAP-06-03 and is consumed by
+the backtest execution boundary rather than recomputed by the Console.
+
 ## Saved comparison views
 
 Comparison definitions are scoped to the configured process scope and one experiment. Install the additive Console
