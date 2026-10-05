@@ -16,6 +16,7 @@ import pytest
 from trader.backtest import EquityPoint, _build_performance_summary
 from trader.backtest.performance import (
     _build_relative_metrics_from_returns,
+    _elapsed_performance_clock,
     _summarize_exposure_samples,
     _summarize_return_performance,
 )
@@ -169,3 +170,18 @@ def test_performance_summary_uses_known_turnover_and_drawdown() -> None:
     assert summary.avg_invested_pct == pytest.approx(
         (0.5 + (200.0 / 900.0) + 0.0) / 3.0
     )
+
+
+def test_elapsed_performance_clock_uses_observed_intervals() -> None:
+    """Irregular observations use elapsed timestamps rather than timeframe counts."""
+    base_ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    periods_per_year, elapsed_years = _elapsed_performance_clock(
+        (
+            EquityPoint(base_ts, 100.0),
+            EquityPoint(base_ts.replace(minute=1), 101.0),
+            EquityPoint(base_ts.replace(minute=11), 102.0),
+        )
+    )
+
+    assert periods_per_year == pytest.approx(365.25 * 24.0 * 60.0 / 5.5)
+    assert elapsed_years == pytest.approx(11.0 / (365.25 * 24.0 * 60.0))

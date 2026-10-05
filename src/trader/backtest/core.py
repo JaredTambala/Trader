@@ -310,7 +310,7 @@ class BacktestRunner:
             limit or len(timestamps),
         )
         logger.info(
-            "Backtest assumptions fill_model=%s latency_ms=%.2f fee_fixed=%s fee_bps=%s fee_min=%s slippage_bps=%s allow_latest_prior_bar=%s allow_price_carry_forward=%s",
+            "Backtest assumptions fill_model=%s latency_ms=%.2f fee_fixed=%s fee_bps=%s fee_min=%s slippage_bps=%s allow_latest_prior_bar=%s allow_price_carry_forward=%s latest_prior_max_age_seconds=%s decision_clock=%s performance_clock=%s",
             self._assumptions.fill_model,
             self._assumptions.latency_ms,
             self._assumptions.fees.fixed_per_order,
@@ -319,6 +319,9 @@ class BacktestRunner:
             self._assumptions.slippage.bps,
             self._assumptions.data.allow_latest_prior_bar,
             self._assumptions.data.allow_price_carry_forward,
+            self._assumptions.data.latest_prior_max_age_seconds,
+            self._assumptions.data.decision_clock,
+            self._assumptions.data.performance_clock,
         )
         started_at = self._started_at or datetime.now(timezone.utc)
         run_id = self._run_id or deterministic_run_session_id("backtest", started_at)
@@ -392,6 +395,7 @@ class BacktestRunner:
             timeframe=self._spec.timeframe,
             symbols=self._symbols,
             allow_latest_prior_bar=self._assumptions.data.allow_latest_prior_bar,
+            latest_prior_max_age_seconds=self._assumptions.data.latest_prior_max_age_seconds,
             warnings=warnings,
         )
         configs_by_symbol = _build_symbol_runtime_configs(self._config, self._symbols)

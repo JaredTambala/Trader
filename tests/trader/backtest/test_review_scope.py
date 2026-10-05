@@ -10,7 +10,10 @@ Non-goals: Database projection, Superset assets, or backtest execution.
 
 from datetime import UTC, datetime
 
+import pytest
+
 from trader.backtest.models import BacktestAssumptions
+from trader.backtest.models import DataAssumptions, build_backtest_assumptions
 from trader.backtest.review_scope import (
     build_backtest_review_scope,
     build_backtest_variant,
@@ -34,7 +37,12 @@ def _bars() -> dict[str, list[Bar]]:
     }
 
 
-def _scope(*, bars: dict[str, list[Bar]] | None = None, cash: float = 10_000) -> object:
+def _scope(
+    *,
+    bars: dict[str, list[Bar]] | None = None,
+    cash: float = 10_000,
+    assumptions: BacktestAssumptions | None = None,
+) -> object:
     return build_backtest_review_scope(
         asset_class="stock",
         symbols=("MSFT", "AAPL"),
@@ -44,7 +52,7 @@ def _scope(*, bars: dict[str, list[Bar]] | None = None, cash: float = 10_000) ->
         bars_by_symbol=bars if bars is not None else _bars(),
         initial_cash=cash,
         initial_positions=[Position("AAPL", 2, 99), Position("MSFT", 1, None)],
-        assumptions=BacktestAssumptions(),
+        assumptions=assumptions or BacktestAssumptions(),
     )
 
 
@@ -86,3 +94,27 @@ def test_variant_fingerprint_is_separate_from_scope() -> None:
     assert first.variant_fingerprint != second.variant_fingerprint
     assert first.parameters_fingerprint == reordered.parameters_fingerprint
     assert first.parameters == {"threshold": 0.5}
+
+
+def test_data_policy_is_typed_and_part_of_scope_identity() -> None:
+    """Clock and provider-gap policies are persisted comparison assumptions."""
+    assumptions = build_backtest_assumptions(
+        {
+            "data": {
+                "latest_prior_max_age_seconds": 300,
+                "decision_clock": "observed_bar",
+                "performance_clock": "elapsed_time",
+            }
+        }
+    )
+    assert assumptions.data.latest_prior_max_age_seconds == 300.0
+    assert assumptions.data.decision_clock == "observed_bar"
+    assert assumptions.data.performance_clock == "elapsed_time"
+    changed_scope = _scope(assumptions=BacktestAssumptions(data=DataAssumptions(latest_prior_max_age_seconds=300)))
+    assert _scope().scope_fingerprint != changed_scope.scope_fingerprint
+
+
+def test_unknown_data_policy_fails_at_the_boundary() -> None:
+    """Unsupported clock policy values cannot enter the deterministic runner."""
+    with pytest.raises(ValueError, match="unsupported backtest data policy"):
+        build_backtest_assumptions({"data": {"performance_clock": "timeframe"}})

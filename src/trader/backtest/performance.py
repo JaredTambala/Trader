@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+from statistics import median
 from typing import Sequence
 
 from ..timeframes import normalize_timeframe
@@ -99,9 +100,11 @@ def _build_performance_summary(
     """
     if len(equity_curve) < 2:
         return _empty_performance_summary()
+    periods_per_year, elapsed_years = _elapsed_performance_clock(equity_curve)
     return_metrics = _summarize_return_performance(
         equity_curve,
-        periods_per_year=_annualization_factor(timeframe),
+        periods_per_year=periods_per_year,
+        elapsed_years=elapsed_years,
     )
     exposure = _summarize_exposure_samples(exposure_samples or ())
     return PerformanceSummary(
@@ -133,6 +136,7 @@ def _summarize_return_performance(
     equity_curve: Sequence[EquityPoint],
     *,
     periods_per_year: float,
+    elapsed_years: float | None = None,
 ) -> _ReturnPerformanceMetrics:
     """Compute return, volatility, and drawdown metrics from an equity curve."""
     start_equity = equity_curve[0].equity
@@ -141,13 +145,17 @@ def _summarize_return_performance(
     total_return = None
     if start_equity != 0:
         total_return = (end_equity / start_equity) - 1.0
-    cagr = _compute_cagr(start_equity, end_equity, len(returns), periods_per_year)
+    cagr = _compute_cagr(
+        start_equity,
+        end_equity,
+        elapsed_years if elapsed_years is not None else len(returns) / periods_per_year,
+    )
     volatility = _annualize_volatility(returns, periods_per_year)
     sharpe = _compute_sharpe(returns, periods_per_year)
     sortino = _compute_sortino(returns, periods_per_year)
     drawdown = _compute_drawdowns(equity_curve)
     calmar = None
-    if cagr is not None and drawdown.max_drawdown not in {None, 0.0}:
+    if cagr is not None and drawdown.max_drawdown is not None and drawdown.max_drawdown != 0.0:
         calmar = cagr / drawdown.max_drawdown
     return _ReturnPerformanceMetrics(
         start_equity=start_equity,
@@ -195,10 +203,11 @@ def _build_relative_metrics(
     """Compute tracking, information-ratio, alpha, and beta versus benchmark."""
     returns = _returns_from_curve(strategy_curve)
     benchmark_returns = _returns_from_curve(benchmark_curve)
+    periods_per_year, _ = _elapsed_performance_clock(strategy_curve)
     return _build_relative_metrics_from_returns(
         returns=returns,
         benchmark_returns=benchmark_returns,
-        periods_per_year=_annualization_factor(timeframe),
+        periods_per_year=periods_per_year,
     )
 
 
@@ -315,19 +324,15 @@ def _annualize_volatility(returns: Sequence[float], periods_per_year: float) -> 
 def _compute_cagr(
     start_equity: float,
     end_equity: float,
-    periods: int,
-    periods_per_year: float,
+    elapsed_years: float,
 ) -> float | None:
     """Compute the compound annual growth rate."""
-    if start_equity <= 0 or periods <= 0:
-        return None
-    years = periods / periods_per_year
-    if years <= 0:
+    if start_equity <= 0 or elapsed_years <= 0:
         return None
     ratio = end_equity / start_equity
     if ratio <= 0:
         return None
-    exponent = 1.0 / years
+    exponent = 1.0 / elapsed_years
     try:
         return math.exp(math.log(ratio) * exponent) - 1.0
     except OverflowError:
@@ -353,6 +358,27 @@ def _compute_sortino(returns: Sequence[float], periods_per_year: float) -> float
     if downside_std == 0.0:
         return None
     return _mean(returns) / downside_std * (periods_per_year ** 0.5)
+
+
+def _elapsed_performance_clock(curve: Sequence[EquityPoint]) -> tuple[float, float]:
+    """Return elapsed-time annualization and curve duration in years.
+
+    Equity points may be irregular because replay follows observed provider
+    bars. Volatility-like metrics use the median positive observation interval;
+    CAGR uses the full elapsed window.
+    """
+    intervals = [
+        (current.ts - previous.ts).total_seconds()
+        for previous, current in zip(curve, curve[1:])
+        if (current.ts - previous.ts).total_seconds() > 0
+    ]
+    seconds_per_year = 365.25 * 24.0 * 60.0 * 60.0
+    if not intervals:
+        return 1.0, 0.0
+    median_interval = median(intervals)
+    periods_per_year = seconds_per_year / median_interval
+    elapsed_years = max((curve[-1].ts - curve[0].ts).total_seconds(), 0.0) / seconds_per_year
+    return periods_per_year, elapsed_years
 
 
 def _compute_beta(returns: Sequence[float], benchmark_returns: Sequence[float]) -> float | None:

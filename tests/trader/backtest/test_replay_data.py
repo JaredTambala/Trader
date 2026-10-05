@@ -119,6 +119,25 @@ def test_select_backtest_bar_uses_latest_prior_bar_when_allowed() -> None:
     assert selection.latest_ts == base_ts
 
 
+def test_select_backtest_bar_rejects_stale_latest_prior_bar() -> None:
+    """Bounded fallback must not turn a long provider gap into a fake observation."""
+    base_ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    bars = (_bar(base_ts, 100.0),)
+
+    selection = _select_backtest_bar(
+        symbol="AAPL",
+        bars=bars,
+        timestamps=tuple(bar.ts for bar in bars),
+        target=base_ts.replace(hour=13),
+        allow_latest_prior_bar=True,
+        latest_prior_max_age_seconds=60.0,
+    )
+
+    assert selection.bar is None
+    assert selection.warning_kind == "stale_prior"
+    assert selection.latest_ts == base_ts
+
+
 def test_build_symbol_schedule_filters_lookback_and_out_of_window_bars() -> None:
     """Schedule only in-window timestamps while retaining their available symbols."""
     base_ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
@@ -186,6 +205,32 @@ def test_build_market_event_converts_bar_to_stock_or_crypto_event() -> None:
     assert stock_event.ingested_at == ingested_at
     assert crypto_event.symbol == "BTC/USD"
     assert crypto_event.table_name == "crypto_bar_events"
+
+
+def test_zero_activity_provider_bar_remains_an_observed_signal_input() -> None:
+    """A provider-emitted zero-activity bar is distinct from an absent bar."""
+    base_ts = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    bar = _bar(base_ts, 100.0, volume=0.0, trade_count=0.0)
+
+    selection = _select_backtest_bar(
+        symbol="BTC/USD",
+        bars=(bar,),
+        timestamps=(base_ts,),
+        target=base_ts,
+        allow_latest_prior_bar=False,
+    )
+    event = _build_market_event(
+        asset_class="crypto",
+        symbol="BTC/USD",
+        timeframe="1Min",
+        bar=bar,
+        source="provider",
+        ingested_at=base_ts,
+    )
+
+    assert selection.bar == bar
+    assert event.volume == 0.0
+    assert event.trade_count == 0.0
 
 
 def test_latest_price_from_bars_returns_normalized_last_close() -> None:
@@ -277,14 +322,20 @@ def test_advance_price_cursors_carries_latest_prior_prices_forward() -> None:
     assert second.prices == {"AAPL": 102.0, "MSFT": 50.0}
 
 
-def _bar(ts: datetime, close: float) -> Bar:
+def _bar(
+    ts: datetime,
+    close: float,
+    *,
+    volume: float = 1.0,
+    trade_count: float | None = None,
+) -> Bar:
     return Bar(
         ts=ts,
         open=close,
         high=close,
         low=close,
         close=close,
-        volume=1.0,
+        volume=volume,
         vwap=None,
-        trade_count=None,
+        trade_count=trade_count,
     )
