@@ -277,16 +277,19 @@ def test_openapi_exposes_no_client_database_or_scope_override() -> None:
             "/api/data-scope-comparisons",
             "/api/experiments",
             "/api/experiments/{experiment_id}/runs",
-                "/api/runs/{run_id}",
-                "/api/runs/{run_id}/next-decisions",
-                "/api/runs/{run_id}/next-decisions/{decision_id}",
-                "/api/runs/{run_id}/risk-decisions",
+            "/api/runs/{run_id}",
+            "/api/runs/{run_id}/next-decisions",
+            "/api/runs/{run_id}/next-decisions/{decision_id}",
+            "/api/runs/{run_id}/risk-decisions",
             "/api/experiments/{experiment_id}/comparison-views/preview",
             "/api/experiments/{experiment_id}/comparison-views",
             "/api/experiments/{experiment_id}/comparison-views/{view_id}",
             "/api/paper/runtime",
             "/api/paper/commands",
             "/api/paper/commands/{command_id}",
+            "/api/agent-sessions/{session_id}",
+            "/api/agent-sessions/{session_id}/commands",
+            "/api/agent-sessions/{session_id}/commands/{command_id}",
         }
     rendered = json.dumps(schema)
     for forbidden in ("database_url", "postgresql://", "scope_id_override"):

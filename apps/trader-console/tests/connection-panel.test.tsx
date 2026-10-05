@@ -56,7 +56,7 @@ describe("first-screen workflow", () => {
     expect(screen.getByText("Schema check reported: __proto__")).toBeVisible();
     expect(screen.getByText(/relation does not match the supported schema: sessions/)).toBeVisible();
     const retry = screen.getByRole("button", { name: /Retry/ });
-    for (let index = 0; index < 8 && document.activeElement !== retry; index += 1) await user.tab();
+    for (let index = 0; index < 16 && document.activeElement !== retry; index += 1) await user.tab();
     expect(retry).toHaveFocus();
     await user.keyboard("{Enter}");
     expect(await screen.findByText("Compatible")).toBeVisible();

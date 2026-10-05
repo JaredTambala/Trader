@@ -179,6 +179,21 @@ MLflow spans continue alongside the semantic stream until approved durable produ
 `RetainedTrajectorySink(storage_path=...)` provides atomic local JSON retention for qualification fixtures and does not
 change that product persistence boundary.
 
+## Console session boundary
+
+The Console's agent workspace consumes the existing `research_agent_sessions` and
+`research_agent_decision_receipts` producer projections through its own typed, redacted read model. It does not read
+LangGraph checkpoint blobs, provider messages, trace payloads, or agent internals. The projection exposes only session
+identity, the bounded objective and scope summary, budget counters, specialist progress, public transitions, terminal
+decisions, and exact canonical evidence references. Runtime checkpoints and semantic events remain operational
+observability; canonical research receipts remain the evidence authority.
+
+Human lifecycle actions cross the boundary as durable `inspect`, `interrupt`, `resume`, or `cancel` command intents in
+Console-owned storage. The Console verifies the human principal and immutable session owner before recording an intent,
+and the runtime remains responsible for validating pending interrupts, ownership, lifecycle state, and checkpoint
+recovery before applying it. No agent or MCP principal can use the Console route as an authority escalation, and no
+compatibility reader or legacy command path is retained.
+
 The three child MCP processes also log their own bounded lifecycle events to inherited `stderr`. Each line carries the
 specialist role and a distinct MCP process identity, while MCP protocol JSON-RPC remains isolated on child `stdout`.
 

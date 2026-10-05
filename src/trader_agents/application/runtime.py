@@ -33,6 +33,7 @@ from trader_agents.contracts.domain import (
     AgentRole,
     AgenticSliceResult,
     OperatorCancellation,
+    OperatorInterruption,
     OperatorInterrupt,
     OperatorResponse,
 )
@@ -88,7 +89,7 @@ McpClientDecorator = Callable[[AgentRole, McpToolClient], McpToolClient]
 
 @dataclass
 class AgenticResearchRuntime:
-    """Start, resume, and inspect one checkpoint-backed coordinator system.
+    """Start, interrupt, resume, cancel, and inspect one checkpoint-backed coordinator system.
 
     Attributes:
         coordinator: Fully wired coordinator and specialist system.
@@ -219,16 +220,106 @@ class AgenticResearchRuntime:
             fields={"lifecycle_operation": "resume", "recovered": True},
         )
         current = _outcome_if_available(session.session_id, snapshot.values)
-        if current is not None:
+        if isinstance(current, AgenticSliceResult):
             return self._emit_outcome(session, current)
         if not snapshot.interrupts:
-            raise ValueError("research session is not awaiting operator input")
+            if (
+                "await_operator" in snapshot.next
+                and isinstance(snapshot.values.get("pending_interrupt"), Mapping)
+                and snapshot.values.get("pending_interrupt")
+            ):
+                # A Console pause persists the edge before LangGraph has run
+                # the interrupt node. Materialize it after a fresh-process
+                # recovery, then apply the normal typed resume command.
+                await graph.ainvoke(None, config)
+                snapshot = await graph.aget_state(config)
+            if not snapshot.interrupts:
+                raise ValueError("research session is not awaiting operator input")
         output = await graph.ainvoke(
             Command(resume=response.model_dump(mode="json")),
             config,
         )
         self._emit_checkpoint(AgentEventName.CHECKPOINT_SAVED, output)
         return self._emit_outcome(session, _outcome(session.session_id, output))
+
+    async def interrupt(
+        self,
+        session: ResearchSession,
+        interruption: OperatorInterruption,
+    ) -> OperatorInterrupt:
+        """Pause one checkpointed session at a resumable operator boundary.
+
+        The owning runtime task is cancelled after its latest completed
+        checkpoint. The checkpoint is then advanced through the coordinator's
+        existing ``await_operator`` edge with a bounded synthetic interrupt.
+        A later :meth:`resume` materializes that edge in LangGraph before
+        applying the operator response, so a worker restart does not lose the
+        pause request.
+        """
+        self._validate_session(session)
+        if interruption.operator_id != session.operator_id:
+            raise ValueError("operator interruption identity does not match the session")
+        with self._trace_operation(session, "interrupt"):
+            return await self._interrupt_unlocked(session, interruption)
+
+    async def _interrupt_unlocked(
+        self,
+        session: ResearchSession,
+        interruption: OperatorInterruption,
+    ) -> OperatorInterrupt:
+        """Cancel active work and persist one synthetic operator boundary."""
+        current_task = asyncio.current_task()
+        active_task = self._active_tasks.get(session.session_id)
+        if (
+            active_task is not None
+            and active_task is not current_task
+            and not active_task.done()
+        ):
+            active_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await active_task
+        async with self._active_session(session.session_id):
+            graph = self.coordinator.build_graph(
+                session=session,
+                checkpointer=self.checkpointer,
+            )
+            config = coordinator_thread_config(session.session_id)
+            snapshot = await graph.aget_state(config)
+            if not snapshot.values:
+                raise ValueError("research session has no operational checkpoint")
+            current = _outcome_if_available(session.session_id, snapshot.values)
+            if isinstance(current, AgenticSliceResult):
+                raise ValueError("a terminal research session cannot be interrupted")
+            existing_pending = snapshot.values.get("pending_interrupt")
+            if isinstance(existing_pending, Mapping) and existing_pending:
+                existing = _outcome_if_available(session.session_id, snapshot.values)
+                if isinstance(existing, OperatorInterrupt):
+                    return existing
+                raise RuntimeError("research session has an invalid pending interrupt")
+            pending = {
+                "kind": "operator_pause",
+                "question": (
+                    "The owning operator paused this session. "
+                    + interruption.reason[:600]
+                ),
+                "requested_action": "resume or cancel",
+                "resume_schema": {
+                    "type": "operator_response",
+                    "fields": ["approved", "answer", "operator_id"],
+                },
+            }
+            updates: AgentCheckpointState = {
+                "pending_interrupt": pending,
+                "status": "awaiting_operator",
+                "phase": AgentPhase.AWAITING_OPERATOR.value,
+            }
+            await graph.aupdate_state(config, updates, as_node="commit_decision")
+            paused = await graph.aget_state(config)
+            outcome = _outcome_if_available(session.session_id, paused.values)
+            if not isinstance(outcome, OperatorInterrupt):
+                raise RuntimeError("operator interruption did not persist a resumable boundary")
+            self._emit_checkpoint(AgentEventName.CHECKPOINT_SAVED, paused.values)
+            return self._emit_outcome(session, outcome)
 
     async def cancel(
         self,

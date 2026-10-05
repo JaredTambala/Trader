@@ -26,6 +26,7 @@ from .routers import (
     backtest_execution_router,
     catalogue_router,
     context_router,
+    agent_session_router,
     health_router,
     resource_router,
     saved_data_scope_router,
@@ -49,6 +50,8 @@ from .repositories.paper_operator_commands import PaperOperatorCommandRepository
 from .services.paper_operator_commands import PaperOperatorCommandService
 from .repositories.next_research_decisions import NextResearchDecisionRepository
 from .services.next_research_decisions import NextResearchDecisionService
+from .repositories.agent_sessions import AgentSessionRepository
+from .services.agent_sessions import AgentSessionService
 
 
 class AuthenticationProvider(Protocol):
@@ -141,6 +144,9 @@ def create_app(
         next_research_decision_service = NextResearchDecisionService(
             NextResearchDecisionRepository(database, configured_settings.scope.scope_id)
         )
+        agent_session_service = AgentSessionService(
+            AgentSessionRepository(database, configured_settings.scope.scope_id)
+        )
         opened = False
         app.state.database = database
         app.state.health_service = health_service
@@ -155,6 +161,7 @@ def create_app(
         app.state.paper_runtime_service = paper_runtime_service
         app.state.paper_operator_command_service = paper_operator_command_service
         app.state.next_research_decision_service = next_research_decision_service
+        app.state.agent_session_service = agent_session_service
         try:
             try:
                 await pool.open(
@@ -198,6 +205,7 @@ def create_app(
     app.include_router(paper_runtime_router)
     app.include_router(paper_operator_command_router)
     app.include_router(next_research_decision_router)
+    app.include_router(agent_session_router)
     from .routers.comparison_views import router as comparison_view_router
 
     app.include_router(comparison_view_router)

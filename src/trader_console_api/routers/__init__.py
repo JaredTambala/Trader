@@ -11,6 +11,7 @@ from .data_scope_comparisons import router as data_scope_comparison_router
 from .paper_runtime import router as paper_runtime_router
 from .paper_operator_commands import router as paper_operator_command_router
 from .next_research_decisions import router as next_research_decision_router
+from .agent_sessions import router as agent_session_router
 __all__ = [
     "backtest_definition_router",
     "backtest_execution_router",
@@ -23,4 +24,5 @@ __all__ = [
     "paper_runtime_router",
     "paper_operator_command_router",
     "next_research_decision_router",
+    "agent_session_router",
 ]

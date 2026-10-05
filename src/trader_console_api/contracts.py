@@ -43,6 +43,232 @@ class TraderPrincipal(BaseModel):
     principal_id: str = Field(min_length=1, max_length=200)
 
 
+AgentSessionCommandName = Literal["inspect", "interrupt", "resume", "cancel"]
+AgentSessionCommandStatus = Literal[
+    "requested",
+    "accepted",
+    "completed",
+    "rejected",
+    "ambiguous",
+]
+AgentSessionStatus = Literal[
+    "active",
+    "ready",
+    "running",
+    "accepted",
+    "awaiting_operator",
+    "blocked",
+    "cancelled",
+    "failed",
+    "terminal",
+    "completed",
+]
+
+
+class AgentSessionEvidenceReference(BaseModel):
+    """Exact public identity of an artifact cited by an agent session."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    artifact_type: str = Field(min_length=1, max_length=100)
+    artifact_id: str = Field(min_length=1, max_length=200)
+    domain_owner: str = Field(min_length=1, max_length=100)
+    uri: str = Field(min_length=1, max_length=500)
+    source_hash: str | None = Field(
+        default=None,
+        min_length=64,
+        max_length=64,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+
+    @model_validator(mode="after")
+    def validate_uri_identity(self) -> "AgentSessionEvidenceReference":
+        """Keep a cited evidence URI bound to its exact artifact identity."""
+        expected = f"research://postgres/{self.artifact_type}/{self.artifact_id}"
+        if self.uri != expected:
+            raise ValueError("agent evidence URI does not match artifact identity")
+        return self
+
+
+class AgentSessionBudgetLimits(BaseModel):
+    """Human-readable hard ceilings for one agent session."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    max_model_calls: int = Field(ge=1)
+    max_tool_calls: int = Field(ge=1)
+    max_tokens: int = Field(ge=1)
+    max_duration_seconds: int = Field(ge=1)
+    max_mutations: int = Field(ge=0)
+    max_revisions: int = Field(ge=0)
+    concurrency_limit: int = Field(ge=1, le=8)
+
+
+class AgentSessionBudgetUsage(BaseModel):
+    """Cumulative public resource counters at an accepted transition."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    model_calls: int = Field(ge=0)
+    tool_calls: int = Field(ge=0)
+    tokens: int = Field(ge=0)
+    duration_ms: int = Field(ge=0)
+    mutations: int = Field(ge=0)
+    revisions: int = Field(ge=0)
+
+
+class AgentSessionDelegation(BaseModel):
+    """Bounded specialist progress visible to the human operator."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    branch_id: str = Field(min_length=1, max_length=200)
+    delegation_id: str | None = Field(default=None, max_length=200)
+    attempt_id: str | None = Field(default=None, max_length=200)
+    role: Literal["data_research", "strategy_engineering", "research_coordinator"]
+    status: AgentSessionStatus
+    sequence: int = Field(ge=1)
+    summary: str = Field(min_length=1, max_length=4000)
+    evidence_refs: tuple[AgentSessionEvidenceReference, ...] = ()
+    blockers: tuple[str, ...] = ()
+    next_actions: tuple[str, ...] = ()
+
+
+class AgentSessionEvent(BaseModel):
+    """Public, redacted lifecycle event reconstructed from an accepted receipt."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    event_id: str = Field(min_length=1, max_length=200)
+    session_id: str = Field(min_length=1, max_length=200)
+    branch_id: str = Field(min_length=1, max_length=200)
+    sequence: int = Field(ge=1)
+    event_type: str = Field(min_length=1, max_length=100)
+    status: AgentSessionStatus
+    summary: str = Field(min_length=1, max_length=4000)
+    delegation_id: str | None = Field(default=None, max_length=200)
+    attempt_id: str | None = Field(default=None, max_length=200)
+    evidence_refs: tuple[AgentSessionEvidenceReference, ...] = ()
+    budget_used: AgentSessionBudgetUsage
+    blockers: tuple[str, ...] = ()
+    next_actions: tuple[str, ...] = ()
+    recorded_at: datetime | None = None
+
+
+class AgentSessionInterrupt(BaseModel):
+    """Operator-facing interrupt state without a model prompt or transcript."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    kind: str = Field(min_length=1, max_length=100)
+    question: str = Field(min_length=1, max_length=800)
+    requested_action: str = Field(min_length=1, max_length=200)
+
+
+class AgentSessionTerminalDecision(BaseModel):
+    """Terminal public decision summary and exact evidence lineage."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    branch_id: str = Field(min_length=1, max_length=200)
+    sequence: int = Field(ge=1)
+    status: AgentSessionStatus
+    action: str = Field(min_length=1, max_length=100)
+    summary: str = Field(min_length=1, max_length=4000)
+    evidence_refs: tuple[AgentSessionEvidenceReference, ...] = ()
+    blockers: tuple[str, ...] = ()
+
+
+class AgentSessionProjection(BaseModel):
+    """Complete redacted read model for one human-owned agent session.
+
+    This contract intentionally carries summaries and exact references only. It
+    has no field for prompts, completions, hidden reasoning, raw tool payloads,
+    credentials, source code, or arbitrary model metadata.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    session_id: str = Field(min_length=1, max_length=200)
+    session_digest: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+    operator_id: str = Field(min_length=1, max_length=200)
+    objective: str = Field(min_length=1, max_length=1200)
+    success_definition: str = Field(min_length=1, max_length=1200)
+    status: AgentSessionStatus
+    model_profile_id: str = Field(min_length=1, max_length=200)
+    agent_program_ids: tuple[str, ...] = Field(min_length=1, max_length=16)
+    tool_catalog_id: str = Field(min_length=1, max_length=200)
+    scope_summary: dict[str, Any] = Field(default_factory=dict)
+    budget_limits: AgentSessionBudgetLimits
+    budget_used: AgentSessionBudgetUsage
+    agenda_summary: str | None = Field(default=None, max_length=1200)
+    delegations: tuple[AgentSessionDelegation, ...] = ()
+    events: tuple[AgentSessionEvent, ...] = ()
+    evidence_refs: tuple[AgentSessionEvidenceReference, ...] = ()
+    pending_interrupt: AgentSessionInterrupt | None = None
+    terminal_decision: AgentSessionTerminalDecision | None = None
+    checkpoint_sequence: int | None = Field(default=None, ge=1)
+    command_ids: tuple[str, ...] = ()
+
+
+class AgentSessionCommandRequest(BaseModel):
+    """Human command intent forwarded to the agent runtime boundary."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    command: AgentSessionCommandName
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    reason: str | None = Field(default=None, max_length=1000)
+    operator_answer: str | None = Field(default=None, max_length=2000)
+    approved: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_resume_approval(self) -> "AgentSessionCommandRequest":
+        """Require an explicit approval decision for operator resume."""
+        if self.command == "resume":
+            if self.approved is None:
+                raise ValueError("resume requires an explicit approved value")
+            if not self.operator_answer or not self.operator_answer.strip():
+                raise ValueError("resume requires an operator answer")
+        elif self.approved is not None:
+            raise ValueError("approved is allowed only for resume")
+        return self
+
+
+class AgentSessionCommandRecord(BaseModel):
+    """Durable audit receipt for one human-owned agent command intent."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    command_id: str
+    session_id: str
+    command: AgentSessionCommandName
+    idempotency_key: str
+    requested_by: str
+    status: AgentSessionCommandStatus
+    reason: str | None = None
+    operator_answer: str | None = None
+    approved: bool | None = None
+    outcome_code: str | None = None
+    outcome_message: str | None = None
+    worker_id: str | None = None
+    attempt: int = Field(default=0, ge=0)
+    started_at: datetime | None = None
+    heartbeat_at: datetime | None = None
+    lease_expires_at: datetime | None = None
+    requested_at: datetime
+    completed_at: datetime | None = None
+
+
+class AgentSessionCommandsResponse(BaseModel):
+    """Bounded command history for one agent session."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    items: tuple[AgentSessionCommandRecord, ...]
+    page: PageInfo
+
+
 PaperOperatorCommandName = Literal[
     "start",
     "pause",

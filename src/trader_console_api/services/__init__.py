@@ -38,6 +38,11 @@ from .next_research_decisions import (
     NextDecisionRevisionConflict,
     NextResearchDecisionService,
 )
+from .agent_sessions import (
+    AgentSessionAuthorityError,
+    AgentSessionCommandConflict,
+    AgentSessionService,
+)
 
 __all__ = [
     "CompatibilityRepository",
@@ -73,4 +78,7 @@ __all__ = [
     "NextDecisionDatabaseUnavailable",
     "NextDecisionRevisionConflict",
     "NextResearchDecisionService",
+    "AgentSessionAuthorityError",
+    "AgentSessionCommandConflict",
+    "AgentSessionService",
 ]

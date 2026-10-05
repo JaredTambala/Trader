@@ -130,6 +130,43 @@ The Console never constructs a broker and no MCP or research tool is registered 
 paper-operations workspace provides admission/reason inputs and renders the queued or terminal receipt; it does not
 claim that a queued command has already changed runtime state.
 
+## Agent session workspace boundary
+
+`routers.agent_sessions` → `services.AgentSessionService` → `repositories.AgentSessionRepository` exposes the
+human-facing projection of one model-backed research session. The repository reads the research-owned
+`research_agent_sessions` and `research_agent_decision_receipts` projections and never reads LangGraph checkpoint blobs
+or model-provider messages. The service converts the canonical session payload and accepted public receipts into a
+closed `AgentSessionProjection`: identity, objective, allowlisted Data scope facts, budget ceilings and use, specialist
+progress, exact evidence references, public transition summaries, pending operator input, and terminal decision lineage.
+
+The projection is deliberately lossy. Prompts, completions, hidden reasoning, raw tool payloads, credentials, source
+code, and arbitrary receipt metadata have no response fields and are dropped at the repository/service boundary.
+Missing or incompatible producer projections fail closed with `agent_session_storage_unavailable`; the Console never
+invents agenda, checkpoint, or completion state from a missing row. The event list is a public decision trajectory,
+not a replacement for retained observability evidence.
+
+`POST /api/agent-sessions/{session_id}/commands` records an explicit human command intent (`inspect`, `interrupt`,
+`resume`, or `cancel`) in `console_app.agent_session_commands`. The endpoint requires an authenticated human principal
+who owns the immutable session; agents and MCP identities are rejected. Commands are append-only and idempotent by
+scope plus key. A separately composed agent runtime consumes these intents and applies its own checkpoint-backed
+`resume`/`cancel` authority; the Console neither invokes LangGraph nor grants model/tool authority. `GET` routes expose
+the projection and bounded command receipts with `no-store` headers.
+
+Install the Console command and public-state tables explicitly after the research artifact store has installed its
+producer projections:
+
+<!-- verified: integration:console tests/trader_console_api/repositories/test_agent_sessions_schema.py -->
+```bash
+TRADER_CONSOLE_DATABASE_URL="$TRADER_CONSOLE_DATABASE_URL" \
+  uv run python -m trader_console_api.repositories.agent_sessions_schema install
+```
+
+The browser workspace at `/agents/{session_id}` renders these typed summaries and asks for a reason or bounded answer
+when an interrupt is pending. A separate `trader-agent-session-worker` process claims each intent with a lease, loads
+the exact `ResearchSession`, calls the agent-owned runtime command boundary, and stores a fresh `agent_public_state`
+snapshot. It marks a lost runtime response `ambiguous` and never replays an accepted side effect automatically. The
+Console still labels a queued receipt as an intent until the worker records `completed`.
+
 ## Capability growth
 
 Read-only is a property of the currently implemented schema queries, not the API's identity. Future operational

@@ -463,6 +463,7 @@ describe dependency state, not selected priority; no new ML agent or ML capabili
 | ML training telemetry, packaged models and registry records | Configured MLflow instance, once the planned training lifecycle exists |
 | MCP registration, transport envelopes and coarse policy gates | `trader_mcp` |
 | Agent planning, allowed tool use, handoffs and operational checkpoints | `trader_agents` and its configured checkpointer |
+| Human agent-session inspection and lifecycle intents | Console typed redacted projection over `research_agent_*` evidence plus Console-owned command-intent storage |
 
 Operational graph checkpoints are not research evidence. A workflow may be resumed from a checkpoint, but downstream
 claims must still be supported by immutable product artifacts and their bounded-context authority.
@@ -507,7 +508,7 @@ The current first slice is a real model/tool control loop, not a deterministic s
 | Data Research | Structured model/tool loop in `trader_agents.specialists.data_research`. | Uses only phase-appropriate Data MCP tools; loading must remain in the approved multi-asset envelope. |
 | Strategy Engineering | Catalogue-first structured loop in `trader_agents.specialists.strategy_engineering`. | Reuse requires exact passed admission evidence; authorship uses isolated Coding Workspace MCP and independent admission, never host execution or self-approval. |
 | Evidence join | Structured returns plus exact `research_read_artifact` checks and append-only decision receipts. | A URI alone is insufficient; type, identity, owner, session/actor lineage, and bounded public metadata must agree. |
-| Runtime | `AgenticResearchRuntime.start`, `.resume`, `.cancel`, and `.inspect`, with three isolated MCP stdio clients and a PostgreSQL LangGraph saver. | Checkpoints are operational and redacted; canonical evidence remains in research persistence. Cancellation requires the owning operator and records a canonical terminal receipt. |
+| Runtime | `AgenticResearchRuntime.start`, `.resume`, `.cancel`, and `.inspect`, with three isolated MCP stdio clients and a PostgreSQL LangGraph saver. | Checkpoints are operational and redacted; canonical evidence remains in research persistence. Cancellation requires the owning operator and records a canonical terminal receipt. The Console exposes that public session/receipt evidence and records human lifecycle intents without importing agent internals; runtime application remains the authority. |
 
 The runtime may conclude, stop, request operator input, revise a specialist, revisit earlier work, or fork a new
 lineage. Equivalent low-information loops, policy violations, invalid evidence, exhausted budgets, and out-of-scope

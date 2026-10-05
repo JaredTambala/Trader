@@ -226,7 +226,49 @@ The database, schema installation, and processes are test-owned and removed afte
 and unavailable command states remain covered by the focused worker and API suites; this qualification establishes the
 successful producer path and its review evidence boundary only.
 
-## 7. Install saved comparison storage when needed
+## 7. Inspect and govern an agent research session
+
+The agent workspace is a human-facing read and command boundary over the producer's public session and decision
+projections. Install the Console-owned command-intent table after the research artifact store has created its two
+producer relations:
+
+<!-- verified: integration:console tests/trader_console_api/repositories/test_agent_sessions_schema.py -->
+```bash
+TRADER_CONSOLE_DATABASE_URL="$TRADER_CONSOLE_DATABASE_URL" \
+  uv run python -m trader_console_api.repositories.agent_sessions_schema install
+```
+
+Open `/agents/{session_id}` in the Console, or read the same workspace through the API. The response includes the
+session identity, objective, allowlisted scope facts, budget counters, specialist progress, public transitions and
+exact evidence references. It omits prompts, completions, hidden reasoning, raw tool payloads, credentials and source
+code. Only the owning human operator can read or command the session; an agent or MCP principal receives `403`.
+
+Submit an operator intent with an idempotency key. The runtime consumes the durable intent and remains the authority that
+validates and applies the lifecycle transition:
+
+<!-- verified: integration:console tests/trader_console_api/routers/test_agent_sessions_router.py -->
+```bash
+curl --fail -X POST http://127.0.0.1:8001/api/agent-sessions/$SESSION_ID/commands \
+  -H 'content-type: application/json' \
+  -H 'authorization: Bearer <human-operator-token>' \
+  -d '{"command":"interrupt","idempotency_key":"pause-1","reason":"Review the latest evidence"}'
+```
+
+`inspect` is always read-only. `interrupt`, `resume`, and `cancel` are audited requests. Start the separately composed
+worker to apply one or continuously poll commands:
+
+<!-- verified: integration:console tests/trader_console_api/services/test_agent_session_worker.py -->
+```bash
+TRADER_CONSOLE_DATABASE_URL="$TRADER_CONSOLE_DATABASE_URL" \
+  uv run trader-agent-session-worker --once
+```
+
+The worker refreshes the public checkpoint projection after a completed command, renews its lease for long runs, and
+marks an unobserved runtime result `ambiguous` rather than replaying it. Resume payloads include an explicit
+`approved` value and a bounded answer. The command history remains visible through
+`GET /api/agent-sessions/{session_id}/commands`.
+
+## 8. Install saved comparison storage when needed
 
 Comparison views are an additive Console-owned feature. Install their table as an explicit operator action after the
 producer `console_read` contract is ready:
@@ -240,7 +282,7 @@ TRADER_CONSOLE_DATABASE_URL="$TRADER_CONSOLE_DATABASE_URL" \
 Use the API's comparison-view endpoints from [the usage reference](usage.md#saved-comparison-views). The API stores
 the definition only and evaluates selected runs from current published evidence whenever it previews or loads a view.
 
-## 8. Shut down and clear local secrets
+## 9. Shut down and clear local secrets
 
 Stopping the process closes its one connection pool. Clear the local DSN from the shell afterward:
 

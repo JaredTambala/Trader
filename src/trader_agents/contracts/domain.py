@@ -521,6 +521,13 @@ class OperatorCancellation(StrictPublicModel):
     reason: str = Field(min_length=1, max_length=2_000)
 
 
+class OperatorInterruption(StrictPublicModel):
+    """Explicit operator request to pause one checkpointed session."""
+
+    operator_id: str = Field(min_length=1, max_length=200)
+    reason: str = Field(min_length=1, max_length=2_000)
+
+
 class DataScopeItem(StrictPublicModel):
     """One role-labelled item in a composite market-data requirement."""
 

@@ -407,3 +407,51 @@ returned as `unavailable` with an explanation rather than inferred from `/health
 The endpoint uses the server-owned scope and a bounded read-only transaction. It accepts no broker, database, session,
 or mutation selector. A database outage returns HTTP 503 with `database_unavailable`; stale or partial runtime evidence
 remains HTTP 200 so the Console can show the operational limitation.
+
+## Agent research sessions
+
+The agent workspace reads the canonical public session and decision projections and requires the authenticated human
+owner. Install the additive command-intent table explicitly; producer-owned research projections are installed by the
+research artifact store:
+
+<!-- verified: integration:console tests/trader_console_api/repositories/test_agent_sessions_schema.py -->
+```bash
+TRADER_CONSOLE_DATABASE_URL="$TRADER_CONSOLE_DATABASE_URL" \
+  uv run python -m trader_console_api.repositories.agent_sessions_schema install
+```
+
+Open an exact workspace in the browser at `/agents/{session_id}` or call the read route directly:
+
+<!-- verified: integration:console tests/trader_console_api/routers/test_agent_sessions_router.py -->
+```bash
+curl --fail http://127.0.0.1:8001/api/agent-sessions/session-1
+```
+
+The response contains the immutable session identity, objective, allowlisted scope facts, budget ceilings and use,
+specialist/branch progress, public transition summaries, and exact canonical evidence references. Prompts, model
+completions, hidden reasoning, raw tool payloads, credentials, source code, and arbitrary metadata are structurally
+absent. Missing or incompatible producer projections return HTTP 503 rather than a guessed status.
+
+Human lifecycle intents use an authenticated operator provider and are durable/idempotent by scope plus key:
+
+<!-- verified: integration:console tests/trader_console_api/routers/test_agent_sessions_router.py -->
+```bash
+curl --fail -X POST http://127.0.0.1:8001/api/agent-sessions/session-1/commands \
+  -H 'content-type: application/json' \
+  -d '{"command":"interrupt","idempotency_key":"session-1-interrupt-1","reason":"Review the evidence."}'
+```
+
+`inspect`, `interrupt`, `resume`, and `cancel` are durable intent records. Run the separate worker to apply them:
+
+<!-- verified: integration:console tests/trader_console_api/services/test_agent_session_worker.py -->
+```bash
+TRADER_CONSOLE_DATABASE_URL="$TRADER_CONSOLE_DATABASE_URL" \
+  TRADER_AGENT_SESSION_WORKER_ID=agent-worker-1 \
+  uv run trader-agent-session-worker --once
+```
+
+The worker claims with `SKIP LOCKED`, renews its lease while the runtime is active, and writes a fresh redacted
+`agent_public_state` snapshot after `completed`. A lost runtime response becomes `ambiguous` and is never replayed
+automatically; inspect the session before taking a new action. `resume` requires both `approved` and
+`operator_answer`, and all commands re-check the immutable owner. Agent/MCP principals, non-owners, terminal-session
+mutations, and material idempotency replays fail closed.
