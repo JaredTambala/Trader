@@ -29,6 +29,7 @@ from .routers import (
     health_router,
     resource_router,
     saved_data_scope_router,
+    data_scope_comparison_router,
     paper_runtime_router,
     paper_operator_command_router,
     next_research_decision_router,
@@ -95,6 +96,8 @@ def create_app(
         from .services.comparison_views import ComparisonViewService
         from .repositories.backtest_definitions import BacktestDefinitionRepository
         from .repositories.backtest_executions import BacktestExecutionRepository
+        from .repositories.data_scope_comparisons import DataScopeComparisonRepository
+        from .services.data_scope_comparisons import DataScopeComparisonService
 
         pool = pool_factory(configured_settings)
         database = ConsoleDatabase(pool, configured_settings)
@@ -109,6 +112,9 @@ def create_app(
         from .repositories.saved_data_scopes import SavedDataScopeRepository
         saved_data_scope_service = SavedDataScopeService(
             SavedDataScopeRepository(database, configured_settings.scope.scope_id)
+        )
+        data_scope_comparison_service = DataScopeComparisonService(
+            DataScopeComparisonRepository(database, configured_settings.scope.scope_id)
         )
         preflight_service = PreflightService.default(
             resource_repository,
@@ -145,6 +151,7 @@ def create_app(
         app.state.backtest_execution_service = backtest_execution_service
         app.state.comparison_view_service = comparison_view_service
         app.state.saved_data_scope_service = saved_data_scope_service
+        app.state.data_scope_comparison_service = data_scope_comparison_service
         app.state.paper_runtime_service = paper_runtime_service
         app.state.paper_operator_command_service = paper_operator_command_service
         app.state.next_research_decision_service = next_research_decision_service
@@ -187,6 +194,7 @@ def create_app(
     app.include_router(backtest_execution_router)
     app.include_router(resource_router)
     app.include_router(saved_data_scope_router)
+    app.include_router(data_scope_comparison_router)
     app.include_router(paper_runtime_router)
     app.include_router(paper_operator_command_router)
     app.include_router(next_research_decision_router)

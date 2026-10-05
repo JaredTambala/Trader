@@ -33,6 +33,13 @@ from .saved_data_scopes import (
     SavedDataScopeRepository,
     SavedDataScopeSession,
 )
+from .data_scope_comparisons import (
+    DataScopeComparisonCandidate,
+    DataScopeComparisonNotFound,
+    DataScopeComparisonRepository,
+    DataScopeComparisonSession,
+    DataScopeComparisonStorageUnavailable,
+)
 from .paper_operator_commands import (
     PaperOperatorCommandConflict,
     PaperOperatorCommandNotFound,
@@ -66,6 +73,11 @@ __all__ = [
     "SavedDataScopeNotFound",
     "SavedDataScopeRepository",
     "SavedDataScopeSession",
+    "DataScopeComparisonCandidate",
+    "DataScopeComparisonNotFound",
+    "DataScopeComparisonRepository",
+    "DataScopeComparisonSession",
+    "DataScopeComparisonStorageUnavailable",
     "PaperOperatorCommandConflict",
     "PaperOperatorCommandNotFound",
     "PaperOperatorCommandRepository",

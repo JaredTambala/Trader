@@ -167,6 +167,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/data-scope-comparisons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Compare Data Scopes
+         * @description Return pairwise evidence and exclusions for selected saved scopes.
+         */
+        post: operations["compare_data_scopes_api_data_scope_comparisons_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data-scopes": {
         parameters: {
             query?: never;
@@ -1405,6 +1425,89 @@ export interface components {
             symbols: string[];
             /** Timeframe */
             timeframe: string;
+        };
+        /**
+         * DataScopeComparisonAlternative
+         * @description One selected scope with its independent evidence and pair exclusions.
+         */
+        DataScopeComparisonAlternative: {
+            /** Eligible */
+            eligible: boolean;
+            evidence: components["schemas"]["MarketDataEvidenceResponse"];
+            /**
+             * Exclusion Reasons
+             * @default []
+             */
+            exclusion_reasons: string[];
+            scope: components["schemas"]["SavedDataScope"];
+        };
+        /**
+         * DataScopeComparisonPair
+         * @description Pairwise compatibility and differences for two selected scopes.
+         */
+        DataScopeComparisonPair: {
+            /** Differences */
+            differences?: {
+                [key: string]: unknown;
+            };
+            /** Eligible */
+            eligible: boolean;
+            /** Equal Dimensions */
+            equal_dimensions: string[];
+            /**
+             * Exclusion Reasons
+             * @default []
+             */
+            exclusion_reasons: string[];
+            /**
+             * Left Scope Id
+             * Format: uuid
+             */
+            left_scope_id: string;
+            /**
+             * Right Scope Id
+             * Format: uuid
+             */
+            right_scope_id: string;
+            /** Varied Dimensions */
+            varied_dimensions: string[];
+        };
+        /**
+         * DataScopeComparisonRequest
+         * @description Select two or more immutable scopes and allowed comparison dimensions.
+         */
+        DataScopeComparisonRequest: {
+            /**
+             * Comparison Dimensions
+             * @default [
+             *       "source",
+             *       "window"
+             *     ]
+             */
+            comparison_dimensions: ("source" | "window")[];
+            /** Saved Scope Ids */
+            saved_scope_ids: string[];
+        };
+        /**
+         * DataScopeComparisonResponse
+         * @description A reviewable comparison that never merges alternative evidence.
+         */
+        DataScopeComparisonResponse: {
+            /** Alternatives */
+            alternatives: components["schemas"]["DataScopeComparisonAlternative"][];
+            /** Comparable Pair Count */
+            comparable_pair_count: number;
+            /** Comparison Dimensions */
+            comparison_dimensions: ("source" | "window")[];
+            /** Excluded Pair Count */
+            excluded_pair_count: number;
+            /** Pairs */
+            pairs: components["schemas"]["DataScopeComparisonPair"][];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "partial" | "unavailable";
         };
         /**
          * DataScopeEvidenceStatus
@@ -3288,6 +3391,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConsoleScope"];
+                };
+            };
+        };
+    };
+    compare_data_scopes_api_data_scope_comparisons_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DataScopeComparisonRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataScopeComparisonResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
         };

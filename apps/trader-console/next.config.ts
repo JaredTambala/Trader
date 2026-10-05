@@ -17,6 +17,7 @@ const config: NextConfig = {
       "/api/data-scopes",
       "/api/data-scopes/:saved_scope_id",
       "/api/data-scopes/:saved_scope_id/revalidate",
+      "/api/data-scope-comparisons",
       "/api/experiments",
       "/api/experiments/:experiment_id/runs",
       "/api/experiments/:experiment_id/comparison-views",

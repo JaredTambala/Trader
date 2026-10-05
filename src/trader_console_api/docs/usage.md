@@ -139,6 +139,7 @@ collection returns `items` plus `page {limit, offset, total, has_more}`. General
 | `GET /api/data-scopes?limit=&offset=` | List saved exact scopes in the configured Console scope. |
 | `GET /api/data-scopes/{saved_scope_id}` | Reopen an exact scope without widening or refreshing it. |
 | `POST /api/data-scopes/{saved_scope_id}/revalidate` | Re-read producer evidence and persist `active`, `stale`, or `unavailable`. |
+| `POST /api/data-scope-comparisons` | Compare two or more saved scopes while retaining independent evidence and explicit exclusions. |
 | `GET /api/experiments?limit=&offset=` | Discover experiment IDs by published backtest-run membership. |
 | `GET /api/experiments/{experiment_id}/runs?compatible_with_run_id=&limit=&offset=` | List runs and scope-fingerprint comparison eligibility. |
 | `GET /api/runs/{run_id}?section_limit=` | Return one run and bounded performance/evidence sections. |
@@ -165,6 +166,18 @@ TRADER_CONSOLE_DATABASE_URL="$TRADER_CONSOLE_DATABASE_URL" \
 Reopening returns the original scope and current evidence state. Missing or superseded producer evidence remains
 `unavailable` or `stale`; it is never silently refreshed or widened. A missing `console_read.data_scope_evidence`
 projection fails closed as `unavailable`.
+
+### Saved-scope alternatives
+
+`POST /api/data-scope-comparisons` accepts two to eight `saved_scope_ids` and an explicit set of comparison
+dimensions. `source` and `window` are allowed by default. All other scope dimensions must match exactly; callers can
+restrict the allowed dimensions further when a comparison protocol requires it. The response returns one
+`alternatives` item per selected scope, each with its immutable identity and independent `MarketDataEvidenceResponse`,
+plus every unordered `pairs` result. A pair is eligible only when all required dimensions match and both evidence
+states are usable. Ineligible pairs preserve reasons such as `timeframe_mismatch`, `source_mismatch`,
+`window_mismatch`, or `right_evidence_unavailable`; no bars are merged and no provider is silently preferred. Eligible
+pairs report bounded numeric coverage deltas and leave quality findings, warnings, and provenance in their respective
+alternative records.
 
 The evidence endpoint binds the complete asset class, symbol set, timeframe/interval/bar type, UTC window, provider
 and source-policy scope before returning manifest/quality artifact identity, coverage, findings, warnings and

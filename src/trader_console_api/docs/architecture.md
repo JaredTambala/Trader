@@ -245,6 +245,10 @@ API:
   additive `console_app.saved_data_scopes` table and reads the optional producer-owned
   `console_read.data_scope_evidence` projection. Missing, stale, superseded, or unavailable evidence is explicit and
   never replaced with a broader query.
+- `POST /api/data-scope-comparisons` reads two or more saved scopes through
+  `DataScopeComparisonRepository` → `DataScopeComparisonService`. It compares every unordered pair only after checking
+  exact non-source/window dimensions, retains each scope's independent Data evidence, and reports explicit exclusion
+  reasons for mismatches or unavailable evidence. It has no preferred-source, bar-merge, or producer-write behavior.
 - `GET /api/experiments` derives groups from `console_read.backtest_runs`. Experiment-linked runs retain their
   published experiment ID; standalone `BacktestRunner` runs appear under the stable `standalone_backtests` group.
   Experiment name, description, and tags are not currently published by the Console contract, so the response reports
