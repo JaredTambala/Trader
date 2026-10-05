@@ -187,6 +187,13 @@ the Data-owned manifest and quality pair by exact symbols, asset class, timefram
 provider and source policy. The UI preserves complete, partial, stale, warning, empty and unavailable states, artifact
 identities, coverage, findings and provenance. It does not infer quality from visible bars or recalculate Data reports.
 
+GAP-06-04 now qualifies the complete data-to-backtest Console journey. The browser fixture selects a bounded dataset,
+renders manifest and quality evidence, saves the exact scope, follows the handoff into authoring, captures preflight
+and immutable-definition payloads, submits durable execution, and opens a review fixture carrying the same saved-scope
+ID and scope fingerprint. It also proves that stale qualified evidence remains an actionable preflight blocker and
+cannot create a definition. The qualification is deterministic and route-isolated; the separate producer worker and
+replay/bar-content execution proof remain owned by their existing execution and replay qualification boundaries.
+
 The same audit loop now covers the nine candidate journeys. UJ-01 has a working bounded data explorer but lacks Console
 quality/provenance, saved-scope, alternative-comparison, and discovery-completeness continuity. UJ-02 has deterministic
 implementation admission and a catalogue-first Strategy loop but lacks a complete hypothesis-to-candidate and

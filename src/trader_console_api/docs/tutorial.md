@@ -160,6 +160,20 @@ uv run trader-console-worker
 The worker resolves exact catalogue versions and invokes the canonical internal-broker runner through its injected
 adapter. `uv run trader-console-worker --once` is useful for one-command recovery checks.
 
+### Complete data-to-backtest journey
+
+The normal Console flow starts at `/data`: select the dataset and UTC window, inspect the manifest and quality
+evidence, enter those artifact references, and choose **Author backtest with this scope**. The authoring page loads the
+immutable saved scope and locks its symbols, provider policy, evidence references, and replay window. Run preflight,
+save the immutable definition, submit its execution command, and use **Open run review** after a published run is
+available.
+
+The handoff is exact across these steps. A changed fingerprint, provider/source policy, time window, manifest or
+quality reference, stale evidence state, or missing saved scope produces an actionable preflight blocker and prevents a
+definition write. The browser qualification in
+`apps/trader-console/tests/e2e/data-to-backtest.spec.ts` exercises the successful journey and the stale-evidence
+blocker with deterministic isolated responses.
+
 ## 6. Install saved comparison storage when needed
 
 Comparison views are an additive Console-owned feature. Install their table as an explicit operator action after the
