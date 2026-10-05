@@ -61,7 +61,8 @@ RESOURCE_CONTRACT_COLUMNS: Final[dict[str, tuple[str, ...]]] = {
     "backtest_scope": (
         "experiment_run_id", "experiment_id", "run_id", "observed_at",
         "scope_fingerprint", "asset_class", "symbols", "timeframe", "replay_start",
-        "replay_end", "data_scope_id", "benchmark_id", "benchmark_method",
+        "replay_end", "data_scope_id", "data_scope_fingerprint", "saved_scope_id",
+        "benchmark_id", "benchmark_method",
         "benchmark_allocation", "initial_cash", "initial_position_count", "fill_model",
         "latency_ms", "fee_fixed_per_order", "fee_bps", "fee_minimum", "slippage_bps",
         "allow_latest_prior_bar", "allow_price_carry_forward", "variant_fingerprint",

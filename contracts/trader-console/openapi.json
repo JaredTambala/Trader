@@ -2020,6 +2020,17 @@
             ],
             "title": "Created At"
           },
+          "data_scope_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Scope Fingerprint"
+          },
           "data_scope_id": {
             "anyOf": [
               {
@@ -2077,6 +2088,17 @@
           "run_id": {
             "title": "Run Id",
             "type": "string"
+          },
+          "saved_scope_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saved Scope Id"
           },
           "scope_fingerprint": {
             "anyOf": [

@@ -61,4 +61,6 @@ jobs:
         env:
           CONSOLE_DEMO_TESTS: "1"
           CONSOLE_BROWSER_TESTS: "1"
-        run: uv run pytest tests/cross_package/workflows/test_console_demo.py tests/cross_package/workflows/test_console_demo_postgres.py tests/cross_package/workflows/test_console_browser.py -q
+          CONSOLE_EXECUTION_TESTS: "1"
+          CONSOLE_EXECUTION_BROWSER_TESTS: "1"
+        run: uv run pytest tests/cross_package/workflows/test_console_demo.py tests/cross_package/workflows/test_console_demo_postgres.py tests/cross_package/workflows/test_console_browser.py tests/cross_package/workflows/test_console_execution_to_review.py tests/cross_package/workflows/test_console_execution_to_review_browser.py -q

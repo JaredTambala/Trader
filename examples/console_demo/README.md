@@ -19,7 +19,8 @@ uv run python -m examples.console_demo api
 
 The last command runs the API in the foreground on `127.0.0.1:8001`. In another terminal, start the
 [frontend](../../apps/trader-console/README.md#start-the-screen) and open `http://127.0.0.1:3000`.
-Bootstrap is repeatable: it installs the core schema and Console projections without inserting/truncating trading data.
+Bootstrap is repeatable: it installs the core schema, research artifact projection, Console read contract, and explicit
+Console command tables without inserting/truncating trading data. It still does not start a worker or mutate a broker.
 The API command never bootstraps or repairs a schema.
 
 The database binds only to `127.0.0.1:55432`, database `trader_console_demo`, user `console_demo`, password
@@ -105,3 +106,22 @@ tests separately cover loading, retained last-known context, unknown issue codes
 Record the full Git revision, whether the working tree is dirty, toolchain versions and exact checks/results in the
 Notion work item. An uncommitted demonstration is evidence for that working tree, not a claim about the base commit
 alone. Qualification of this connection screen does not qualify trading operations, production IAM or future stories.
+
+## Execution-to-review qualification
+
+The producer-backed Console qualification owns a fresh Compose database and starts the API, a separate worker process,
+and the frontend independently. It saves one exact scope, authors and submits a definition, runs the maintained
+catalogue strategy through `BacktestRunner`, replays the command idempotency key, and reopens the persisted result in
+the review page. The run carries its saved-scope fingerprint, provider policy, benchmark and assumptions into
+`console_read`; the test also checks fills, risk evidence, warnings, comparison state, canonical Evaluation evidence,
+and a human reject decision.
+
+<!-- verified: integration:console tests/cross_package/workflows/test_console_execution_to_review.py tests/cross_package/workflows/test_console_execution_to_review_browser.py -->
+```bash
+CONSOLE_EXECUTION_TESTS=1 CONSOLE_EXECUTION_BROWSER_TESTS=1 \
+  uv run pytest tests/cross_package/workflows/test_console_execution_to_review.py \
+  tests/cross_package/workflows/test_console_execution_to_review_browser.py -q
+```
+
+The fixture is deterministic and local. Focused worker tests cover failed and ambiguous outcomes; replay-bar identity
+and broader outage campaigns remain separate qualification work.

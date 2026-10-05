@@ -73,7 +73,8 @@ WITH target AS (
     WHERE scope.run_id = %s
     LIMIT 1
 )
-SELECT runs.*, scope.scope_fingerprint, scope.data_scope_id, scope.benchmark_id,
+SELECT runs.*, scope.scope_fingerprint, scope.data_scope_id,
+       scope.data_scope_fingerprint, scope.saved_scope_id, scope.benchmark_id,
        scope.variant_fingerprint, scope.variant_strategy_id,
        scope.variant_strategy_version,
        (comparison.run_id IS NOT NULL) AS comparison_projection_available,
@@ -337,7 +338,7 @@ class ConsoleResourceRepository:
         queries: dict[str, tuple[str, list[Any]]] = {
             "run": (
                 "SELECT runs.*, scope.scope_fingerprint, scope.data_scope_id, "
-                "scope.benchmark_id, scope.variant_fingerprint, "
+                "scope.data_scope_fingerprint, scope.saved_scope_id, scope.benchmark_id, "
                 "scope.variant_strategy_id, scope.variant_strategy_version, "
                 "(comparison.run_id IS NOT NULL) AS comparison_projection_available, "
                 "(scope.scope_fingerprint IS NOT NULL AND comparison.run_id IS NOT NULL) AS comparison_eligible, "

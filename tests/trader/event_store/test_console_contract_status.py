@@ -104,7 +104,7 @@ def test_status_reads_only_and_reports_target_without_credentials(monkeypatch, c
     assert "secret" not in output
     assert report["database"]["name"] == "test_console"
     assert report["installed_version"] == 5
-    assert report["pending_versions"] == [6, 7, 8, 9, 10]
+    assert report["pending_versions"] == [6, 7, 8, 9, 10, 11]
     assert calls[0][1] == {"connect_timeout": 5, "options": "-c default_transaction_read_only=on -c statement_timeout=5000"}
     assert all(query.lstrip().startswith("SELECT") for query, _ in connection.queries)
     assert any(params == ["trader_console"] for _, params in connection.queries)

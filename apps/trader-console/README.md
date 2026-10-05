@@ -21,6 +21,12 @@ views over runs in one experiment, keeps incompatible selections visible with se
 only currently eligible evidence in synchronized UTC charts and metric tables. ECharts is used only as a generic
 renderer; the review pages read persisted evidence and derive presentation from API responses.
 
+The producer-backed execution qualification runs that authoring command through a separate local worker and reopens the
+result on `/backtests` with the exact data-scope identity, persisted assumptions, fills, warnings, review artifacts,
+and comparison state. The review panel records a human next decision through the same-origin API; missing or
+incompatible evidence remains visible and blocks the command. Failed and ambiguous worker campaigns, plus replay-bar
+identity, remain separate qualification boundaries.
+
 `/paper` renders the current paper runtime evidence and a human operator command panel. Commands require an approved
 admission ID and are queued through the API with an audit receipt; the workspace shows whether the running process has
 accepted, completed, failed, or marked reconciliation ambiguous. The browser never supplies a database, broker, or
@@ -61,7 +67,7 @@ artifact, not application code or a runtime process. The Python package build do
 
 `TRADER_CONSOLE_API_ORIGIN` is a **server-only** HTTP(S) origin, default `http://127.0.0.1:8001` (see `.env.example`).
 Next rewrites exactly `/api/context`, `/api/market-data/datasets`, `/api/market-data/bars`, `/api/market-data/evidence`, `/api/data-scopes`, and `/api/paper/commands` plus its detail routes, and
-its saved-scope/revalidation routes, the experiment/run review
+its saved-scope/revalidation routes, the experiment/run review, next-decision,
 and comparison-view resources, `/health/live`, and `/health/ready` to that origin. Restart development, or rebuild
 the production app, after changing it. No browser-supplied upstream, wildcard proxy, extra gateway or CORS policy exists.
 This unauthenticated setup is for local development, not remote exposure.

@@ -298,7 +298,11 @@ The repository also provides `BacktestExecutionWorker`, which claims one command
 deterministic run ID, accepts progress heartbeats, and records `completed`, `partial`, `failed`, or
 `reconciliation_required` outcomes through an injected executor port. The worker does not substitute a fake executor:
 the deployment composition must provide the adapter that resolves the exact catalogue versions and invokes the
-internal-broker `BacktestRunner`.
+internal-broker `BacktestRunner`. The maintained adapter writes a canonical producer configuration snapshot
+(`strategy`, `market_data`, `logging.persist`, and `backtest`) and, for a PostgreSQL worker, persists the typed
+`BacktestResult` metrics snapshot after the runner completes. This keeps scope identity, benchmark and assumptions,
+performance, curves, fills, positions, and warning evidence available when the review is reopened after worker
+completion.
 
 For a local worker process, set `TRADER_CONSOLE_BACKTEST_CONFIG_PATH` to the core Trader YAML configuration and run:
 

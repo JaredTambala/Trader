@@ -2,7 +2,13 @@
 
 from argparse import ArgumentParser
 
-from .runtime import api_settings, bootstrap, break_schema, restore_schema
+from .runtime import (
+    DemoAuthenticationProvider,
+    api_settings,
+    bootstrap,
+    break_schema,
+    restore_schema,
+)
 
 
 def main(arguments: list[str] | None = None) -> None:
@@ -19,7 +25,10 @@ def main(arguments: list[str] | None = None) -> None:
         from trader_console_api import create_app
 
         uvicorn.run(
-            create_app(api_settings(options.database_port)),
+            create_app(
+                api_settings(options.database_port),
+                authentication_provider=DemoAuthenticationProvider(),
+            ),
             host="127.0.0.1",
             port=options.api_port,
         )

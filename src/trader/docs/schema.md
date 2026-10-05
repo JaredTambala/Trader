@@ -353,6 +353,7 @@ runtime bootstrap and is installed explicitly. The current contract contains sta
 | `backtest_comparison_runs` | typed `console_read` projections | Raw result payload and mixed-scope aggregation. |
 | `backtest_comparison_curves` | typed `console_read` projections | Raw result payload and unnormalized cross-run curves. |
 | `data_scope_evidence` | `research_artifacts` (`dataset_manifest` + `data_quality_report`) | Unbounded artifact-store rows; only exact scope, bounded payloads and qualification evidence are exposed. |
+| `backtest_scope` (contract 11) | `runs` + `metrics_snapshots` | Producer-carries the exact Console data-scope fingerprint/saved-scope ID, benchmark identity, and persisted assumptions. |
 
 The exact ordered column lists are declared by `CONSOLE_READ_COLUMNS` in
 `trader.event_store.console_read_contract` and checked against the PostgreSQL catalog during deployment verification.

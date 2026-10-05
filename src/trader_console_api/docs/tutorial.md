@@ -187,6 +187,26 @@ After recording, refresh the review page: the latest immutable revision reopens 
 Data references, limitations, and successor inputs. Revisions are appended through the API and point to their immediate
 predecessor; this panel never starts a backtest, admits paper trading, or implies profitability.
 
+### Qualify execution through review
+
+The producer-backed qualification uses a disposable Compose database and separate API, worker, and browser processes.
+It seeds a deterministic bar fixture, saves one exact scope, authors and submits a definition, runs the real
+`trader-console-worker --once` path, and reads the resulting standalone run through `console_read`. The fixture checks
+idempotent command replay, persisted scope and assumptions, fills, risk evidence, explicit comparison exclusion, and a
+human next-decision record. The browser variant opens that same run through the built Next.js application and records
+the decision through the visible review panel.
+
+<!-- verified: integration:console tests/cross_package/workflows/test_console_execution_to_review.py tests/cross_package/workflows/test_console_execution_to_review_browser.py -->
+```bash
+CONSOLE_EXECUTION_TESTS=1 CONSOLE_EXECUTION_BROWSER_TESTS=1 \
+  uv run pytest tests/cross_package/workflows/test_console_execution_to_review.py \
+  tests/cross_package/workflows/test_console_execution_to_review_browser.py -q
+```
+
+The database, schema installation, and processes are test-owned and removed after the run. Failed, ambiguous, stale,
+and unavailable command states remain covered by the focused worker and API suites; this qualification establishes the
+successful producer path and its review evidence boundary only.
+
 ## 6. Install saved comparison storage when needed
 
 Comparison views are an additive Console-owned feature. Install their table as an explicit operator action after the

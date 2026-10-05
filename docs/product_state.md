@@ -60,7 +60,9 @@ package is intended to grow into Trader's primary human-facing query and command
 now exposes `/data` for bounded OHLCV exploration and `/backtests` for experiment/run selection plus scoped single-run
 review. The review surface preserves run state, scope, assumptions, performance, strategy-versus-benchmark curves,
 drawdown, trades, positions, warnings, evidence coverage, and risk-manager composition/decision evidence; missing scope identity remains explicit while metrics are
-shown when persisted runtime evidence supports a reconstructed result.
+shown when persisted runtime evidence supports a reconstructed result. Console worker executions now persist a typed
+aggregate result snapshot and carry the exact authoring scope, provider policy, benchmark, assumptions, and warning
+evidence into standalone review.
 Both workflows consume generated API types and producer-owned projections. ECharts is a generic frontend renderer, not
 a Trader-core abstraction. Paper operator commands now have an explicit authenticated Console boundary; other
 operational command families and general remote authentication policy remain outside this slice. This is not a trading
@@ -70,7 +72,8 @@ The Console backtest read contract now includes standalone `BacktestRunner` runs
 Standalone runs are grouped under `standalone_backtests`, and the review page assembles their persisted indicator,
 signal, order, fill, position, and lifecycle evidence. Release 8 derives equity, performance and exposure directly from
 initial state, fills, fees and market bars, so aggregate metrics snapshots are optional; missing scope and benchmark
-identity remain explicit nulls.
+identity remain explicit nulls for older runs. New Console worker runs persist the typed result snapshot as a producer
+fallback when the normalized event projection cannot provide an aggregate field.
 
 Release 9 adds typed risk composition, summary and ordered per-manager decisions to the run review. Each manager's
 identity, catalogue parameters, outcome, reason, and normalized order change are visible when published. Composition
@@ -142,7 +145,8 @@ and persistence contract. It must not be framed as adding Superset support to `B
 The next Console tranche now has a concrete definition boundary: `GET /api/backtests/catalogue` exposes the maintained
 typed strategy/risk allowlist, and `POST /api/backtests/preflight` returns normalized definitions, fingerprints,
 coverage/warmup and resource-budget checks, plus explicit warnings. Durable definition persistence and worker execution
-remain the follow-on work; Superset is not part of this path.
+are now explicit follow-on boundaries behind separately installed Console tables and a local worker; Superset is not
+part of this path.
 
 TRD-271 is now in progress: the API has the immutable definition revision contract and explicit
 `console_app.backtest_definitions` installer/status boundary. Successful preflight is required before a revision is
@@ -150,8 +154,9 @@ stored; list/get/revision routes expose only server-scoped normalized intent. Du
 
 TRD-272 is now in progress with its first slice: an explicitly installed `console_app.backtest_executions` record,
 idempotent submit keyed by caller token, definition revision snapshot, and bounded queued status/history routes. The
-worker lease and terminal lifecycle are now implemented behind an injected adapter; the concrete runner composition
-and end-to-end producer qualification remain pending.
+worker lease and terminal lifecycle are now implemented behind an injected adapter, and the concrete catalogue-to-core
+runner composition is qualified through the Console review path. Broader failed, ambiguous, outage, and replay-identity
+campaigns remain separate qualification work.
 
 The repository now also contains the worker lifecycle seam: lease claim, deterministic run identity, heartbeat,
 bounded retry, terminal state and explicit ambiguous-outcome reconciliation over an injected executor port. The
@@ -191,16 +196,17 @@ GAP-06-04 now qualifies the complete data-to-backtest Console journey. The brows
 renders manifest and quality evidence, saves the exact scope, follows the handoff into authoring, captures preflight
 and immutable-definition payloads, submits durable execution, and opens a review fixture carrying the same saved-scope
 ID and scope fingerprint. It also proves that stale qualified evidence remains an actionable preflight blocker and
-cannot create a definition. The qualification is deterministic and route-isolated; the separate producer worker and
-replay/bar-content execution proof remain owned by their existing execution and replay qualification boundaries.
+cannot create a definition. The qualification is deterministic and route-isolated. GAP-03-04 now adds the producer
+worker, persisted-result, standalone-review, and human-decision qualification; GAP-06-03 still owns proof that replay
+bars match the qualified source content.
 
 The same audit loop now covers the nine candidate journeys. UJ-01 has a working bounded data explorer but lacks Console
 quality/provenance, saved-scope, alternative-comparison, and discovery-completeness continuity. UJ-02 has deterministic
 implementation admission and a catalogue-first Strategy loop but lacks a complete hypothesis-to-candidate and
 human-facing lineage path; real-model qualification remains outstanding. UJ-03 has canonical backtests, rich review,
-comparison, and durable worker boundaries, but Console execution qualification, inference/robustness readouts, and
-integrated next-decision qualification remain incomplete. The human next-decision artifact and Console command/read
-surface are delivered; UJ-04 now names the governed agent-session journey; UJ-07 covers specialist investigation, UJ-08 covers the
+comparison, and a qualified Console worker-to-review path, while broader failure campaigns, inference, and robustness
+remain partial. The human next-decision artifact and Console command/read surface are delivered; UJ-04 now names the governed
+agent-session journey; UJ-07 covers specialist investigation, UJ-08 covers the
 agent-directed experiment loop, and UJ-09 covers evidence review and the next decision. The model-backed
 Coordinator/Data/Strategy runtime and recovery contracts exist, but controlled third-party-model acceptance, Console
 intervention, experiment handoff, and the unified evidence-review surface remain open.
@@ -226,6 +232,14 @@ limitations, and a bounded successor experiment for refine or continue. The Cons
 resolve those references again, reject missing/stale/cross-run evidence and agent identities, and reopen the latest
 revision after a fresh process. The record is a research choice only; it does not start execution, approve paper
 trading, or imply profitability. Integrated UJ-09 qualification and retained agent trajectory evidence remain open.
+
+GAP-03-04 now qualifies the successful Console execution-to-review journey against a fresh disposable PostgreSQL
+database. A separate worker reads the immutable definition, runs the maintained strategy through the canonical
+`BacktestRunner`, persists a typed result snapshot, and exposes scope identity, assumptions, benchmark/performance,
+risk, fills, warnings, and explicit comparison state through `console_read`. The API qualification replays the same
+idempotency key and records a human reject decision against canonical artifacts; the Playwright qualification reads the
+same run through Next.js and completes that decision in the visible review panel. This is a deterministic local paperless
+qualification: focused tests still own failed/ambiguous worker outcomes, and GAP-06-03 owns replay-content identity.
 
 The 4 October feature diagnosis adds one feature-acceptance work item for each of UJ-04, UJ-07, UJ-08, and UJ-09. The
 UJ identifiers remain product features; the linked records are delivery work items that implement or qualify those

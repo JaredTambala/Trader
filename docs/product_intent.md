@@ -324,16 +324,17 @@ scope, assumptions, performance, curves, trades, positions, risk composition and
 indicator/signal evidence, and comparison eligibility. The Console has single-run review, saved comparison views,
 durable definition/execution records, a local worker, bounded retries, and explicit ambiguous-outcome reconciliation.
 
-**Partial:** the worker-to-canonical-BacktestRunner path and live producer qualification remain incomplete for the
-Console authoring slice. Console review now provides a typed Evaluation/Adversarial readout and a first-class human
-next-decision command/read path, but integrated qualification and complete statistical inference remain open. General
-robustness attacks and walk-forward optimization remain absent.
+**Partial:** the worker-to-canonical-BacktestRunner path is now implemented and the successful execution-to-review path
+is qualified against a fresh isolated database. Broader failed, ambiguous, outage, and replay-identity campaigns,
+complete statistical inference, and general robustness attacks remain open. Console review provides a typed
+Evaluation/Adversarial readout and a first-class human next-decision command/read path. General robustness attacks and
+walk-forward optimization remain absent.
 The data identity handoff and replay-bar identity are covered by GAP-06-02 and GAP-06-03.
 
 | Acceptance point | Current status | Repository evidence |
 | --- | --- | --- |
 | Immutable run inputs and deterministic execution | Implemented and controlled in research/core | `src/trader_research/docs/experiments.md`, `src/trader/docs/runtime.md` |
-| Durable Console submission/lifecycle | Implemented; end-to-end producer qualification pending | `src/trader_console_api/docs/usage.md`, `src/trader_console_api/services/backtest_worker.py` |
+| Durable Console submission/lifecycle | Implemented; successful producer path qualified | `src/trader_console_api/docs/usage.md`, `src/trader_console_api/services/backtest_worker.py`, `tests/cross_package/workflows/test_console_execution_to_review.py` |
 | Rich single-run review | Implemented and browser-qualified for published evidence | `apps/trader-console/src/features/backtest-review/backtest-review-workspace.tsx` |
 | Compatible comparison | Implemented with explicit exclusions | `apps/trader-console/src/features/comparisons`, `src/trader_console_api/docs/usage.md` |
 | Inference, robustness, and next decision | Next-decision contract and Console path implemented; independent inference/robustness remains partial | `docs/product_state.md` capability matrix and known limits |
@@ -347,8 +348,9 @@ The data identity handoff and replay-bar identity are covered by GAP-06-02 and G
   artifacts with their protected-data roles, limitations, and claim-level blockers in run/comparison review. [Notion work item](https://app.notion.com/p/3ede5fad-e831-81b5-bca0-d0db1c47e09e).
 - **GAP-03-03 — Next-decision record:** let the researcher record reject/refine/continue and the next bounded experiment,
   linked to exact run, data, implementation, assumptions, and review artifacts. [Notion work item](https://app.notion.com/p/3ede5fad-e831-8185-b650-c982315ae1c9).
-- **GAP-03-04 — Research execution journey qualification:** prove one integrated data-to-definition-to-worker-to-review
-  path with evidence identity continuity, including the data handoff tasks already listed under UJ-06. [Notion work item](https://app.notion.com/p/3ede5fad-e831-813c-8f09-f9112b203ac6).
+- **GAP-03-04 — Research execution journey qualification:** delivered for the successful data-to-definition-to-worker-
+  to-review path with scope identity continuity. Broader worker failure campaigns and replay/bar-content identity remain
+  separate requirements under GAP-03-01 and GAP-06-03. [Notion work item](https://app.notion.com/p/3ede5fad-e831-813c-8f09-f9112b203ac6).
 
 ## Detailed story audit — UJ-04 / US-04-01
 

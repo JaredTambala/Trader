@@ -22,7 +22,7 @@ except ImportError:  # pragma: no cover - psycopg is a core dependency in produc
 
 CONSOLE_READ_SCHEMA: Final = "console_read"
 CONSOLE_READ_CONTRACT: Final = "trader_console"
-CONSOLE_READ_CONTRACT_VERSION: Final = 10
+CONSOLE_READ_CONTRACT_VERSION: Final = 11
 CONSOLE_READ_MINIMUM_CONSUMER_VERSION: Final = 1
 
 # These are the complete columns exposed by the current contract. Variable configuration,
@@ -361,6 +361,8 @@ CONSOLE_READ_COLUMNS: Final[Mapping[str, tuple[str, ...]]] = {
         "replay_start",
         "replay_end",
         "data_scope_id",
+        "data_scope_fingerprint",
+        "saved_scope_id",
         "benchmark_id",
         "benchmark_method",
         "benchmark_allocation",
@@ -1241,9 +1243,17 @@ WITH run_meta AS (
         COALESCE(br.start_ts, r.start_ts) AS start_ts,
         COALESCE(br.end_ts, r.end_ts) AS end_ts,
         br.error_message,
-        r.config_snapshot
+        r.config_snapshot,
+        latest_snapshot.document AS metrics_document
     FROM console_read.backtest_runs AS br
     LEFT JOIN public.runs AS r ON r.run_id = br.run_id
+    LEFT JOIN LATERAL (
+        SELECT NULLIF(metrics.payload, '')::jsonb AS document
+        FROM public.metrics_snapshots AS metrics
+        WHERE metrics.run_id = br.run_id
+        ORDER BY metrics.ts DESC NULLS LAST
+        LIMIT 1
+    ) AS latest_snapshot ON true
 ), config AS (
     SELECT
         meta.*,
@@ -1493,23 +1503,76 @@ WITH (security_barrier=true, security_invoker=false) AS
 SELECT
     run_meta.experiment_run_id, run_meta.experiment_id, run_meta.run_id,
     COALESCE(run_meta.finished_at, run_meta.created_at) AS observed_at,
-    NULL::text AS scope_fingerprint, run_meta.asset_class, run_meta.symbols,
+    NULLIF(config.metrics_document #>> '{review_scope,scope_fingerprint}', '') AS scope_fingerprint,
+    run_meta.asset_class, run_meta.symbols,
     run_meta.timeframe, run_meta.start_ts AS replay_start, run_meta.end_ts AS replay_end,
-    NULL::text AS data_scope_id, NULL::text AS benchmark_id,
-    NULL::text AS benchmark_method, NULL::text AS benchmark_allocation,
-    NULLIF(config.backtest_config->>'initial_cash', '')::double precision AS initial_cash,
-    CASE WHEN jsonb_typeof(config.backtest_config->'initial_positions') = 'array'
-         THEN jsonb_array_length(config.backtest_config->'initial_positions') ELSE 0 END AS initial_position_count,
-    config.backtest_config #>> '{assumptions,fill_model}' AS fill_model,
-    NULLIF(config.backtest_config #>> '{assumptions,latency_ms}', '')::double precision AS latency_ms,
-    NULLIF(config.backtest_config #>> '{assumptions,fees,fixed_per_order}', '')::double precision AS fee_fixed_per_order,
-    NULLIF(config.backtest_config #>> '{assumptions,fees,bps}', '')::double precision AS fee_bps,
-    NULLIF(config.backtest_config #>> '{assumptions,fees,minimum_fee}', '')::double precision AS fee_minimum,
-    NULLIF(config.backtest_config #>> '{assumptions,slippage,bps}', '')::double precision AS slippage_bps,
-    NULLIF(config.backtest_config #>> '{assumptions,data,allow_latest_prior_bar}', '')::boolean AS allow_latest_prior_bar,
-    NULLIF(config.backtest_config #>> '{assumptions,data,allow_price_carry_forward}', '')::boolean AS allow_price_carry_forward,
-    NULL::text AS variant_fingerprint, run_meta.strategy_id AS variant_strategy_id,
-    run_meta.strategy_version AS variant_strategy_version, NULL::text AS variant_parameters_fingerprint
+    COALESCE(
+        NULLIF(config.metrics_document #>> '{review_scope,data_scope_id}', ''),
+        NULLIF(config.backtest_config #>> '{data_scope,data_scope_id}', '')
+    ) AS data_scope_id,
+    NULLIF(config.backtest_config #>> '{data_scope,fingerprint}', '') AS data_scope_fingerprint,
+    NULLIF(config.backtest_config #>> '{data_scope,saved_scope_id}', '') AS saved_scope_id,
+    COALESCE(
+        NULLIF(config.metrics_document #>> '{review_scope,benchmark_id}', ''),
+        NULLIF(config.backtest_config #>> '{benchmark,id}', ''),
+        NULLIF(config.backtest_config #>> '{benchmark_id}', '')
+    ) AS benchmark_id,
+    COALESCE(
+        NULLIF(config.metrics_document #>> '{review_scope,benchmark_method}', ''),
+        NULLIF(config.backtest_config #>> '{benchmark,method}', ''),
+        NULLIF(config.backtest_config #>> '{benchmark_method}', '')
+    ) AS benchmark_method,
+    COALESCE(
+        NULLIF(config.metrics_document #>> '{review_scope,benchmark_allocation}', ''),
+        NULLIF(config.backtest_config #>> '{benchmark,allocation}', ''),
+        NULLIF(config.backtest_config #>> '{benchmark_allocation}', '')
+    ) AS benchmark_allocation,
+    COALESCE(
+        NULLIF(config.backtest_config->>'initial_cash', '')::double precision,
+        NULLIF(config.metrics_document #>> '{review_scope,initial_cash}', '')::double precision
+    ) AS initial_cash,
+    COALESCE(
+        CASE WHEN jsonb_typeof(config.backtest_config->'initial_positions') = 'array'
+             THEN jsonb_array_length(config.backtest_config->'initial_positions') ELSE NULL END,
+        CASE WHEN jsonb_typeof(config.metrics_document #> '{review_scope,initial_positions}') = 'array'
+             THEN jsonb_array_length(config.metrics_document #> '{review_scope,initial_positions}') ELSE 0 END
+    ) AS initial_position_count,
+    COALESCE(
+        config.backtest_config #>> '{assumptions,fill_model}',
+        config.metrics_document #>> '{assumptions,fill_model}'
+    ) AS fill_model,
+    COALESCE(
+        NULLIF(config.backtest_config #>> '{assumptions,latency_ms}', '')::double precision,
+        NULLIF(config.metrics_document #>> '{assumptions,latency_ms}', '')::double precision
+    ) AS latency_ms,
+    COALESCE(
+        NULLIF(config.backtest_config #>> '{assumptions,fees,fixed_per_order}', '')::double precision,
+        NULLIF(config.metrics_document #>> '{assumptions,fees,fixed_per_order}', '')::double precision
+    ) AS fee_fixed_per_order,
+    COALESCE(
+        NULLIF(config.backtest_config #>> '{assumptions,fees,bps}', '')::double precision,
+        NULLIF(config.metrics_document #>> '{assumptions,fees,bps}', '')::double precision
+    ) AS fee_bps,
+    COALESCE(
+        NULLIF(config.backtest_config #>> '{assumptions,fees,minimum_fee}', '')::double precision,
+        NULLIF(config.metrics_document #>> '{assumptions,fees,minimum_fee}', '')::double precision
+    ) AS fee_minimum,
+    COALESCE(
+        NULLIF(config.backtest_config #>> '{assumptions,slippage,bps}', '')::double precision,
+        NULLIF(config.metrics_document #>> '{assumptions,slippage,bps}', '')::double precision
+    ) AS slippage_bps,
+    COALESCE(
+        NULLIF(config.backtest_config #>> '{assumptions,data,allow_latest_prior_bar}', '')::boolean,
+        NULLIF(config.metrics_document #>> '{assumptions,data,allow_latest_prior_bar}', '')::boolean
+    ) AS allow_latest_prior_bar,
+    COALESCE(
+        NULLIF(config.backtest_config #>> '{assumptions,data,allow_price_carry_forward}', '')::boolean,
+        NULLIF(config.metrics_document #>> '{assumptions,data,allow_price_carry_forward}', '')::boolean
+    ) AS allow_price_carry_forward,
+    NULLIF(config.metrics_document #>> '{variant,variant_fingerprint}', '') AS variant_fingerprint,
+    COALESCE(NULLIF(config.metrics_document #>> '{variant,strategy_id}', ''), run_meta.strategy_id) AS variant_strategy_id,
+    COALESCE(NULLIF(config.metrics_document #>> '{variant,strategy_version}', ''), run_meta.strategy_version) AS variant_strategy_version,
+    NULLIF(config.metrics_document #>> '{variant,parameters_fingerprint}', '') AS variant_parameters_fingerprint
 FROM run_meta
 JOIN config ON config.run_id = run_meta.run_id
 """,
@@ -1527,6 +1590,36 @@ SELECT
     COALESCE(meta.finished_at, meta.created_at) AS observed_at
 FROM fills AS fill
 JOIN run_meta AS meta ON meta.run_id = fill.run_id
+UNION ALL
+SELECT
+    meta.experiment_run_id, meta.experiment_id, meta.run_id,
+    items.ordinality - 1 AS trade_index,
+    items.trade->>'client_order_id' AS client_order_id,
+    items.trade->>'cycle_id' AS cycle_id,
+    items.trade->>'symbol' AS symbol,
+    items.trade->>'side' AS side,
+    NULLIF(items.trade->>'fill_ts', '')::timestamptz AS fill_ts,
+    NULLIF(items.trade->>'fill_qty', '')::double precision AS fill_qty,
+    NULLIF(items.trade->>'raw_fill_price', '')::double precision AS raw_fill_price,
+    NULLIF(items.trade->>'fill_price', '')::double precision AS fill_price,
+    NULLIF(items.trade->>'fee_amount', '')::double precision AS fee_amount,
+    NULLIF(items.trade->>'slippage_amount', '')::double precision AS slippage_amount,
+    NULLIF(items.trade->>'notional', '')::double precision AS notional,
+    NULLIF(items.trade->>'realized_pnl', '')::double precision AS realized_pnl,
+    COALESCE(meta.finished_at, meta.created_at) AS observed_at
+FROM run_meta AS meta
+JOIN config ON config.run_id = meta.run_id
+CROSS JOIN LATERAL jsonb_array_elements(
+    CASE
+        WHEN jsonb_typeof(config.metrics_document->'trades') = 'array'
+        THEN config.metrics_document->'trades'
+        ELSE '[]'::jsonb
+    END
+) WITH ORDINALITY AS items(trade, ordinality)
+WHERE NOT EXISTS (
+    SELECT 1 FROM fills AS existing
+    WHERE existing.run_id = meta.run_id
+)
 """,
     "backtest_positions": """
 CREATE OR REPLACE VIEW console_read.backtest_positions
@@ -1565,6 +1658,31 @@ LEFT JOIN LATERAL (
       AND (config.market_data_config->>'source' IS NULL OR bar.source = config.market_data_config->>'source')
     ORDER BY ts DESC LIMIT 1
 ) AS price ON true
+UNION ALL
+SELECT
+    meta.experiment_run_id, meta.experiment_id, meta.run_id,
+    items.ordinality - 1 AS position_index,
+    items.position->>'symbol' AS symbol,
+    NULLIF(items.position->>'qty', '')::double precision AS qty,
+    NULLIF(items.position->>'avg_price', '')::double precision AS avg_price,
+    NULLIF(items.position->>'last_price', '')::double precision AS last_price,
+    NULLIF(items.position->>'last_ts', '')::timestamptz AS last_ts,
+    NULLIF(items.position->>'market_value', '')::double precision AS market_value,
+    NULLIF(items.position->>'unrealized_pnl', '')::double precision AS unrealized_pnl,
+    COALESCE(meta.finished_at, meta.created_at) AS observed_at
+FROM run_meta AS meta
+JOIN config ON config.run_id = meta.run_id
+CROSS JOIN LATERAL jsonb_array_elements(
+    CASE
+        WHEN jsonb_typeof(config.metrics_document->'positions') = 'array'
+        THEN config.metrics_document->'positions'
+        ELSE '[]'::jsonb
+    END
+) WITH ORDINALITY AS items(position, ordinality)
+WHERE NOT EXISTS (
+    SELECT 1 FROM latest_positions AS existing
+    WHERE existing.run_id = meta.run_id
+)
 """,
     "backtest_equity_curve": """
 CREATE OR REPLACE VIEW console_read.backtest_equity_curve
@@ -1575,6 +1693,38 @@ SELECT meta.experiment_run_id, meta.experiment_id, points.run_id, points.point_i
        COALESCE(meta.finished_at, meta.created_at) AS observed_at
 FROM equity_points AS points
 JOIN run_meta AS meta ON meta.run_id = points.run_id
+UNION ALL
+SELECT
+    meta.experiment_run_id, meta.experiment_id, meta.run_id,
+    strategy_points.ordinality - 1 AS point_index,
+    NULLIF(strategy_points.point->>'ts', '')::timestamptz AS ts,
+    NULLIF(strategy_points.point->>'equity', '')::double precision AS strategy_equity,
+    NULLIF(benchmark_points.point->>'equity', '')::double precision AS benchmark_equity,
+    COALESCE(meta.finished_at, meta.created_at) AS observed_at
+FROM run_meta AS meta
+JOIN config ON config.run_id = meta.run_id
+CROSS JOIN LATERAL jsonb_array_elements(
+    CASE
+        WHEN jsonb_typeof(config.metrics_document->'equity_curve') = 'array'
+        THEN config.metrics_document->'equity_curve'
+        ELSE '[]'::jsonb
+    END
+) WITH ORDINALITY AS strategy_points(point, ordinality)
+LEFT JOIN LATERAL (
+    SELECT benchmark.point
+    FROM jsonb_array_elements(
+        CASE
+            WHEN jsonb_typeof(config.metrics_document->'benchmark_curve') = 'array'
+            THEN config.metrics_document->'benchmark_curve'
+            ELSE '[]'::jsonb
+        END
+    ) WITH ORDINALITY AS benchmark(point, ordinality)
+    WHERE benchmark.ordinality = strategy_points.ordinality
+) AS benchmark_points ON true
+WHERE NOT EXISTS (
+    SELECT 1 FROM equity_points AS existing
+    WHERE existing.run_id = meta.run_id
+)
 """,
     "backtest_performance": """
 CREATE OR REPLACE VIEW console_read.backtest_performance
@@ -1638,18 +1788,83 @@ SELECT
     NULL::double precision AS strategy_profit_factor, NULL::double precision AS strategy_expectancy,
     NULL::double precision AS strategy_avg_win, NULL::double precision AS strategy_avg_loss,
     NULL::double precision AS strategy_turnover,
-    NULL::double precision AS benchmark_start_equity, NULL::double precision AS benchmark_end_equity,
-    NULL::double precision AS benchmark_total_return, NULL::double precision AS benchmark_cagr,
-    NULL::double precision AS benchmark_volatility, NULL::double precision AS benchmark_sharpe,
-    NULL::double precision AS benchmark_sortino, NULL::double precision AS benchmark_max_drawdown,
-    NULL::integer AS benchmark_max_drawdown_duration, NULL::double precision AS benchmark_calmar,
-    NULL::double precision AS benchmark_ulcer_index, NULL::double precision AS tracking_error,
-    NULL::double precision AS information_ratio, NULL::double precision AS alpha,
-    NULL::double precision AS beta, 0::integer AS warnings_count
+    NULLIF(config.metrics_document #>> '{benchmark_performance,start_equity}', '')::double precision AS benchmark_start_equity,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,end_equity}', '')::double precision AS benchmark_end_equity,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,total_return}', '')::double precision AS benchmark_total_return,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,cagr}', '')::double precision AS benchmark_cagr,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,volatility}', '')::double precision AS benchmark_volatility,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,sharpe}', '')::double precision AS benchmark_sharpe,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,sortino}', '')::double precision AS benchmark_sortino,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,max_drawdown}', '')::double precision AS benchmark_max_drawdown,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,max_drawdown_duration}', '')::integer AS benchmark_max_drawdown_duration,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,calmar}', '')::double precision AS benchmark_calmar,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,ulcer_index}', '')::double precision AS benchmark_ulcer_index,
+    NULLIF(config.metrics_document->>'tracking_error', '')::double precision AS tracking_error,
+    NULLIF(config.metrics_document->>'information_ratio', '')::double precision AS information_ratio,
+    NULLIF(config.metrics_document->>'alpha', '')::double precision AS alpha,
+    NULLIF(config.metrics_document->>'beta', '')::double precision AS beta,
+    COALESCE(
+        jsonb_array_length(config.metrics_document->'warnings'),
+        0
+    )::integer AS warnings_count
 FROM aggregates AS aggregate
 JOIN run_meta AS meta ON meta.run_id = aggregate.run_id
 JOIN period_factors AS period ON period.run_id = aggregate.run_id
 LEFT JOIN fees ON fees.run_id = aggregate.run_id
+LEFT JOIN config ON config.run_id = aggregate.run_id
+UNION ALL
+SELECT
+    meta.experiment_run_id, meta.experiment_id, meta.run_id,
+    COALESCE(meta.finished_at, meta.created_at) AS observed_at,
+    NULLIF(config.metrics_document->>'total_runs', '')::integer AS total_runs,
+    NULLIF(config.metrics_document->>'failed_runs', '')::integer AS failed_runs,
+    NULLIF(config.metrics_document->>'realized_pnl', '')::double precision AS realized_pnl,
+    NULLIF(config.metrics_document->>'total_fees', '')::double precision AS total_fees,
+    NULLIF(config.metrics_document->>'total_slippage', '')::double precision AS total_slippage,
+    NULLIF(config.metrics_document #>> '{strategy_performance,start_equity}', '')::double precision AS strategy_start_equity,
+    NULLIF(config.metrics_document #>> '{strategy_performance,end_equity}', '')::double precision AS strategy_end_equity,
+    NULLIF(config.metrics_document #>> '{strategy_performance,total_return}', '')::double precision AS strategy_total_return,
+    NULLIF(config.metrics_document #>> '{strategy_performance,cagr}', '')::double precision AS strategy_cagr,
+    NULLIF(config.metrics_document #>> '{strategy_performance,volatility}', '')::double precision AS strategy_volatility,
+    NULLIF(config.metrics_document #>> '{strategy_performance,sharpe}', '')::double precision AS strategy_sharpe,
+    NULLIF(config.metrics_document #>> '{strategy_performance,sortino}', '')::double precision AS strategy_sortino,
+    NULLIF(config.metrics_document #>> '{strategy_performance,max_drawdown}', '')::double precision AS strategy_max_drawdown,
+    NULLIF(config.metrics_document #>> '{strategy_performance,max_drawdown_duration}', '')::integer AS strategy_max_drawdown_duration,
+    NULLIF(config.metrics_document #>> '{strategy_performance,calmar}', '')::double precision AS strategy_calmar,
+    NULLIF(config.metrics_document #>> '{strategy_performance,ulcer_index}', '')::double precision AS strategy_ulcer_index,
+    NULLIF(config.metrics_document #>> '{strategy_performance,avg_net_exposure}', '')::double precision AS strategy_avg_net_exposure,
+    NULLIF(config.metrics_document #>> '{strategy_performance,avg_gross_exposure}', '')::double precision AS strategy_avg_gross_exposure,
+    NULLIF(config.metrics_document #>> '{strategy_performance,avg_invested_pct}', '')::double precision AS strategy_avg_invested_pct,
+    NULLIF(config.metrics_document #>> '{strategy_performance,trade_count}', '')::integer AS strategy_trade_count,
+    NULLIF(config.metrics_document #>> '{strategy_performance,hit_rate}', '')::double precision AS strategy_hit_rate,
+    NULLIF(config.metrics_document #>> '{strategy_performance,profit_factor}', '')::double precision AS strategy_profit_factor,
+    NULLIF(config.metrics_document #>> '{strategy_performance,expectancy}', '')::double precision AS strategy_expectancy,
+    NULLIF(config.metrics_document #>> '{strategy_performance,avg_win}', '')::double precision AS strategy_avg_win,
+    NULLIF(config.metrics_document #>> '{strategy_performance,avg_loss}', '')::double precision AS strategy_avg_loss,
+    NULLIF(config.metrics_document #>> '{strategy_performance,turnover}', '')::double precision AS strategy_turnover,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,start_equity}', '')::double precision AS benchmark_start_equity,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,end_equity}', '')::double precision AS benchmark_end_equity,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,total_return}', '')::double precision AS benchmark_total_return,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,cagr}', '')::double precision AS benchmark_cagr,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,volatility}', '')::double precision AS benchmark_volatility,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,sharpe}', '')::double precision AS benchmark_sharpe,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,sortino}', '')::double precision AS benchmark_sortino,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,max_drawdown}', '')::double precision AS benchmark_max_drawdown,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,max_drawdown_duration}', '')::integer AS benchmark_max_drawdown_duration,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,calmar}', '')::double precision AS benchmark_calmar,
+    NULLIF(config.metrics_document #>> '{benchmark_performance,ulcer_index}', '')::double precision AS benchmark_ulcer_index,
+    NULLIF(config.metrics_document->>'tracking_error', '')::double precision AS tracking_error,
+    NULLIF(config.metrics_document->>'information_ratio', '')::double precision AS information_ratio,
+    NULLIF(config.metrics_document->>'alpha', '')::double precision AS alpha,
+    NULLIF(config.metrics_document->>'beta', '')::double precision AS beta,
+    COALESCE(jsonb_array_length(config.metrics_document->'warnings'), 0)::integer AS warnings_count
+FROM run_meta AS meta
+JOIN config ON config.run_id = meta.run_id
+WHERE config.metrics_document ? 'strategy_performance'
+  AND NOT EXISTS (
+      SELECT 1 FROM aggregates AS existing
+      WHERE existing.run_id = meta.run_id
+  )
 """,
     "backtest_exposure": """
 CREATE OR REPLACE VIEW console_read.backtest_exposure
@@ -1688,20 +1903,60 @@ SELECT meta.experiment_run_id, meta.experiment_id, summary.run_id,
 FROM equity_summary AS summary
 JOIN run_meta AS meta ON meta.run_id = summary.run_id
 LEFT JOIN position_summary AS positions ON positions.run_id = summary.run_id
+UNION ALL
+SELECT
+    meta.experiment_run_id, meta.experiment_id, meta.run_id,
+    COALESCE(meta.finished_at, meta.created_at) AS observed_at,
+    NULLIF(config.metrics_document #>> '{net_notional}', '')::double precision AS avg_net_exposure,
+    NULLIF(config.metrics_document #>> '{gross_notional}', '')::double precision AS avg_gross_exposure,
+    NULLIF(config.metrics_document #>> '{strategy_performance,avg_invested_pct}', '')::double precision AS avg_invested_pct,
+    NULLIF(config.metrics_document #>> '{net_notional}', '')::double precision AS final_net_notional,
+    NULLIF(config.metrics_document #>> '{gross_notional}', '')::double precision AS final_gross_notional,
+    NULLIF(config.metrics_document #>> '{position_count}', '')::integer AS position_count,
+    NULLIF(config.metrics_document #>> '{long_positions}', '')::integer AS long_positions,
+    NULLIF(config.metrics_document #>> '{short_positions}', '')::integer AS short_positions
+FROM run_meta AS meta
+JOIN config ON config.run_id = meta.run_id
+WHERE config.metrics_document ? 'strategy_performance'
+  AND NOT EXISTS (
+      SELECT 1 FROM equity_summary AS existing
+      WHERE existing.run_id = meta.run_id
+  )
 """,
     "backtest_assumptions": """
 CREATE OR REPLACE VIEW console_read.backtest_assumptions
 WITH (security_barrier=true, security_invoker=false) AS
 """ + _BACKTEST_DIRECT_RUN_META_CTE + """
 SELECT meta.experiment_run_id, meta.experiment_id, meta.run_id,
-       config.backtest_config #>> '{assumptions,fill_model}' AS fill_model,
-       NULLIF(config.backtest_config #>> '{assumptions,latency_ms}', '')::double precision AS latency_ms,
-       NULLIF(config.backtest_config #>> '{assumptions,fees,fixed_per_order}', '')::double precision AS fee_fixed_per_order,
-       NULLIF(config.backtest_config #>> '{assumptions,fees,bps}', '')::double precision AS fee_bps,
-       NULLIF(config.backtest_config #>> '{assumptions,fees,minimum_fee}', '')::double precision AS fee_minimum,
-       NULLIF(config.backtest_config #>> '{assumptions,slippage,bps}', '')::double precision AS slippage_bps,
-       NULLIF(config.backtest_config #>> '{assumptions,data,allow_latest_prior_bar}', '')::boolean AS allow_latest_prior_bar,
-       NULLIF(config.backtest_config #>> '{assumptions,data,allow_price_carry_forward}', '')::boolean AS allow_price_carry_forward,
+       COALESCE(config.backtest_config #>> '{assumptions,fill_model}', config.metrics_document #>> '{assumptions,fill_model}') AS fill_model,
+       COALESCE(
+           NULLIF(config.backtest_config #>> '{assumptions,latency_ms}', '')::double precision,
+           NULLIF(config.metrics_document #>> '{assumptions,latency_ms}', '')::double precision
+       ) AS latency_ms,
+       COALESCE(
+           NULLIF(config.backtest_config #>> '{assumptions,fees,fixed_per_order}', '')::double precision,
+           NULLIF(config.metrics_document #>> '{assumptions,fees,fixed_per_order}', '')::double precision
+       ) AS fee_fixed_per_order,
+       COALESCE(
+           NULLIF(config.backtest_config #>> '{assumptions,fees,bps}', '')::double precision,
+           NULLIF(config.metrics_document #>> '{assumptions,fees,bps}', '')::double precision
+       ) AS fee_bps,
+       COALESCE(
+           NULLIF(config.backtest_config #>> '{assumptions,fees,minimum_fee}', '')::double precision,
+           NULLIF(config.metrics_document #>> '{assumptions,fees,minimum_fee}', '')::double precision
+       ) AS fee_minimum,
+       COALESCE(
+           NULLIF(config.backtest_config #>> '{assumptions,slippage,bps}', '')::double precision,
+           NULLIF(config.metrics_document #>> '{assumptions,slippage,bps}', '')::double precision
+       ) AS slippage_bps,
+       COALESCE(
+           NULLIF(config.backtest_config #>> '{assumptions,data,allow_latest_prior_bar}', '')::boolean,
+           NULLIF(config.metrics_document #>> '{assumptions,data,allow_latest_prior_bar}', '')::boolean
+       ) AS allow_latest_prior_bar,
+       COALESCE(
+           NULLIF(config.backtest_config #>> '{assumptions,data,allow_price_carry_forward}', '')::boolean,
+           NULLIF(config.metrics_document #>> '{assumptions,data,allow_price_carry_forward}', '')::boolean
+       ) AS allow_price_carry_forward,
        COALESCE(meta.finished_at, meta.created_at) AS observed_at
 FROM run_meta AS meta JOIN config ON config.run_id = meta.run_id
 """,
@@ -1737,6 +1992,17 @@ JOIN LATERAL (
     UNION ALL
     SELECT cycle.error_message FROM public.run_events AS cycle
     WHERE cycle.run_id = meta.run_id AND cycle.error_message IS NOT NULL
+    UNION ALL
+    SELECT persisted_warning.warning
+    FROM config AS persisted
+    CROSS JOIN LATERAL jsonb_array_elements_text(
+        CASE
+            WHEN jsonb_typeof(persisted.metrics_document->'warnings') = 'array'
+            THEN persisted.metrics_document->'warnings'
+            ELSE '[]'::jsonb
+        END
+    ) AS persisted_warning(warning)
+    WHERE persisted.run_id = meta.run_id
 ) AS warning ON true
 """,
     "backtest_provenance": """
