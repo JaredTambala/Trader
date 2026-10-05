@@ -66,7 +66,7 @@ The frontend is an independent npm package with its own lockfile/build/process; 
 artifact, not application code or a runtime process. The Python package build does not include this frontend.
 
 `TRADER_CONSOLE_API_ORIGIN` is a **server-only** HTTP(S) origin, default `http://127.0.0.1:8001` (see `.env.example`).
-Next rewrites exactly `/api/context`, `/api/market-data/datasets`, `/api/market-data/bars`, `/api/market-data/evidence`, `/api/data-scopes`, and `/api/paper/commands` plus its detail routes, and
+Next rewrites exactly `/api/context`, `/api/market-data/datasets`, `/api/market-data/bars`, `/api/market-data/evidence`, `/api/data-scopes`, `/api/agent-sessions/:session_id`, `/api/agent-sessions/:session_id/commands`, and `/api/paper/commands` plus its detail routes, and
 its saved-scope/revalidation routes, the experiment/run review, next-decision,
 and comparison-view resources, `/health/live`, and `/health/ready` to that origin. Restart development, or rebuild
 the production app, after changing it. No browser-supplied upstream, wildcard proxy, extra gateway or CORS policy exists.
@@ -133,9 +133,9 @@ npx playwright install chromium
 
 Vitest/Testing Library cover the component and HTTP adapter, including loading, missing labels, failure bodies,
 manual retry, keyboard use, cancellation and timeout. Browser assertions live in `tests/e2e`: the market-data journey
-also has an isolated route-mocked browser check for chart interaction, while the connection journey and cross-package
-workflow exercise the real API/database boundary. Their server/database orchestration belongs to the repository's
-cross-package workflow. From the repository root, with the pinned Node toolchain on PATH:
+and agent-session workspace have isolated route-mocked checks, while the connection journey and cross-package workflow
+exercise the real API/database boundary. Their server/database orchestration belongs to the repository's cross-package
+workflow. From the repository root, with the pinned Node toolchain on PATH:
 
 <!-- verified: integration:console tests/cross_package/workflows/test_console_browser.py -->
 ```bash
