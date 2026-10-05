@@ -23,15 +23,18 @@ The current application provides:
 - saved comparison-view definitions bound to one experiment and scope, with live eligibility explanations; and
 - a read-only `/api/paper/runtime` projection for paper session, freshness, portfolio, orders, fills, risk, and
   explicitly unavailable reconciliation/halt evidence; and
-- permanent dependency checks excluding Trader execution, event-store, broker, research, MCP, Agent, and MLflow code.
+- an authenticated `/api/paper/commands` boundary for human-authorized, admission-validated, idempotent paper
+  start/pause/stop/halt/reconcile requests with durable audit receipts; and
+- dependency checks keep resource/read paths free of Trader execution, broker, research, MCP, Agent, and MLflow code;
+  the paper-command adapter imports only the typed core operator-control boundary and never constructs a broker.
 
 Request handling follows an explicit `routers` → `services` → `repositories` direction. Routers translate HTTP,
 services orchestrate application outcomes, and repositories own persistence and transaction policy.
 
 The current slice exposes public configuration, health, database compatibility, local resource queries, the paper
-operations read model, and Console-owned comparison-definition commands. Authentication and principal authorization
-remain unimplemented; the separate frontend consumes the comparison and paper operations APIs. These omissions are
-current implementation state, not a permanent definition of the API.
+operations read model, and Console-owned comparison-definition commands. Paper operator routes invoke the injected
+authentication provider and require explicit human/operator principal namespaces; other public resource routes retain
+their local-development behavior. The separate frontend consumes the comparison, evidence, and paper operations APIs.
 
 ## Documentation
 

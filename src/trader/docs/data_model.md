@@ -49,5 +49,7 @@ trading_sessions (session_id PK)
 - `experiment_runs` stores queryable comparison fields plus JSON parameters, assumptions, provenance, data-quality
   summary, result summary, and artifact path.
 - `config_kv` stores operational flags such as the global halt flag, halt reason, and halt update timestamp.
+- `paper_operator_commands` stores human-authorized Console requests and their runtime outcome, keyed by scope and
+  idempotency key. It is a request/audit ledger, not a broker order table.
 
 For current column definitions and query examples, use [schema.md](schema.md).

@@ -30,6 +30,7 @@ from .routers import (
     resource_router,
     saved_data_scope_router,
     paper_runtime_router,
+    paper_operator_command_router,
 )
 from .services.catalogue import CatalogueService, PreflightService
 from .services.backtest_definitions import BacktestDefinitionService
@@ -38,6 +39,8 @@ from .services import ContextService, HealthService, ResourceService
 from .services.saved_data_scopes import SavedDataScopeService
 from .services.paper_runtime import PaperRuntimeService
 from .repositories.paper_runtime import PaperRuntimeRepository
+from .repositories.paper_operator_commands import PaperOperatorCommandRepository
+from .services.paper_operator_commands import PaperOperatorCommandService
 
 
 class AuthenticationProvider(Protocol):
@@ -113,6 +116,10 @@ def create_app(
         paper_runtime_service = PaperRuntimeService(
             PaperRuntimeRepository(database), configured_settings.scope
         )
+        paper_operator_command_service = PaperOperatorCommandService(
+            PaperOperatorCommandRepository(database, configured_settings.scope.scope_id),
+            configured_settings.scope,
+        )
         opened = False
         app.state.database = database
         app.state.health_service = health_service
@@ -124,6 +131,7 @@ def create_app(
         app.state.comparison_view_service = comparison_view_service
         app.state.saved_data_scope_service = saved_data_scope_service
         app.state.paper_runtime_service = paper_runtime_service
+        app.state.paper_operator_command_service = paper_operator_command_service
         try:
             try:
                 await pool.open(
@@ -164,6 +172,7 @@ def create_app(
     app.include_router(resource_router)
     app.include_router(saved_data_scope_router)
     app.include_router(paper_runtime_router)
+    app.include_router(paper_operator_command_router)
     from .routers.comparison_views import router as comparison_view_router
 
     app.include_router(comparison_view_router)

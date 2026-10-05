@@ -244,6 +244,7 @@ Table semantics:
 | Execution history | `order_events`, `fill_events` | Append-oriented order/fill history. |
 | State snapshots | `position_snapshots`, `metrics_snapshots` | Append-oriented observations. |
 | Control state | `config_kv` | Key/value operational state. |
+| Operator command ledger | `paper_operator_commands` | Human-authorized Console requests with idempotent identity and runtime outcomes. |
 
 Operator control keys:
 

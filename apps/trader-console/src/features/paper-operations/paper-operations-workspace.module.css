@@ -5,6 +5,9 @@
 .subtitle { color: #526273; margin: 10px 0 0; }
 .button { background: #1e3a5f; border: 0; border-radius: 7px; color: white; cursor: pointer; padding: 11px 16px; }
 .button:disabled { cursor: wait; opacity: .6; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.card label { color: #718096; display: block; font-size: 12px; margin-top: 10px; }
+.card input { border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; display: block; margin-top: 5px; padding: 9px; width: min(100%, 520px); }
 .banner, .card, .incidents { background: #fff; border: 1px solid #dce3eb; border-radius: 10px; padding: 20px; }
 .banner { align-items: center; display: flex; justify-content: space-between; margin-bottom: 18px; }
 .banner strong { display: block; font-size: 24px; text-transform: capitalize; }

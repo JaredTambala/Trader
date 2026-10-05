@@ -17,6 +17,16 @@ from .saved_data_scopes import (
     SavedDataScopeStorageUnavailable,
 )
 from .paper_runtime import PaperRuntimeDatabaseUnavailable, PaperRuntimeService
+from .paper_operator_commands import (
+    PaperAdmissionUnavailable,
+    PaperOperatorAuthorityError,
+    PaperOperatorCommandConflict,
+    PaperOperatorCommandDatabaseUnavailable,
+    PaperOperatorCommandNotFound,
+    PaperOperatorCommandService,
+    PaperOperatorCommandStorageUnavailable,
+    PaperOperatorScopeError,
+)
 
 __all__ = [
     "CompatibilityRepository",
@@ -39,4 +49,12 @@ __all__ = [
     "SavedDataScopeStorageUnavailable",
     "PaperRuntimeDatabaseUnavailable",
     "PaperRuntimeService",
+    "PaperAdmissionUnavailable",
+    "PaperOperatorAuthorityError",
+    "PaperOperatorCommandConflict",
+    "PaperOperatorCommandDatabaseUnavailable",
+    "PaperOperatorCommandNotFound",
+    "PaperOperatorCommandService",
+    "PaperOperatorCommandStorageUnavailable",
+    "PaperOperatorScopeError",
 ]

@@ -476,6 +476,9 @@ promotion will require additional independent gates even though both use the ext
 No research-agent tool may start `TraderService`, submit orders, clear halt state, reconcile broker state, run raw SQL,
 or bypass core platform validation.
 
+The human Console has a separate `/api/paper/commands` boundary for admission-validated runtime requests. Adding that
+route does not expand MCP authority: MCP remains unable to submit, consume, or acknowledge those operator commands.
+
 The same boundary applies to paper admission: MCP tools may return or inspect the evidence used by a
 `paper_candidate_admission`, but no research-agent tool can create, approve, reject, revoke, or otherwise grant that
 human-owned record.

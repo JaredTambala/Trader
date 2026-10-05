@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { loadPaperRuntime, type PaperRuntimeOperations } from "./client";
+import { loadPaperRuntime, submitPaperCommand, type PaperOperatorCommand, type PaperOperatorCommandRecord, type PaperRuntimeOperations } from "./client";
 import { ConsoleShell } from "../shell/console-shell";
 import styles from "./paper-operations-workspace.module.css";
 
@@ -18,6 +18,11 @@ export function PaperOperationsWorkspace() {
   const [runtime, setRuntime] = useState<PaperRuntimeOperations | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [admissionId, setAdmissionId] = useState("");
+  const [reason, setReason] = useState("");
+  const [command, setCommand] = useState<PaperOperatorCommandRecord | null>(null);
+  const [commandError, setCommandError] = useState<string | null>(null);
+  const [commandLoading, setCommandLoading] = useState(false);
   const refresh = useCallback(() => {
     const controller = new AbortController();
     setLoading(true);
@@ -28,6 +33,20 @@ export function PaperOperationsWorkspace() {
     }).finally(() => setLoading(false));
     return () => controller.abort();
   }, []);
+
+  const issueCommand = useCallback((requestedCommand: PaperOperatorCommand) => {
+    if (!admissionId.trim()) {
+      setCommandError("An approved paper admission ID is required before issuing a command.");
+      return;
+    }
+    const controller = new AbortController();
+    setCommandLoading(true);
+    setCommandError(null);
+    void submitPaperCommand(requestedCommand, admissionId.trim(), reason.trim(), controller.signal)
+      .then(setCommand)
+      .catch((cause: unknown) => setCommandError(cause instanceof Error ? cause.message : "Paper command could not be queued."))
+      .finally(() => setCommandLoading(false));
+  }, [admissionId, reason]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => refresh(), 0);
@@ -54,6 +73,19 @@ export function PaperOperationsWorkspace() {
             <section className={styles.card}><h2>Risk outcomes</h2><Evidence status={runtime.risk.evidence.status} reason={runtime.risk.evidence.reason} /><p>{runtime.risk.evaluated_count} evaluated · {runtime.risk.approved_count} approved · {runtime.risk.rejected_count} rejected · {runtime.risk.blocked_count} blocked</p></section>
             <section className={styles.card}><h2>Reconciliation & halt</h2><Evidence status={runtime.reconciliation.evidence.status} reason={runtime.reconciliation.evidence.reason} /><p>{runtime.reconciliation.message}</p><Evidence status={runtime.halt.evidence.status} reason={runtime.halt.evidence.reason} /></section>
           </div>
+          <section className={styles.card} aria-label="Operator controls">
+            <h2>Operator controls</h2>
+            <p>Commands are queued for the running paper process and require a current approved admission.</p>
+            <label htmlFor="paper-admission">Admission ID</label>
+            <input id="paper-admission" value={admissionId} onChange={(event) => setAdmissionId(event.target.value)} placeholder="admission-id" />
+            <label htmlFor="paper-command-reason">Reason (optional)</label>
+            <input id="paper-command-reason" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Operator reason" />
+            <div className={styles.controls}>
+              {(["start", "pause", "stop", "set_halt", "clear_halt", "reconcile"] as PaperOperatorCommand[]).map((requestedCommand) => <button key={requestedCommand} className={styles.button} type="button" disabled={commandLoading} onClick={() => issueCommand(requestedCommand)}>{requestedCommand.replaceAll("_", " ")}</button>)}
+            </div>
+            {commandError && <p className={styles.error} role="alert">{commandError}</p>}
+            {command && <p role="status">Command {command.command} is <strong>{command.status}</strong>{command.outcome_message ? `: ${command.outcome_message}` : "."}</p>}
+          </section>
           {runtime.incidents.length > 0 && <section className={styles.incidents}><h2>Incidents</h2>{runtime.incidents.map((incident) => <p key={`${incident.code}-${incident.observed_at}`}><strong>{incident.severity}</strong> {incident.message}</p>)}</section>}
         </>}
       </main>

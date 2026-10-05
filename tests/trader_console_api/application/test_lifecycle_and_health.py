@@ -282,6 +282,8 @@ def test_openapi_exposes_no_client_database_or_scope_override() -> None:
             "/api/experiments/{experiment_id}/comparison-views",
             "/api/experiments/{experiment_id}/comparison-views/{view_id}",
             "/api/paper/runtime",
+            "/api/paper/commands",
+            "/api/paper/commands/{command_id}",
         }
     rendered = json.dumps(schema)
     for forbidden in ("database_url", "postgresql://", "scope_id_override"):

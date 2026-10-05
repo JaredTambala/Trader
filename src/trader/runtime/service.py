@@ -26,6 +26,7 @@ from ..risk import RiskManager
 from .broker_factory import build_runtime_broker
 from .metrics import MetricsWorker
 from .orders import run_startup_recovery
+from .operator_control import consume_pending_operator_commands
 from .portfolio_sync import (
     build_initial_portfolio_seed,
     build_broker_portfolio_sync_snapshot,
@@ -181,6 +182,7 @@ class TraderService:
                 run_id=run_id,
             )
             self._start_metrics_worker(run_id=run_id)
+            self._consume_operator_commands()
             logger.info(
                 "Trader service start mode=%s cadence_seconds=%s min_trigger_interval_ms=%s",
                 mode,
@@ -241,6 +243,9 @@ class TraderService:
         """Execute cycles at fixed cadence until stopped or iteration limit hit."""
         iterations = 0
         while not self._stop:
+            self._consume_operator_commands()
+            if self._stop:
+                break
             _safe_run_cycle(
                 self._event_store,
                 self._config,
@@ -287,6 +292,9 @@ class TraderService:
             while not self._stop:
                 notifications = list(connection.notifies(timeout=1.0))
                 if notifications:
+                    self._consume_operator_commands()
+                    if self._stop:
+                        break
                     for notify in notifications:
                         logger.debug("Notification received channel=%s payload=%s", notify.channel, notify.payload)
                         notify_data = parse_market_data_notify(notify.payload)
@@ -322,6 +330,9 @@ class TraderService:
                             pending = True
 
                 now = time.monotonic()
+                self._consume_operator_commands()
+                if self._stop:
+                    break
                 pending_decision = decide_pending_realtime_cycle(
                     pending=pending,
                     now_monotonic=now,
@@ -377,6 +388,25 @@ class TraderService:
             return
         self._last_order_reconciliation_at = now
         logger.info("Periodic order reconciliation complete updates=%s", len(updates or ()))
+
+    def _consume_operator_commands(self) -> None:
+        """Apply queued human operator requests at a safe runtime boundary."""
+        try:
+            outcomes = consume_pending_operator_commands(
+                self._event_store,
+                stop_callback=self.stop,
+                broker=self._broker,
+            )
+        except Exception as exc:  # pragma: no cover - storage/runtime dependent
+            logger.warning("Operator command polling unavailable: %s", exc)
+            return
+        for outcome in outcomes:
+            logger.info(
+                "Operator command applied command_id=%s status=%s code=%s",
+                outcome.command_id,
+                outcome.status,
+                outcome.outcome_code,
+            )
 
     def _start_metrics_worker(self, *, run_id: str) -> None:
         """Start background metrics sampling if configured."""

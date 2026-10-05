@@ -399,6 +399,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/paper/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Paper Operator Commands
+         * @description Return bounded command audit history for the authorized operator.
+         */
+        get: operations["list_paper_operator_commands_api_paper_commands_get"];
+        put?: never;
+        /**
+         * Submit Paper Operator Command
+         * @description Validate and queue one human-authorized paper-runtime command.
+         */
+        post: operations["submit_paper_operator_command_api_paper_commands_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/paper/commands/{command_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Paper Operator Command
+         * @description Return one durable command receipt for operator polling.
+         */
+        get: operations["get_paper_operator_command_api_paper_commands__command_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/paper/runtime": {
         parameters: {
             query?: never;
@@ -1765,6 +1809,77 @@ export interface components {
             status: string;
             /** Symbol */
             symbol?: string | null;
+        };
+        /**
+         * PaperOperatorCommandRecord
+         * @description Durable audit receipt for one authorized paper-runtime command.
+         */
+        PaperOperatorCommandRecord: {
+            /** Accepted At */
+            accepted_at?: string | null;
+            /** Admission Id */
+            admission_id: string;
+            /**
+             * Command
+             * @enum {string}
+             */
+            command: "start" | "pause" | "stop" | "set_halt" | "clear_halt" | "reconcile";
+            /** Command Id */
+            command_id: string;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Outcome Code */
+            outcome_code?: string | null;
+            /** Outcome Message */
+            outcome_message?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Requested At
+             * Format: date-time
+             */
+            requested_at: string;
+            /** Requested By */
+            requested_by: string;
+            /** Scope Id */
+            scope_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "requested" | "accepted" | "completed" | "rejected" | "ambiguous" | "failed";
+        };
+        /**
+         * PaperOperatorCommandRequest
+         * @description Human-requested paper-runtime command.
+         *
+         *     The admission identity is always supplied by the caller and checked against
+         *     the server-owned paper scope before a command is persisted. Scope identity,
+         *     broker configuration, and command outcome remain server-owned.
+         */
+        PaperOperatorCommandRequest: {
+            /** Admission Id */
+            admission_id: string;
+            /**
+             * Command
+             * @enum {string}
+             */
+            command: "start" | "pause" | "stop" | "set_halt" | "clear_halt" | "reconcile";
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * PaperOperatorCommandsResponse
+         * @description Bounded command-audit history for one paper scope.
+         */
+        PaperOperatorCommandsResponse: {
+            /** Items */
+            items: components["schemas"]["PaperOperatorCommandRecord"][];
+            page: components["schemas"]["PageInfo"];
         };
         /**
          * PaperOrders
@@ -3572,6 +3687,201 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MarketDataEvidenceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    list_paper_operator_commands_api_paper_commands_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaperOperatorCommandsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    submit_paper_operator_command_api_paper_commands_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaperOperatorCommandRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaperOperatorCommandRecord"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_paper_operator_command_api_paper_commands__command_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                command_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaperOperatorCommandRecord"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
             /** @description Validation Error */

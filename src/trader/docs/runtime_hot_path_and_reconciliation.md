@@ -11,10 +11,11 @@ positions, orders, fills, and risk decisions. It maps them into typed operationa
 timestamps, and explicit `available`, `partial`, `stale`, or `unavailable` evidence states. Configured scope and
 broker-account labels remain configuration evidence; they do not attest to the remote broker account.
 
-Reconciliation attempts and operator halt state are currently explicit `unavailable` sections because no producer-owned
-read projections have been published for them. The Console does not query raw runtime tables or infer either state from
-API readiness. This is a read-only observation boundary; start, pause, stop, halt, and reconcile commands remain a
-separate authorized work item.
+Reconciliation attempts and operator halt state remain explicit `unavailable` sections until producer read projections
+publish them. The Console does not query raw runtime tables or infer either state from API readiness. Operator controls
+are a separate authorized queue: a human-authenticated Console request is admission- and scope-validated, persisted in
+`paper_operator_commands`, and consumed by `TraderService` between cycles. The runtime applies halt, stop, and broker
+reconciliation through its existing primitives and records ambiguous broker outcomes without guessing.
 
 ## Hot Path Overview
 

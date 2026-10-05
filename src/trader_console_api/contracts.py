@@ -43,6 +43,69 @@ class TraderPrincipal(BaseModel):
     principal_id: str = Field(min_length=1, max_length=200)
 
 
+PaperOperatorCommandName = Literal[
+    "start",
+    "pause",
+    "stop",
+    "set_halt",
+    "clear_halt",
+    "reconcile",
+]
+PaperOperatorCommandStatus = Literal[
+    "requested",
+    "accepted",
+    "completed",
+    "rejected",
+    "ambiguous",
+    "failed",
+]
+
+
+class PaperOperatorCommandRequest(BaseModel):
+    """Human-requested paper-runtime command.
+
+    The admission identity is always supplied by the caller and checked against
+    the server-owned paper scope before a command is persisted. Scope identity,
+    broker configuration, and command outcome remain server-owned.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    command: PaperOperatorCommandName
+    admission_id: str = Field(min_length=1, max_length=200)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+class PaperOperatorCommandRecord(BaseModel):
+    """Durable audit receipt for one authorized paper-runtime command."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    command_id: str
+    scope_id: str
+    command: PaperOperatorCommandName
+    admission_id: str
+    idempotency_key: str
+    requested_by: str
+    status: PaperOperatorCommandStatus
+    reason: str | None = None
+    outcome_code: str | None = None
+    outcome_message: str | None = None
+    requested_at: datetime
+    accepted_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
+class PaperOperatorCommandsResponse(BaseModel):
+    """Bounded command-audit history for one paper scope."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    items: tuple[PaperOperatorCommandRecord, ...]
+    page: PageInfo
+
+
 class ConsoleScope(BaseModel):
     """Safe public description of one server-configured API scope.
 

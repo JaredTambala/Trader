@@ -101,6 +101,28 @@ startup. The API never installs or repairs `console_read`.
 That transaction policy belongs to the currently implemented query resources. It does not define the whole API as
 read-only; future command services will have their own explicit authority and transaction contracts.
 
+## Paper operator commands
+
+The paper-operations workspace submits only commands that carry an approved immutable paper-candidate admission. The
+request is authenticated through the injected `AuthenticationProvider`; the resulting principal must use the explicit
+`human:` or `operator:` namespace. Agents, MCP identities, unauthenticated requests, non-paper scopes, missing or
+expired admissions, revoked candidates, and broker/account or scope mismatches fail closed.
+
+`POST /api/paper/commands` accepts `command` (`start`, `pause`, `stop`, `set_halt`, `clear_halt`, or `reconcile`),
+`admission_id`, `idempotency_key`, and an optional `reason`. The response is an audited receipt. A repeated key with
+the same request returns the original receipt; a material replay returns HTTP 409. Commands are initially
+`requested`, then the running core service records `completed`, `failed`, or `ambiguous` as it consumes the queue.
+`ambiguous` is reserved for reconciliation outcomes that cannot establish remote broker state. The bounded audit
+routes are `GET /api/paper/commands` and `GET /api/paper/commands/{command_id}`.
+
+Install the command ledger explicitly before using these routes:
+
+<!-- verified: integration:console tests/trader_console_api/repositories/test_paper_operator_commands_schema.py -->
+```bash
+TRADER_CONSOLE_DATABASE_URL="$TRADER_CONSOLE_DATABASE_URL" \
+  uv run python -m trader_console_api.repositories.paper_operator_commands_schema install
+```
+
 ## Data resources
 
 The current resource slice is deliberately bounded and consumes only the producer-owned `console_read` views. Every

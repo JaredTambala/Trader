@@ -121,6 +121,14 @@ uv run python run_operator.py configs/example.yaml reconcile --json
 `status`, `health`, `positions`, `open-orders`, and `halt status` are event-store-first and do not need broker access.
 `reconcile` constructs the configured broker and appends local order/fill events when broker state differs from local
 history.
+
+The Console paper-control boundary is a separate audited request path. A human operator submits a typed `start`,
+`pause`, `stop`, `set_halt`, `clear_halt`, or `reconcile` command with an approved paper-candidate admission and an
+idempotency key. The Console validates the admission and configured scope, persists the request in
+`paper_operator_commands`, and returns a receipt with `requested` status. The running `TraderService` consumes those
+receipts between cycles and applies them through the existing halt, stop, and broker-reconciliation primitives. A
+reconciliation exception is recorded as `ambiguous` because local evidence cannot establish remote broker state.
+Agent, MCP, and non-human identities cannot submit these commands.
 Health classification is computed as a typed pure assessment from normalized run, cycle, market-data, halt, and
 open-order subsections before it is serialized for CLI/API output.
 

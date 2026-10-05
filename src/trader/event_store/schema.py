@@ -401,6 +401,29 @@ POSTGRES_SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS paper_operator_commands (
+                command_id UUID PRIMARY KEY,
+                scope_id TEXT NOT NULL,
+                command TEXT NOT NULL CHECK (command IN ('start', 'pause', 'stop', 'set_halt', 'clear_halt', 'reconcile')),
+                admission_id TEXT NOT NULL,
+                idempotency_key TEXT NOT NULL,
+                request_digest TEXT NOT NULL,
+                requested_by TEXT NOT NULL,
+                reason TEXT,
+                status TEXT NOT NULL CHECK (status IN ('requested', 'accepted', 'completed', 'rejected', 'ambiguous', 'failed')),
+                outcome_code TEXT,
+                outcome_message TEXT,
+                requested_at TIMESTAMPTZ NOT NULL DEFAULT transaction_timestamp(),
+                accepted_at TIMESTAMPTZ,
+                completed_at TIMESTAMPTZ,
+                UNIQUE (scope_id, idempotency_key)
+            )
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS paper_operator_commands_pending_idx
+            ON paper_operator_commands(status, requested_at)
+            """,
+            """
             ALTER TABLE position_snapshots
             ADD COLUMN IF NOT EXISTS cash_balance DOUBLE PRECISION
             """,
