@@ -32,7 +32,11 @@ from .routers import (
     paper_runtime_router,
     paper_operator_command_router,
 )
-from .services.catalogue import CatalogueService, PreflightService
+from .services.catalogue import (
+    CatalogueService,
+    ImplementationLineageResolver,
+    PreflightService,
+)
 from .services.backtest_definitions import BacktestDefinitionService
 from .services.backtest_executions import BacktestExecutionService
 from .services import ContextService, HealthService, ResourceService
@@ -60,6 +64,7 @@ def create_app(
     *,
     pool_factory: PoolFactory = create_connection_pool,
     authentication_provider: AuthenticationProvider | None = None,
+    implementation_lineage_resolver: ImplementationLineageResolver | None = None,
 ) -> FastAPI:
     """Create the Trader Console API for one configured scope.
 
@@ -72,6 +77,9 @@ def create_app(
         authentication_provider: Optional request-principal extension point.
             Current health and public configuration routes do not invoke it or
             make authorization claims. Authenticated deployment is later work.
+        implementation_lineage_resolver: Optional research-owned resolver for
+            rechecking exact implementation and validation evidence during
+            Console preflight.
 
     Returns:
         A FastAPI application whose lifespan owns exactly one bounded pool.
@@ -101,6 +109,7 @@ def create_app(
         )
         preflight_service = PreflightService.default(
             resource_repository,
+            lineage_resolver=implementation_lineage_resolver,
             saved_scope_lookup=saved_data_scope_service,
         )
         backtest_definition_service = BacktestDefinitionService(

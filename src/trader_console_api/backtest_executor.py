@@ -49,6 +49,7 @@ class BacktestDefinitionExecutor:
         progress: ProgressSink,
     ) -> ExecutionOutcome:
         """Execute the frozen definition in a worker thread with durable progress."""
+        _require_allowlisted_lineage(definition)
         strategy = self.catalogue.build_strategy(
             definition.strategy_profile_id,
             version=definition.strategy_catalogue_version,
@@ -105,6 +106,24 @@ class BacktestDefinitionExecutor:
             total_cycles=result.total_runs,
             warnings=result.warnings,
         )
+
+
+def _require_allowlisted_lineage(definition: BacktestDefinition) -> None:
+    """Fail closed if a worker receives a definition outside preflight."""
+    strategy_lineage = definition.strategy_implementation_lineage
+    if (
+        strategy_lineage.profile_id != definition.strategy_profile_id
+        or strategy_lineage.implementation_kind != "strategy"
+        or strategy_lineage.validation_report.status != "passed"
+    ):
+        raise ValueError("strategy implementation lineage is not an admitted allowlisted record")
+    risk_lineage = definition.risk_implementation_lineage
+    if (
+        risk_lineage.profile_id != definition.risk_profile_id
+        or risk_lineage.implementation_kind != "risk_manager"
+        or risk_lineage.validation_report.status != "passed"
+    ):
+        raise ValueError("risk implementation lineage is not an admitted allowlisted record")
 
 
 def _core_assumptions(definition: BacktestDefinition) -> CoreBacktestAssumptions:

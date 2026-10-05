@@ -740,6 +740,7 @@ export interface components {
             resource_limits?: components["schemas"]["BacktestResourceLimits"];
             /** Risk Catalogue Version */
             risk_catalogue_version: string;
+            risk_implementation_lineage: components["schemas"]["ImplementationLineage"];
             /** Risk Parameters */
             risk_parameters?: {
                 [key: string]: unknown;
@@ -753,6 +754,7 @@ export interface components {
             start: string;
             /** Strategy Catalogue Version */
             strategy_catalogue_version: string;
+            strategy_implementation_lineage: components["schemas"]["ImplementationLineage"];
             /** Strategy Parameters */
             strategy_parameters?: {
                 [key: string]: unknown;
@@ -921,6 +923,7 @@ export interface components {
             resource_limits?: components["schemas"]["BacktestResourceLimits"];
             /** Risk Catalogue Version */
             risk_catalogue_version?: string | null;
+            risk_implementation_lineage?: components["schemas"]["ImplementationLineage"] | null;
             /** Risk Parameters */
             risk_parameters?: {
                 [key: string]: unknown;
@@ -937,6 +940,7 @@ export interface components {
             start: string;
             /** Strategy Catalogue Version */
             strategy_catalogue_version?: string | null;
+            strategy_implementation_lineage?: components["schemas"]["ImplementationLineage"] | null;
             /** Strategy Parameters */
             strategy_parameters?: {
                 [key: string]: unknown;
@@ -1473,6 +1477,71 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * ImplementationLineage
+         * @description Exact admitted implementation and specification lineage for authoring.
+         */
+        ImplementationLineage: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "exact_reuse" | "adaptation" | "new_authorship";
+            /**
+             * Implementation Kind
+             * @enum {string}
+             */
+            implementation_kind: "strategy" | "risk_manager";
+            /** Implementation Name */
+            implementation_name: string;
+            /** Implementation Validation Id */
+            implementation_validation_id: string;
+            /** Implementation Version */
+            implementation_version: string;
+            /** Implementation Version Id */
+            implementation_version_id: string;
+            /** Profile Id */
+            profile_id: string;
+            /** Source Hash */
+            source_hash: string;
+            /** Specification Id */
+            specification_id: string;
+            validation_report: components["schemas"]["ImplementationValidationReport"];
+        };
+        /**
+         * ImplementationValidationReport
+         * @description Immutable admission evidence for one executable implementation.
+         */
+        ImplementationValidationReport: {
+            /**
+             * Blockers
+             * @default []
+             */
+            blockers: string[];
+            /**
+             * Implementation Kind
+             * @enum {string}
+             */
+            implementation_kind: "strategy" | "risk_manager";
+            /** Implementation Version Id */
+            implementation_version_id: string;
+            /** Source Hash */
+            source_hash: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "passed" | "blocked";
+            /** Valid */
+            valid: boolean;
+            /** Validation Id */
+            validation_id: string;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
         };
         /**
          * IndicatorSeriesPoint

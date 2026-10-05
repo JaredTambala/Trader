@@ -12,6 +12,12 @@ Packaging creates source evidence; it does not admit the implementation. Strateg
 registration belong to the Experiments context. A failed admission may be repaired within an allowed revision budget,
 but changing the research semantics requires a new brief or coordinator decision rather than a hidden patch.
 
+The human Console receives only the resulting typed admission projection. Its authoring request includes the exact
+implementation/version, source digest, validation report, specification identity, and reuse/adaptation/authorship
+decision; it never accepts a module import path or opaque callable. The Console may use an application-composed
+resolver to revalidate that the research-owned report and source digest are still current before persisting a
+definition, while research remains the authority for registration and admission.
+
 ## Verification ownership
 
 The package-owned contract at

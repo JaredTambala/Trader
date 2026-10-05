@@ -214,6 +214,67 @@ class CatalogueProfile(BaseModel):
     reason_codes: tuple[str, ...] = ()
 
 
+class ImplementationValidationReport(BaseModel):
+    """Immutable admission evidence for one executable implementation."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    validation_id: str = Field(min_length=1, max_length=200)
+    implementation_version_id: str = Field(min_length=1, max_length=200)
+    implementation_kind: Literal["strategy", "risk_manager"]
+    source_hash: str = Field(
+        min_length=64,
+        max_length=64,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+    status: Literal["passed", "blocked"]
+    valid: bool
+    blockers: tuple[str, ...] = ()
+    warnings: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_status(self) -> ImplementationValidationReport:
+        """Keep status and validity aligned with the research report."""
+        if self.valid is not (self.status == "passed"):
+            raise ValueError("validation report valid must match status")
+        return self
+
+
+class ImplementationLineage(BaseModel):
+    """Exact admitted implementation and specification lineage for authoring."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    profile_id: str = Field(min_length=1, max_length=100)
+    implementation_version_id: str = Field(min_length=1, max_length=200)
+    implementation_kind: Literal["strategy", "risk_manager"]
+    implementation_name: str = Field(min_length=1, max_length=200)
+    implementation_version: str = Field(min_length=1, max_length=100)
+    source_hash: str = Field(
+        min_length=64,
+        max_length=64,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+    implementation_validation_id: str = Field(min_length=1, max_length=200)
+    specification_id: str = Field(min_length=1, max_length=200)
+    decision: Literal["exact_reuse", "adaptation", "new_authorship"]
+    validation_report: ImplementationValidationReport
+
+    @model_validator(mode="after")
+    def validate_report_lineage(self) -> ImplementationLineage:
+        """Reject any payload whose nested report is for a different source."""
+        report = self.validation_report
+        if report.validation_id != self.implementation_validation_id:
+            raise ValueError("implementation validation ID does not match validation report")
+        if report.implementation_version_id != self.implementation_version_id:
+            raise ValueError("implementation version ID does not match validation report")
+        if report.implementation_kind != self.implementation_kind:
+            raise ValueError("implementation kind does not match validation report")
+        if report.source_hash != self.source_hash:
+            raise ValueError("implementation source hash does not match validation report")
+        return self
+
+
 class BacktestCatalogueResponse(BaseModel):
     """Versioned allowlisted strategy and risk catalogue."""
 
@@ -268,9 +329,11 @@ class BacktestDefinition(BaseModel):
     strategy_profile_id: str = Field(min_length=1, max_length=100)
     strategy_catalogue_version: str = Field(min_length=1, max_length=50)
     strategy_parameters: dict[str, Any] = Field(default_factory=dict)
+    strategy_implementation_lineage: ImplementationLineage
     risk_profile_id: str = Field(min_length=1, max_length=100)
     risk_catalogue_version: str = Field(min_length=1, max_length=50)
     risk_parameters: dict[str, Any] = Field(default_factory=dict)
+    risk_implementation_lineage: ImplementationLineage
     asset_class: Literal["stock", "crypto"]
     symbols: tuple[str, ...] = Field(min_length=1, max_length=50)
     timeframe: str = Field(min_length=1, max_length=32)
@@ -394,9 +457,11 @@ class BacktestPreflightRequest(BaseModel):
     strategy_profile_id: str = Field(min_length=1, max_length=100)
     strategy_catalogue_version: str | None = Field(default=None, max_length=50)
     strategy_parameters: dict[str, Any] = Field(default_factory=dict)
+    strategy_implementation_lineage: ImplementationLineage | None = None
     risk_profile_id: str = Field(default="noop", min_length=1, max_length=100)
     risk_catalogue_version: str | None = Field(default=None, max_length=50)
     risk_parameters: dict[str, Any] = Field(default_factory=dict)
+    risk_implementation_lineage: ImplementationLineage | None = None
     asset_class: str
     symbols: tuple[str, ...] = Field(min_length=1, max_length=50)
     timeframe: str

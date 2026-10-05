@@ -24,6 +24,7 @@ from trader_console_api.contracts import (
 from trader_console_api.data_scope_contracts import BacktestDataScopeHandoff, DataScopeEvidenceStatus, DataScopeSourcePolicy
 from trader_console_api.routers.backtest_definitions import router
 from trader_console_api.services.backtest_definitions import InvalidBacktestDefinition
+from tests.trader_console_api.support import implementation_lineage
 
 
 class _Service:
@@ -73,8 +74,10 @@ def _revision() -> BacktestDefinitionRevision:
         display_name="Smoke",
         strategy_profile_id="noop",
         strategy_catalogue_version="standard-1",
+        strategy_implementation_lineage=implementation_lineage(),
         risk_profile_id="noop",
         risk_catalogue_version="standard-1",
+        risk_implementation_lineage=implementation_lineage(kind="risk", suffix="risk"),
         asset_class="stock",
         symbols=("AAPL",),
         timeframe="1Min",
@@ -106,6 +109,8 @@ def _payload() -> dict[str, object]:
     """Return a valid draft payload accepted by the transport model."""
     return {
         "strategy_profile_id": "noop",
+        "strategy_implementation_lineage": implementation_lineage().model_dump(mode="json"),
+        "risk_implementation_lineage": implementation_lineage(kind="risk", suffix="risk").model_dump(mode="json"),
         "asset_class": "stock",
         "symbols": ["AAPL"],
         "timeframe": "1Min",

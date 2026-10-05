@@ -26,12 +26,15 @@ from trader_console_api.services.backtest_definitions import (
     BacktestDefinitionService,
     InvalidBacktestDefinition,
 )
+from tests.trader_console_api.support import implementation_lineage
 
 
 def _draft() -> BacktestPreflightRequest:
     """Build one minimal draft accepted by the fake preflight."""
     return BacktestPreflightRequest(
         strategy_profile_id="noop",
+        strategy_implementation_lineage=implementation_lineage(),
+        risk_implementation_lineage=implementation_lineage(kind="risk", suffix="risk"),
         asset_class="stock",
         symbols=("AAPL",),
         timeframe="1Min",

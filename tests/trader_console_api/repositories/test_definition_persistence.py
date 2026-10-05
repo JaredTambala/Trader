@@ -17,6 +17,7 @@ from uuid import uuid4
 from trader_console_api.contracts import BacktestDefinition
 from trader_console_api.data_scope_contracts import BacktestDataScopeHandoff, DataScopeEvidenceStatus, DataScopeSourcePolicy
 from trader_console_api.repositories.backtest_definitions import BacktestDefinitionSession
+from tests.trader_console_api.support import implementation_lineage
 
 
 def _definition(name: str = "Smoke") -> BacktestDefinition:
@@ -25,8 +26,10 @@ def _definition(name: str = "Smoke") -> BacktestDefinition:
         display_name=name,
         strategy_profile_id="noop",
         strategy_catalogue_version="standard-1",
+        strategy_implementation_lineage=implementation_lineage(),
         risk_profile_id="noop",
         risk_catalogue_version="standard-1",
+        risk_implementation_lineage=implementation_lineage(kind="risk", suffix="risk"),
         asset_class="stock",
         symbols=("AAPL",),
         timeframe="1Min",

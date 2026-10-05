@@ -39,7 +39,10 @@ Catalogue and preflight extend the same direction: `routers.catalogue` resolves 
 `trader_standard` profile selection and checks budgets/coverage, and `repositories.resources` reads bounded bar
 coverage. The composition root injects `SavedDataScopeService` as the server-owned handoff lookup. A mismatch, stale
 or unavailable saved scope blocks preflight before coverage is queried; no aggregate coverage result replaces the
-selected manifest/quality evidence. No arbitrary implementation import, definition write, queue command, or worker
+selected manifest/quality evidence. The same service validates the typed implementation-lineage projection (version
+ID, source digest, validation report, specification identity and authoring decision). A deployment can inject an
+`ImplementationLineageResolver` adapter that re-reads research-owned admission evidence; registration and admission
+never move into the Console package. No arbitrary implementation import, definition write, queue command, or worker
 starts from this path.
 
 Immutable definitions use the same explicit boundary through `routers.backtest_definitions` →
@@ -47,7 +50,8 @@ Immutable definitions use the same explicit boundary through `routers.backtest_d
 before a command transaction inserts a Console-owned JSONB revision. The additive `console_app.backtest_definitions`
 table is installed and checked by an operator command; startup does not create it. Scope and IDs are supplied by
 composition/server storage, fingerprints are unique per scope, and revision writes append rather than update prior
-rows.
+rows. Each JSONB revision includes the complete strategy and risk lineage, so a later review can inspect the exact
+admitted source hash and validation blockers that governed submission.
 
 ## Process and scope boundary
 

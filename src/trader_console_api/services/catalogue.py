@@ -27,6 +27,7 @@ from ..contracts import (
     BacktestPreflightResponse,
     CatalogueParameter,
     CatalogueProfile,
+    ImplementationLineage,
     PreflightIssue,
 )
 from ..data_scope_contracts import BacktestDataScopeHandoff, DataScopeEvidenceStatus, SavedDataScope
@@ -36,6 +37,19 @@ from ..repositories.resources import ConsoleResourceRepository
 
 CatalogueDatabaseUnavailable = ConsoleDatabaseUnavailable
 AssetClass = Literal["stock", "crypto"]
+
+
+class ImplementationLineageResolver(Protocol):
+    """Research-owned adapter used to resolve and revalidate exact lineage."""
+
+    def resolve(
+        self,
+        lineage: ImplementationLineage,
+        *,
+        profile_id: str,
+        expected_kind: Literal["strategy", "risk_manager"],
+    ) -> ImplementationLineage:
+        """Return the canonical lineage or raise when the admission has drifted."""
 
 
 class SavedScopeLookup(Protocol):
@@ -73,21 +87,24 @@ class PreflightService:
         self,
         repository: ConsoleResourceRepository,
         catalogue: Catalogue,
-        saved_scope_lookup: SavedScopeLookup,
+        saved_scope_lookup: SavedScopeLookup | None = None,
+        lineage_resolver: ImplementationLineageResolver | None = None,
     ) -> None:
         """Bind read-only coverage access and an immutable catalogue snapshot."""
         self._repository = repository
         self._catalogue = catalogue
+        self._lineage_resolver = lineage_resolver
         self._saved_scope_lookup = saved_scope_lookup
 
     @classmethod
     def default(
         cls,
         repository: ConsoleResourceRepository,
-        saved_scope_lookup: SavedScopeLookup,
+        saved_scope_lookup: SavedScopeLookup | None = None,
+        lineage_resolver: ImplementationLineageResolver | None = None,
     ) -> "PreflightService":
         """Bind the current maintained catalogue to a resource repository."""
-        return cls(repository, maintained_catalogue(), saved_scope_lookup)
+        return cls(repository, maintained_catalogue(), saved_scope_lookup, lineage_resolver)
 
     async def preflight(self, request: BacktestPreflightRequest) -> BacktestPreflightResponse:
         """Return normalized definition, coverage, and field-level issues."""
@@ -101,6 +118,8 @@ class PreflightService:
         risk: ProfileDefinition | None = None
         strategy_parameters: dict[str, object] = {}
         risk_parameters: dict[str, object] = {}
+        strategy_lineage: ImplementationLineage | None = None
+        risk_lineage: ImplementationLineage | None = None
 
         await self._qualify_data_scope(request, issues)
 
@@ -160,6 +179,23 @@ class PreflightService:
             except CatalogueValidationError as exc:
                 issues.append(_error("risk_parameters", "invalid_risk_parameters", str(exc)))
 
+        strategy_lineage = _resolve_lineage(
+            request.strategy_implementation_lineage,
+            profile_id=strategy.profile_id if strategy is not None else request.strategy_profile_id,
+            expected_kind="strategy",
+            path="strategy_implementation_lineage",
+            resolver=self._lineage_resolver,
+            issues=issues,
+        )
+        risk_lineage = _resolve_lineage(
+            request.risk_implementation_lineage,
+            profile_id=risk.profile_id if risk is not None else request.risk_profile_id,
+            expected_kind="risk_manager",
+            path="risk_implementation_lineage",
+            resolver=self._lineage_resolver,
+            issues=issues,
+        )
+
         if asset_class is not None and strategy is not None and asset_class not in strategy.supported_asset_classes:
             issues.append(_error("asset_class", "strategy_asset_class_unsupported", f"{strategy.profile_id} does not support {asset_class}"))
         if timeframe is not None and strategy is not None and timeframe not in strategy.supported_timeframes:
@@ -187,7 +223,7 @@ class PreflightService:
         normalized_definition: BacktestDefinition | None = None
         if not any(issue.severity == "error" for issue in issues) and all(
             value is not None for value in (normalized_symbols, asset_class, timeframe, start, end, strategy, risk)
-        ):
+        ) and strategy_lineage is not None and risk_lineage is not None:
             assert normalized_symbols is not None
             assert asset_class is not None
             assert timeframe is not None
@@ -200,9 +236,11 @@ class PreflightService:
                 strategy_profile_id=strategy.profile_id,
                 strategy_catalogue_version=strategy.version,
                 strategy_parameters=strategy_parameters,
+                strategy_implementation_lineage=strategy_lineage,
                 risk_profile_id=risk.profile_id,
                 risk_catalogue_version=risk.version,
                 risk_parameters=risk_parameters,
+                risk_implementation_lineage=risk_lineage,
                 asset_class=asset_class,
                 symbols=normalized_symbols,
                 timeframe=timeframe,
@@ -315,6 +353,15 @@ class PreflightService:
                     handoff.evidence_reason or f"Selected data scope evidence is {handoff.evidence_status.value}.",
                 )
             )
+        if self._saved_scope_lookup is None:
+            issues.append(
+                _error(
+                    "data_scope.saved_scope_id",
+                    "data_scope_unavailable",
+                    "No server-owned saved-scope lookup is configured",
+                )
+            )
+            return
         try:
             saved = await self._saved_scope_lookup.get(handoff.saved_scope_id)
         except Exception as exc:
@@ -368,6 +415,47 @@ def _error(path: str, code: str, message: str) -> PreflightIssue:
 
 def _warning(path: str, code: str, message: str) -> PreflightIssue:
     return PreflightIssue(severity="warning", code=code, path=path, message=message)
+
+
+def _resolve_lineage(
+    lineage: ImplementationLineage | None,
+    *,
+    profile_id: str,
+    expected_kind: Literal["strategy", "risk_manager"],
+    path: str,
+    resolver: ImplementationLineageResolver | None,
+    issues: list[PreflightIssue],
+) -> ImplementationLineage | None:
+    """Validate one typed admission projection before definition creation."""
+    if lineage is None:
+        issues.append(_error(path, "implementation_lineage_missing", "An admitted implementation lineage is required"))
+        return None
+    if lineage.profile_id != profile_id:
+        issues.append(
+            _error(path, "implementation_profile_mismatch", f"Lineage profile {lineage.profile_id} does not match {profile_id}")
+        )
+    if lineage.implementation_kind != expected_kind:
+        issues.append(
+            _error(path, "implementation_kind_mismatch", f"Lineage kind must be {expected_kind}")
+        )
+    report = lineage.validation_report
+    if report.status != "passed" or not report.valid:
+        blockers = "; ".join(report.blockers) or "validation report is blocked"
+        issues.append(
+            _error(path, "implementation_validation_blocked", f"{report.validation_id}: {blockers}")
+        )
+    if resolver is not None:
+        try:
+            resolved = resolver.resolve(lineage, profile_id=profile_id, expected_kind=expected_kind)
+        except Exception as exc:  # adapter failures become actionable preflight evidence
+            issues.append(_error(path, "implementation_lineage_unavailable", str(exc)))
+        else:
+            if resolved != lineage:
+                issues.append(
+                    _error(path, "implementation_lineage_drifted", "The admitted implementation lineage changed since authoring")
+                )
+            return resolved
+    return lineage
 
 
 def _scope_mismatches(handoff: BacktestDataScopeHandoff, saved: SavedDataScope) -> list[str]:
@@ -437,4 +525,10 @@ def _as_utc(value: object) -> datetime | None:
     return value.astimezone(timezone.utc) if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
-__all__ = ["CatalogueDatabaseUnavailable", "CatalogueService", "PreflightService", "SavedScopeLookup"]
+__all__ = [
+    "CatalogueDatabaseUnavailable",
+    "CatalogueService",
+    "ImplementationLineageResolver",
+    "PreflightService",
+    "SavedScopeLookup",
+]

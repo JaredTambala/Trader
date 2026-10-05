@@ -30,6 +30,13 @@ canonical trial ledger; every suggestion and terminal trial remains recorded by 
 
 ## From implementation to evidence
 
+The Console authoring boundary consumes this evidence without taking ownership of admission. A draft carries the exact
+implementation version ID, implementation kind, source hash, passed validation-report ID, strategy or risk
+specification ID, and the reuse/adaptation/authorship decision. Console preflight compares the nested report IDs and
+hashes, rejects blocked reports, and may call a deployment-supplied resolver to re-read the research artifact store.
+The immutable Console definition stores the complete projection, so a later review can reconstruct which admitted
+source and validation evidence were selected. Import paths and serialized callables never cross this boundary.
+
 A falsifiable `HypothesisBrief` is the upstream intent boundary. It is persisted as an immutable, revisioned
 `hypothesis_card` by the governance context before downstream Data and Strategy work begins. The brief carries the
 question, mechanism, falsifier, intended universe/timeframe, typed data requirements, strategy intent, risk intent,

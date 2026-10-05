@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import type { components } from "../../src/generated/api";
 
 test.beforeEach(() => {
   expect(process.env.CONSOLE_TEST_STACK).toBe("1");
@@ -91,7 +92,7 @@ test("backtest review shows scoped metrics, curves, and execution evidence", asy
       independent_confirmation: false,
       origin_kind: null,
     },
-  ];
+  ] satisfies components["schemas"]["ReviewEvidence"][];
   const detail = {
     run,
     scope: {
@@ -135,8 +136,8 @@ test("backtest review shows scoped metrics, curves, and execution evidence", asy
     assumptions: { run_id: "run-1", fill_model: "next_bar", latency_ms: 0, fee_bps: 1, fee_fixed_per_order: 0, slippage_bps: 2 },
     exposure: { run_id: "run-1", avg_net_exposure: 0.5, avg_invested_pct: 0.5, final_gross_notional: 6_000, position_count: 1 },
     evidence_coverage: null,
-    comparison_summary: null,
     review_evidence: reviewEvidence,
+    comparison_summary: null,
     risk_composition: [{ run_id: "run-1", session_id: "session-1", catalogue_version: "standard-1", composition_fingerprint: "risk-fingerprint", manager_position: 0, manager_id: "max_orders_per_run", manager_type: "trader_standard.risk.MaxOrdersPerRunRiskManager", parameters: { limit: 0 } }],
     risk_summary: { run_id: "run-1", composition_fingerprint: "risk-fingerprint", risk_evidence_status: "recorded", evaluated_count: 1, approved_count: 0, transformed_count: 0, rejected_count: 1, blocked_count: 1 },
     risk_decisions: [{ risk_decision_id: "riskdec-1", composition_fingerprint: "risk-fingerprint", run_id: "run-1", session_id: "session-1", cycle_id: "cycle-1", client_order_id: "order-1", decision_ts: run.end_ts, manager_id: "max_orders_per_run", manager_type: "trader_standard.risk.MaxOrdersPerRunRiskManager", manager_position: 0, outcome: "rejected", reason_code: "limit_exceeded", before_qty: 0.1, after_qty: null, before_order: { qty: 0.1 }, after_order: null }],

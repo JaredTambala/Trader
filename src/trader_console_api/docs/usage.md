@@ -210,10 +210,18 @@ is an explicit, versioned allowlist; callers cannot provide import paths or arbi
 typed parameters, bounds, supported asset classes/timeframes, lookback requirements, and (for risk) manager IDs and
 reason codes.
 
+Every authoring draft also carries `strategy_implementation_lineage` and `risk_implementation_lineage`. Each lineage
+must identify the selected catalogue profile, exact research implementation version, source SHA-256, validation-report
+ID and payload, specification ID, and whether the selection was exact reuse, adaptation, or new authorship. Preflight
+checks that nested IDs, kinds, and hashes agree and rejects missing or blocked evidence. A deployment may compose a
+research-owned resolver for another source-hash/admission check; that resolver remains outside the Console package's
+allowlist. The normalized immutable definition retains both lineages for review and execution. An import path,
+serialized callable, or arbitrary class is rejected by the extra-forbid contracts and is never passed to a worker.
+
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /api/backtests/catalogue` | Return the current strategy/risk profile catalogue and its version. |
-| `POST /api/backtests/preflight` | Validate a draft containing the exact saved data-scope handoff, profile versions and parameters, coverage/warmup and resource budgets, then return a definition fingerprint. |
+| `POST /api/backtests/preflight` | Validate the exact saved data-scope handoff, profile versions, admitted implementation/admission lineage, parameters, coverage/warmup and resource budgets, then return a definition fingerprint. |
 
 Preflight requires `data_scope` with the saved scope ID, fingerprint, symbols or universe, asset class, timeframe,
 UTC window, provider/source policy, and manifest/quality artifact references. It resolves that ID in the server-owned
