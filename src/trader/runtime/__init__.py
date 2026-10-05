@@ -20,6 +20,14 @@ from .orders import (
     run_local_clean_start,
     run_startup_recovery,
 )
+from .operator_control import (
+    OperatorCommand,
+    OperatorCommandOutcome,
+    apply_operator_command,
+    claim_pending_operator_commands,
+    consume_pending_operator_commands,
+    is_human_operator_principal,
+)
 from .service import TraderService
 from .status import runtime_status, set_halt_state
 
@@ -45,4 +53,10 @@ __all__ = [
     "run_startup_recovery",
     "runtime_status",
     "set_halt_state",
+    "OperatorCommand",
+    "OperatorCommandOutcome",
+    "apply_operator_command",
+    "claim_pending_operator_commands",
+    "consume_pending_operator_commands",
+    "is_human_operator_principal",
 ]

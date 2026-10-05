@@ -33,6 +33,12 @@ from .saved_data_scopes import (
     SavedDataScopeRepository,
     SavedDataScopeSession,
 )
+from .paper_operator_commands import (
+    PaperOperatorCommandConflict,
+    PaperOperatorCommandNotFound,
+    PaperOperatorCommandRepository,
+    PaperOperatorCommandSession,
+)
 
 __all__ = [
     "EXPECTED_CONTRACT_COLUMNS",
@@ -52,6 +58,10 @@ __all__ = [
     "SavedDataScopeNotFound",
     "SavedDataScopeRepository",
     "SavedDataScopeSession",
+    "PaperOperatorCommandConflict",
+    "PaperOperatorCommandNotFound",
+    "PaperOperatorCommandRepository",
+    "PaperOperatorCommandSession",
     "DatabaseTransactionManager",
     "PoolFactory",
     "SchemaCompatibility",

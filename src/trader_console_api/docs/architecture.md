@@ -8,10 +8,11 @@ is deliberately bounded: server-owned scope configuration, pooled PostgreSQL acc
 application lifecycle, public context, health responses, market-data discovery, and backtest evidence resources.
 The current slice also exposes side-effect-free backtest definition discovery and preflight.
 
-The current health and compatibility slice imports FastAPI, Pydantic, Psycopg, and Psycopg Pool directly and imports
-no `trader` package. It does not construct `PostgresEventStore`, run producer migrations, create a broker, execute a
-strategy, or reach research, MCP, Agent, or MLflow behavior. This protects the implemented slice without defining a
-permanent ban on future API application services.
+The health, compatibility, and evidence-read slices import FastAPI, Pydantic, Psycopg, and Psycopg Pool directly and
+do not construct `PostgresEventStore`, run producer migrations, create a broker, execute a strategy, or reach research,
+MCP, Agent, or MLflow behavior. The paper-command adapter is the deliberate exception: it imports only the typed core
+operator-control boundary so the running service can consume an already-authorized receipt; it never constructs a
+broker or bypasses the runtime.
 
 ## Router-service-repository direction
 
@@ -95,7 +96,35 @@ the producer publishes those projections; the API does not query raw runtime tab
 
 The route is `GET /api/paper/runtime` and uses the same enforced `READ ONLY` transaction as other Console resources.
 Its response is safe to render during partial startup, stale feed, missing session, empty portfolio, bounded fill
-history, and database outage cases. It has no command sibling and cannot mutate broker or runtime state.
+history, and database outage cases.
+
+## Paper operator command boundary
+
+`routers.paper_operator_commands` → `services.paper_operator_commands` → `repositories.paper_operator_commands`
+owns the separate mutation boundary for paper operation. `POST /api/paper/commands` accepts only a typed command,
+an approved immutable `admission_id`, an idempotency key, and an optional human reason. The server binds the request
+to its configured paper scope; it never accepts a client scope, account, broker, or database override. Every command
+is checked against the projected human paper admission, including approval, expiry, revocation, paper environment,
+and any supplied scope/account identity, before it is written to the explicit `paper_operator_commands` ledger.
+
+The request ledger is an audited queue. Duplicate idempotency keys replay the original receipt, while material
+replays are rejected. The core runtime consumes queued receipts at safe loop boundaries and applies `start`, `pause`,
+`stop`, `set_halt`, `clear_halt`, and `reconcile` through existing runtime primitives. A failed broker reconciliation
+is recorded as `ambiguous`; the API never guesses broker state. `GET /api/paper/commands` and
+`GET /api/paper/commands/{command_id}` expose bounded receipts for an authenticated human operator. Missing
+authentication, agent/MCP principals, missing storage, stale admissions, and scope mismatches fail closed.
+
+Install the additive command ledger explicitly with:
+
+<!-- verified: integration:console tests/trader_console_api/repositories/test_paper_operator_commands_schema.py -->
+```bash
+TRADER_CONSOLE_DATABASE_URL="$TRADER_CONSOLE_DATABASE_URL" \
+  uv run python -m trader_console_api.repositories.paper_operator_commands_schema install
+```
+
+The Console never constructs a broker and no MCP or research tool is registered for these commands. The browser
+paper-operations workspace provides admission/reason inputs and renders the queued or terminal receipt; it does not
+claim that a queued command has already changed runtime state.
 
 ## Capability growth
 

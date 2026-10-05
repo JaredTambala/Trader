@@ -55,6 +55,8 @@ def test_checked_schema_matches_registered_routes_and_response_models() -> None:
         "/api/experiments/{experiment_id}/comparison-views",
         "/api/experiments/{experiment_id}/comparison-views/{view_id}",
         "/api/paper/runtime",
+        "/api/paper/commands",
+        "/api/paper/commands/{command_id}",
         "/health/live",
         "/health/ready",
     }
@@ -65,6 +67,7 @@ def test_checked_schema_matches_registered_routes_and_response_models() -> None:
         ("/health/ready", "200", "ReadinessResponse"),
         ("/health/ready", "503", "ReadinessResponse"),
         ("/api/paper/runtime", "200", "PaperRuntimeOperations"),
+        ("/api/paper/commands", "200", "PaperOperatorCommandsResponse"),
     ]:
         response_schema = schema["paths"][path]["get"]["responses"][code]["content"][
             "application/json"

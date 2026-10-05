@@ -49,6 +49,9 @@ from .contracts import (
     RiskDecision,
     RiskSummary,
     TraderPrincipal,
+    PaperOperatorCommandRecord,
+    PaperOperatorCommandRequest,
+    PaperOperatorCommandsResponse,
 )
 from .data_scope_contracts import (
     BacktestDataScopeHandoff,
@@ -112,6 +115,9 @@ __all__ = [
     "RiskSummary",
     "SavedComparisonView",
     "TraderPrincipal",
+    "PaperOperatorCommandRecord",
+    "PaperOperatorCommandRequest",
+    "PaperOperatorCommandsResponse",
     "DataScopeEvidenceStatus",
     "BacktestDataScopeHandoff",
     "DataScopePageInfo",

@@ -293,6 +293,22 @@ Current operator keys:
 - `halt_reason`: operator-supplied text.
 - `halt_updated_at`: UTC timestamp string.
 
+### `paper_operator_commands`
+
+The Console installs this additive ledger explicitly when paper command routes are enabled. The core event-store
+bootstrap creates the same relation for a runtime-owned database. Rows retain the authenticated request and the
+runtime outcome:
+
+- `command_id` (UUID, PK)
+- `scope_id`, `command`, `admission_id`, `idempotency_key`, `request_digest`, `requested_by` (TEXT)
+- `reason`, `outcome_code`, `outcome_message` (TEXT, nullable)
+- `status` (`requested`, `accepted`, `completed`, `rejected`, `ambiguous`, or `failed`)
+- `requested_at`, `accepted_at`, `completed_at` (TIMESTAMPTZ)
+
+`(scope_id, idempotency_key)` is unique. The Console writes only `requested` rows after admission and scope
+validation; `TraderService` claims them between cycles and records terminal or ambiguous outcomes. A reconciliation
+failure is intentionally ambiguous because the broker's remote state cannot be inferred from a timeout.
+
 ## Constraints and Indexes
 
 - `runs.run_id` is unique.

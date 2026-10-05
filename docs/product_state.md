@@ -12,7 +12,7 @@ dependencies, and delivery progress. Use the repository
 [capability roadmap](../plans/research_capability_roadmap.md) only for its retained architecture, dependency,
 acceptance, and migration context.
 
-Last reviewed: 2026-10-03.
+Last reviewed: 2026-10-05.
 
 ## How To Read Capability State
 
@@ -62,8 +62,9 @@ review. The review surface preserves run state, scope, assumptions, performance,
 drawdown, trades, positions, warnings, evidence coverage, and risk-manager composition/decision evidence; missing scope identity remains explicit while metrics are
 shown when persisted runtime evidence supports a reconstructed result.
 Both workflows consume generated API types and producer-owned projections. ECharts is a generic frontend renderer, not
-a Trader-core abstraction. Operational commands and authentication enforcement remain
-unimplemented; this is not a trading qualification claim.
+a Trader-core abstraction. Paper operator commands now have an explicit authenticated Console boundary; other
+operational command families and general remote authentication policy remain outside this slice. This is not a trading
+qualification claim.
 
 The Console backtest read contract now includes standalone `BacktestRunner` runs alongside experiment-linked runs.
 Standalone runs are grouped under `standalone_backtests`, and the review page assembles their persisted indicator,
@@ -195,9 +196,10 @@ next-decision records remain incomplete. UJ-04 now names the governed agent-sess
 agent-directed experiment loop, and UJ-09 covers evidence review and the next decision. The model-backed
 Coordinator/Data/Strategy runtime and recovery contracts exist, but controlled third-party-model acceptance, Console
 intervention, experiment handoff, and the unified evidence-review surface remain open.
-UJ-05 has conservative core paper-runtime and operator-CLI safety behavior. Human paper admission and the Console's
-read-only paper-operations projection are implemented; authorized Console controls and a retained paper qualification
-campaign remain absent. UJ-06 joins these seams and is tracked
+UJ-05 has conservative core paper-runtime and operator-CLI safety behavior. Human paper admission, the Console's
+read-only paper-operations projection, and an admission-validated, human-only audited command queue for
+start/pause/stop/halt/reconcile are implemented. Runtime consumption records terminal or ambiguous outcomes; the
+retained paper qualification campaign remains absent. UJ-06 joins these seams and is tracked
 by the four data-to-backtest work items in its detailed audit.
 
 GAP-03-02 now delivers the Console projection for review evidence. Run detail reads expose a typed, producer-owned
@@ -852,8 +854,10 @@ trading and live trading. This evidence does not apply to the model-backed repla
   evidence digests, risk limits, broker/account scope, monitoring policy, unresolved limitations, expiry, rejection, and
   append-only revocation.
   Its validator fails closed on missing or changed evidence and rejects agent/MCP principals. The Console paper
-  operations read model is now available through `/api/paper/runtime`; it remains read-only and does not consume the
-  admission record for startup. Authorized controls remain GAP-05-03.
+  operations read model is available through `/api/paper/runtime`; authorized human operators can submit admission-
+  validated commands through `/api/paper/commands`, and the core runtime consumes them through existing halt, stop,
+  and reconciliation primitives. The read projection remains separate from producer runtime mutation, and a retained
+  paper qualification campaign remains GAP-05-04.
 
 ## Canonical References
 

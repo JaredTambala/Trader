@@ -96,7 +96,8 @@ artifact authority.
 - Robustness findings feed Evaluation; the Robustness Agent does not issue the final strategy-quality assessment.
 - Promotion to paper trading remains a human-reviewed `paper_candidate_admission` record, not an autonomous action.
   Agents and MCP identities may produce or review evidence, but they cannot create, approve, reject, or revoke the
-  admission record and cannot use it to mutate broker state.
+  admission record and cannot use it to mutate broker state. Paper runtime controls are exposed only through the
+  human-authenticated Console command boundary; agent and MCP principals cannot submit or acknowledge those commands.
 
 ## Model-Backed Orchestration Boundary
 
