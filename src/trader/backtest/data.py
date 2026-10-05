@@ -44,6 +44,7 @@ class BacktestMarketDataSource(MarketDataSource):
         source: str = "backtest",
         symbols: Sequence[str] | None = None,
         allow_latest_prior_bar: bool = True,
+        latest_prior_max_age_seconds: float | None = None,
         warnings: list[str] | None = None,
     ) -> None:
         """Prepare symbol-indexed bars for deterministic timestamp lookups.
@@ -56,6 +57,7 @@ class BacktestMarketDataSource(MarketDataSource):
             symbols: Optional ordered universe; missing symbols are represented
                 by empty bar lists.
             allow_latest_prior_bar: Whether fetch may fall back to older bars.
+            latest_prior_max_age_seconds: Maximum permitted age of a fallback bar.
             warnings: Mutable warning list shared with the runner result.
         """
         if symbols is not None:
@@ -70,6 +72,7 @@ class BacktestMarketDataSource(MarketDataSource):
         self._source = source
         self._as_of_ts: datetime | None = None
         self._allow_latest_prior_bar = allow_latest_prior_bar
+        self._latest_prior_max_age_seconds = latest_prior_max_age_seconds
         self._warnings = warnings if warnings is not None else []
 
     def set_as_of(self, as_of_ts: datetime) -> None:
@@ -100,6 +103,7 @@ class BacktestMarketDataSource(MarketDataSource):
                 timestamps=timestamps,
                 target=self._as_of_ts,
                 allow_latest_prior_bar=self._allow_latest_prior_bar,
+                latest_prior_max_age_seconds=self._latest_prior_max_age_seconds,
             )
             if selection.warning:
                 self._log_bar_selection_warning(symbol, selection)
@@ -148,6 +152,14 @@ class BacktestMarketDataSource(MarketDataSource):
                 self._as_of_ts.isoformat(),
                 selection.latest_ts.isoformat() if selection.latest_ts else "<none>",
             )
+            return
+        if selection.warning_kind == "stale_prior":
+            logger.warning(
+                "Backtest stale-prior bar symbol=%s decision_ts=%s latest_ts=%s; skipping",
+                symbol,
+                self._as_of_ts.isoformat(),
+                selection.latest_ts.isoformat() if selection.latest_ts else "<none>",
+            )
 
 
 def _build_data_sources(
@@ -157,6 +169,7 @@ def _build_data_sources(
     timeframe: str,
     symbols: Sequence[str],
     allow_latest_prior_bar: bool,
+    latest_prior_max_age_seconds: float | None,
     warnings: list[str],
 ) -> dict[str, BacktestMarketDataSource]:
     """Build per-symbol market-data sources sharing the same historical bars."""
@@ -168,6 +181,7 @@ def _build_data_sources(
             timeframe=timeframe,
             symbols=(symbol,),
             allow_latest_prior_bar=allow_latest_prior_bar,
+            latest_prior_max_age_seconds=latest_prior_max_age_seconds,
             warnings=warnings,
         )
     return sources

@@ -52,7 +52,10 @@ to downstream comparison code.
 >>> assumptions = build_backtest_assumptions({
 ...     "fees": {"fixed_per_order": 0.25, "bps": 1.0},
 ...     "slippage": {"bps": 2.0},
-...     "data": {"allow_latest_prior_bar": False},
+...     "data": {
+...         "allow_latest_prior_bar": False,
+...         "performance_clock": "elapsed_time",
+...     },
 ... })
 >>> assumptions.fees.fixed_per_order
 0.25
@@ -60,6 +63,8 @@ to downstream comparison code.
 2.0
 >>> assumptions.data.allow_latest_prior_bar
 False
+>>> assumptions.data.performance_clock
+'elapsed_time'
 ```
 
 ## 4. Choose the implementation layer

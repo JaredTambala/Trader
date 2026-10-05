@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Mapping
+from typing import TYPE_CHECKING, Any, Literal, Mapping, cast
 
 if TYPE_CHECKING:
     from .review_scope import BacktestReviewScope, BacktestVariant
@@ -53,10 +53,28 @@ class DataAssumptions:
             earlier bar when the exact timestamp is missing.
         allow_price_carry_forward: Whether portfolio valuation may reuse the
             most recent known price when the current timestamp has no bar.
+        latest_prior_max_age_seconds: Maximum age of a fallback bar. This
+            keeps a missing-bar carry explicit and bounded.
+        decision_clock: Decisions replay on observed provider bars.
+        valuation_clock: Valuation may use an observed bar or an explicitly
+            configured price carry-forward.
+        indicator_window: Indicator history is measured in observed bars.
+        fill_eligibility: Only a priced observed bar may trigger a fill.
+        zero_activity_bar_policy: Provider-emitted zero-activity bars remain
+            signal-eligible; absent bars do not become synthetic observations.
+        performance_clock: Performance metrics use elapsed timestamps rather
+            than assuming a regular timeframe cadence.
     """
 
     allow_latest_prior_bar: bool = True
     allow_price_carry_forward: bool = True
+    latest_prior_max_age_seconds: float = 86_400.0
+    decision_clock: Literal["observed_bar"] = "observed_bar"
+    valuation_clock: Literal["observed_or_carry"] = "observed_or_carry"
+    indicator_window: Literal["observed_bars"] = "observed_bars"
+    fill_eligibility: Literal["priced_observed_bar"] = "priced_observed_bar"
+    zero_activity_bar_policy: Literal["signal_eligible"] = "signal_eligible"
+    performance_clock: Literal["elapsed_time"] = "elapsed_time"
 
 
 @dataclass(frozen=True)
@@ -339,6 +357,33 @@ def build_backtest_assumptions(data: Mapping[str, object] | None = None) -> Back
         data=DataAssumptions(
             allow_latest_prior_bar=_bool_value(data_cfg.get("allow_latest_prior_bar"), True),
             allow_price_carry_forward=_bool_value(data_cfg.get("allow_price_carry_forward"), True),
+            latest_prior_max_age_seconds=_float_value(
+                data_cfg.get("latest_prior_max_age_seconds"), 86_400.0
+            ),
+            decision_clock=cast(
+                Literal["observed_bar"],
+                _literal_value(data_cfg.get("decision_clock"), "observed_bar", ("observed_bar",)),
+            ),
+            valuation_clock=cast(
+                Literal["observed_or_carry"],
+                _literal_value(data_cfg.get("valuation_clock"), "observed_or_carry", ("observed_or_carry",)),
+            ),
+            indicator_window=cast(
+                Literal["observed_bars"],
+                _literal_value(data_cfg.get("indicator_window"), "observed_bars", ("observed_bars",)),
+            ),
+            fill_eligibility=cast(
+                Literal["priced_observed_bar"],
+                _literal_value(data_cfg.get("fill_eligibility"), "priced_observed_bar", ("priced_observed_bar",)),
+            ),
+            zero_activity_bar_policy=cast(
+                Literal["signal_eligible"],
+                _literal_value(data_cfg.get("zero_activity_bar_policy"), "signal_eligible", ("signal_eligible",)),
+            ),
+            performance_clock=cast(
+                Literal["elapsed_time"],
+                _literal_value(data_cfg.get("performance_clock"), "elapsed_time", ("elapsed_time",)),
+            ),
         ),
     )
 
@@ -368,6 +413,14 @@ def _bool_value(value: object | None, default: bool) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "y", "on"}
     return bool(value)
+
+
+def _literal_value(value: object | None, default: str, allowed: tuple[str, ...]) -> str:
+    """Normalize a closed contract value and reject unsupported policies."""
+    normalized = default if value is None else str(value).strip()
+    if normalized not in allowed:
+        raise ValueError(f"unsupported backtest data policy: {normalized!r}")
+    return normalized
 
 
 __all__ = [

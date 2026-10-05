@@ -46,12 +46,25 @@ backtest:
     data:
       allow_latest_prior_bar: true
       allow_price_carry_forward: true
+      latest_prior_max_age_seconds: 86400
+      decision_clock: observed_bar
+      valuation_clock: observed_or_carry
+      indicator_window: observed_bars
+      fill_eligibility: priced_observed_bar
+      zero_activity_bar_policy: signal_eligible
+      performance_clock: elapsed_time
 ```
 Timeframes are normalized, so `1h`, `1Hour`, and `1H` are treated the same.
 If `avg_price` is omitted, the backtest uses the first bar close in the window for that symbol.
 `initial_cash` seeds the portfolio cash balance for the backtest.
-If `backtest.assumptions` is omitted, the defaults preserve the earlier behavior: full fills, zero fees, zero
-slippage, no effective latency, latest-prior-bar fallback allowed, and last-known-price carry-forward enabled.
+If `backtest.assumptions` is omitted, the defaults use full fills, zero fees, zero slippage, no effective latency,
+latest-prior-bar fallback up to 24 hours, and last-known-price carry-forward enabled. These defaults are recorded in
+the run assumptions and review scope so a comparison cannot silently mix data-clock or execution policies.
+
+The data policy is explicit. Decisions and indicator windows use observed provider bars; a missing exact bar may use a
+prior bar only within `latest_prior_max_age_seconds`; valuation may carry a known price when enabled; and a priced
+observed bar is required for a fill. Provider-emitted zero-volume or zero-trade bars remain observations and are
+signal-eligible. An absent provider bar is not synthesized from a wall-clock interval.
 
 ## Execution flow
 
@@ -160,7 +173,9 @@ Per-period return series:
 r_t = (equity_t / equity_{t-1}) - 1
 ```
 
-Annualization uses a calendar year (365 days) and the configured `timeframe`.
+Annualization uses the observed equity timestamps. CAGR uses the full elapsed replay window; volatility, Sharpe,
+Sortino, and relative metrics use the median positive observation interval. The configured `timeframe` remains part of
+data identity and query selection, but it is not treated as proof of a regular observation cadence.
 
 ### Portfolio-level metrics
 
@@ -197,7 +212,10 @@ Annualization uses a calendar year (365 days) and the configured `timeframe`.
 - Backtests use the internal broker, not live venue execution.
 - The benchmark remains frictionless even when strategy fills include fees or slippage.
 - Fill behavior is deterministic and audit-friendly; stochastic slippage remains out of scope.
-- Results depend on the stored bars and timeframe; mismatched timeframes yield sparse signals.
+- Results depend on the stored bars, their provider semantics, and the declared data policy; mismatched timeframes
+  yield sparse signals.
+- Sparse observations, provider-wide gaps, and zero-activity bars remain distinguishable in warnings and provenance;
+  a backtest must not describe every absent wall-clock minute as ingestion loss.
 - Bar data is read-only during a backtest; only trading events are persisted.
 - Lifecycle IDs and signal-to-order links are deterministic when the relevant evidence exists. Historical rows created
   before those fields were added remain unlinked and are surfaced as unknown by the Console read contract.

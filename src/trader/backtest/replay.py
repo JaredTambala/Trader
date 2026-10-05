@@ -67,6 +67,7 @@ def _select_backtest_bar(
     timestamps: Sequence[datetime],
     target: datetime,
     allow_latest_prior_bar: bool,
+    latest_prior_max_age_seconds: float | None = None,
 ) -> _BacktestBarSelection:
     """Select the bar to serve for one symbol at one decision timestamp."""
     target_ts = _normalize_timestamp(target)
@@ -89,6 +90,17 @@ def _select_backtest_bar(
             warning_kind="no_prior",
         )
     latest_ts = timestamps[latest_idx]
+    age_seconds = (target_ts - _normalize_timestamp(latest_ts)).total_seconds()
+    if latest_prior_max_age_seconds is not None and age_seconds > latest_prior_max_age_seconds:
+        return _BacktestBarSelection(
+            bar=None,
+            warning=(
+                f"Latest prior bar for {symbol} at {latest_ts.isoformat()} is "
+                f"{age_seconds:g}s older than {target_ts.isoformat()}; skipped symbol."
+            ),
+            warning_kind="stale_prior",
+            latest_ts=latest_ts,
+        )
     return _BacktestBarSelection(
         bar=bars[latest_idx],
         warning=f"Used latest prior bar for {symbol} at {target_ts.isoformat()} from {latest_ts.isoformat()}.",
