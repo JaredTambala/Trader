@@ -34,9 +34,12 @@ application composition
 - `application.py` is only the composition root and lifespan owner. It wires the pool, repository, service, and router.
 
 Catalogue and preflight extend the same direction: `routers.catalogue` resolves typed HTTP contracts,
-`services.catalogue` normalizes an allowlisted `trader_standard` profile selection and checks budgets/coverage, and
-`repositories.resources` reads aggregate bar coverage. No arbitrary implementation import, definition write, queue
-command, or worker starts from this path.
+`services.catalogue` requires and qualifies a typed `BacktestDataScopeHandoff`, normalizes an allowlisted
+`trader_standard` profile selection and checks budgets/coverage, and `repositories.resources` reads bounded bar
+coverage. The composition root injects `SavedDataScopeService` as the server-owned handoff lookup. A mismatch, stale
+or unavailable saved scope blocks preflight before coverage is queried; no aggregate coverage result replaces the
+selected manifest/quality evidence. No arbitrary implementation import, definition write, queue command, or worker
+starts from this path.
 
 Immutable definitions use the same explicit boundary through `routers.backtest_definitions` →
 `services.backtest_definitions` → `repositories.backtest_definitions`. The service requires a successful preflight
@@ -149,9 +152,11 @@ lifecycle, while browser assertions remain with the app. Neither fixture nor scr
 ## Current resource boundary
 
 Backtest definition discovery is exposed through `GET /api/backtests/catalogue`; `POST /api/backtests/preflight`
-returns a normalized, content-fingerprinted definition plus coverage and field-level issues. The service uses the
-maintained catalogue's explicit strategy and risk resolvers, including risk manager composition metadata and reason
-codes, while execution and durable command state remain a later application boundary.
+accepts an exact saved Data scope handoff and returns a normalized, content-fingerprinted definition plus coverage
+and field-level issues. The normalized definition retains the saved scope ID, fingerprint, provider/source policy,
+manifest and quality references, and evidence state. The service uses the maintained catalogue's explicit strategy
+and risk resolvers, including risk manager composition metadata and reason codes, while execution and durable command
+state remain a later application boundary.
 
 The durable command record extends this boundary through `routers.backtest_executions` →
 `services.backtest_executions` → `repositories.backtest_executions`. Submit uses an idempotency key and snapshots the

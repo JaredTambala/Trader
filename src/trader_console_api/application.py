@@ -92,7 +92,14 @@ def create_app(
         resource_repository = ConsoleResourceRepository(database)
         resource_service = ResourceService(resource_repository)
         catalogue_service = CatalogueService.default()
-        preflight_service = PreflightService.default(resource_repository)
+        from .repositories.saved_data_scopes import SavedDataScopeRepository
+        saved_data_scope_service = SavedDataScopeService(
+            SavedDataScopeRepository(database, configured_settings.scope.scope_id)
+        )
+        preflight_service = PreflightService.default(
+            resource_repository,
+            saved_scope_lookup=saved_data_scope_service,
+        )
         backtest_definition_service = BacktestDefinitionService(
             BacktestDefinitionRepository(database, configured_settings.scope.scope_id),
             preflight_service,
@@ -102,10 +109,6 @@ def create_app(
         )
         comparison_view_service = ComparisonViewService(
             ComparisonViewRepository(database, configured_settings.scope.scope_id)
-        )
-        from .repositories.saved_data_scopes import SavedDataScopeRepository
-        saved_data_scope_service = SavedDataScopeService(
-            SavedDataScopeRepository(database, configured_settings.scope.scope_id)
         )
         paper_runtime_service = PaperRuntimeService(
             PaperRuntimeRepository(database), configured_settings.scope

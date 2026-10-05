@@ -423,6 +423,7 @@ export function MarketDataWorkspace() {
             <button className={styles.secondaryButton} type="button" onClick={() => void saveScope()} disabled={!selectedDataset || savedScopeState === "loading"}>Save exact scope</button>
             <label className={styles.field}><span>Reopen saved scope</span><select aria-label="Reopen saved scope" value={savedScopeId} onChange={(event) => void reopenScope(event.target.value)}><option value="">Choose a saved scope</option>{savedScopes.map((scope) => <option value={scope.saved_scope_id} key={scope.saved_scope_id}>{scope.name} · {scope.evidence_status}</option>)}</select></label>
             <button className={styles.secondaryButton} type="button" onClick={() => void revalidateScope()} disabled={!savedScopeId || savedScopeState === "loading"}>Revalidate evidence</button>
+            {savedScopeId && <a className={styles.button} href={`/backtests/new?saved_scope_id=${encodeURIComponent(savedScopeId)}`}>Author backtest with this scope</a>}
           </div>
           {saveNotice && <p className={styles.status} role="status">{saveNotice}</p>}
         </section>

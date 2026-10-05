@@ -28,6 +28,59 @@ class DataScopeSourcePolicy(BaseModel):
     allow_fallback: bool = False
 
 
+class BacktestDataScopeHandoff(BaseModel):
+    """Exact saved Data evidence handed into backtest authoring.
+
+    The handoff repeats the immutable scope identity and evidence references so
+    a preflight can detect a stale client or a changed selection.  The server
+    resolves ``saved_scope_id`` and never widens the selection to a new
+    catalogue or aggregate coverage query.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    saved_scope_id: UUID
+    fingerprint: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+    asset_class: Literal["stock", "crypto"]
+    symbols: tuple[str, ...] = Field(min_length=1, max_length=200)
+    universe: str | None = Field(default=None, max_length=200)
+    timeframe: str = Field(min_length=1, max_length=32)
+    interval: str = Field(min_length=1, max_length=32)
+    start: datetime
+    end: datetime
+    source_policy: DataScopeSourcePolicy
+    manifest_artifact_id: str = Field(min_length=1, max_length=200)
+    quality_artifact_id: str = Field(min_length=1, max_length=200)
+    evidence_status: DataScopeEvidenceStatus
+    evidence_reason: str | None = Field(default=None, max_length=500)
+
+    @field_validator("symbols")
+    @classmethod
+    def normalize_symbols(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        """Use the same canonical symbol representation as saved scopes."""
+        normalized = tuple(sorted({str(symbol).strip().upper() for symbol in value if str(symbol).strip()}))
+        if not normalized:
+            raise ValueError("symbols must contain at least one non-empty symbol")
+        return normalized
+
+    @field_validator("start", "end")
+    @classmethod
+    def require_utc(cls, value: datetime) -> datetime:
+        """Require timezone-aware timestamps and normalize them to UTC."""
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("scope timestamps must include a timezone")
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def validate_window_and_evidence(self) -> BacktestDataScopeHandoff:
+        """Reject reversed windows and unexplained non-active evidence."""
+        if self.end <= self.start:
+            raise ValueError("end must be after start")
+        if self.evidence_status is not DataScopeEvidenceStatus.ACTIVE and not self.evidence_reason:
+            raise ValueError("evidence_reason is required for stale or unavailable evidence")
+        return self
+
+
 class SavedDataScopeCreate(BaseModel):
     """Request to persist one exact Data evidence handoff."""
 
@@ -130,6 +183,7 @@ SavedDataScopesResponse.model_rebuild()
 
 
 __all__ = [
+    "BacktestDataScopeHandoff",
     "DataScopeEvidenceStatus",
     "DataScopePageInfo",
     "DataScopeSourcePolicy",

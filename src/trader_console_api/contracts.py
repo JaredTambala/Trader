@@ -8,6 +8,8 @@ from typing import Any, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .data_scope_contracts import BacktestDataScopeHandoff
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
@@ -216,6 +218,7 @@ class BacktestDefinition(BaseModel):
     assumptions: BacktestAssumptions = Field(default_factory=BacktestAssumptions)
     benchmark_id: Literal["buy_hold", "none"] = "buy_hold"
     resource_limits: BacktestResourceLimits = Field(default_factory=BacktestResourceLimits)
+    data_scope: BacktestDataScopeHandoff
 
 
 class BacktestDefinitionRevision(BaseModel):
@@ -341,6 +344,7 @@ class BacktestPreflightRequest(BaseModel):
     assumptions: BacktestAssumptions = Field(default_factory=BacktestAssumptions)
     benchmark_id: Literal["buy_hold", "none"] = "buy_hold"
     resource_limits: BacktestResourceLimits = Field(default_factory=BacktestResourceLimits)
+    data_scope: BacktestDataScopeHandoff
 
 
 class BacktestPreflightResponse(BaseModel):

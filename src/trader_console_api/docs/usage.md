@@ -191,14 +191,15 @@ reason codes.
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /api/backtests/catalogue` | Return the current strategy/risk profile catalogue and its version. |
-| `POST /api/backtests/preflight` | Normalize a draft, validate profile versions and parameters, check coverage/warmup and resource budgets, and return a definition fingerprint. |
+| `POST /api/backtests/preflight` | Validate a draft containing the exact saved data-scope handoff, profile versions and parameters, coverage/warmup and resource budgets, then return a definition fingerprint. |
 
-Preflight reads only bounded coverage aggregates from `console_read.stock_bars` or `console_read.crypto_bars`. It
-normalizes symbols, asset class, timeframe, and UTC timestamps, and returns field-level errors or warnings. A valid
-response includes an immutable `normalized_definition`, per-symbol `coverage` checks, and a SHA-256
-`definition_fingerprint`; it has no persistence, command, worker, or producer side effect. The current warning for
-`assumptions.allow_price_carry_forward` makes valuation fallback visible before execution. Definition persistence and
-durable execution are the next command tranche.
+Preflight requires `data_scope` with the saved scope ID, fingerprint, symbols or universe, asset class, timeframe,
+UTC window, provider/source policy, and manifest/quality artifact references. It resolves that ID in the server-owned
+Console scope and rejects client drift, stale evidence, unavailable evidence, and missing scopes with actionable
+`data_scope_mismatch`, `data_scope_stale`, or `data_scope_unavailable` issues. Coverage remains a bounded check on the
+selected symbols; it never replaces the selected manifest or quality evidence with a new aggregate scope. A valid
+response includes an immutable `normalized_definition` retaining the handoff, per-symbol `coverage` checks, and a
+SHA-256 `definition_fingerprint`; it has no persistence, command, worker, or producer side effect.
 
 To persist a valid preflight draft, install the additive definition table explicitly; API startup and requests never
 run DDL:

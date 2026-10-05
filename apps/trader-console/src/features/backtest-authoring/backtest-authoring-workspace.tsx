@@ -6,6 +6,7 @@ import { ConsoleShell } from "../shell/console-shell";
 import {
   createDefinition,
   loadCatalogue,
+  loadSavedDataScope,
   loadExecution,
   preflight,
   submitExecution,
@@ -15,6 +16,7 @@ import {
   type ExecutionRecord,
   type PreflightRequest,
   type PreflightResponse,
+  type SavedDataScope,
 } from "./client";
 import styles from "./backtest-authoring-workspace.module.css";
 
@@ -23,6 +25,7 @@ type Assumptions = components["schemas"]["BacktestAssumptions"];
 type ResourceLimits = components["schemas"]["BacktestResourceLimits"];
 
 type Draft = {
+  data_scope: SavedDataScope | null;
   display_name: string;
   strategy_profile_id: string;
   strategy_catalogue_version: string;
@@ -48,10 +51,11 @@ function parameterDefaults(profile: CatalogueProfile): Record<string, unknown> {
   return Object.fromEntries(profile.parameters.flatMap((parameter) => parameter.default === undefined || parameter.default === null ? [] : [[parameter.name, parameter.default]]));
 }
 
-function initialDraft(catalogue: Catalogue): Draft {
+function initialDraft(catalogue: Catalogue, dataScope: SavedDataScope | null): Draft {
   const strategy = catalogue.strategy_profiles[0];
   const risk = catalogue.risk_profiles[0];
   return {
+    data_scope: dataScope,
     display_name: "Local backtest",
     strategy_profile_id: strategy?.profile_id ?? "",
     strategy_catalogue_version: strategy?.version ?? catalogue.catalogue_version,
@@ -59,11 +63,11 @@ function initialDraft(catalogue: Catalogue): Draft {
     risk_profile_id: risk?.profile_id ?? "",
     risk_catalogue_version: risk?.version ?? catalogue.catalogue_version,
     risk_parameters: risk ? parameterDefaults(risk) : {},
-    asset_class: "crypto",
-    symbols: "BTC/USD",
-    timeframe: "1Min",
-    start: "2026-06-21T00:00",
-    end: "2026-06-21T00:30",
+    asset_class: dataScope?.asset_class ?? "crypto",
+    symbols: dataScope?.symbols.join(", ") ?? "",
+    timeframe: dataScope?.timeframe ?? "1Min",
+    start: dataScope ? formatInputDate(dataScope.start) : "",
+    end: dataScope ? formatInputDate(dataScope.end) : "",
     initial_cash: 100_000,
     initial_positions_json: "[]",
     assumptions: {
@@ -81,6 +85,12 @@ function initialDraft(catalogue: Catalogue): Draft {
   };
 }
 
+function formatInputDate(value: string | null | undefined): string {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? "" : date.toISOString().slice(0, 16);
+}
+
 function asUtc(value: string): string {
   if (!value) return "";
   const parsed = new Date(value.endsWith("Z") ? value : `${value}Z`);
@@ -88,6 +98,7 @@ function asUtc(value: string): string {
 }
 
 function buildRequest(draft: Draft): PreflightRequest {
+  if (!draft.data_scope) throw new Error("Select a saved data scope from Market data before running preflight.");
   let initialPositions: unknown;
   try {
     initialPositions = JSON.parse(draft.initial_positions_json || "[]");
@@ -113,6 +124,22 @@ function buildRequest(draft: Draft): PreflightRequest {
     assumptions: draft.assumptions,
     resource_limits: draft.resource_limits,
     benchmark_id: draft.benchmark_id,
+    data_scope: {
+      saved_scope_id: draft.data_scope.saved_scope_id,
+      fingerprint: draft.data_scope.fingerprint,
+      asset_class: draft.data_scope.asset_class,
+      symbols: draft.data_scope.symbols,
+      universe: draft.data_scope.universe,
+      timeframe: draft.data_scope.timeframe,
+      interval: draft.data_scope.interval,
+      start: draft.data_scope.start,
+      end: draft.data_scope.end,
+      source_policy: draft.data_scope.source_policy,
+      manifest_artifact_id: draft.data_scope.manifest_artifact_id,
+      quality_artifact_id: draft.data_scope.quality_artifact_id,
+      evidence_status: draft.data_scope.evidence_status,
+      evidence_reason: draft.data_scope.evidence_reason,
+    },
   };
 }
 
@@ -195,9 +222,11 @@ export function BacktestAuthoringWorkspace() {
 
   useEffect(() => {
     const controller = new AbortController();
-    void loadCatalogue(controller.signal).then((response) => {
+    const savedScopeId = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("saved_scope_id");
+    void loadCatalogue(controller.signal).then(async (response) => {
+      const selectedScope = savedScopeId ? await loadSavedDataScope(controller.signal, savedScopeId) : null;
       setCatalogue(response);
-      setDraft(initialDraft(response));
+      setDraft(initialDraft(response, selectedScope));
       setState("ready");
     }).catch((reason: unknown) => {
       if (!controller.signal.aborted) { setState("error"); setError(reason instanceof Error ? reason.message : "Backtest catalogue could not be loaded."); }
@@ -269,7 +298,8 @@ export function BacktestAuthoringWorkspace() {
     <div className={styles.heading}><div><p className={styles.eyebrow}>BACKTEST AUTHORING</p><h1>Define and run a local backtest</h1><p className={styles.subtitle}>Choose maintained strategy and risk profiles, validate the full replay scope, save an immutable definition, and observe its durable execution state.</p></div><a className={styles.secondaryButton} href="/backtests">Review published runs</a></div>
     {error && <div className={styles.issueError} role="alert"><strong>Request failed</strong><span>{error}</span></div>}
     <section className={styles.panel} aria-labelledby="definition-heading"><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>DEFINITION</p><h2 id="definition-heading">Replay scope</h2></div><span className={styles.statusBadge}>Catalogue {catalogue.catalogue_version}</span></div>
-      <div className={styles.formGrid}><label>Display name<input aria-label="Display name" value={draft.display_name} onChange={(event) => updateDraft({ display_name: event.target.value })} /></label><label>Symbols<input aria-label="Symbols" value={draft.symbols} onChange={(event) => updateDraft({ symbols: event.target.value })} /><small>Comma-separated symbols, normalized by preflight.</small></label><label>Asset class<select aria-label="Asset class" value={draft.asset_class} onChange={(event) => updateDraft({ asset_class: event.target.value as Draft["asset_class"] })}><option value="crypto">Crypto</option><option value="stock">Stock</option></select></label><label>Timeframe<select aria-label="Timeframe" value={draft.timeframe} onChange={(event) => updateDraft({ timeframe: event.target.value })}><option value="1Min">1Min</option><option value="1Hour">1Hour</option><option value="1Day">1Day</option></select></label><label>Start (UTC)<input aria-label="Start UTC" type="datetime-local" value={draft.start} onChange={(event) => updateDraft({ start: event.target.value })} /></label><label>End (UTC)<input aria-label="End UTC" type="datetime-local" value={draft.end} onChange={(event) => updateDraft({ end: event.target.value })} /></label><label>Initial cash<input aria-label="Initial cash" type="number" min="0" step="any" value={draft.initial_cash} onChange={(event) => updateDraft({ initial_cash: Number(event.target.value) })} /></label><label>Benchmark<select aria-label="Benchmark" value={draft.benchmark_id} onChange={(event) => updateDraft({ benchmark_id: event.target.value as Draft["benchmark_id"] })}><option value="buy_hold">Buy and hold</option><option value="none">None</option></select></label></div>
+      {draft.data_scope ? <div className={styles.datasetMeta} role="status"><span><strong>Saved scope</strong> {draft.data_scope.name}</span><span>{draft.data_scope.asset_class} · {draft.data_scope.symbols.join(", ")} · {draft.data_scope.timeframe}</span><span>Evidence: {draft.data_scope.evidence_status}</span><span>Provider: {draft.data_scope.source_policy.provider} · manifest {draft.data_scope.manifest_artifact_id} · quality {draft.data_scope.quality_artifact_id}</span></div> : <div className={styles.issueWarning} role="alert"><strong>No saved data scope selected</strong><span>Open <a href="/data">Market data</a>, save or reopen an exact scope, then choose “Author backtest with this scope”.</span></div>}
+      <div className={styles.formGrid}><label>Display name<input aria-label="Display name" value={draft.display_name} onChange={(event) => updateDraft({ display_name: event.target.value })} /></label><label>Symbols<input aria-label="Symbols" readOnly={Boolean(draft.data_scope)} value={draft.symbols} onChange={(event) => updateDraft({ symbols: event.target.value })} /><small>Copied from the saved scope; selection is immutable during authoring.</small></label><label>Asset class<select aria-label="Asset class" disabled={Boolean(draft.data_scope)} value={draft.asset_class} onChange={(event) => updateDraft({ asset_class: event.target.value as Draft["asset_class"] })}><option value="crypto">Crypto</option><option value="stock">Stock</option></select></label><label>Timeframe<select aria-label="Timeframe" disabled={Boolean(draft.data_scope)} value={draft.timeframe} onChange={(event) => updateDraft({ timeframe: event.target.value })}><option value="1Min">1Min</option><option value="1Hour">1Hour</option><option value="1Day">1Day</option></select></label><label>Start (UTC)<input aria-label="Start UTC" readOnly={Boolean(draft.data_scope)} type="datetime-local" value={draft.start} onChange={(event) => updateDraft({ start: event.target.value })} /></label><label>End (UTC)<input aria-label="End UTC" readOnly={Boolean(draft.data_scope)} type="datetime-local" value={draft.end} onChange={(event) => updateDraft({ end: event.target.value })} /></label><label>Initial cash<input aria-label="Initial cash" type="number" min="0" step="any" value={draft.initial_cash} onChange={(event) => updateDraft({ initial_cash: Number(event.target.value) })} /></label><label>Benchmark<select aria-label="Benchmark" value={draft.benchmark_id} onChange={(event) => updateDraft({ benchmark_id: event.target.value as Draft["benchmark_id"] })}><option value="buy_hold">Buy and hold</option><option value="none">None</option></select></label></div>
       <label className={styles.fullField}>Initial positions (JSON)<textarea aria-label="Initial positions JSON" rows={2} value={draft.initial_positions_json} onChange={(event) => updateDraft({ initial_positions_json: event.target.value })} /><small>Use an array of symbol, qty and optional avg_price objects.</small></label>
     </section>
     <section className={styles.panel} aria-labelledby="profiles-heading"><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>ALLOWLISTED PROFILES</p><h2 id="profiles-heading">Strategy and risk composition</h2></div></div>
@@ -278,7 +308,7 @@ export function BacktestAuthoringWorkspace() {
     <section className={styles.panel} aria-labelledby="assumptions-heading"><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>EXECUTION BOUNDS</p><h2 id="assumptions-heading">Assumptions and resource limits</h2></div></div>
       <div className={styles.formGrid}><label>Fill model<select aria-label="Fill model" value={draft.assumptions.fill_model} onChange={(event) => updateDraft({ assumptions: { ...draft.assumptions, fill_model: event.target.value as Assumptions["fill_model"] } })}><option value="full_fill">Full fill</option><option value="next_bar">Next bar</option></select></label><label>Latency (ms)<input aria-label="Latency milliseconds" type="number" min="0" value={draft.assumptions.latency_ms} onChange={(event) => updateDraft({ assumptions: { ...draft.assumptions, latency_ms: Number(event.target.value) } })} /></label><label>Fee (bps)<input aria-label="Fee basis points" type="number" min="0" step="any" value={draft.assumptions.fee_bps} onChange={(event) => updateDraft({ assumptions: { ...draft.assumptions, fee_bps: Number(event.target.value) } })} /></label><label>Slippage (bps)<input aria-label="Slippage basis points" type="number" min="0" step="any" value={draft.assumptions.slippage_bps} onChange={(event) => updateDraft({ assumptions: { ...draft.assumptions, slippage_bps: Number(event.target.value) } })} /></label><label>Max cycles<input aria-label="Maximum cycles" type="number" min="1" value={draft.resource_limits.max_cycles} onChange={(event) => updateDraft({ resource_limits: { ...draft.resource_limits, max_cycles: Number(event.target.value) } })} /></label><label>Max bars<input aria-label="Maximum bars" type="number" min="1" value={draft.resource_limits.max_bars} onChange={(event) => updateDraft({ resource_limits: { ...draft.resource_limits, max_bars: Number(event.target.value) } })} /></label><label>Timeout (seconds)<input aria-label="Timeout seconds" type="number" min="1" value={draft.resource_limits.timeout_seconds} onChange={(event) => updateDraft({ resource_limits: { ...draft.resource_limits, timeout_seconds: Number(event.target.value) } })} /></label></div><label className={styles.checkbox}><input type="checkbox" checked={draft.assumptions.allow_latest_prior_bar} onChange={(event) => updateDraft({ assumptions: { ...draft.assumptions, allow_latest_prior_bar: event.target.checked } })} /> Allow latest prior bar</label><label className={styles.checkbox}><input type="checkbox" checked={draft.assumptions.allow_price_carry_forward} onChange={(event) => updateDraft({ assumptions: { ...draft.assumptions, allow_price_carry_forward: event.target.checked } })} /> Allow price carry-forward</label>
     </section>
-    <section className={styles.panel} aria-labelledby="preflight-heading"><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>VALIDATE</p><h2 id="preflight-heading">Preflight and immutable save</h2></div><span className={styles.statusBadge}>{preflightResult?.definition_fingerprint ?? "No fingerprint yet"}</span></div><p className={styles.muted}>Preflight checks catalogue versions, normalized inputs, coverage, warmup and bounded resources before any definition or command write.</p><div className={styles.actions}><button className={styles.secondaryButton} type="button" onClick={() => void runPreflight()} disabled={Boolean(busy)}>{busy === "Running preflight…" ? busy : "Run preflight"}</button><button className={styles.button} type="button" onClick={() => void save()} disabled={Boolean(busy) || !preflightResult?.valid}>{definition ? `Saved revision ${definition.revision}` : "Save immutable definition"}</button><button className={styles.button} type="button" onClick={() => void submit()} disabled={Boolean(busy) || !definition || Boolean(execution)}>{busy === "Submitting execution…" ? busy : execution ? "Execution submitted" : "Submit execution"}</button></div>{preflightResult && <div className={styles.preflightResult}><IssueList response={preflightResult}/>{preflightResult.normalized_definition && <div className={styles.normalized}><h3>Normalized definition</h3><dl className={styles.normalizedGrid}><div><dt>Symbols</dt><dd>{preflightResult.normalized_definition.symbols.join(", ")}</dd></div><div><dt>Replay window</dt><dd>{formatTimestamp(preflightResult.normalized_definition.start)} → {formatTimestamp(preflightResult.normalized_definition.end)}</dd></div><div><dt>Strategy composition</dt><dd>{preflightResult.normalized_definition.strategy_profile_id} · {preflightResult.normalized_definition.strategy_catalogue_version}</dd></div><div><dt>Strategy parameters</dt><dd>{formatJson(preflightResult.normalized_definition.strategy_parameters)}</dd></div><div><dt>Risk composition</dt><dd>{preflightResult.normalized_definition.risk_profile_id} · {preflightResult.normalized_definition.risk_catalogue_version}</dd></div><div><dt>Risk parameters</dt><dd>{formatJson(preflightResult.normalized_definition.risk_parameters)}</dd></div></dl></div>}{preflightResult.coverage.length > 0 && <div className={styles.coverage}><h3>Coverage</h3>{preflightResult.coverage.map((item) => <div className={styles.coverageRow} key={`${item.symbol}-${item.timeframe}`}><span>{item.symbol} · {item.timeframe}</span><span>{item.available && item.warmup_satisfied ? "Ready" : "Insufficient"}</span><small>{item.bar_count.toLocaleString()} bars · required from {formatTimestamp(item.required_start)} to {formatTimestamp(item.requested_end)}</small></div>)}</div>}</div>}{message && <p className={styles.success} role="status">{message}</p>}</section>
+    <section className={styles.panel} aria-labelledby="preflight-heading"><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>VALIDATE</p><h2 id="preflight-heading">Preflight and immutable save</h2></div><span className={styles.statusBadge}>{preflightResult?.definition_fingerprint ?? "No fingerprint yet"}</span></div><p className={styles.muted}>Preflight preserves the selected scope, provider policy, manifest and quality evidence before checking catalogue versions, coverage, warmup and bounded resources.</p><div className={styles.actions}><button className={styles.secondaryButton} type="button" onClick={() => void runPreflight()} disabled={Boolean(busy) || !draft.data_scope}>{busy === "Running preflight…" ? busy : "Run preflight"}</button><button className={styles.button} type="button" onClick={() => void save()} disabled={Boolean(busy) || !preflightResult?.valid}>{definition ? `Saved revision ${definition.revision}` : "Save immutable definition"}</button><button className={styles.button} type="button" onClick={() => void submit()} disabled={Boolean(busy) || !definition || Boolean(execution)}>{busy === "Submitting execution…" ? busy : execution ? "Execution submitted" : "Submit execution"}</button></div>{preflightResult && <div className={styles.preflightResult}><IssueList response={preflightResult}/>{preflightResult.normalized_definition && <div className={styles.normalized}><h3>Normalized definition</h3><dl className={styles.normalizedGrid}><div><dt>Symbols</dt><dd>{preflightResult.normalized_definition.symbols.join(", ")}</dd></div><div><dt>Replay window</dt><dd>{formatTimestamp(preflightResult.normalized_definition.start)} → {formatTimestamp(preflightResult.normalized_definition.end)}</dd></div><div><dt>Strategy composition</dt><dd>{preflightResult.normalized_definition.strategy_profile_id} · {preflightResult.normalized_definition.strategy_catalogue_version}</dd></div><div><dt>Strategy parameters</dt><dd>{formatJson(preflightResult.normalized_definition.strategy_parameters)}</dd></div><div><dt>Risk composition</dt><dd>{preflightResult.normalized_definition.risk_profile_id} · {preflightResult.normalized_definition.risk_catalogue_version}</dd></div><div><dt>Risk parameters</dt><dd>{formatJson(preflightResult.normalized_definition.risk_parameters)}</dd></div></dl></div>}{preflightResult.coverage.length > 0 && <div className={styles.coverage}><h3>Coverage</h3>{preflightResult.coverage.map((item) => <div className={styles.coverageRow} key={`${item.symbol}-${item.timeframe}`}><span>{item.symbol} · {item.timeframe}</span><span>{item.available && item.warmup_satisfied ? "Ready" : "Insufficient"}</span><small>{item.bar_count.toLocaleString()} bars · required from {formatTimestamp(item.required_start)} to {formatTimestamp(item.requested_end)}</small></div>)}</div>}</div>}{message && <p className={styles.success} role="status">{message}</p>}</section>
     {execution && <ExecutionStatus execution={execution} polling={polling} onRefresh={() => void refreshExecution()} onStop={() => setPolling(false)} onResume={() => setPolling(true)} />}
   </main><footer className={styles.footer}><span>Console / local backtest scope</span><span>Durable command state</span></footer></div></ConsoleShell>;
 }

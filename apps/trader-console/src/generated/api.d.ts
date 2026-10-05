@@ -613,6 +613,55 @@ export interface components {
             warmup_satisfied: boolean;
         };
         /**
+         * BacktestDataScopeHandoff
+         * @description Exact saved Data evidence handed into backtest authoring.
+         *
+         *     The handoff repeats the immutable scope identity and evidence references so
+         *     a preflight can detect a stale client or a changed selection.  The server
+         *     resolves ``saved_scope_id`` and never widens the selection to a new
+         *     catalogue or aggregate coverage query.
+         */
+        BacktestDataScopeHandoff: {
+            /**
+             * Asset Class
+             * @enum {string}
+             */
+            asset_class: "stock" | "crypto";
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Evidence Reason */
+            evidence_reason?: string | null;
+            evidence_status: components["schemas"]["DataScopeEvidenceStatus"];
+            /** Fingerprint */
+            fingerprint: string;
+            /** Interval */
+            interval: string;
+            /** Manifest Artifact Id */
+            manifest_artifact_id: string;
+            /** Quality Artifact Id */
+            quality_artifact_id: string;
+            /**
+             * Saved Scope Id
+             * Format: uuid
+             */
+            saved_scope_id: string;
+            source_policy: components["schemas"]["DataScopeSourcePolicy"];
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /** Symbols */
+            symbols: string[];
+            /** Timeframe */
+            timeframe: string;
+            /** Universe */
+            universe?: string | null;
+        };
+        /**
          * BacktestDefinition
          * @description Normalized, content-addressed input to one future backtest execution.
          */
@@ -629,6 +678,7 @@ export interface components {
              * @enum {string}
              */
             benchmark_id: "buy_hold" | "none";
+            data_scope: components["schemas"]["BacktestDataScopeHandoff"];
             /** Display Name */
             display_name: string;
             /**
@@ -803,6 +853,7 @@ export interface components {
              * @enum {string}
              */
             benchmark_id: "buy_hold" | "none";
+            data_scope: components["schemas"]["BacktestDataScopeHandoff"];
             /**
              * Display Name
              * @default Untitled backtest

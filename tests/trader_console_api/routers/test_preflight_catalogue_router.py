@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from uuid import uuid4
 
 from trader_console_api.contracts import (
     BacktestCatalogueResponse,
@@ -78,6 +79,7 @@ def test_preflight_route_returns_invalid_result_without_queueing() -> None:
             "timeframe": "1Min",
             "start": "2026-01-01T00:00:00Z",
             "end": "2026-01-01T01:00:00Z",
+            "data_scope": _scope_payload(),
         },
     )
 
@@ -96,6 +98,7 @@ def test_preflight_route_maps_database_outage_to_stable_503() -> None:
             "timeframe": "1Min",
             "start": "2026-01-01T00:00:00Z",
             "end": "2026-01-01T01:00:00Z",
+            "data_scope": _scope_payload(),
         },
     )
 
@@ -105,3 +108,16 @@ def test_preflight_route_maps_database_outage_to_stable_503() -> None:
 def _result(*, valid: bool = True) -> BacktestPreflightResponse:
     """Build a compact preflight response fixture."""
     return BacktestPreflightResponse(valid=valid, catalogue_version="standard-1")
+
+
+def _scope_payload() -> dict[str, object]:
+    """Return the exact saved-scope handoff required by authoring preflight."""
+    return {
+        "saved_scope_id": str(uuid4()), "fingerprint": "a" * 64,
+        "asset_class": "crypto", "symbols": ["BTC/USD"], "universe": None,
+        "timeframe": "1Min", "interval": "1Min",
+        "start": "2026-01-01T00:00:00Z", "end": "2026-01-01T01:00:00Z",
+        "source_policy": {"provider": "fixture", "source": "fixture", "allow_fallback": False},
+        "manifest_artifact_id": "manifest-1", "quality_artifact_id": "quality-1",
+        "evidence_status": "active", "evidence_reason": None,
+    }

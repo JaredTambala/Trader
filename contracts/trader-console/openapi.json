@@ -199,6 +199,121 @@
         "title": "BacktestCoverageCheck",
         "type": "object"
       },
+      "BacktestDataScopeHandoff": {
+        "additionalProperties": false,
+        "description": "Exact saved Data evidence handed into backtest authoring.\n\nThe handoff repeats the immutable scope identity and evidence references so\na preflight can detect a stale client or a changed selection.  The server\nresolves ``saved_scope_id`` and never widens the selection to a new\ncatalogue or aggregate coverage query.",
+        "properties": {
+          "asset_class": {
+            "enum": [
+              "stock",
+              "crypto"
+            ],
+            "title": "Asset Class",
+            "type": "string"
+          },
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "evidence_reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Reason"
+          },
+          "evidence_status": {
+            "$ref": "#/components/schemas/DataScopeEvidenceStatus"
+          },
+          "fingerprint": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "interval": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Interval",
+            "type": "string"
+          },
+          "manifest_artifact_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Manifest Artifact Id",
+            "type": "string"
+          },
+          "quality_artifact_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Quality Artifact Id",
+            "type": "string"
+          },
+          "saved_scope_id": {
+            "format": "uuid",
+            "title": "Saved Scope Id",
+            "type": "string"
+          },
+          "source_policy": {
+            "$ref": "#/components/schemas/DataScopeSourcePolicy"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Symbols",
+            "type": "array"
+          },
+          "timeframe": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Timeframe",
+            "type": "string"
+          },
+          "universe": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Universe"
+          }
+        },
+        "required": [
+          "saved_scope_id",
+          "fingerprint",
+          "asset_class",
+          "symbols",
+          "timeframe",
+          "interval",
+          "start",
+          "end",
+          "source_policy",
+          "manifest_artifact_id",
+          "quality_artifact_id",
+          "evidence_status"
+        ],
+        "title": "BacktestDataScopeHandoff",
+        "type": "object"
+      },
       "BacktestDefinition": {
         "additionalProperties": false,
         "description": "Normalized, content-addressed input to one future backtest execution.",
@@ -222,6 +337,9 @@
             ],
             "title": "Benchmark Id",
             "type": "string"
+          },
+          "data_scope": {
+            "$ref": "#/components/schemas/BacktestDataScopeHandoff"
           },
           "display_name": {
             "maxLength": 120,
@@ -317,7 +435,8 @@
           "timeframe",
           "start",
           "end",
-          "initial_cash"
+          "initial_cash",
+          "data_scope"
         ],
         "title": "BacktestDefinition",
         "type": "object"
@@ -664,6 +783,9 @@
             "title": "Benchmark Id",
             "type": "string"
           },
+          "data_scope": {
+            "$ref": "#/components/schemas/BacktestDataScopeHandoff"
+          },
           "display_name": {
             "default": "Untitled backtest",
             "maxLength": 120,
@@ -766,7 +888,8 @@
           "symbols",
           "timeframe",
           "start",
-          "end"
+          "end",
+          "data_scope"
         ],
         "title": "BacktestPreflightRequest",
         "type": "object"

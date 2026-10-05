@@ -114,8 +114,12 @@ Discover the maintained profiles, submit a typed draft to preflight, then persis
 curl --fail http://127.0.0.1:8001/api/backtests/catalogue
 curl --fail -X POST http://127.0.0.1:8001/api/backtests/preflight \
   -H 'content-type: application/json' \
-  -d '{"strategy_profile_id":"noop","risk_profile_id":"noop","asset_class":"stock","symbols":["AAPL"],"timeframe":"1Min","start":"2026-01-01T00:00:00Z","end":"2026-01-01T01:00:00Z"}'
+  -d '{"strategy_profile_id":"noop","risk_profile_id":"noop","asset_class":"stock","symbols":["AAPL"],"timeframe":"1Min","start":"2026-01-01T00:00:00Z","end":"2026-01-01T01:00:00Z","data_scope":{"saved_scope_id":"00000000-0000-0000-0000-000000000001","fingerprint":"<fingerprint returned by the saved-scope response>","asset_class":"stock","symbols":["AAPL"],"universe":null,"timeframe":"1Min","interval":"1Min","start":"2026-01-01T00:00:00Z","end":"2026-01-01T01:00:00Z","source_policy":{"provider":"alpaca","source":"iex","allow_fallback":false},"manifest_artifact_id":"research://postgres/dataset_manifest/manifest-1","quality_artifact_id":"research://postgres/data_quality_report/quality-1","evidence_status":"active","evidence_reason":null}}'
 ```
+
+The `data_scope` object is an exact typed handoff from the saved-scope response. Authoring rejects a changed
+fingerprint or scope fields, stale or unavailable evidence, and a missing saved scope before it queries coverage; it
+does not substitute a fresh aggregate coverage result.
 
 Install the Console-owned definition table explicitly before using persistence routes:
 
