@@ -1,4 +1,68 @@
 export interface paths {
+    "/api/agent-sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Session
+         * @description Return one redacted session workspace to its human owner.
+         */
+        get: operations["get_agent_session_api_agent_sessions__session_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-sessions/{session_id}/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Session Commands
+         * @description Return bounded command history for one authorized session.
+         */
+        get: operations["list_agent_session_commands_api_agent_sessions__session_id__commands_get"];
+        put?: never;
+        /**
+         * Command Agent Session
+         * @description Persist one human interrupt, resume, cancel, or inspect intent.
+         */
+        post: operations["command_agent_session_api_agent_sessions__session_id__commands_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-sessions/{session_id}/commands/{command_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Session Command
+         * @description Return one exact command receipt after rechecking session ownership.
+         */
+        get: operations["get_agent_session_command_api_agent_sessions__session_id__commands__command_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/backtests/catalogue": {
         parameters: {
             query?: never;
@@ -611,6 +675,332 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AgentSessionBudgetLimits
+         * @description Human-readable hard ceilings for one agent session.
+         */
+        AgentSessionBudgetLimits: {
+            /** Concurrency Limit */
+            concurrency_limit: number;
+            /** Max Duration Seconds */
+            max_duration_seconds: number;
+            /** Max Model Calls */
+            max_model_calls: number;
+            /** Max Mutations */
+            max_mutations: number;
+            /** Max Revisions */
+            max_revisions: number;
+            /** Max Tokens */
+            max_tokens: number;
+            /** Max Tool Calls */
+            max_tool_calls: number;
+        };
+        /**
+         * AgentSessionBudgetUsage
+         * @description Cumulative public resource counters at an accepted transition.
+         */
+        AgentSessionBudgetUsage: {
+            /** Duration Ms */
+            duration_ms: number;
+            /** Model Calls */
+            model_calls: number;
+            /** Mutations */
+            mutations: number;
+            /** Revisions */
+            revisions: number;
+            /** Tokens */
+            tokens: number;
+            /** Tool Calls */
+            tool_calls: number;
+        };
+        /**
+         * AgentSessionCommandRecord
+         * @description Durable audit receipt for one human-owned agent command intent.
+         */
+        AgentSessionCommandRecord: {
+            /** Approved */
+            approved?: boolean | null;
+            /**
+             * Attempt
+             * @default 0
+             */
+            attempt: number;
+            /**
+             * Command
+             * @enum {string}
+             */
+            command: "inspect" | "interrupt" | "resume" | "cancel";
+            /** Command Id */
+            command_id: string;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Heartbeat At */
+            heartbeat_at?: string | null;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Lease Expires At */
+            lease_expires_at?: string | null;
+            /** Operator Answer */
+            operator_answer?: string | null;
+            /** Outcome Code */
+            outcome_code?: string | null;
+            /** Outcome Message */
+            outcome_message?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Requested At
+             * Format: date-time
+             */
+            requested_at: string;
+            /** Requested By */
+            requested_by: string;
+            /** Session Id */
+            session_id: string;
+            /** Started At */
+            started_at?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "requested" | "accepted" | "completed" | "rejected" | "ambiguous";
+            /** Worker Id */
+            worker_id?: string | null;
+        };
+        /**
+         * AgentSessionCommandRequest
+         * @description Human command intent forwarded to the agent runtime boundary.
+         */
+        AgentSessionCommandRequest: {
+            /** Approved */
+            approved?: boolean | null;
+            /**
+             * Command
+             * @enum {string}
+             */
+            command: "inspect" | "interrupt" | "resume" | "cancel";
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Operator Answer */
+            operator_answer?: string | null;
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * AgentSessionCommandsResponse
+         * @description Bounded command history for one agent session.
+         */
+        AgentSessionCommandsResponse: {
+            /** Items */
+            items: components["schemas"]["AgentSessionCommandRecord"][];
+            page: components["schemas"]["PageInfo"];
+        };
+        /**
+         * AgentSessionDelegation
+         * @description Bounded specialist progress visible to the human operator.
+         */
+        AgentSessionDelegation: {
+            /** Attempt Id */
+            attempt_id?: string | null;
+            /**
+             * Blockers
+             * @default []
+             */
+            blockers: string[];
+            /** Branch Id */
+            branch_id: string;
+            /** Delegation Id */
+            delegation_id?: string | null;
+            /**
+             * Evidence Refs
+             * @default []
+             */
+            evidence_refs: components["schemas"]["AgentSessionEvidenceReference"][];
+            /**
+             * Next Actions
+             * @default []
+             */
+            next_actions: string[];
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "data_research" | "strategy_engineering" | "research_coordinator";
+            /** Sequence */
+            sequence: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "ready" | "running" | "accepted" | "awaiting_operator" | "blocked" | "cancelled" | "failed" | "terminal" | "completed";
+            /** Summary */
+            summary: string;
+        };
+        /**
+         * AgentSessionEvent
+         * @description Public, redacted lifecycle event reconstructed from an accepted receipt.
+         */
+        AgentSessionEvent: {
+            /** Attempt Id */
+            attempt_id?: string | null;
+            /**
+             * Blockers
+             * @default []
+             */
+            blockers: string[];
+            /** Branch Id */
+            branch_id: string;
+            budget_used: components["schemas"]["AgentSessionBudgetUsage"];
+            /** Delegation Id */
+            delegation_id?: string | null;
+            /** Event Id */
+            event_id: string;
+            /** Event Type */
+            event_type: string;
+            /**
+             * Evidence Refs
+             * @default []
+             */
+            evidence_refs: components["schemas"]["AgentSessionEvidenceReference"][];
+            /**
+             * Next Actions
+             * @default []
+             */
+            next_actions: string[];
+            /** Recorded At */
+            recorded_at?: string | null;
+            /** Sequence */
+            sequence: number;
+            /** Session Id */
+            session_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "ready" | "running" | "accepted" | "awaiting_operator" | "blocked" | "cancelled" | "failed" | "terminal" | "completed";
+            /** Summary */
+            summary: string;
+        };
+        /**
+         * AgentSessionEvidenceReference
+         * @description Exact public identity of an artifact cited by an agent session.
+         */
+        AgentSessionEvidenceReference: {
+            /** Artifact Id */
+            artifact_id: string;
+            /** Artifact Type */
+            artifact_type: string;
+            /** Domain Owner */
+            domain_owner: string;
+            /** Source Hash */
+            source_hash?: string | null;
+            /** Uri */
+            uri: string;
+        };
+        /**
+         * AgentSessionInterrupt
+         * @description Operator-facing interrupt state without a model prompt or transcript.
+         */
+        AgentSessionInterrupt: {
+            /** Kind */
+            kind: string;
+            /** Question */
+            question: string;
+            /** Requested Action */
+            requested_action: string;
+        };
+        /**
+         * AgentSessionProjection
+         * @description Complete redacted read model for one human-owned agent session.
+         *
+         *     This contract intentionally carries summaries and exact references only. It
+         *     has no field for prompts, completions, hidden reasoning, raw tool payloads,
+         *     credentials, source code, or arbitrary model metadata.
+         */
+        AgentSessionProjection: {
+            /** Agenda Summary */
+            agenda_summary?: string | null;
+            /** Agent Program Ids */
+            agent_program_ids: string[];
+            budget_limits: components["schemas"]["AgentSessionBudgetLimits"];
+            budget_used: components["schemas"]["AgentSessionBudgetUsage"];
+            /** Checkpoint Sequence */
+            checkpoint_sequence?: number | null;
+            /**
+             * Command Ids
+             * @default []
+             */
+            command_ids: string[];
+            /**
+             * Delegations
+             * @default []
+             */
+            delegations: components["schemas"]["AgentSessionDelegation"][];
+            /**
+             * Events
+             * @default []
+             */
+            events: components["schemas"]["AgentSessionEvent"][];
+            /**
+             * Evidence Refs
+             * @default []
+             */
+            evidence_refs: components["schemas"]["AgentSessionEvidenceReference"][];
+            /** Model Profile Id */
+            model_profile_id: string;
+            /** Objective */
+            objective: string;
+            /** Operator Id */
+            operator_id: string;
+            pending_interrupt?: components["schemas"]["AgentSessionInterrupt"] | null;
+            /** Scope Summary */
+            scope_summary?: {
+                [key: string]: unknown;
+            };
+            /** Session Digest */
+            session_digest: string;
+            /** Session Id */
+            session_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "ready" | "running" | "accepted" | "awaiting_operator" | "blocked" | "cancelled" | "failed" | "terminal" | "completed";
+            /** Success Definition */
+            success_definition: string;
+            terminal_decision?: components["schemas"]["AgentSessionTerminalDecision"] | null;
+            /** Tool Catalog Id */
+            tool_catalog_id: string;
+        };
+        /**
+         * AgentSessionTerminalDecision
+         * @description Terminal public decision summary and exact evidence lineage.
+         */
+        AgentSessionTerminalDecision: {
+            /** Action */
+            action: string;
+            /**
+             * Blockers
+             * @default []
+             */
+            blockers: string[];
+            /** Branch Id */
+            branch_id: string;
+            /**
+             * Evidence Refs
+             * @default []
+             */
+            evidence_refs: components["schemas"]["AgentSessionEvidenceReference"][];
+            /** Sequence */
+            sequence: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "ready" | "running" | "accepted" | "awaiting_operator" | "blocked" | "cancelled" | "failed" | "terminal" | "completed";
+            /** Summary */
+            summary: string;
+        };
         /**
          * ApiError
          * @description Stable error envelope for resource failures.
@@ -2969,6 +3359,291 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_agent_session_api_agent_sessions__session_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSessionProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    list_agent_session_commands_api_agent_sessions__session_id__commands_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSessionCommandsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    command_agent_session_api_agent_sessions__session_id__commands_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentSessionCommandRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSessionCommandRecord"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_agent_session_command_api_agent_sessions__session_id__commands__command_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+                command_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSessionCommandRecord"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     backtest_catalogue_api_backtests_catalogue_get: {
         parameters: {
             query?: never;
