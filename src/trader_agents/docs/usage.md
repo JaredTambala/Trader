@@ -89,6 +89,26 @@ path. Query a session or branch with `query(...)`, then call `verify_retained_tr
 concurrent branch ownership, process-restart markers, redaction, and terminal decision lineage. This local retention
 boundary is qualification evidence; it does not replace canonical artifact or decision persistence.
 
+For UJ-09 review, compose a graph from those retained identities and exact
+artifact revisions. The verifier keeps missing and negative evidence visible:
+
+<!-- verified: doctest -->
+```pycon
+>>> from trader_agents import EvidenceNode, EvidenceStatus, SessionEvidenceGraph, verify_session_evidence_graph
+>>> node = EvidenceNode(
+...     artifact_type="backtest_run", artifact_id="run-1", revision=1,
+...     status=EvidenceStatus.AVAILABLE,
+...     uri="research://postgres/backtest_run/run-1", domain_owner="Experiments",
+...     branch_id="branch-root", claim_scope={"run_id": "run-1"},
+... )
+>>> graph = SessionEvidenceGraph(
+...     session_id="session-1", session_digest="a" * 64,
+...     branch_ids=("branch-root",), nodes=(node,), run_id="run-1",
+... )
+>>> verify_session_evidence_graph(graph)["verdict"]
+'complete'
+```
+
 ## Required services
 
 - Ollama serving the exact admitted `lfm2.5:8b` digest
