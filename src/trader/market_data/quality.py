@@ -22,6 +22,7 @@ from .quality_config import (
     parse_symbols as _parse_symbols,
 )
 from .quality_gaps import (
+    DEFAULT_MAX_GAP_SAMPLES,
     DataQualitySummary,
     GapRecord,
     SessionWindow,
@@ -94,6 +95,14 @@ def run_data_quality(config_data: Mapping[str, object]) -> dict[str, object]:
     start = _parse_datetime(quality.get("start"))
     end = _parse_datetime(quality.get("end"))
     max_gap_logs = _as_int(quality.get("max_gap_logs"), 50)
+    raw_sample_limit = quality.get("max_gap_samples")
+    if isinstance(raw_sample_limit, bool) or (
+        raw_sample_limit is not None and not isinstance(raw_sample_limit, (int, str))
+    ):
+        raise ValueError("data_quality.max_gap_samples must be a non-negative integer")
+    max_gap_samples = _as_int(raw_sample_limit, DEFAULT_MAX_GAP_SAMPLES)
+    if max_gap_samples < 0:
+        raise ValueError("data_quality.max_gap_samples must be a non-negative integer")
     multipliers = _parse_gap_multipliers(quality.get("gap_multipliers"))
     sessions = _parse_sessions(quality.get("sessions"))
 
@@ -117,9 +126,10 @@ def run_data_quality(config_data: Mapping[str, object]) -> dict[str, object]:
                 timeframe=timeframe,
                 multipliers=multipliers,
                 sessions=sessions,
+                max_gap_samples=max_gap_samples,
             )
             _log_summary(summary)
-            _log_gaps(gaps, max_gap_logs=max_gap_logs)
+            _log_gaps(gaps, max_gap_logs=max_gap_logs, total_count=summary.missing_gaps + summary.expected_gaps)
             summaries.append(summary)
             gaps_by_symbol[symbol] = gaps
     finally:
@@ -132,6 +142,7 @@ def run_data_quality(config_data: Mapping[str, object]) -> dict[str, object]:
         end=end,
         summaries=summaries,
         gaps_by_symbol=gaps_by_symbol,
+        max_gap_samples=max_gap_samples,
         generated_at=datetime.now(tz=ZoneInfo("UTC")),
     )
 
@@ -197,13 +208,13 @@ def _log_summary(summary: DataQualitySummary) -> None:
     )
 
 
-def _log_gaps(gaps: Iterable[GapRecord], *, max_gap_logs: int) -> None:
+def _log_gaps(gaps: Iterable[GapRecord], *, max_gap_logs: int, total_count: int) -> None:
     """Log classified gaps, suppressing noisy tails after the configured limit."""
-    gap_list = list(gaps)
-    for idx, gap in enumerate(gap_list):
-        if idx >= max_gap_logs:
-            logger.warning("Additional gaps suppressed count=%s", len(gap_list) - max_gap_logs)
+    logged_count = 0
+    for gap in gaps:
+        if logged_count >= max_gap_logs:
             break
+        logged_count += 1
         if gap.reason == "expected_session_gap":
             logger.info(
                 "Expected session gap symbol=%s prev_ts=%s next_ts=%s delta=%s threshold=%s",
@@ -222,6 +233,8 @@ def _log_gaps(gaps: Iterable[GapRecord], *, max_gap_logs: int) -> None:
             gap.delta,
             gap.threshold,
         )
+    if total_count > logged_count:
+        logger.warning("Additional gaps suppressed count=%s", total_count - logged_count)
 
 
 def _param_placeholder(connection: object) -> str:

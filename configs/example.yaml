@@ -125,6 +125,7 @@ data_quality:
   start: "2025-01-01T00:00:00Z"
   end: "2026-01-21T00:00:00Z"
   max_gap_logs: 25
+  max_gap_samples: 100
   gap_multipliers:
     minute: 5
     hour: 2

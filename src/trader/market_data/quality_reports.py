@@ -19,6 +19,7 @@ def build_quality_report(
     end: datetime | None,
     summaries: Sequence[DataQualitySummary],
     gaps_by_symbol: Mapping[str, Sequence[GapRecord]],
+    max_gap_samples: int,
     generated_at: datetime,
 ) -> dict[str, object]:
     """Build a JSON-serializable data-quality report.
@@ -30,17 +31,29 @@ def build_quality_report(
         start: Optional lower timestamp bound.
         end: Optional upper timestamp bound.
         summaries: Per-symbol quality summaries.
-        gaps_by_symbol: Gap records keyed by symbol.
+        gaps_by_symbol: Bounded gap samples keyed by symbol.
+        max_gap_samples: Configured per-symbol detail bound.
         generated_at: Explicit report timestamp supplied by the shell.
 
     Returns:
         JSON-compatible report payload with a deterministic report id.
     """
     summary_payload = [summary_payload_from(summary) for summary in summaries]
-    gap_payload = {
-        symbol: [gap_payload_from(gap) for gap in gaps]
-        for symbol, gaps in gaps_by_symbol.items()
-    }
+    if isinstance(max_gap_samples, bool) or not isinstance(max_gap_samples, int) or max_gap_samples < 0:
+        raise ValueError("max_gap_samples must be a non-negative integer")
+    gap_samples: dict[str, dict[str, object]] = {}
+    for summary in summaries:
+        gaps = gaps_by_symbol.get(summary.symbol, ())
+        total_count = summary.missing_gaps + summary.expected_gaps
+        if len(gaps) > max_gap_samples or len(gaps) > total_count:
+            raise ValueError(f"gap samples exceed declared bound or total for {summary.symbol}")
+        gap_samples[summary.symbol] = {
+            "total_count": total_count,
+            "retained_count": len(gaps),
+            "truncated_count": total_count - len(gaps),
+            "truncated": total_count > len(gaps),
+            "records": [gap_payload_from(gap) for gap in gaps],
+        }
     stable_payload = {
         "symbols": list(symbols),
         "asset_class": asset_class,
@@ -48,6 +61,8 @@ def build_quality_report(
         "start": start.isoformat() if start else None,
         "end": end.isoformat() if end else None,
         "summaries": summary_payload,
+        "max_gap_samples": max_gap_samples,
+        "gap_samples": gap_samples,
     }
     report_id = "dq_" + hashlib.sha256(
         json.dumps(stable_payload, sort_keys=True).encode("utf-8")
@@ -56,7 +71,6 @@ def build_quality_report(
         "report_id": report_id,
         "generated_at": generated_at.isoformat(),
         **stable_payload,
-        "gaps": gap_payload,
     }
 
 

@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from trader.market_data.quality import run_data_quality, write_data_quality_report
 
 
@@ -44,3 +46,20 @@ def test_data_quality_returns_stable_report_id(tmp_path: Path) -> None:
         }
     ]
     assert output.exists()
+    assert first["max_gap_samples"] == 100
+    assert first["gap_samples"]["DEMO"]["truncated"] is False
+
+
+@pytest.mark.parametrize("raw_limit", [-1, True, 1.5, "invalid"])
+def test_data_quality_rejects_invalid_gap_sample_limit(raw_limit: object) -> None:
+    """The config boundary rejects sample limits that cannot describe a safe finite bound."""
+    config_data = {
+        "runtime": {"mode": "once"},
+        "strategy": {"id": "demo", "timeframe": "1Min"},
+        "broker": {"type": "noop"},
+        "market_data": {"source": "noop", "asset_class": "stocks", "symbols": ["DEMO"]},
+        "database": {"event_store": "noop"},
+        "data_quality": {"symbols": ["DEMO"], "max_gap_samples": raw_limit},
+    }
+    with pytest.raises(ValueError):
+        run_data_quality(config_data)

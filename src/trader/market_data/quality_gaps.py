@@ -1,7 +1,7 @@
 """Pure gap analysis helpers for market-data quality reports.
 
-This module owns deterministic timestamp-gap classification and report payload
-construction for the legacy `run_data_quality` entrypoint. Event-store access,
+This module owns deterministic timestamp-gap classification for the
+`run_data_quality` entrypoint. Event-store access,
 logging, clocks, and filesystem writes stay in `trader.market_data.quality`.
 """
 
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
+from itertools import islice
 from typing import Mapping, Sequence
 from zoneinfo import ZoneInfo
 
@@ -16,6 +17,7 @@ from ..timeframes import normalize_timeframe, parse_timeframe
 
 
 _MARKET_TZ = ZoneInfo("America/New_York")
+DEFAULT_MAX_GAP_SAMPLES = 100
 
 
 @dataclass(frozen=True)
@@ -87,6 +89,7 @@ def analyze_gaps(
     timeframe: str,
     multipliers: Mapping[str, float],
     sessions: Mapping[tuple[str, str], SessionWindow],
+    max_gap_samples: int = DEFAULT_MAX_GAP_SAMPLES,
 ) -> tuple[DataQualitySummary, list[GapRecord]]:
     """Classify oversized timestamp gaps for one symbol.
 
@@ -97,10 +100,17 @@ def analyze_gaps(
         timeframe: Normalized timeframe string.
         multipliers: Gap-threshold multipliers keyed by timeframe unit.
         sessions: Optional symbol/timeframe session overrides.
+        max_gap_samples: Maximum detailed gaps retained per symbol. Zero keeps
+            aggregate counts without detail.
 
     Returns:
-        Per-symbol summary and detailed gap records.
+        Per-symbol complete summary and at most `max_gap_samples` gap records.
+
+    Raises:
+        ValueError: If the sample bound is negative or is not an integer.
     """
+    if isinstance(max_gap_samples, bool) or not isinstance(max_gap_samples, int) or max_gap_samples < 0:
+        raise ValueError("max_gap_samples must be a non-negative integer")
     if len(timestamps) < 2:
         summary = DataQualitySummary(
             symbol=symbol,
@@ -120,7 +130,7 @@ def analyze_gaps(
     expected = 0
     max_gap = None
 
-    for prev_ts, next_ts in zip(timestamps, timestamps[1:]):
+    for prev_ts, next_ts in zip(timestamps, islice(timestamps, 1, None)):
         delta = next_ts - prev_ts
         if max_gap is None or delta > max_gap:
             max_gap = delta
@@ -128,16 +138,18 @@ def analyze_gaps(
             continue
         session = sessions.get((symbol.upper(), normalize_timeframe(timeframe)))
         reason = gap_reason(prev_ts, next_ts, asset_class, timeframe, session=session)
-        record = GapRecord(
-            symbol=symbol,
-            prev_ts=prev_ts,
-            next_ts=next_ts,
-            delta=delta,
-            expected=expected_delta,
-            threshold=threshold,
-            reason=reason,
-        )
-        gaps.append(record)
+        if len(gaps) < max_gap_samples:
+            gaps.append(
+                GapRecord(
+                    symbol=symbol,
+                    prev_ts=prev_ts,
+                    next_ts=next_ts,
+                    delta=delta,
+                    expected=expected_delta,
+                    threshold=threshold,
+                    reason=reason,
+                )
+            )
         if reason == "expected_session_gap":
             expected += 1
         else:
