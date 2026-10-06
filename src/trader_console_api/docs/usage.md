@@ -435,6 +435,11 @@ The response contains the immutable session identity, objective, allowlisted sco
 specialist/branch progress, public transition summaries, and exact canonical evidence references. Prompts, model
 completions, hidden reasoning, raw tool payloads, credentials, source code, and arbitrary metadata are structurally
 absent. Missing or incompatible producer projections return HTTP 503 rather than a guessed status.
+The `available_commands` field is the same command set used by the API and browser. Before a public runtime inspection
+it contains only `inspect`; an inspected running session admits `interrupt` and `cancel`, an inspected pending operator
+boundary admits `resume` and `cancel`, and terminal or blocked sessions admit only `inspect`. An invalid-state command
+returns HTTP 409. Receipt, session-row, runtime-state, model, and program identities must match before any of these
+controls are offered.
 
 Human lifecycle intents use an authenticated operator provider and are durable/idempotent by scope plus key:
 

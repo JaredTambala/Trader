@@ -27,7 +27,8 @@ The current application provides:
 - an authenticated `/api/paper/commands` boundary for human-authorized, admission-validated, idempotent paper
   start/pause/stop/halt/reconcile requests with durable audit receipts; and
 - a redacted `/api/agent-sessions/{session_id}` workspace for human-owned session evidence and durable
-  interrupt/resume/cancel/inspect intents, applied by the separately composed `trader-agent-session-worker`; and
+  state-admitted interrupt/resume/cancel/inspect intents, applied by the separately composed
+  `trader-agent-session-worker`; and
 - dependency checks keep resource/read paths free of Trader execution, broker, research, MCP, Agent, and MLflow code;
   the paper-command adapter imports only the typed core operator-control boundary and never constructs a broker.
 

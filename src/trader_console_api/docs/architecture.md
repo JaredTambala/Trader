@@ -138,6 +138,9 @@ human-facing projection of one model-backed research session. The repository rea
 or model-provider messages. The service converts the canonical session payload and accepted public receipts into a
 closed `AgentSessionProjection`: identity, objective, allowlisted Data scope facts, budget ceilings and use, specialist
 progress, exact evidence references, public transition summaries, pending operator input, and terminal decision lineage.
+The service verifies the session row against its payload and pins each decision receipt to the same session, admitted
+program, and model profile before projecting it. Unknown lifecycle states fail closed. Only coordinator terminal
+receipts can close the session; a specialist's terminal branch is still specialist progress.
 
 The projection is deliberately lossy. Prompts, completions, hidden reasoning, raw tool payloads, credentials, source
 code, and arbitrary receipt metadata have no response fields and are dropped at the repository/service boundary.
@@ -151,6 +154,10 @@ who owns the immutable session; agents and MCP identities are rejected. Commands
 scope plus key. A separately composed agent runtime consumes these intents and applies its own checkpoint-backed
 `resume`/`cancel` authority; the Console neither invokes LangGraph nor grants model/tool authority. `GET` routes expose
 the projection and bounded command receipts with `no-store` headers.
+The projected `available_commands` is the service's admission policy for `POST`, so the browser and API use the same
+state decision. Without an inspected public runtime state only `inspect` is admitted. Running states admit pause and
+cancel; a pending operator boundary admits resume and cancel; blocked and terminal states admit inspect only. The
+runtime revalidates the checkpoint when applying an admitted intent, covering state changes after the Console read.
 
 Install the Console command and public-state tables explicitly after the research artifact store has installed its
 producer projections:

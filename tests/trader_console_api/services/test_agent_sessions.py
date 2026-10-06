@@ -23,8 +23,14 @@ from trader_console_api.contracts import (
     AgentSessionCommandRequest,
     TraderPrincipal,
 )
-from trader_console_api.repositories.agent_sessions import AgentSessionRepository, AgentSessionSource
-from trader_console_api.repositories.agent_sessions_schema import AgentSessionStorageUnavailable
+from trader_console_api.repositories.agent_sessions import (
+    AgentSessionRepository,
+    AgentSessionSource,
+)
+from trader_console_api.repositories.agent_sessions import AgentSessionCommandConflict
+from trader_console_api.repositories.agent_sessions_schema import (
+    AgentSessionStorageUnavailable,
+)
 from trader_console_api.services.agent_sessions import (
     AgentSessionAuthorityError,
     AgentSessionService,
@@ -35,13 +41,32 @@ from trader_console_api.services.agent_sessions import (
 @pytest.mark.parametrize(
     "payload",
     [
-        {"command": "resume", "idempotency_key": "resume-missing-approval", "operator_answer": "continue"},
-        {"command": "resume", "idempotency_key": "resume-missing-answer", "approved": True},
-        {"command": "resume", "idempotency_key": "resume-blank-answer", "approved": False, "operator_answer": "  "},
-        {"command": "interrupt", "idempotency_key": "interrupt-approval", "approved": True},
+        {
+            "command": "resume",
+            "idempotency_key": "resume-missing-approval",
+            "operator_answer": "continue",
+        },
+        {
+            "command": "resume",
+            "idempotency_key": "resume-missing-answer",
+            "approved": True,
+        },
+        {
+            "command": "resume",
+            "idempotency_key": "resume-blank-answer",
+            "approved": False,
+            "operator_answer": "  ",
+        },
+        {
+            "command": "interrupt",
+            "idempotency_key": "interrupt-approval",
+            "approved": True,
+        },
     ],
 )
-def test_resume_contract_requires_an_explicit_answer_and_decision(payload: dict[str, object]) -> None:
+def test_resume_contract_requires_an_explicit_answer_and_decision(
+    payload: dict[str, object],
+) -> None:
     """Resume requests require a bounded human answer and explicit approval decision."""
     with pytest.raises(ValueError):
         AgentSessionCommandRequest.model_validate(payload)
@@ -112,7 +137,7 @@ def _source() -> AgentSessionSource:
                     "session_id": "session-1",
                     "branch_id": "branch-1",
                     "sequence": 1,
-                    "actor": "research_coordinator",
+                    "actor": "Research Coordinator",
                     "program_id": "coordinator-v1",
                     "model_profile_id": "model-v1",
                     "action": "ask_operator",
@@ -135,7 +160,13 @@ def _source() -> AgentSessionSource:
                         "mutations": 0,
                         "revisions": 0,
                     },
-                    "blockers": [{"code": "operator_input", "message": "Choose the evaluation window.", "details": {"prompt": "drop"}}],
+                    "blockers": [
+                        {
+                            "code": "operator_input",
+                            "message": "Choose the evaluation window.",
+                            "details": {"prompt": "drop"},
+                        }
+                    ],
                     "next_actions": ["resume"],
                     "metadata": {"role": "research_coordinator", "completion": "drop"},
                 }
@@ -224,7 +255,7 @@ def test_terminal_receipt_overrides_an_earlier_operator_interrupt() -> None:
                     "session_id": "session-1",
                     "branch_id": "branch-1",
                     "sequence": 2,
-                    "actor": "research_coordinator",
+                    "actor": "Research Coordinator",
                     "program_id": "coordinator-v1",
                     "model_profile_id": "model-v1",
                     "action": "conclude",
@@ -251,6 +282,24 @@ def test_terminal_receipt_overrides_an_earlier_operator_interrupt() -> None:
     assert projection.pending_interrupt is None
 
 
+def test_specialist_completion_does_not_close_the_human_session() -> None:
+    """A terminal specialist branch remains progress until the coordinator concludes."""
+    source = _inspected_source("running")
+    specialist_receipt = dict(source.receipts[0])
+    specialist_receipt["payload"] = {
+        **specialist_receipt["payload"],
+        "receipt_id": "specialist-complete",
+        "branch_id": "branch-data",
+        "actor": "data_research",
+        "status": "completed",
+        "metadata": {"role": "data_research"},
+    }
+    projection = _build_projection(replace(source, receipts=(specialist_receipt,)))
+    assert projection.terminal_decision is None
+    assert projection.status == "running"
+    assert projection.available_commands == ("inspect", "interrupt", "cancel")
+
+
 def test_public_state_identity_and_counters_fail_closed() -> None:
     """A stale or malformed runtime snapshot cannot alter the human projection."""
     source = replace(
@@ -264,6 +313,64 @@ def test_public_state_identity_and_counters_fail_closed() -> None:
     )
     with pytest.raises(AgentSessionStorageUnavailable):
         _build_projection(source)
+
+
+def _inspected_source(status: str, *, pending: bool = False) -> AgentSessionSource:
+    """Attach an exact public runtime inspection to the source fixture."""
+    return replace(
+        _source(),
+        public_state={
+            "session_id": "session-1",
+            "session_digest": "a" * 64,
+            "operator_id": "human:jared",
+            "public_state": {
+                "status": status,
+                "next_sequence": 2,
+                "pending_interrupt": (
+                    {
+                        "kind": "operator_input",
+                        "question": "Choose a window.",
+                        "requested_action": "answer",
+                    }
+                    if pending
+                    else None
+                ),
+            },
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    ("status", "pending", "expected"),
+    [
+        ("running", False, ("inspect", "interrupt", "cancel")),
+        ("awaiting_operator", True, ("inspect", "resume", "cancel")),
+        ("completed", False, ("inspect",)),
+        ("blocked", False, ("inspect",)),
+    ],
+)
+def test_public_state_sets_exact_human_command_authority(
+    status: str, pending: bool, expected: tuple[str, ...]
+) -> None:
+    """The Console exposes only commands justified by the inspected checkpoint."""
+    projection = _build_projection(_inspected_source(status, pending=pending))
+    assert projection.available_commands == expected
+
+
+def test_uninspected_or_incompatible_identity_fails_closed() -> None:
+    """A missing inspection limits authority and mismatched canonical identities cannot render."""
+    source = _source()
+    assert _build_projection(source).available_commands == ("inspect",)
+    with pytest.raises(AgentSessionStorageUnavailable, match="row identity"):
+        _build_projection(
+            replace(source, session={**source.session, "session_id": "other"})
+        )
+    receipt = dict(source.receipts[0])
+    receipt["payload"] = {**receipt["payload"], "model_profile_id": "different-model"}
+    with pytest.raises(AgentSessionStorageUnavailable, match="receipt identity"):
+        _build_projection(replace(source, receipts=(receipt,)))
+    with pytest.raises(AgentSessionStorageUnavailable, match="status"):
+        _build_projection(_inspected_source("unknown-state"))
     source = replace(
         source,
         public_state={
@@ -278,12 +385,15 @@ def test_public_state_identity_and_counters_fail_closed() -> None:
 
 
 class _Session:
+    def __init__(self, source: AgentSessionSource | None = None) -> None:
+        self.source = source or _source()
+
     async def require_storage(self) -> None:
         """Storage is available in the service fixture."""
 
     async def get(self, _session_id: str) -> AgentSessionSource:
         """Return the exact synthetic source."""
-        return _source()
+        return self.source
 
     async def create_command(self, session_id, request, *, requested_by):
         """Return one durable command receipt with the bound operator."""
@@ -301,10 +411,13 @@ class _Session:
 
 
 class _Repository:
+    def __init__(self, source: AgentSessionSource | None = None) -> None:
+        self.source = source or _source()
+
     @asynccontextmanager
     async def session(self, *, write: bool = False):
         """Yield a source or command transaction double."""
-        yield _Session()
+        yield _Session(self.source)
 
 
 def test_non_human_and_non_owner_cannot_read_or_command() -> None:
@@ -313,16 +426,22 @@ def test_non_human_and_non_owner_cannot_read_or_command() -> None:
     with pytest.raises(AgentSessionAuthorityError):
         import asyncio
 
-        asyncio.run(service.get("session-1", TraderPrincipal(principal_id="agent:coordinator")))
+        asyncio.run(
+            service.get("session-1", TraderPrincipal(principal_id="agent:coordinator"))
+        )
     with pytest.raises(AgentSessionAuthorityError):
         import asyncio
 
-        asyncio.run(service.get("session-1", TraderPrincipal(principal_id="human:other")))
+        asyncio.run(
+            service.get("session-1", TraderPrincipal(principal_id="human:other"))
+        )
 
 
 def test_human_owner_can_submit_an_interrupt_intent() -> None:
     """An owner command preserves the exact idempotency and authority fields."""
-    service = AgentSessionService(cast(AgentSessionRepository, _Repository()))
+    service = AgentSessionService(
+        cast(AgentSessionRepository, _Repository(_inspected_source("running")))
+    )
     request = AgentSessionCommandRequest(
         command="interrupt",
         idempotency_key="intent-1",
@@ -330,7 +449,78 @@ def test_human_owner_can_submit_an_interrupt_intent() -> None:
     )
     import asyncio
 
-    result = asyncio.run(service.command("session-1", request, TraderPrincipal(principal_id="human:jared")))
+    result = asyncio.run(
+        service.command(
+            "session-1", request, TraderPrincipal(principal_id="human:jared")
+        )
+    )
     assert result.command == "interrupt"
     assert result.requested_by == "human:jared"
     UUID(result.command_id)
+
+
+@pytest.mark.parametrize(
+    ("status", "pending", "command"),
+    [
+        ("running", False, "inspect"),
+        ("running", False, "interrupt"),
+        ("running", False, "cancel"),
+        ("awaiting_operator", True, "resume"),
+        ("awaiting_operator", True, "cancel"),
+        ("completed", False, "inspect"),
+    ],
+)
+def test_owner_lifecycle_commands_follow_inspected_authority(
+    status: str, pending: bool, command: str
+) -> None:
+    """Each admitted command persists a receipt bound to the owning human."""
+    import asyncio
+
+    service = AgentSessionService(
+        cast(
+            AgentSessionRepository,
+            _Repository(_inspected_source(status, pending=pending)),
+        )
+    )
+    request = AgentSessionCommandRequest.model_validate(
+        {
+            "command": command,
+            "idempotency_key": f"intent-{status}-{command}",
+            **(
+                {"approved": False, "operator_answer": "Stop and review."}
+                if command == "resume"
+                else {}
+            ),
+        }
+    )
+    result = asyncio.run(
+        service.command(
+            "session-1", request, TraderPrincipal(principal_id="human:jared")
+        )
+    )
+    assert result.command == command
+    assert result.requested_by == "human:jared"
+
+
+def test_invalid_state_and_uninspected_commands_are_rejected_before_persistence() -> (
+    None
+):
+    """Resume, pause, and cancellation intents fail closed outside their runtime states."""
+    import asyncio
+
+    principal = TraderPrincipal(principal_id="human:jared")
+    for source, command in (
+        (_source(), "interrupt"),
+        (_inspected_source("running"), "resume"),
+        (_inspected_source("awaiting_operator", pending=True), "interrupt"),
+        (_inspected_source("completed"), "cancel"),
+    ):
+        service = AgentSessionService(cast(AgentSessionRepository, _Repository(source)))
+        request = AgentSessionCommandRequest(
+            command=command,
+            idempotency_key=f"invalid-{command}",
+            operator_answer="reviewed" if command == "resume" else None,
+            approved=True if command == "resume" else None,
+        )
+        with pytest.raises(AgentSessionCommandConflict):
+            asyncio.run(service.command("session-1", request, principal))

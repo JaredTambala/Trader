@@ -922,6 +922,8 @@ export interface components {
             agenda_summary?: string | null;
             /** Agent Program Ids */
             agent_program_ids: string[];
+            /** Available Commands */
+            available_commands: ("inspect" | "interrupt" | "resume" | "cancel")[];
             budget_limits: components["schemas"]["AgentSessionBudgetLimits"];
             budget_used: components["schemas"]["AgentSessionBudgetUsage"];
             /** Checkpoint Sequence */

@@ -208,6 +208,7 @@ class AgentSessionProjection(BaseModel):
     pending_interrupt: AgentSessionInterrupt | None = None
     terminal_decision: AgentSessionTerminalDecision | None = None
     checkpoint_sequence: int | None = Field(default=None, ge=1)
+    available_commands: tuple[AgentSessionCommandName, ...]
     command_ids: tuple[str, ...] = ()
 
 

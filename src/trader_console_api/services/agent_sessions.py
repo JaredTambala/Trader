@@ -13,6 +13,7 @@ from ..contracts import (
     AgentSessionBudgetLimits,
     AgentSessionBudgetUsage,
     AgentSessionCommandRecord,
+    AgentSessionCommandName,
     AgentSessionCommandRequest,
     AgentSessionCommandsResponse,
     AgentSessionDelegation,
@@ -53,9 +54,9 @@ def _text(value: object, label: str, *, maximum: int = 4_000) -> str:
     return result
 
 
-def _status(value: object, *, default: AgentSessionStatus = "active") -> AgentSessionStatus:
+def _status(value: object) -> AgentSessionStatus:
     """Map a producer lifecycle value to the closed Console vocabulary."""
-    candidate = str(value or default)
+    candidate = str(value or "")
     allowed = {
         "active",
         "ready",
@@ -69,8 +70,24 @@ def _status(value: object, *, default: AgentSessionStatus = "active") -> AgentSe
         "completed",
     }
     if candidate not in allowed:
-        return default
+        raise AgentSessionStorageUnavailable("agent session status is incompatible")
     return candidate  # type: ignore[return-value]
+
+
+def _available_commands(
+    status: AgentSessionStatus,
+    *,
+    has_runtime_state: bool,
+    pending_interrupt: AgentSessionInterrupt | None,
+) -> tuple[AgentSessionCommandName, ...]:
+    """Expose only lifecycle intents admitted by the inspected public state."""
+    if not has_runtime_state:
+        return ("inspect",)
+    if status == "awaiting_operator" and pending_interrupt is not None:
+        return ("inspect", "resume", "cancel")
+    if status in {"active", "ready", "running", "accepted"} and pending_interrupt is None:
+        return ("inspect", "interrupt", "cancel")
+    return ("inspect",)
 
 
 def _mapping(value: object, label: str) -> Mapping[str, Any]:
@@ -274,11 +291,16 @@ def _public_state_delegations(
 def _build_projection(source: AgentSessionSource) -> AgentSessionProjection:
     """Build one redacted typed projection from canonical producer rows."""
     payload = _mapping(source.session.get("payload"), "payload")
+    if source.session.get("session_id") != payload.get("session_id") or source.session.get("operator_id") != payload.get("operator_id"):
+        raise AgentSessionStorageUnavailable("agent session row identity does not match the payload")
     digest = _text(payload.get("session_digest"), "session_digest", maximum=64)
     if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
         raise AgentSessionStorageUnavailable("agent session digest is incompatible")
     budget = _budget_limits(_mapping(payload.get("budget"), "budget"))
     runtime_state = _public_state(source, payload)
+    program_ids = payload.get("agent_program_ids")
+    if not isinstance(program_ids, (list, tuple)) or not program_ids or any(not isinstance(item, str) or not item for item in program_ids):
+        raise AgentSessionStorageUnavailable("agent session programs are incompatible")
     events: list[AgentSessionEvent] = []
     delegations: list[AgentSessionDelegation] = []
     evidence_refs: list[AgentSessionEvidenceReference] = []
@@ -287,13 +309,19 @@ def _build_projection(source: AgentSessionSource) -> AgentSessionProjection:
     latest_by_branch: dict[str, Mapping[str, Any]] = {}
     for raw_receipt in source.receipts:
         receipt = _mapping(raw_receipt.get("payload"), "receipt payload")
+        if (
+            receipt.get("session_id") != payload.get("session_id")
+            or receipt.get("program_id") not in program_ids
+            or receipt.get("model_profile_id") != payload.get("model_profile_id")
+        ):
+            raise AgentSessionStorageUnavailable("agent receipt identity does not match the session")
         branch_id = _text(receipt.get("branch_id"), "receipt branch_id", maximum=200)
         sequence = int(receipt.get("sequence") or 0)
         if sequence <= 0:
             raise AgentSessionStorageUnavailable("agent receipt sequence is invalid")
         refs = _references(receipt.get("evidence_refs"))
         evidence_refs.extend(ref for ref in refs if ref.uri not in {item.uri for item in evidence_refs})
-        status = _status(receipt.get("status"), default="accepted")
+        status = _status(receipt.get("status"))
         blockers = _blocker_messages(receipt.get("blockers"))
         next_actions = tuple(
             str(item).strip()[:200]
@@ -343,7 +371,7 @@ def _build_projection(source: AgentSessionSource) -> AgentSessionProjection:
                 question=blockers[0],
                 requested_action=next_actions[0] if next_actions else "resume",
             )
-        if status in {"terminal", "cancelled", "blocked", "failed", "completed"}:
+        if status in {"terminal", "cancelled", "blocked", "failed", "completed"} and receipt.get("actor") == "Research Coordinator":
             terminal = AgentSessionTerminalDecision(
                 branch_id=branch_id,
                 sequence=sequence,
@@ -355,7 +383,7 @@ def _build_projection(source: AgentSessionSource) -> AgentSessionProjection:
             )
     latest_events = sorted(events, key=lambda item: (item.branch_id, item.sequence))
     latest_usage = latest_events[-1].budget_used if latest_events else _budget_usage(None)
-    latest_status: AgentSessionStatus = _status(source.session.get("status"), default="active")
+    latest_status: AgentSessionStatus = _status(source.session.get("status"))
     if latest_events:
         statuses = {event.status for event in latest_events}
         if terminal is not None:
@@ -374,7 +402,7 @@ def _build_projection(source: AgentSessionSource) -> AgentSessionProjection:
     pending_from_runtime: AgentSessionInterrupt | None = None
     if runtime_state is not None:
         runtime_status = runtime_state.get("status")
-        latest_status = _status(runtime_status, default=latest_status)
+        latest_status = _status(runtime_status)
         runtime_budget = runtime_state.get("budget_usage")
         if isinstance(runtime_budget, Mapping):
             latest_usage = _budget_usage(
@@ -392,6 +420,7 @@ def _build_projection(source: AgentSessionSource) -> AgentSessionProjection:
         if isinstance(agenda_value, Mapping):
             agenda_summary = agenda_value.get("objective_summary") or agenda_summary
         pending_value = runtime_state.get("pending_interrupt")
+        pending_interrupt = None
         if isinstance(pending_value, Mapping) and pending_value:
             try:
                 pending_from_runtime = AgentSessionInterrupt(
@@ -412,6 +441,9 @@ def _build_projection(source: AgentSessionSource) -> AgentSessionProjection:
             delegations_projection = runtime_delegations
         if pending_from_runtime is not None:
             pending_interrupt = pending_from_runtime
+        if terminal is not None:
+            latest_status = terminal.status
+            pending_interrupt = None
     return AgentSessionProjection(
         session_id=_text(payload.get("session_id"), "session_id", maximum=200),
         session_digest=digest,
@@ -420,7 +452,7 @@ def _build_projection(source: AgentSessionSource) -> AgentSessionProjection:
         success_definition=_text(payload.get("success_definition"), "success_definition", maximum=1200),
         status=latest_status,
         model_profile_id=_text(payload.get("model_profile_id"), "model_profile_id", maximum=200),
-        agent_program_ids=tuple(str(item) for item in (payload.get("agent_program_ids") or ())[:16]),
+        agent_program_ids=tuple(program_ids[:16]),
         tool_catalog_id=_text(payload.get("tool_catalog_id"), "tool_catalog_id", maximum=200),
         scope_summary=_scope_summary(payload.get("scope_envelope")),
         budget_limits=budget,
@@ -432,6 +464,11 @@ def _build_projection(source: AgentSessionSource) -> AgentSessionProjection:
         pending_interrupt=pending_interrupt,
         terminal_decision=terminal,
         checkpoint_sequence=checkpoint_sequence,
+        available_commands=_available_commands(
+            latest_status,
+            has_runtime_state=runtime_state is not None,
+            pending_interrupt=pending_interrupt,
+        ),
         command_ids=tuple(item.command_id for item in source.commands),
     )
 
@@ -464,8 +501,10 @@ class AgentSessionService:
         """Persist one human-owned command intent for runtime consumption."""
         self._require_human(principal)
         projection = await self.get(session_id, principal)
-        if projection.status in {"cancelled", "failed", "terminal", "completed"} and request.command != "inspect":
-            raise AgentSessionCommandConflict("terminal agent sessions accept inspect only")
+        if request.command not in projection.available_commands:
+            raise AgentSessionCommandConflict(
+                f"{request.command} is not available in the inspected agent session state"
+            )
         async with self._repository.session(write=True) as session:
             await session.require_storage()
             return await session.create_command(

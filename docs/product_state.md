@@ -261,11 +261,17 @@ The runtime and specialist contracts are ahead of their product qualification. U
 qualification over the actual Coordinator runtime: exact checkpoint pins are checked before inspection or replay,
 lost terminal responses recover without duplicate terminal events or decision receipts, and concurrent sessions retain
 separate checkpoint and decision lineage. A guarded Postgres test proves terminal inspection and retry across a fresh
-operating-system process. Console intervention, cross-process writer-race qualification, and the failed real-model gate
+operating-system process. Full Console-to-runtime intervention, cross-process writer-race qualification, and the failed real-model gate
 remain open. UJ-07 also remains gated by that model campaign; UJ-08 remains gated by the Experiment Design review, the unresolved long-running MCP/job
 decision, replay identity, and missing independent Evaluation/Robustness paths; UJ-09 remains gated by the Console
 evidence graph and next-decision projection. These gates are recorded in the Product Intent and linked Notion work
 items; no agent journey is treated as controlled merely because deterministic component tests pass.
+
+The Console UJ-04 authority slice now projects a state-specific command set from the exact public runtime inspection
+and enforces it again at the HTTP service. Browser controls show identity and runtime pins, agenda, budgets, blockers,
+recovery checkpoint, and coordinator terminal lineage; mismatched session, model, or program receipts fail closed.
+The retained deterministic verifier joins the Console's terminal identity to the public trajectory fixture. This
+does not close the failed real-model gate or cross-process writer-race qualification.
 
 UJ-07 now has a focused deterministic handoff-lineage check over its concurrent Data and Strategy fixture. The join
 rejects a return from another run, branch, or role; checkpoint reload reconstructs task ownership and recomputes the

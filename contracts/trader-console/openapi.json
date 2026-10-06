@@ -709,6 +709,19 @@
             "title": "Agent Program Ids",
             "type": "array"
           },
+          "available_commands": {
+            "items": {
+              "enum": [
+                "inspect",
+                "interrupt",
+                "resume",
+                "cancel"
+              ],
+              "type": "string"
+            },
+            "title": "Available Commands",
+            "type": "array"
+          },
           "budget_limits": {
             "$ref": "#/components/schemas/AgentSessionBudgetLimits"
           },
@@ -855,7 +868,8 @@
           "agent_program_ids",
           "tool_catalog_id",
           "budget_limits",
-          "budget_used"
+          "budget_used",
+          "available_commands"
         ],
         "title": "AgentSessionProjection",
         "type": "object"

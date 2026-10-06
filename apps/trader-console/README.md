@@ -81,6 +81,11 @@ windows: the chart's inside/slider data zoom works across the loaded window, whi
 make the remaining dataset visible without pretending a large result is complete. Empty ranges, unavailable datasets,
 and unavailable bars are explicit states. There is no polling or shared state framework.
 
+`/agents/{session_id}` renders the API's redacted public session projection: identity and runtime pins, agenda,
+budgets, specialist and blocker progress, recovery checkpoint, and terminal evidence lineage. Its controls use the
+API-provided `available_commands`; a missing inspection or terminal state disables invalid lifecycle actions. The
+API independently enforces the same policy and the agent runtime rechecks state when consuming an intent.
+
 `synthetic_demo` is explicitly labelled **Synthetic demo**; backtest and demo broker bindings show **Not applicable**.
 A paper account with no display label shows **Not specified**, never a fabricated alias or verification claim.
 Database errors retain configured context. If refreshing context fails, retained context is marked as last known.
