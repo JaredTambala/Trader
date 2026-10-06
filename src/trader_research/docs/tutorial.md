@@ -78,6 +78,11 @@ The graph is deliberately append-only. If an assumption, implementation, or sour
 successor artifact. Reusing an identity with different content is an integrity failure, which keeps comparisons
 reproducible.
 
+After reviewing an agent session, the human can record a `NextResearchDecision` with a typed `SessionReviewLink`
+pointing to the retained session graph digest and exact named review revisions. The cited canonical review records
+must carry matching session/revision metadata and a pinned hash. A later refinement appends a new decision revision
+and names its immediate predecessor; reopening the old artifact preserves the original rationale and successor scope.
+
 ## 4. Choose the public context
 
 - Need usable market data? Start with `trader_research.data`.

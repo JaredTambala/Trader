@@ -147,6 +147,24 @@ class NextResearchDecisionSession:
                 raise NextResearchDecisionEvidenceUnavailable(
                     f"review evidence does not belong to run: {reference.artifact_id}"
                 )
+            if decision.session_review is not None:
+                if not ({"source_hash", "payload_sha256"} & set(reference.metadata)):
+                    raise NextResearchDecisionEvidenceUnavailable(
+                        f"session review evidence requires a pinned hash: {reference.artifact_id}"
+                    )
+                prefix = f"{reference.artifact_type}:{reference.artifact_id}:r"
+                revision = next(
+                    int(key.removeprefix(prefix))
+                    for key in decision.session_review.review_node_keys if key.startswith(prefix)
+                )
+                review_metadata = dict(review.get("metadata") or {})
+                if (
+                    review_metadata.get("session_id") != decision.session_review.session_id
+                    or review_metadata.get("revision") != revision
+                ):
+                    raise NextResearchDecisionEvidenceUnavailable(
+                        f"session review evidence identity changed: {reference.artifact_id}"
+                    )
         if decision.next_experiment is not None:
             await self._canonical(decision.next_experiment.data_ref)
             for reference in decision.next_experiment.implementation_refs:

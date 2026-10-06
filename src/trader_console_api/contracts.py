@@ -1100,6 +1100,28 @@ class BoundedNextExperimentContract(BaseModel):
         return self
 
 
+class SessionReviewLinkContract(BaseModel):
+    """Exact retained session graph and review-node revisions cited by a decision."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    session_id: str = Field(min_length=1, max_length=200)
+    session_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    graph_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    review_node_keys: tuple[str, ...] = Field(min_length=1, max_length=32)
+
+    @model_validator(mode="after")
+    def validate_nodes(self) -> SessionReviewLinkContract:
+        """Require unique exact revision keys before crossing the service boundary."""
+        if len(set(self.review_node_keys)) != len(self.review_node_keys):
+            raise ValueError("session review node keys must be unique")
+        for key in self.review_node_keys:
+            kind, separator, revision = key.rpartition(":r")
+            if not separator or ":" not in kind or not revision.isdecimal() or int(revision) < 1:
+                raise ValueError("session review node key must name an exact artifact revision")
+        return self
+
+
 class NextResearchDecisionRequest(BaseModel):
     """Human command for recording one immutable next-decision revision."""
 
@@ -1114,6 +1136,7 @@ class NextResearchDecisionRequest(BaseModel):
     implementation_refs: tuple[NextDecisionArtifactReference, ...] = Field(min_length=1, max_length=16)
     assumptions: dict[str, Any] = Field(default_factory=dict)
     review_refs: tuple[NextDecisionArtifactReference, ...] = Field(min_length=1, max_length=32)
+    session_review: SessionReviewLinkContract | None = None
     limitations: tuple[str, ...] = Field(min_length=1, max_length=32)
     next_experiment: BoundedNextExperimentContract | None = None
     supersedes_artifact_id: str | None = Field(default=None, max_length=200)
@@ -1137,6 +1160,20 @@ class NextResearchDecisionRequest(BaseModel):
             raise ValueError("first decision revision cannot supersede another artifact")
         if self.revision > 1 and not self.supersedes_artifact_id:
             raise ValueError("later decision revisions must supersede the previous artifact")
+        if self.session_review is not None:
+            expected = {f"{ref.artifact_type}:{ref.artifact_id}" for ref in self.review_refs}
+            actual = {key.rpartition(":r")[0] for key in self.session_review.review_node_keys}
+            if actual != expected or len(self.session_review.review_node_keys) != len(self.review_refs):
+                raise ValueError("session review revisions must match review_refs")
+            references = (
+                self.source_run_ref, self.data_ref, *self.implementation_refs, *self.review_refs,
+            )
+            if self.next_experiment is not None:
+                references += (
+                    self.next_experiment.data_ref, *self.next_experiment.implementation_refs,
+                )
+            if any(not ({"source_hash", "payload_sha256"} & set(ref.metadata)) for ref in references):
+                raise ValueError("session review requires pinned hashes for every cited artifact")
         return self
 
 
@@ -1158,6 +1195,7 @@ class NextResearchDecisionRecord(BaseModel):
     implementation_refs: tuple[NextDecisionArtifactReference, ...]
     assumptions: dict[str, Any]
     review_refs: tuple[NextDecisionArtifactReference, ...]
+    session_review: SessionReviewLinkContract | None = None
     limitations: tuple[str, ...]
     next_experiment: BoundedNextExperimentContract | None = None
     supersedes_artifact_id: str | None = None

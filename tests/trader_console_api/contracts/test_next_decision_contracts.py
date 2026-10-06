@@ -28,6 +28,7 @@ def _ref(artifact_id: str, artifact_type: str) -> NextDecisionArtifactReference:
         artifact_type=artifact_type,
         domain_owner="Experiments" if artifact_type in {"backtest_run", "implementation_version"} else "Review",
         uri=f"research://postgres/{artifact_type}/{artifact_id}",
+        metadata={"payload_sha256": "a" * 64},
     )
 
 
@@ -76,3 +77,20 @@ def test_revision_requires_explicit_predecessor() -> None:
         _request(revision=2)
     assert _request(revision=2, supersedes_artifact_id="research_next_decision_old").revision == 2
 
+
+def test_session_decision_requires_exact_named_review_revisions() -> None:
+    """A session-scoped command cannot cite an unrelated or ambiguous graph node."""
+    link = {
+        "session_id": "session-1", "session_digest": "a" * 64,
+        "graph_digest": "b" * 64,
+        "review_node_keys": ["evaluation_report:review-1:r1"],
+    }
+    assert _request(session_review=link).session_review is not None
+    with pytest.raises(ValidationError, match="match review_refs"):
+        _request(session_review={**link, "review_node_keys": ["evaluation_report:other:r1"]})
+    with pytest.raises(ValidationError, match="must be unique"):
+        _request(session_review={**link, "review_node_keys": [link["review_node_keys"][0]] * 2})
+    with pytest.raises(ValidationError, match="exact artifact revision"):
+        _request(session_review={**link, "review_node_keys": ["evaluation_report:review-1"]})
+    with pytest.raises(ValidationError, match="Input should be"):
+        _request(outcome="deploy")

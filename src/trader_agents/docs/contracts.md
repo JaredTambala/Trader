@@ -98,3 +98,13 @@ status. Reader outages propagate rather than becoming false absences. The
 `SessionReviewResolution` projection carries limitations, uncertainty, comparison exclusions,
 statistical and robustness assessment status, and blockers. Its verdict reports
 evidence availability only; it does not approve deployment or assert profit.
+
+The human decision artifact can carry a typed `SessionReviewLink`: exact session
+identity, session digest, retained graph digest, and named review-node revisions.
+The link is part of the immutable decision digest. A session-scoped command must
+pin every cited canonical payload or source hash; the decision writer re-reads
+the review's session and revision before recording it. The retained-graph
+qualification checks the graph digest and named revisions before command
+construction and again from a fresh process after persistence. The Console
+command path does not itself load the local qualification graph file; product
+graph storage and its human review presentation remain later UJ-09 work.

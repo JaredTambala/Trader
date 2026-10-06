@@ -41,6 +41,14 @@ Artifact domain ownership is separate from the tool that produced an artifact, t
 actor that invoked it. Persisted records distinguish `domain_owner`, `producer_tool`, `requested_by`, and `actor`.
 Governance validates those dimensions before a write; one field never silently grants another authority.
 
+The human next-decision artifact optionally carries a typed session-review
+link for UJ-09. Its session identity, retained graph digest, and exact review
+node revisions are part of the immutable artifact identity. A writer resolves
+the cited canonical review records and checks their session, revision, and
+pinned hash before recording; the graph itself remains a separate, public
+agent-session projection. Research does not import the agent runtime to
+perform that check.
+
 ### Deterministic core, effectful shell
 
 Domain normalization, identity, validation, comparison, and decision helpers stay deterministic. Postgres, filesystem,

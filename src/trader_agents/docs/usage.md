@@ -123,6 +123,15 @@ canonical revision returns `stale`; it never replaces the named graph revision.
 Keep complete artifact payloads in the research store. This qualification API
 does not record a human decision.
 
+After resolving the named nodes, a human decision may include
+`SessionReviewLink(session_id, session_digest, graph_digest, review_node_keys)`
+with those exact node keys. The research decision writer and Console adapter
+then pin canonical review hashes and session/revision identity. `reject` has no
+successor; `refine` and `continue` require a bounded next experiment. Reopen
+the immutable decision by artifact ID and compare its graph digest before
+using the retained graph as evidence for another action. Agent identities
+cannot issue the human command.
+
 ## Required services
 
 - Ollama serving the exact admitted `lfm2.5:8b` digest
