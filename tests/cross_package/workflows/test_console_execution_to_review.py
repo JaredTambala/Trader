@@ -12,10 +12,12 @@ warnings, scope identity, comparison eligibility, and a human decision. A
 worker restart or idempotent command replay does not create a second run.
 Non-goals: Funded-live trading, external provider calls, statistical claims,
 and the browser rendering assertions owned by the Console Playwright journey.
-Failure-state coverage: Existing focused worker/API tests cover failed and
-ambiguous outcomes; this qualification covers the real unavailable/schema
-stack through the shared demo workflow and proves standalone comparison is
-explicitly ineligible.
+Failure-state coverage: Focused worker/API tests cover failed and ambiguous
+outcomes; this qualification proves a fresh worker process reconciles an
+expired reserved run without replaying it. The same full journey proves
+standalone comparison is explicitly ineligible.
+Cohesion: The module stays one owned Console execution-to-review workflow;
+its restart assertions reuse the same isolated command store and frozen run.
 """
 
 from __future__ import annotations
@@ -276,6 +278,14 @@ def test_real_execution_survives_replay_and_reaches_review_decision(tmp_path: Pa
                 assert replay.json()["execution_id"] == queued["execution_id"]
                 assert replay.json()["run_id"] == completed["run_id"]
 
+                restarted = _run_worker(config_path, port)
+                assert restarted.returncode == 0, restarted.stderr or restarted.stdout
+                with psycopg.connect(demo_dsn(port)) as connection:
+                    assert connection.execute(
+                        "SELECT count(*) FROM runs WHERE run_id = %s",
+                        [completed["run_id"]],
+                    ).fetchone() == (1,)
+
                 run_id = completed["run_id"]
                 detail_response = client.get(f"/api/runs/{run_id}")
                 assert detail_response.status_code == 200, detail_response.text
@@ -334,3 +344,35 @@ def test_real_execution_survives_replay_and_reaches_review_decision(tmp_path: Pa
                 listed = client.get(f"/api/runs/{run_id}/next-decisions")
                 assert listed.status_code == 200, listed.text
                 assert listed.json()["items"][0]["artifact_id"] == decision["artifact_id"]
+
+                reserved = client.post(
+                    "/api/backtests/executions",
+                    json={
+                        "definition_id": definition["definition_id"],
+                        "idempotency_key": "qualification-expired-reservation",
+                    },
+                )
+                assert reserved.status_code == 202, reserved.text
+                reserved_id = reserved.json()["execution_id"]
+                with psycopg.connect(demo_dsn(port)) as connection:
+                    connection.execute(
+                        "UPDATE console_app.backtest_executions "
+                        "SET status = 'running', attempt = 1, worker_id = 'lost-worker', "
+                        "run_id = 'reserved-without-producer-proof', "
+                        "started_at = transaction_timestamp() - interval '2 minutes', "
+                        "heartbeat_at = transaction_timestamp() - interval '2 minutes', "
+                        "lease_expires_at = transaction_timestamp() - interval '1 minute' "
+                        "WHERE execution_id = %s",
+                        [reserved_id],
+                    )
+                recovered = _run_worker(config_path, port)
+                assert recovered.returncode == 0, recovered.stderr or recovered.stdout
+                status = _wait_for_terminal(client, reserved_id)
+                assert status["status"] == "reconciliation_required"
+                assert status["terminal_error_code"] == "worker_lease_expired"
+                assert status["run_id"] == "reserved-without-producer-proof"
+                with psycopg.connect(demo_dsn(port)) as connection:
+                    assert connection.execute(
+                        "SELECT count(*) FROM runs WHERE run_id = %s",
+                        ["reserved-without-producer-proof"],
+                    ).fetchone() == (0,)

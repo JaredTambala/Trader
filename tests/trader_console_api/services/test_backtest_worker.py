@@ -14,6 +14,8 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+import pytest
+
 from trader_console_api.contracts import BacktestDefinition, BacktestExecutionRecord
 from trader_console_api.data_scope_contracts import BacktestDataScopeHandoff, DataScopeEvidenceStatus, DataScopeSourcePolicy
 from trader_console_api.worker import (
@@ -75,9 +77,14 @@ def _command() -> BacktestExecutionRecord:
 class _Session:
     """Repository session double recording worker transitions."""
 
-    def __init__(self, command: BacktestExecutionRecord) -> None:
+    def __init__(
+        self, command: BacktestExecutionRecord, *,
+        heartbeat_ok: bool = True, finish_ok: bool = True,
+    ) -> None:
         self.command = command
         self.calls: list[str] = []
+        self.heartbeat_ok = heartbeat_ok
+        self.finish_ok = finish_ok
 
     async def claim_next(self, *, worker_id, lease_seconds, max_attempts):
         """Return one claimed command once."""
@@ -97,12 +104,12 @@ class _Session:
     async def heartbeat(self, execution_id, **kwargs):
         """Record coarse progress heartbeat."""
         self.calls.append("heartbeat")
-        return True
+        return self.heartbeat_ok
 
     async def finish(self, execution_id, **kwargs):
         """Record terminal state update."""
         self.calls.append(f"finish:{kwargs['status']}")
-        return True
+        return self.finish_ok
 
 
 class _Repository:
@@ -134,6 +141,37 @@ class _AmbiguousExecutor:
         raise AmbiguousExecutionError("producer connection dropped")
 
 
+class _OutcomeExecutor:
+    """Injected executor returning an explicit producer outcome."""
+
+    def __init__(self, outcome: ExecutionOutcome) -> None:
+        self.outcome = outcome
+
+    async def execute(self, definition, *, run_id, progress):
+        """Return the configured terminal result without synthesizing success."""
+        del definition, run_id, progress
+        return self.outcome
+
+
+class _UnavailableRepository:
+    """Command store that cannot establish a write transaction."""
+
+    @asynccontextmanager
+    async def session(self, *, write: bool = False):
+        """Fail before command claim or producer execution."""
+        del write
+        raise OSError("command store unavailable")
+        yield  # pragma: no cover
+
+
+class _NeverExecutor:
+    """Executor that detects an unsafe call after command-store failure."""
+
+    async def execute(self, definition, *, run_id, progress):
+        """Refuse execution without a durable command claim."""
+        raise AssertionError("producer must not run without a command store")
+
+
 def test_worker_claims_reserves_heartbeats_and_finishes_with_deterministic_run_id() -> None:
     """A successful adapter path records lease progress and one terminal completion."""
     command = _command()
@@ -159,3 +197,56 @@ def test_worker_marks_ambiguous_adapter_outcome_for_reconciliation() -> None:
     asyncio.run(worker.run_once())
 
     assert "finish:reconciliation_required" in session.calls
+
+
+@pytest.mark.parametrize("status", ["partial", "failed"])
+def test_worker_preserves_non_success_producer_outcomes(status: str) -> None:
+    """A partial or failed producer result remains visible as its own terminal state."""
+    session = _Session(_command())
+    worker = BacktestExecutionWorker(
+        _Repository(session),
+        _OutcomeExecutor(
+            ExecutionOutcome(
+                status=status, processed_cycles=2, total_cycles=10,
+                warnings=("bounded replay stopped",), error_code="producer_failure",
+            )
+        ),
+        worker_id="worker-a",
+    )
+
+    assert asyncio.run(worker.run_once()) is True
+    assert f"finish:{status}" in session.calls
+
+
+def test_worker_does_not_report_success_after_losing_progress_lease() -> None:
+    """A lost lease during producer progress requires reconciliation, never completion."""
+    session = _Session(_command(), heartbeat_ok=False)
+    worker = BacktestExecutionWorker(
+        _Repository(session), _Executor(), worker_id="worker-a"
+    )
+
+    asyncio.run(worker.run_once())
+
+    assert "finish:completed" not in session.calls
+    assert "finish:reconciliation_required" in session.calls
+
+
+def test_worker_fails_if_terminal_receipt_cannot_be_persisted() -> None:
+    """A lost lease at finish cannot be reported as a successful worker command."""
+    session = _Session(_command(), finish_ok=False)
+    worker = BacktestExecutionWorker(
+        _Repository(session), _Executor(), worker_id="worker-a"
+    )
+
+    with pytest.raises(AmbiguousExecutionError, match="terminal execution receipt"):
+        asyncio.run(worker.run_once())
+
+
+def test_worker_does_not_run_producer_during_command_store_outage() -> None:
+    """An unavailable command store prevents a claim and leaves execution untouched."""
+    worker = BacktestExecutionWorker(
+        _UnavailableRepository(), _NeverExecutor(), worker_id="worker-a"
+    )
+
+    with pytest.raises(OSError, match="command store unavailable"):
+        asyncio.run(worker.run_once())

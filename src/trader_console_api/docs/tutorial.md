@@ -165,8 +165,9 @@ curl --fail -X POST http://127.0.0.1:8001/api/backtests/executions \
   -d '{"definition_id":"00000000-0000-0000-0000-000000000000","idempotency_key":"local-demo-1"}'
 ```
 
-The command remains `queued` until the local worker tranche is delivered; poll
-`GET /api/backtests/executions/{execution_id}` for the durable record.
+The command remains `queued` until a separately started worker claims it. Poll
+`GET /api/backtests/executions/{execution_id}` for progress and the durable terminal or
+reconciliation-required record.
 
 When the core YAML configuration is available, start the local worker in a separate process:
 
@@ -178,6 +179,8 @@ uv run trader-console-worker
 
 The worker resolves exact catalogue versions and invokes the canonical internal-broker runner through its injected
 adapter. `uv run trader-console-worker --once` is useful for one-command recovery checks.
+After a worker restart, an expired reserved run is marked `reconciliation_required`; inspect its producer evidence
+before any new submission rather than replaying the same command.
 
 ### Complete data-to-backtest journey
 

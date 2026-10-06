@@ -249,6 +249,10 @@ risk, fills, warnings, and explicit comparison state through `console_read`. The
 idempotency key and records a human reject decision against canonical artifacts; the Playwright qualification reads the
 same run through Next.js and completes that decision in the visible review panel. This is a deterministic local paperless
 qualification: focused tests still own failed/ambiguous worker outcomes, and GAP-06-03 owns replay-content identity.
+The Console worker also fails closed when a progress lease or terminal receipt is lost. A runner or durable-result
+failure after execution may have written producer events, so the command requires reconciliation rather than being
+reported as a clean failure. A fresh worker process marks an expired reserved run for reconciliation without replaying
+it; partial and pre-execution failed outcomes remain distinct in focused tests.
 
 The 4 October feature diagnosis adds one feature-acceptance work item for each of UJ-04, UJ-07, UJ-08, and UJ-09. The
 UJ identifiers remain product features; the linked records are delivery work items that implement or qualify those

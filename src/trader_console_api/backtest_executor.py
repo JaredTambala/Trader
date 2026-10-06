@@ -27,7 +27,7 @@ from trader.strategies import Strategy
 from trader_standard.catalogue import Catalogue, maintained_catalogue
 
 from .contracts import BacktestDefinition
-from .worker import ExecutionOutcome, ProgressSink
+from .worker import AmbiguousExecutionError, ExecutionOutcome, ProgressSink
 
 
 @dataclass(frozen=True)
@@ -97,8 +97,13 @@ class BacktestDefinitionExecutor:
             run_id=run_id,
             config_snapshot=_canonical_config_snapshot(definition, self.config),
         )
-        result = await asyncio.to_thread(runner.run, progress_callback=emit_progress)
-        _persist_result_for_durable_store(self.config, run_id=run_id, result=result)
+        try:
+            result = await asyncio.to_thread(runner.run, progress_callback=emit_progress)
+            _persist_result_for_durable_store(self.config, run_id=run_id, result=result)
+        except Exception as exc:
+            raise AmbiguousExecutionError(
+                "The producer run or its durable result could not be reconciled"
+            ) from exc
         status: Literal["partial", "completed"] = (
             "partial" if result.failed_runs else "completed"
         )

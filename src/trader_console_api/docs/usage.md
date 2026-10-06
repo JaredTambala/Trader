@@ -303,9 +303,8 @@ TRADER_CONSOLE_DATABASE_URL="$TRADER_CONSOLE_DATABASE_URL" \
 | `GET /api/backtests/executions?limit=&offset=` | List bounded command history. |
 
 The submit body contains a server-owned `definition_id` and caller-provided `idempotency_key`. A duplicate key in the
-same scope returns the existing command. The current slice records `queued` state only; a separately started worker,
-lease/heartbeat updates, canonical `BacktestRunner` invocation, and terminal reconciliation operate through the
-separate worker process described below.
+same scope returns the existing command. A separately started worker claims it, updates progress and the lease,
+invokes the canonical `BacktestRunner`, and records a terminal or reconciliation-required outcome.
 
 The repository also provides `BacktestExecutionWorker`, which claims one command with a bounded lease, reserves a
 deterministic run ID, accepts progress heartbeats, and records `completed`, `partial`, `failed`, or
@@ -330,6 +329,11 @@ installed explicitly; it does not run DDL at startup. `TRADER_CONSOLE_WORKER_ID`
 `TRADER_CONSOLE_WORKER_LEASE_SECONDS`, `TRADER_CONSOLE_WORKER_MAX_ATTEMPTS`, and
 `TRADER_CONSOLE_WORKER_POLL_SECONDS` are bounded worker settings. An expired lease with a reserved run is marked
 `reconciliation_required`; an unreserved command is requeued until its bounded retry count is exhausted.
+The worker also requires a successful lease renewal and terminal receipt write. If either loses ownership, it exits
+without claiming success; a fresh worker inspection reconciles an expired reserved run instead of replaying it.
+A producer run or durable-result failure after execution starts likewise requires reconciliation, because persisted
+events may already exist. A failure before producer execution can be recorded as `failed`, while a producer result
+with failed cycles remains `partial` and retains its warnings.
 
 ### Complete data-to-backtest qualification
 

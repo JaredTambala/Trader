@@ -254,6 +254,9 @@ explicit installer depends on definition storage, and no worker or producer even
 expired unstarted commands, reserves a deterministic run ID, renews leases through coarse progress callbacks, and
 records terminal or explicit reconciliation-required outcomes. The injected `BacktestExecutor` owns core imports,
 catalogue resolution and internal-broker enforcement; the API process does not construct that adapter.
+Lease-renewal and terminal-write rejection cannot be reported as success. Once the producer may have written events,
+runner or result-persistence failure becomes reconciliation-required rather than an invented clean failure; an expired
+reserved run is never replayed by the next worker process.
 
 The completed execution-to-review path keeps that process boundary explicit. The demo/bootstrap owner installs the
 core event tables, the producer research-artifact projection, the `console_read` contract, and the three Console
@@ -264,9 +267,10 @@ performance, fills, warnings, and provenance from the run and its persisted evid
 and command boundary: it does not run the worker, migrate schemas, or infer missing producer evidence.
 
 The end-to-end qualification uses a disposable Compose database and separate API, worker, and browser processes. It
-replays the same execution idempotency key to prove one durable run, checks the published review after worker
-completion, and records a human next-decision against canonical artifacts. Focused worker tests continue to own failed,
-ambiguous, unavailable, and lease-recovery states; this fixture does not turn a deterministic local run into a live or
+replays the same execution idempotency key and restarts the worker to prove one durable run, checks the published review
+after completion, and records a human next-decision against canonical artifacts. The same database fixture forces an
+expired reserved command and proves a fresh worker marks it reconciliation-required without creating a producer run.
+Focused worker tests own partial, failed, ambiguous, and lost-lease outcomes; this fixture does not turn a deterministic local run into a live or
 profitability claim.
 
 `routers.resources` currently exposes a general resource surface rather than a permanently named experiment/comparison
