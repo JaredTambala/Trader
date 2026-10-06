@@ -29,6 +29,8 @@ The current application provides:
 - a redacted `/api/agent-sessions/{session_id}` workspace for human-owned session evidence and durable
   state-admitted interrupt/resume/cancel/inspect intents, applied by the separately composed
   `trader-agent-session-worker`; and
+- human next-decision commands that can retain exact agent-session graph and review-revision links in an immutable
+  research decision, while checking canonical review session/revision metadata and pinned hashes; and
 - dependency checks keep resource/read paths free of Trader execution, broker, research, MCP, Agent, and MLflow code;
   the paper-command adapter imports only the typed core operator-control boundary and never constructs a broker.
 

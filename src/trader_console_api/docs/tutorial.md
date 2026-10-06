@@ -208,6 +208,9 @@ stale or cross-run artifact is a visible blocker rather than a silently widened 
 After recording, refresh the review page: the latest immutable revision reopens with its operator/time, exact run and
 Data references, limitations, and successor inputs. Revisions are appended through the API and point to their immediate
 predecessor; this panel never starts a backtest, admits paper trading, or implies profitability.
+For an agent-session review, a trusted graph composition supplies the session and graph digest plus the exact named
+review revisions in `session_review`. The API checks those citations against canonical review records and retains the
+link in the decision. The current review panel remains a run review; graph presentation is a separate UJ-09 step.
 
 ### Qualify execution through review
 

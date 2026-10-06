@@ -197,6 +197,11 @@ does not install that schema; the research package owns its explicit schema stat
 catalog shape. Revision lineage is contiguous and append-only, with `supersedes_artifact_id` pointing to the prior
 revision. The read routes return the latest stream revision or an exact revision and never infer a decision from a
 model conclusion. No route starts execution, mutates a broker, admits paper trading, or makes a profitability claim.
+When the caller cites a session review, the typed request carries the retained graph digest and exact review-node
+revisions into the canonical decision identity. The command requires pinned hashes on the whole evidence chain and
+the repository additionally requires matching
+canonical session/revision metadata on each cited review record. It does not read the local graph qualification file;
+the separate graph composition must verify that digest before submitting the command.
 
 ## IAM extension points
 

@@ -39,6 +39,10 @@ The main boundary rules are:
 - model-facing callers receive bounded summaries and references, not hidden reasoning, credentials, arbitrary SQL, or
   unbounded source payloads.
 
+Governance also owns the human next-decision artifact. An agent-session decision may bind a typed retained-graph
+identity and named review revisions; canonical review hashes and session/revision metadata are checked before its
+immutable revision is recorded.
+
 ## Bounded contexts
 
 Each context has one job and a public facade. The facade is the supported import boundary; implementation modules and

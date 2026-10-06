@@ -46,6 +46,19 @@ The normal call sequence is:
 3. Inspect `ok`, `warnings`, and `errors` before following an artifact reference.
 4. Re-read and validate canonical references before using them as input to a mutation or conclusion.
 
+## Human next decision after agent review
+
+For a human next decision after an agent-session review, pass a
+`SessionReviewLink` with the exact session digest, retained graph digest, and
+named review revisions into `build_next_research_decision`. Cite the same
+review records as `review_refs`, with every cited artifact pinned by `payload_sha256` or `source_hash`.
+`create_next_research_decision` checks human authority, canonical session and
+revision metadata, hashes, and append-only lineage before writing. Reopen an
+exact revision with `get_next_research_decision`; the graph link is retained
+inside its immutable digest. A run-only human decision can still omit the
+session link. The linked graph must be verified by its trusted composition;
+research does not read the local agent qualification file.
+
 ## Paper-candidate admission
 
 The governance facade provides a human-owned paper gate. Supply a complete

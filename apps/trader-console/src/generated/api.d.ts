@@ -2362,6 +2362,7 @@ export interface components {
             review_refs: components["schemas"]["NextDecisionArtifactReference"][];
             /** Revision */
             revision: number;
+            session_review?: components["schemas"]["SessionReviewLinkContract"] | null;
             source_run_ref: components["schemas"]["NextDecisionArtifactReference"];
             /** Supersedes Artifact Id */
             supersedes_artifact_id?: string | null;
@@ -2397,6 +2398,7 @@ export interface components {
              * @default 1
              */
             revision: number;
+            session_review?: components["schemas"]["SessionReviewLinkContract"] | null;
             source_run_ref: components["schemas"]["NextDecisionArtifactReference"];
             /** Supersedes Artifact Id */
             supersedes_artifact_id?: string | null;
@@ -3314,6 +3316,20 @@ export interface components {
             /** Items */
             items: components["schemas"]["SavedDataScope"][];
             page: components["schemas"]["DataScopePageInfo"];
+        };
+        /**
+         * SessionReviewLinkContract
+         * @description Exact retained session graph and review-node revisions cited by a decision.
+         */
+        SessionReviewLinkContract: {
+            /** Graph Digest */
+            graph_digest: string;
+            /** Review Node Keys */
+            review_node_keys: string[];
+            /** Session Digest */
+            session_digest: string;
+            /** Session Id */
+            session_id: string;
         };
         /**
          * SignalMarker

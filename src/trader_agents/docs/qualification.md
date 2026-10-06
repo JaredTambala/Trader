@@ -96,3 +96,17 @@ qualification output from the actual retained graph and canonical-store read,
 not a product artifact. Existing Evaluation/Robustness producers do not all
 carry the complete session/branch/scope/strategy attribution required by this
 resolver; they fail closed until a trusted product composition supplies it.
+
+The UJ-09 human-decision campaign records reject and then a bounded refine
+revision against the same exact retained graph and canonical review record.
+It proves actor authority, rationale and successor bounds, changed
+implementation and review revision blockers, idempotent retries, contiguous
+append-only lineage, and a fresh Python process reopening both revisions from
+isolated PostgreSQL. The verifier report names fixture
+`uj09-human-next-decision-v1`, contract `NextResearchDecision/SessionReviewLink`,
+checkout commit, graph digest, and review revision. Run it with
+`TRD326_DECISION_TESTS=1 uv run pytest tests/cross_package/qualification/test_session_review_decision.py -q --basetemp=/tmp/trader-trd326-decision`.
+The retained file appears at
+`/tmp/trader-trd326-decision/test_human_decision_reopens_ex0/uj09-human-next-decision-verifier.json`.
+This qualifies the decision seam; the local graph fixture is not durable
+product graph storage or independent scientific review.

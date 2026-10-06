@@ -73,6 +73,7 @@ _ALLOWED_FIELDS = frozenset(
         "implementation_refs",
         "assumptions",
         "review_refs",
+        "session_review",
         "limitations",
         "next_experiment",
         "supersedes_artifact_id",
@@ -161,6 +162,54 @@ class BoundedNextExperiment:
 
 
 @dataclass(frozen=True)
+class SessionReviewLink:
+    """Exact public graph identity and named revisions reviewed by a human."""
+
+    session_id: str
+    session_digest: str
+    graph_digest: str
+    review_node_keys: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        """Reject ambiguous graph identity or unnamed review revisions."""
+        _required_text(self.session_id, "session_review.session_id")
+        for label, digest in (("session_digest", self.session_digest), ("graph_digest", self.graph_digest)):
+            if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+                raise ValueError(f"session_review.{label} must be lowercase SHA-256")
+        if (
+            not self.review_node_keys or len(self.review_node_keys) > 32
+            or any(not isinstance(key, str) for key in self.review_node_keys)
+            or len(set(self.review_node_keys)) != len(self.review_node_keys)
+        ):
+            raise ValueError("session_review requires unique named review revisions")
+        for key in self.review_node_keys:
+            kind, separator, revision = key.rpartition(":r")
+            if not separator or ":" not in kind or not revision.isdecimal() or int(revision) < 1:
+                raise ValueError("session_review node key must name an exact artifact revision")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the bounded graph link."""
+        return {
+            "session_id": self.session_id,
+            "session_digest": self.session_digest,
+            "graph_digest": self.graph_digest,
+            "review_node_keys": list(self.review_node_keys),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "SessionReviewLink":
+        """Parse one strict graph link."""
+        if set(payload) != {"session_id", "session_digest", "graph_digest", "review_node_keys"}:
+            raise ValueError("session_review has an incompatible shape")
+        return cls(
+            session_id=str(payload["session_id"]),
+            session_digest=str(payload["session_digest"]),
+            graph_digest=str(payload["graph_digest"]),
+            review_node_keys=_text_tuple(payload["review_node_keys"]),
+        )
+
+
+@dataclass(frozen=True)
 class NextResearchDecision:
     """One immutable human decision and its exact review evidence chain."""
 
@@ -176,6 +225,7 @@ class NextResearchDecision:
     assumptions: Mapping[str, Any]
     review_refs: tuple[ArtifactReportRef, ...]
     limitations: tuple[str, ...]
+    session_review: SessionReviewLink | None = None
     next_experiment: BoundedNextExperiment | None = None
     supersedes_artifact_id: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
@@ -206,6 +256,20 @@ class NextResearchDecision:
             raise ValueError("review_refs are required")
         if any(item.artifact_type not in _REVIEW_ARTIFACT_TYPES for item in self.review_refs):
             raise ValueError("review_refs must contain review artifacts")
+        if self.session_review is not None:
+            expected = {f"{ref.artifact_type}:{ref.artifact_id}" for ref in self.review_refs}
+            actual = {key.rpartition(":r")[0] for key in self.session_review.review_node_keys}
+            if actual != expected or len(self.session_review.review_node_keys) != len(self.review_refs):
+                raise ValueError("session_review revisions must match the cited review artifacts")
+            references = (
+                self.source_run_ref, self.data_ref, *self.implementation_refs, *self.review_refs,
+            )
+            if self.next_experiment is not None:
+                references += (
+                    self.next_experiment.data_ref, *self.next_experiment.implementation_refs,
+                )
+            if any(not ({"source_hash", "payload_sha256"} & set(ref.metadata)) for ref in references):
+                raise ValueError("session_review requires pinned hashes for every cited artifact")
         if not self.limitations or any(not str(item or "").strip() for item in self.limitations):
             raise ValueError("limitations are required")
         if len(self.limitations) > 32:
@@ -240,7 +304,7 @@ class NextResearchDecision:
 
     def _identity_payload(self) -> dict[str, Any]:
         """Return fields that determine the immutable revision identity."""
-        return {
+        payload = {
             "decision_id": self.decision_id,
             "revision": self.revision,
             "outcome": self.outcome.value,
@@ -259,6 +323,9 @@ class NextResearchDecision:
             "supersedes_artifact_id": self.supersedes_artifact_id,
             "metadata": jsonable(self.metadata),
         }
+        if self.session_review is not None:
+            payload["session_review"] = self.session_review.to_dict()
+        return payload
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "NextResearchDecision":
@@ -289,6 +356,10 @@ class NextResearchDecision:
             review_refs=tuple(
                 ArtifactReportRef.from_dict(item)
                 for item in _mapping_sequence(payload.get("review_refs"))
+            ),
+            session_review=(
+                SessionReviewLink.from_dict(_mapping(payload["session_review"]))
+                if payload.get("session_review") is not None else None
             ),
             limitations=_text_tuple(payload.get("limitations")),
             next_experiment=(
@@ -323,6 +394,7 @@ def build_next_research_decision(
     assumptions: Mapping[str, Any],
     review_refs: Sequence[ArtifactReportRef],
     limitations: Sequence[str],
+    session_review: SessionReviewLink | None = None,
     next_experiment: BoundedNextExperiment | None = None,
     supersedes_artifact_id: str | None = None,
     metadata: Mapping[str, Any] | None = None,
@@ -341,6 +413,7 @@ def build_next_research_decision(
         assumptions=dict(assumptions),
         review_refs=tuple(review_refs),
         limitations=tuple(limitations),
+        session_review=session_review,
         next_experiment=next_experiment,
         supersedes_artifact_id=supersedes_artifact_id,
         metadata=dict(metadata or {}),
@@ -454,6 +527,8 @@ def _validate_references(store: ResearchArtifactStore, decision: NextResearchDec
         if (record.status or "").lower() in {"missing", "incompatible", "blocked", "failed", "error"}:
             raise ValueError(f"review evidence is not actionable: {reference.artifact_id}")
         _match_ref_metadata(reference, record)
+        if decision.session_review is not None:
+            _validate_session_review_record(decision.session_review, reference, record)
     if decision.next_experiment is not None:
         _resolve_reference(store, decision.next_experiment.data_ref)
         for reference in decision.next_experiment.implementation_refs:
@@ -529,6 +604,16 @@ def _match_ref_metadata(reference: ArtifactReportRef, record: ResearchArtifactRe
     expected_payload_hash = metadata.get("payload_sha256")
     if expected_payload_hash is not None and expected_payload_hash != json_payload_hash(record.payload):
         raise ValueError(f"artifact payload has changed: {reference.artifact_id}")
+
+
+def _validate_session_review_record(
+    link: SessionReviewLink, reference: ArtifactReportRef, record: ResearchArtifactRecord
+) -> None:
+    """Pin an agent review citation to its canonical session and revision."""
+    prefix = f"{reference.artifact_type}:{reference.artifact_id}:r"
+    revision = next(int(key.removeprefix(prefix)) for key in link.review_node_keys if key.startswith(prefix))
+    if record.metadata.get("session_id") != link.session_id or record.metadata.get("revision") != revision:
+        raise ValueError(f"session review evidence identity changed: {reference.artifact_id}")
 
 
 def _require_implementation_refs(refs: Sequence[ArtifactReportRef], label: str) -> None:
@@ -626,6 +711,7 @@ __all__ = [
     "BoundedNextExperiment",
     "NextDecisionOutcome",
     "NextResearchDecision",
+    "SessionReviewLink",
     "RESEARCH_GET_NEXT_DECISION",
     "RESEARCH_RECORD_NEXT_DECISION",
     "build_next_research_decision",

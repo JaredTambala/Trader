@@ -9,6 +9,8 @@ Non-goals: Statistical review judgment, experiment execution, deployment approva
 
 from __future__ import annotations
 
+import pytest
+
 from trader_research.foundation import InMemoryResearchArtifactStore, json_payload_hash, research_artifact_uri
 from trader_research.governance import (
     BACKTEST_RUN,
@@ -17,6 +19,7 @@ from trader_research.governance import (
     STRATEGY_SPECIFICATION,
     BoundedNextExperiment,
     NextDecisionOutcome,
+    SessionReviewLink,
     build_next_research_decision,
     create_next_research_decision,
 )
@@ -192,3 +195,64 @@ def test_revision_appends_without_mutating_the_original() -> None:
     records = store.list_artifacts(artifact_type="research_next_decision")
     assert {record.payload["revision"] for record in records} == {1, 2}
     assert store.load_artifact_record("research_next_decision", first.artifact_id).payload["outcome"] == "reject"
+
+
+def test_session_review_link_pins_the_exact_graph_and_canonical_revision() -> None:
+    """An agent-session decision cites the graph and refuses changed review evidence."""
+    store, refs = _seed()
+    review_payload = store.load_artifact_record(EVALUATION_REPORT, "review-1").payload
+    store.save_artifact(
+        artifact_type=EVALUATION_REPORT, artifact_id="review-1", domain_owner=REVIEW_DOMAIN_OWNER,
+        producer_tool="fixture", payload=review_payload, status="passed",
+        metadata={"session_id": "session-1", "revision": 1},
+    )
+    pinned = ArtifactReportRef(
+        artifact_id=refs["review-1"].artifact_id,
+        artifact_type=refs["review-1"].artifact_type,
+        domain_owner=refs["review-1"].domain_owner,
+        uri=refs["review-1"].uri,
+        metadata={"payload_sha256": json_payload_hash(review_payload)},
+    )
+    link = SessionReviewLink(
+        session_id="session-1", session_digest="a" * 64, graph_digest="b" * 64,
+        review_node_keys=("evaluation_report:review-1:r1",),
+    )
+    decision = _decision(refs, review_refs=(pinned,), session_review=link)
+    assert create_next_research_decision(
+        decision.to_dict(), artifact_store=store, requested_by="human:jared", actor="human:jared"
+    ).ok
+    assert decision.to_dict()["session_review"] == link.to_dict()
+
+    store.save_artifact(
+        artifact_type=EVALUATION_REPORT, artifact_id="review-1", domain_owner=REVIEW_DOMAIN_OWNER,
+        producer_tool="fixture", payload=review_payload, status="passed",
+        metadata={"session_id": "session-1", "revision": 2},
+    )
+    stale = _decision(refs, review_refs=(pinned,), session_review=link, decision_id="decision-2")
+    result = create_next_research_decision(
+        stale.to_dict(), artifact_store=store, requested_by="human:jared", actor="human:jared"
+    )
+    assert not result.ok
+    assert "identity changed" in result.errors[0]["message"]
+
+
+def test_session_review_link_rejects_unpinned_and_mismatched_review_refs() -> None:
+    """Graph references cannot be attached to another review artifact or unpinned evidence."""
+    store, refs = _seed()
+    link = SessionReviewLink(
+        session_id="session-1", session_digest="a" * 64, graph_digest="b" * 64,
+        review_node_keys=("evaluation_report:review-1:r1",),
+    )
+    unpinned = ArtifactReportRef(
+        artifact_id=refs["review-1"].artifact_id,
+        artifact_type=refs["review-1"].artifact_type,
+        domain_owner=refs["review-1"].domain_owner,
+        uri=refs["review-1"].uri,
+    )
+    with pytest.raises(ValueError, match="pinned hashes"):
+        _decision(refs, review_refs=(unpinned,), session_review=link)
+    with pytest.raises(ValueError, match="match the cited review artifacts"):
+        _decision(refs, session_review=SessionReviewLink(
+            session_id="session-1", session_digest="a" * 64, graph_digest="b" * 64,
+            review_node_keys=("evaluation_report:other:r1",),
+        ))

@@ -9,6 +9,7 @@ from trader.runtime.operator_control import is_human_operator_principal
 from trader_research.governance import (
     BoundedNextExperiment,
     NextDecisionOutcome,
+    SessionReviewLink,
     build_next_research_decision,
 )
 from trader_research.governance.handoffs import ArtifactReportRef
@@ -111,6 +112,10 @@ class NextResearchDecisionService:
             implementation_refs=tuple(_artifact_ref(item) for item in request.implementation_refs),
             assumptions=request.assumptions,
             review_refs=tuple(_artifact_ref(item) for item in request.review_refs),
+            session_review=(
+                SessionReviewLink(**request.session_review.model_dump())
+                if request.session_review is not None else None
+            ),
             limitations=request.limitations,
             next_experiment=_experiment(request.next_experiment),
             supersedes_artifact_id=request.supersedes_artifact_id,

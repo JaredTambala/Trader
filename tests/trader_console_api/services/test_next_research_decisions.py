@@ -45,6 +45,7 @@ def _ref(artifact_id: str, artifact_type: str) -> NextDecisionArtifactReference:
         artifact_type=artifact_type,
         domain_owner=_OWNERS[artifact_type],
         uri=f"research://postgres/{artifact_type}/{artifact_id}",
+        metadata={"payload_sha256": "a" * 64},
     )
 
 
@@ -158,3 +159,23 @@ def test_revision_requires_contiguous_predecessor() -> None:
     request = decision_request(revision=2, supersedes_artifact_id="wrong")
     with pytest.raises(NextDecisionRevisionConflict, match="supersede"):
         asyncio.run(service.create("run-1", request, TraderPrincipal(principal_id="human:jared")))
+
+
+def test_session_review_link_is_carried_into_the_canonical_decision() -> None:
+    """The Console service preserves graph identity and named revisions exactly."""
+    repository = _Repository()
+    request = decision_request(session_review={
+        "session_id": "session-1", "session_digest": "a" * 64,
+        "graph_digest": "b" * 64,
+        "review_node_keys": ["evaluation_report:review-1:r1"],
+    })
+    record = asyncio.run(
+        NextResearchDecisionService(repository).create(
+            "run-1", request, TraderPrincipal(principal_id="human:jared")
+        )
+    )
+    assert record.session_review is not None
+    assert record.session_review.graph_digest == "b" * 64
+    assert repository.session_value.created[0].session_review.review_node_keys == (
+        "evaluation_report:review-1:r1",
+    )

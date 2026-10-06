@@ -4241,6 +4241,16 @@
             "title": "Revision",
             "type": "integer"
           },
+          "session_review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionReviewLinkContract"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "source_run_ref": {
             "$ref": "#/components/schemas/NextDecisionArtifactReference"
           },
@@ -4351,6 +4361,16 @@
             "minimum": 1.0,
             "title": "Revision",
             "type": "integer"
+          },
+          "session_review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionReviewLinkContract"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "source_run_ref": {
             "$ref": "#/components/schemas/NextDecisionArtifactReference"
@@ -6653,6 +6673,45 @@
           "page"
         ],
         "title": "SavedDataScopesResponse",
+        "type": "object"
+      },
+      "SessionReviewLinkContract": {
+        "additionalProperties": false,
+        "description": "Exact retained session graph and review-node revisions cited by a decision.",
+        "properties": {
+          "graph_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Graph Digest",
+            "type": "string"
+          },
+          "review_node_keys": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Review Node Keys",
+            "type": "array"
+          },
+          "session_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Session Digest",
+            "type": "string"
+          },
+          "session_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "session_digest",
+          "graph_digest",
+          "review_node_keys"
+        ],
+        "title": "SessionReviewLinkContract",
         "type": "object"
       },
       "SignalMarker": {

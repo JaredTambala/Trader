@@ -19,6 +19,8 @@ This package owns agent programs, model profiles, strict public contracts, role/
 wiring, checkpoint projections, the MCP client/runtime, the sink-neutral observability event contract, tracing, and the
 user-facing session lifecycle. It does not own research artifacts or tools, direct platform access, provider
 credentials, code execution, live trading, or scientific truth.
+Its retained UJ-09 review graph can now be cited by a human next-decision artifact through an exact graph digest and
+named review revisions; an isolated PostgreSQL verifier reopens that decision in a fresh process.
 
 The runtime emits a versioned public event stream to `stderr`. INFO gives an operator-readable narrative of sessions,
 model calls, tool execution, delegations, evidence review, decisions, and terminal outcomes; DEBUG adds schema,

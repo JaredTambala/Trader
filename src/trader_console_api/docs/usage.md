@@ -209,6 +209,10 @@ available review artifact. `POST /api/runs/{run_id}/next-decisions` accepts a st
 with `reject`, `refine`, or `continue`, rationale, exact canonical references for the run/Data/implementation/review
 chain, assumptions, and limitations. `refine` and `continue` additionally require a bounded successor experiment
 with exact Data and implementation references, an evaluation window, a maximum run count, and success criteria.
+For an agent-session review, the command may also carry `session_review` with the exact session ID/digest, retained
+graph digest, and named review-node revisions. Each named node must match one cited review artifact; those references
+and every cited run, Data, implementation, and review reference must pin a canonical payload or source hash. The
+response retains the link inside the immutable decision digest.
 
 The request's `source_run_ref` must identify the route's run. The service resolves every reference from the research
 artifact store, compares pinned payload/source hashes, checks the published run scope, and rejects missing, stale,
@@ -221,6 +225,9 @@ in `research_artifacts` and its query projection in `research_next_decisions`.
 contiguous and later records must name the immediately preceding `supersedes_artifact_id`; the original revision is
 never edited. The response carries operator/time, rationale, exact references, limitations, and any bounded successor.
 These records guide research only and never imply deployment, paper admission, or profitability.
+The API re-reads the canonical review's session and revision for a session-linked command. The retained graph file is
+verified by the qualification composition, not loaded by the Console command; a product graph read/command surface is
+still required for the complete UJ-09 interface.
 
 `review_evidence` is a fixed three-part projection of Evaluation, multiple-testing, and Adversarial/robustness
 artifacts. Each item carries its producer identity, artifact digest, claim scope, data roles, limitations, blockers,

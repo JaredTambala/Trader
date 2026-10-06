@@ -288,8 +288,12 @@ against independently read canonical artifact facts. It distinguishes absent,
 incompatible, stale, redacted, and negative reports and retains uncertainty,
 comparison exclusions, statistical and robustness status, and blockers. The
 current evidence is deterministic, including a retained-graph/canonical-store
-seam test; product Console integration, independent review, and the human
-next-decision qualification remain open.
+seam test. The UJ-09 human next-decision qualification now binds a reject/refine
+revision stream to an exact retained graph digest and named review revisions;
+an isolated PostgreSQL campaign reopens both immutable decisions and the graph
+from a fresh Python process. It rejects agent authority, missing rationale,
+unbounded successor scope, changed implementation hashes, and stale review
+revisions. Product Console graph integration and independent review remain open.
 
 The functional-requirement audit sizes the remaining work relative to its boundary: FR-02 and FR-06 are medium Console
 evidence projections; FR-14 is medium once the evidence chain exists; FR-01, FR-03, FR-04, FR-05, FR-07, and FR-08 through
