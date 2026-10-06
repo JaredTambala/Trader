@@ -62,3 +62,28 @@ join and checkpoint validators. It rejects run/session, task scope/branch, role,
 revision drift; exact duplicate delivery remains idempotent and changed content conflicts. A fresh Python process
 reconstructs both branch identities and verifies retained return digests from public checkpoint state. These checks
 qualify deterministic admission and recovery, not model judgment or a live canonical-store campaign.
+
+The exact-resolution qualification uses a separately supplied canonical reader
+against each named graph revision. It checks session, branch, run, scope,
+strategy version, URI, owner, hash, and revision before exposing assessment
+facts. The retained graph is reopened, then the cross-package test reads a
+canonical research artifact record; replacing revision one with revision two
+returns `stale` rather than silently using the newer report. Missing,
+incompatible, redacted, and negative evidence remain separate, and review
+uncertainty, exclusions, statistical/robustness status, and blockers remain
+visible. This test does not substitute for independent scientific review or a
+real-model qualification gate.
+
+Run the retained exact-resolution verifier with
+`uv run pytest tests/cross_package/qualification/test_session_review_resolution.py -q --basetemp=/tmp/trader-uj09-resolution`.
+
+The test writes
+
+`/tmp/trader-uj09-resolution/test_retained_graph_resolves_e0/uj09-review-resolution-verifier.json`.
+The bounded JSON names fixture `uj09-exact-review-resolution-v1`, the
+`SessionReviewResolution` contract version, the checkout commit, the named
+artifact revision, and the initial and stale-after-replacement verdicts. It is
+qualification output from the actual retained graph and canonical-store read,
+not a product artifact. Existing Evaluation/Robustness producers do not all
+carry the complete session/branch/scope/strategy attribution required by this
+resolver; they fail closed until a trusted product composition supplies it.
