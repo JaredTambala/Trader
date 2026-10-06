@@ -265,6 +265,7 @@ class ResearchCoordinator:
                 ready = compute_ready_set(
                     agenda,
                     completed_task_ids=list(state.get("completed_task_ids", [])),
+                    eligible_dependency_ids=_eligible_task_ids(state),
                     mutation_keys_by_task=mutation_keys,
                     budget=session.budget,
                     usage=ledger.usage,
@@ -345,6 +346,11 @@ class ResearchCoordinator:
                         reason="agenda_tasks_completed",
                     )
                     return {"phase": AgentPhase.REVIEW.value}
+                # A non-ready terminal return blocks its dependants. Give the
+                # Coordinator its retained outcomes to revisit or stop, rather
+                # than silently treating those dependencies as satisfied.
+                if state.get("specialist_returns"):
+                    return {"phase": AgentPhase.REVIEW.value}
                 raise SchedulingError("agenda has pending work but no legal ready task")
 
             running = [
@@ -406,6 +412,8 @@ class ResearchCoordinator:
                     state,
                     delegations=joined_delegations,
                     results=results,
+                    current_attempts=attempts,
+                    programs=self.programs,
                 )
             except ValueError:
                 for result in results:
@@ -517,13 +525,32 @@ class ResearchCoordinator:
                     ),
                 },
             )
-            verified = await self._verify_evidence(
-                session=session,
-                state=state,
-                program_id=coordinator_program.program_id,
-                ledger=ledger,
-                references=evidence_to_review,
-            )
+            try:
+                verified = await self._verify_evidence(
+                    session=session,
+                    state=state,
+                    program_id=coordinator_program.program_id,
+                    ledger=ledger,
+                    references=evidence_to_review,
+                )
+            except (RuntimeError, ValueError, PolicyViolation):
+                decision = _fail_closed_decision(
+                    code="canonical_evidence_unverified",
+                    message=(
+                        "A specialist artifact could not be verified against its "
+                        "canonical identity and revision. Inspect the retained "
+                        "return and authorized read capability."
+                    ),
+                    reviewed_delegation_ids=[
+                        item.delegation_id for item in new_returns
+                    ],
+                )
+                return {
+                    "decision": decision.model_dump(mode="json"),
+                    "budget_usage": ledger.usage.model_dump(mode="json"),
+                    "phase": AgentPhase.REVIEW.value,
+                    "status": "committing_decision",
+                }
             self.event_emitter.emit(
                 name=AgentEventName.EVIDENCE_REVIEW_COMPLETED,
                 correlation=coordinator_correlation,
@@ -593,6 +620,10 @@ class ResearchCoordinator:
                 _validate_coordinator_decision(
                     decision,
                     agenda=agenda,
+                    delegations=[
+                        SpecialistDelegation.model_validate(item)
+                        for item in state.get("delegations", [])
+                    ],
                     new_returns=new_returns,
                     all_returns=returns,
                     verified_refs=verified_references,
@@ -675,6 +706,10 @@ class ResearchCoordinator:
             _validate_coordinator_decision(
                 decision,
                 agenda=agenda,
+                delegations=[
+                    SpecialistDelegation.model_validate(item)
+                    for item in state.get("delegations", [])
+                ],
                 new_returns=new_returns,
                 all_returns=returns,
                 verified_refs=[
@@ -1460,6 +1495,8 @@ def _accept_specialist_returns(
     *,
     delegations: Sequence[SpecialistDelegation],
     results: Sequence[SpecialistReturn],
+    current_attempts: Mapping[str, int],
+    programs: AgentProgramRegistry,
 ) -> tuple[list[SpecialistReturn], dict[str, str]]:
     """Validate isolated returns and reject replay/conflicting identities."""
     if len(delegations) != len(results):
@@ -1476,6 +1513,15 @@ def _accept_specialist_returns(
             raise ValueError("specialist delegation branch does not match task scope")
         if tasks_by_id.get(delegation.task.task_id) != delegation.task:
             raise ValueError("specialist delegation scope does not match agenda")
+        expected_attempt = stable_research_id(
+            "specialist_attempt",
+            {
+                "delegation_id": delegation.delegation_id,
+                "attempt": current_attempts.get(delegation.task.task_id),
+            },
+        )
+        if delegation.attempt_id != expected_attempt:
+            raise ValueError("stale specialist attempt cannot replace newer return")
         if result.delegation_id != delegation.delegation_id:
             raise ValueError("specialist return delegation identity mismatch")
         if result.attempt_id != delegation.attempt_id:
@@ -1486,6 +1532,13 @@ def _accept_specialist_returns(
             raise ValueError("specialist return branch identity mismatch")
         if result.role != delegation.task.role:
             raise ValueError("specialist return role does not match task owner")
+        program = programs.for_role(AgentRole(result.role))
+        if result.program_id != program.program_id:
+            raise ValueError("specialist return program is incompatible")
+        if result.model_profile_id != program.model_profile_id:
+            raise ValueError("specialist return model profile is incompatible")
+        if result.tool_catalog_id != state.get("tool_catalog_id"):
+            raise ValueError("specialist return tool catalogue is incompatible")
         digest = json_payload_hash(result.model_dump(mode="json"))
         existing = digests.get(result.delegation_id)
         if existing is not None and existing != digest:
@@ -1496,10 +1549,43 @@ def _accept_specialist_returns(
     return accepted, digests
 
 
+def _eligible_task_ids(state: Mapping[str, Any]) -> list[str]:
+    """Derive dependency eligibility from each task's current retained return."""
+    return _ready_task_ids(
+        delegations=[
+            SpecialistDelegation.model_validate(payload)
+            for payload in state.get("delegations", [])
+        ],
+        returns=[
+            SpecialistReturn.model_validate(payload)
+            for payload in state.get("specialist_returns", [])
+        ],
+        completed_task_ids=list(state.get("completed_task_ids", [])),
+    )
+
+
+def _ready_task_ids(
+    *,
+    delegations: Sequence[SpecialistDelegation],
+    returns: Sequence[SpecialistReturn],
+    completed_task_ids: Sequence[str],
+) -> list[str]:
+    """Return completed tasks whose newest delegation has a ready result."""
+    latest_by_task = {item.task.task_id: item.delegation_id for item in delegations}
+    by_delegation = {item.delegation_id: item for item in returns}
+    return [
+        task_id
+        for task_id in completed_task_ids
+        if (result := by_delegation.get(latest_by_task.get(task_id, ""))) is not None
+        and result.status is SpecialistStatus.READY
+    ]
+
+
 def _validate_coordinator_decision(
     decision: CoordinatorDecision,
     *,
     agenda: CoordinatorAgenda,
+    delegations: Sequence[SpecialistDelegation],
     new_returns: Sequence[SpecialistReturn],
     all_returns: Sequence[SpecialistReturn],
     verified_refs: Sequence[Mapping[str, Any]],
@@ -1530,17 +1616,21 @@ def _validate_coordinator_decision(
     ):
         raise ValueError("revision, revisit, or fork requires affected tasks")
     if decision.action is CoordinatorAction.CONCLUDE:
-        latest_by_role = {item.role: item for item in all_returns}
-        required_roles = {task.role for task in agenda.tasks}
-        if not required_roles.issubset(latest_by_role):
-            raise ValueError("conclusion requires a return for every agenda role")
-        if any(
-            latest_by_role[role].status is not SpecialistStatus.READY
-            for role in required_roles
-        ):
-            raise ValueError("conclusion requires every agenda role to be ready")
         if set(completed_task_ids) != known_tasks:
             raise ValueError("conclusion requires every agenda task to be completed")
+        if (
+            set(
+                _ready_task_ids(
+                    delegations=delegations,
+                    returns=all_returns,
+                    completed_task_ids=completed_task_ids,
+                )
+            )
+            != known_tasks
+        ):
+            raise ValueError(
+                "conclusion requires every current agenda task to be ready"
+            )
 
 
 def _apply_coordinator_loop_policy(
@@ -1909,7 +1999,9 @@ def _merge_refs(
         for item in group:
             existing = merged.get(item.uri)
             if existing is not None and existing != item:
-                raise ValueError("canonical evidence URI has conflicting revision identity")
+                raise ValueError(
+                    "canonical evidence URI has conflicting revision identity"
+                )
             merged[item.uri] = item
     return list(merged.values())
 

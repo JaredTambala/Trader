@@ -56,6 +56,10 @@ idempotent, while changed content is a conflict. Checkpoint validation reconstru
 digest after recovery. An artifact URI alone does not establish an exact revision: the full canonical reference,
 including its source hash when present, must agree across the specialist observation, return, coordinator reread,
 decision citation, and retained checkpoint. Two references with one URI and different revision identities are rejected.
+Dispatch admission also checks the current task attempt, model profile, and tool catalogue. Retained returns preserve
+negative and partial outcomes as terminal evidence, while the scheduler derives downstream eligibility only from each
+task's latest ready return. A lost branch response can be reconstructed from its validated specialist terminal checkpoint
+and admitted once into the coordinator's public join state; an older attempt or changed revision cannot replace it.
 
 ## Retained public trajectories
 

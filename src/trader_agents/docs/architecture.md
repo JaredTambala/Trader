@@ -123,6 +123,11 @@ A hard join waits for all required specialist results before evidence review. A 
 useful completed result exists while retaining unfinished delegation identity for recovery; it never forgets an
 in-flight mutation.
 
+Completion and dependency eligibility are separate. Every admitted terminal return is retained, but only a task's
+current ready return unlocks its dependants. If a partial, blocked, conditional, or failed return leaves no runnable
+task, the coordinator reviews the retained outcomes and must revise, ask for authority, or stop; it cannot conclude
+from a ready sibling or an older ready attempt.
+
 The single-writer join admits a return only for its recorded session, task-owned branch, role, delegation, and attempt.
 The operational checkpoint retains each accepted return and its content digest; recovery recomputes the digest and
 reconstructs the same ownership links. Evidence merging and coordinator review preserve the full canonical reference,

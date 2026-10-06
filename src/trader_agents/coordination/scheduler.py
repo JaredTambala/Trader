@@ -45,6 +45,7 @@ def compute_ready_set(
     agenda: CoordinatorAgenda,
     *,
     completed_task_ids: Sequence[str],
+    eligible_dependency_ids: Sequence[str],
     active_task_ids: Sequence[str] = (),
     active_mutation_keys: Sequence[str] = (),
     mutation_keys_by_task: Mapping[str, Sequence[str]] | None = None,
@@ -53,13 +54,15 @@ def compute_ready_set(
 ) -> tuple[ScheduledTask, ...]:
     """Compute the legal bounded ready set without performing work.
 
-    Tasks are considered in agenda order. Dependencies are hard joins, active
-    tasks cannot be dispatched twice, and overlapping mutation keys serialize.
+    Tasks are considered in agenda order. A terminal specialist return prevents
+    redispatch, but only a ready return satisfies a downstream dependency.
+    Active tasks cannot be dispatched twice, and overlapping mutation keys serialize.
     Read-only tasks may run concurrently up to the session limit.
 
     Args:
         agenda: Validated visible task DAG.
         completed_task_ids: Tasks with accepted specialist returns.
+        eligible_dependency_ids: Tasks whose latest accepted return is ready.
         active_task_ids: Tasks already dispatched and not yet accepted.
         active_mutation_keys: Mutation resources held by active work.
         mutation_keys_by_task: Exact deterministic resource keys per task.
@@ -75,14 +78,17 @@ def compute_ready_set(
     """
     known = {task.task_id for task in agenda.tasks}
     completed = set(completed_task_ids)
+    eligible = set(eligible_dependency_ids)
     active = set(active_task_ids)
-    unknown = (completed | active) - known
+    unknown = (completed | active | eligible) - known
     if unknown:
         raise SchedulingError(
             "task state contains unknown IDs: " + ", ".join(sorted(unknown))
         )
     if completed & active:
         raise SchedulingError("a task cannot be both active and completed")
+    if not eligible.issubset(completed):
+        raise SchedulingError("eligible dependencies must have completed returns")
     remaining_slots = budget.concurrency_limit - len(active)
     if remaining_slots <= 0:
         return ()
@@ -93,7 +99,7 @@ def compute_ready_set(
     for task in agenda.tasks:
         if task.task_id in completed or task.task_id in active:
             continue
-        if not set(task.dependencies).issubset(completed):
+        if not set(task.dependencies).issubset(eligible):
             continue
         keys = tuple(sorted(set(mutation_map.get(task.task_id, ()))))
         if task.mutation_requested and not keys:

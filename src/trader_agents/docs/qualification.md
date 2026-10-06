@@ -63,6 +63,15 @@ revision drift; exact duplicate delivery remains idempotent and changed content 
 reconstructs both branch identities and verifies retained return digests from public checkpoint state. These checks
 qualify deterministic admission and recovery, not model judgment or a live canonical-store campaign.
 
+The UJ-07 mixed-outcome qualifier retains ready, partial, failed, blocked, and conditional returns while testing the
+task-level dependency gate. A second task owned by the same specialist role cannot hide a non-ready sibling, and a
+later partial attempt removes eligibility from an earlier ready attempt. A fresh Python process reconstructs a lost
+Strategy response from its validated terminal specialist checkpoint, admits it exactly once, and keeps the partial
+branch ineligible. The generated verifier JSON names the fixture, contract digest, checkout commit, evidence source
+hash, and verdict. Run `uv run pytest tests/trader_agents/coordination/test_uj07_mixed_outcomes.py -q --basetemp=/tmp/trader-uj07-mixed`;
+the report is written beneath that test's temporary directory. This deterministic
+fixture does not prove third-party-model choices, Console presentation, or live MCP/Postgres recovery.
+
 The exact-resolution qualification uses a separately supplied canonical reader
 against each named graph revision. It checks session, branch, run, scope,
 strategy version, URI, owner, hash, and revision before exposing assessment

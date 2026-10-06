@@ -21,8 +21,9 @@ from trader_agents import (
     CanonicalEvidenceRef,
     CoordinatorAgenda,
     CoordinatorDecision,
+    PublicIssue,
     ToolObservation,
-    build_agent_checkpoint_state,
+    first_slice_programs,
     validate_agent_checkpoint_state,
 )
 from trader_agents.coordination.coordinator import (
@@ -33,65 +34,38 @@ from trader_agents.coordination.coordinator import (
 )
 from trader_research.foundation import json_payload_hash
 from tests.trader_agents.coordination.support.uj07_specialist_fixture import (
-    SpecialistQualificationFixture,
+    build_joined_checkpoint,
     build_uj07_fixture,
 )
-
-
-def _joined_state(fixture: SpecialistQualificationFixture) -> dict[str, object]:
-    """Construct the same public state shape retained after a hard join."""
-    state: dict[str, object] = dict(
-        build_agent_checkpoint_state(
-            session_id=fixture.session_id,
-            session_digest="a" * 64,
-            branch_id="root",
-            coordinator_program_id="research-coordinator-v6",
-            model_profile_id="qualification-profile",
-            tool_catalog_id="qualification-catalogue",
-        )
-    )
-    state["branch_by_task"] = {
-        branch.delegation.task.task_id: branch.branch_id
-        for branch in fixture.branches
-    }
-    state["agenda"] = CoordinatorAgenda(
-        objective_summary="Review both specialist branches.",
-        tasks=[branch.delegation.task for branch in fixture.branches],
-    ).model_dump(mode="json")
-    state["delegations"] = [
-        branch.delegation.model_dump(mode="json") for branch in fixture.branches
-    ]
-    state["specialist_returns"] = [
-        branch.result.model_dump(mode="json") for branch in fixture.branches
-    ]
-    state["accepted_return_digests"] = {
-        branch.result.delegation_id: json_payload_hash(
-            branch.result.model_dump(mode="json")
-        )
-        for branch in fixture.branches
-    }
-    return state
 
 
 def test_join_rejects_wrong_run_branch_role_and_scope() -> None:
     """An otherwise valid return cannot cross a delegation's ownership boundary."""
     fixture = build_uj07_fixture()
     data, strategy = fixture.branches
-    state = _joined_state(fixture)
+    state = build_joined_checkpoint(fixture)
     state["accepted_return_digests"] = {}
 
     accepted, digests = _accept_specialist_returns(
         state,
         delegations=[data.delegation, strategy.delegation],
         results=[data.result, strategy.result],
+        current_attempts=state["task_attempts"],
+        programs=first_slice_programs(),
     )
     assert len(accepted) == len(digests) == 2
     assert accepted[0].evidence_refs == data.result.evidence_refs
     assert accepted[0].evidence_refs[0].source_hash is not None
 
     for changed, message in (
-        (data.result.model_copy(update={"session_id": "other-run"}), "session identity"),
-        (data.result.model_copy(update={"branch_id": strategy.branch_id}), "branch identity"),
+        (
+            data.result.model_copy(update={"session_id": "other-run"}),
+            "session identity",
+        ),
+        (
+            data.result.model_copy(update={"branch_id": strategy.branch_id}),
+            "branch identity",
+        ),
         (data.result.model_copy(update={"role": strategy.role}), "role does not match"),
     ):
         with pytest.raises(ValueError, match=message):
@@ -99,6 +73,8 @@ def test_join_rejects_wrong_run_branch_role_and_scope() -> None:
                 state,
                 delegations=[data.delegation],
                 results=[changed],
+                current_attempts=state["task_attempts"],
+                programs=first_slice_programs(),
             )
     wrong_scope = {**state, "branch_by_task": {"data": strategy.branch_id}}
     with pytest.raises(ValueError, match="branch does not match task scope"):
@@ -106,6 +82,8 @@ def test_join_rejects_wrong_run_branch_role_and_scope() -> None:
             wrong_scope,
             delegations=[data.delegation],
             results=[data.result],
+            current_attempts=state["task_attempts"],
+            programs=first_slice_programs(),
         )
     changed_task = data.delegation.task.model_copy(
         update={"scope_item_ids": ["unapproved-scope"]}
@@ -115,6 +93,8 @@ def test_join_rejects_wrong_run_branch_role_and_scope() -> None:
             state,
             delegations=[data.delegation.model_copy(update={"task": changed_task})],
             results=[data.result],
+            current_attempts=state["task_attempts"],
+            programs=first_slice_programs(),
         )
     wrong_run = {**state, "session_id": "other-run"}
     with pytest.raises(ValueError, match="belongs to another run"):
@@ -122,6 +102,8 @@ def test_join_rejects_wrong_run_branch_role_and_scope() -> None:
             wrong_run,
             delegations=[data.delegation],
             results=[data.result],
+            current_attempts=state["task_attempts"],
+            programs=first_slice_programs(),
         )
 
 
@@ -129,22 +111,28 @@ def test_duplicate_delivery_is_idempotent_but_changed_revision_conflicts() -> No
     """The same delegation is accepted once; a changed artifact revision is rejected."""
     fixture = build_uj07_fixture()
     data = fixture.branches[0]
-    state = _joined_state(fixture)
+    state = build_joined_checkpoint(fixture)
     accepted, digests = _accept_specialist_returns(
         state,
         delegations=[data.delegation],
         results=[data.result],
+        current_attempts=state["task_attempts"],
+        programs=first_slice_programs(),
     )
     assert accepted == []
     assert digests == state["accepted_return_digests"]
 
-    changed_ref = data.result.evidence_refs[0].model_copy(update={"source_hash": "f" * 64})
+    changed_ref = data.result.evidence_refs[0].model_copy(
+        update={"source_hash": "f" * 64}
+    )
     changed = data.result.model_copy(update={"evidence_refs": [changed_ref]})
     with pytest.raises(ValueError, match="conflicting content"):
         _accept_specialist_returns(
             state,
             delegations=[data.delegation],
             results=[changed],
+            current_attempts=state["task_attempts"],
+            programs=first_slice_programs(),
         )
     with pytest.raises(ValueError, match="conflicting revision identity"):
         _merge_refs(data.result.evidence_refs, changed.evidence_refs)
@@ -168,6 +156,7 @@ def test_coordinator_decision_cannot_cite_a_different_artifact_revision() -> Non
     )
     arguments = {
         "agenda": agenda,
+        "delegations": [branch.delegation for branch in fixture.branches],
         "new_returns": returns,
         "all_returns": returns,
         "completed_task_ids": [task.task_id for task in agenda.tasks],
@@ -203,6 +192,7 @@ def test_canonical_reread_rejects_owner_identity_and_digest_drift() -> None:
         *,
         metadata: dict[str, str | None],
         refs: list[CanonicalEvidenceRef] | None = None,
+        ok: bool = True,
     ) -> ToolObservation:
         return ToolObservation(
             call_id="canonical-read",
@@ -210,9 +200,14 @@ def test_canonical_reread_rejects_owner_identity_and_digest_drift() -> None:
             command="research_read_artifact",
             agent_owner="Research Coordinator",
             side_effect="read_only",
-            ok=True,
+            ok=ok,
             summary={"record": metadata},
             evidence_refs=[reference] if refs is None else refs,
+            errors=(
+                [PublicIssue(code="unauthorized_read", message="Read was denied.")]
+                if not ok
+                else []
+            ),
         )
 
     verified = _verified_canonical_read(reference, observation(metadata=record))
@@ -231,12 +226,16 @@ def test_canonical_reread_rejects_owner_identity_and_digest_drift() -> None:
             reference,
             observation(metadata=record, refs=[changed_ref]),
         )
+    with pytest.raises(RuntimeError, match="verification failed"):
+        _verified_canonical_read(reference, observation(metadata=record, ok=False))
+    with pytest.raises(RuntimeError, match="requested exact ref"):
+        _verified_canonical_read(reference, observation(metadata=record, refs=[]))
 
 
 def test_fresh_process_reconstructs_and_checks_retained_lineage(tmp_path: Path) -> None:
     """A replacement process verifies branch ownership and return digests from public state."""
     fixture = build_uj07_fixture()
-    state = _joined_state(fixture)
+    state = build_joined_checkpoint(fixture)
     validate_agent_checkpoint_state(state)
     script = """
 import json
