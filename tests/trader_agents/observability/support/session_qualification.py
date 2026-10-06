@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Literal
 
@@ -82,7 +83,7 @@ def build_session_qualification_fixture(
     sink = RetainedTrajectorySink(storage_path=storage_path)
     initial = build_agent_checkpoint_state(
         session_id=identity.session_id,
-        session_digest=f"session-digest-{outcome}",
+        session_digest=sha256(identity.session_id.encode("utf-8")).hexdigest(),
         branch_id=identity.root_branch_id,
         coordinator_program_id=QUALIFICATION_PROGRAM_ID,
         model_profile_id=QUALIFICATION_MODEL_PROFILE_ID,
@@ -145,7 +146,10 @@ def build_session_qualification_fixture(
             sequence=5 if include_checkpoint else 4,
             transition_sequence=2,
             timestamp_offset=3 if include_checkpoint else 4,
-            fields={"decision_status": outcome, "decision_receipt_ref": identity.artifact_uri},
+            fields={
+                "decision_status": outcome,
+                "decision_receipt_ref": identity.artifact_uri,
+            },
         )
     )
 

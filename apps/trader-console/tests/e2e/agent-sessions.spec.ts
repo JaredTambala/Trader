@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-const session = {
+const initialSession = {
   session_id: "session-1",
   session_digest: "a".repeat(64),
   operator_id: "human:jared",
@@ -20,7 +20,10 @@ const session = {
   pending_interrupt: null,
   terminal_decision: null,
   checkpoint_sequence: 2,
+  available_commands: ["inspect", "interrupt", "cancel"],
   command_ids: [],
+  hidden_prompt: "PRIVATE MODEL PROMPT MUST NOT RENDER",
+  raw_tool_payload: "PRIVATE TOOL BODY MUST NOT RENDER",
 };
 
 test.beforeEach(() => {
@@ -30,10 +33,30 @@ test.beforeEach(() => {
 test("agent workspace keeps lifecycle commands human-owned and typed", async ({ page }) => {
   test.skip(process.env.CONSOLE_TEST_SCENARIO !== "healthy");
   const requests: Array<{ command: string; approved?: boolean }> = [];
+  const session = structuredClone(initialSession);
   await page.route("**/api/agent-sessions/session-1", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(session) }));
   await page.route("**/api/agent-sessions/session-1/commands", async (route) => {
     const body = route.request().postDataJSON() as { command: string; approved?: boolean };
     requests.push(body);
+    if (body.command === "interrupt") {
+      Object.assign(session, {
+        status: "awaiting_operator",
+        available_commands: ["inspect", "resume", "cancel"],
+        pending_interrupt: { kind: "operator_pause", question: "Review the qualified evidence.", requested_action: "resume or cancel" },
+      });
+    }
+    if (body.command === "resume") {
+      Object.assign(session, {
+        status: "completed",
+        available_commands: ["inspect"],
+        pending_interrupt: null,
+        terminal_decision: {
+          branch_id: "branch-1", sequence: 3, status: "completed", action: "conclude",
+          summary: "Qualified evidence is complete.", blockers: [],
+          evidence_refs: [{ artifact_type: "dataset_manifest", artifact_id: "manifest-1", domain_owner: "Data", uri: "research://postgres/dataset_manifest/manifest-1", source_hash: "b".repeat(64) }],
+        },
+      });
+    }
     await route.fulfill({
       status: 202,
       contentType: "application/json",
@@ -63,14 +86,30 @@ test("agent workspace keeps lifecycle commands human-owned and typed", async ({ 
   await page.goto("/agents/session-1");
   await expect(page.getByRole("heading", { name: "Research workspace" })).toBeVisible();
   await expect(page.getByText("Compare qualified data alternatives.", { exact: true })).toBeVisible();
+  await expect(page.getByText("development-model-v1 · research-catalogue-v1")).toBeVisible();
+  await expect(page.getByText("Review the qualified data alternatives.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Authority and recovery" })).toBeVisible();
+  await expect(page.getByText("PRIVATE MODEL PROMPT MUST NOT RENDER")).toHaveCount(0);
+  await expect(page.getByText("PRIVATE TOOL BODY MUST NOT RENDER")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "resume" })).toBeDisabled();
   await page.getByRole("button", { name: "Pause" }).click();
   await expect(page.getByRole("status")).toContainText("interrupt");
   expect(requests[0]).toMatchObject({ command: "interrupt" });
   expect(requests[0]).not.toHaveProperty("approved");
 
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(page.getByText("Operator input requested: Review the qualified evidence.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Pause" })).toBeDisabled();
+
   await page.getByLabel("Answer to pending interrupt (required for resume)").fill("Decline and review.");
   await page.getByRole("combobox", { name: "Resume decision" }).selectOption("false");
   await page.getByRole("button", { name: "resume" }).click();
-  await expect(page.getByRole("status")).toContainText("resume");
+  await expect(page.getByText("Command resume is")).toContainText("resume");
   expect(requests[1]).toMatchObject({ command: "resume", approved: false });
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(page.getByRole("heading", { name: "Terminal lineage" })).toBeVisible();
+  await expect(page.getByText("research://postgres/dataset_manifest/manifest-1")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Pause" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "cancel" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "inspect" })).toBeEnabled();
 });

@@ -13,6 +13,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+import pytest
+
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
@@ -59,6 +61,7 @@ def _projection() -> AgentSessionProjection:
             mutations=0,
             revisions=0,
         ),
+        available_commands=("inspect", "resume", "cancel"),
     )
 
 
@@ -74,11 +77,9 @@ class _Service:
         """Return one command receipt after observing authority."""
         if principal.principal_id != "human:jared":
             raise AgentSessionAuthorityError("A human operator principal is required")
-        assert (session_id, request.command, principal.principal_id) == (
-            "session-1",
-            "interrupt",
-            "human:jared",
-        )
+        assert session_id == "session-1"
+        assert request.command in {"inspect", "interrupt", "resume", "cancel"}
+        assert principal.principal_id == "human:jared"
         return AgentSessionCommandRecord(
             command_id="00000000-0000-0000-0000-000000000001",
             session_id=session_id,
@@ -168,3 +169,21 @@ def test_agent_identity_is_rejected_and_human_can_inspect_and_interrupt() -> Non
     )
     assert command.status_code == 202
     assert command.json()["requested_by"] == "human:jared"
+
+
+@pytest.mark.parametrize("command", ("inspect", "interrupt", "resume", "cancel"))
+def test_all_lifecycle_routes_require_the_human_owner(command: str) -> None:
+    """Each command transport rejects an agent and records an authorized human intent."""
+    body = {"command": command, "idempotency_key": f"intent-{command}"}
+    if command == "resume":
+        body.update({"approved": False, "operator_answer": "Stop and review."})
+    denied = TestClient(_app(provider=_Provider("agent:coordinator"))).post(
+        "/api/agent-sessions/session-1/commands", json=body
+    )
+    assert denied.status_code == 403
+    admitted = TestClient(_app(provider=_Provider("human:jared"))).post(
+        "/api/agent-sessions/session-1/commands", json=body
+    )
+    assert admitted.status_code == 202
+    assert admitted.json()["command"] == command
+    assert admitted.json()["requested_by"] == "human:jared"
