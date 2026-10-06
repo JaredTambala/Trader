@@ -50,6 +50,13 @@ Checkpoints store validated public values, stable identities, accepted observati
 lifecycle summaries, pending interrupts, terminal results, and cumulative usage. They exclude raw prompts, raw model
 responses, hidden reasoning, credentials, and complete unbounded tool payloads.
 
+At a specialist join, the coordinator checks the retained run/session, task-owned branch, role, delegation, and
+attempt before accepting a return. The accepted return digest is keyed by delegation: identical redelivery is
+idempotent, while changed content is a conflict. Checkpoint validation reconstructs those links and recomputes each
+digest after recovery. An artifact URI alone does not establish an exact revision: the full canonical reference,
+including its source hash when present, must agree across the specialist observation, return, coordinator reread,
+decision citation, and retained checkpoint. Two references with one URI and different revision identities are rejected.
+
 ## Retained public trajectories
 
 `RetainedTrajectorySink` is the qualification retention boundary over the event and checkpoint projections. It accepts

@@ -19,6 +19,7 @@ from trader_agents import (
     BudgetUsage,
     CanonicalEvidenceRef,
     SpecialistConclusion,
+    SpecialistDelegation,
     SpecialistReturn,
     SpecialistStatus,
     build_delegation,
@@ -55,6 +56,7 @@ class SpecialistBranchFixture(BaseModel):
     version: str = Field(min_length=1)
     status: SpecialistStatus
     terminal: Outcome
+    delegation: SpecialistDelegation
     result: SpecialistReturn
 
     @model_validator(mode="after")
@@ -64,6 +66,16 @@ class SpecialistBranchFixture(BaseModel):
             raise ValueError("specialist result session identity mismatch")
         if self.result.branch_id != self.branch_id:
             raise ValueError("specialist result branch identity mismatch")
+        if self.delegation.session_id != self.session_id:
+            raise ValueError("specialist delegation session identity mismatch")
+        if self.delegation.branch_id != self.branch_id:
+            raise ValueError("specialist delegation branch identity mismatch")
+        if self.delegation.task.role != self.role:
+            raise ValueError("specialist delegation role mismatch")
+        if self.result.delegation_id != self.delegation.delegation_id:
+            raise ValueError("specialist result delegation identity mismatch")
+        if self.result.attempt_id != self.delegation.attempt_id:
+            raise ValueError("specialist result attempt identity mismatch")
         if self.result.role != self.role:
             raise ValueError("specialist result role mismatch")
         expected_owner = (
@@ -239,6 +251,7 @@ def _build_branch(
         version=version,
         status=status,
         terminal=_terminal_for_status(status),
+        delegation=delegation,
         result=result,
     )
 

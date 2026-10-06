@@ -216,8 +216,8 @@ def validate_agent_checkpoint_state(state: Mapping[str, Any]) -> None:
         active_ids.add(delegation.delegation_id)
     if len(active_ids) != len(active_delegations):
         raise ValueError("active delegation identities must be unique")
-    for payload in returns:
-        specialist_return = SpecialistReturn.model_validate(payload)
+    parsed_returns = [SpecialistReturn.model_validate(payload) for payload in returns]
+    for specialist_return in parsed_returns:
         _require_session_identity(state, specialist_return.session_id, "return")
     for payload in evidence:
         CanonicalEvidenceRef.model_validate(payload)
@@ -271,6 +271,45 @@ def validate_agent_checkpoint_state(state: Mapping[str, Any]) -> None:
         for key, value in branches.items()
     ):
         raise ValueError("branch_by_task requires non-empty string identities")
+    delegations_by_id = {
+        item.delegation_id: item
+        for item in (
+            SpecialistDelegation.model_validate(payload) for payload in delegations
+        )
+    }
+    if len(delegations_by_id) != len(delegations):
+        raise ValueError("delegation history contains duplicate identities")
+    accepted_digests = _optional_mapping(
+        state.get("accepted_return_digests"), "accepted_return_digests"
+    )
+    if set(accepted_digests) != {item.delegation_id for item in parsed_returns}:
+        raise ValueError("accepted return digests do not match retained returns")
+    if len(parsed_returns) != len(accepted_digests):
+        raise ValueError("retained specialist returns contain duplicate deliveries")
+    if parsed_returns and not agenda:
+        raise ValueError("retained specialist returns require their agenda")
+    agenda_by_task = {
+        task.task_id: task
+        for task in (CoordinatorAgenda.model_validate(agenda).tasks if agenda else [])
+    }
+    for item in parsed_returns:
+        owning_delegation = delegations_by_id.get(item.delegation_id)
+        if owning_delegation is None:
+            raise ValueError("specialist return has no retained delegation")
+        if (
+            item.session_id != owning_delegation.session_id
+            or item.branch_id != owning_delegation.branch_id
+            or item.attempt_id != owning_delegation.attempt_id
+            or item.role != owning_delegation.task.role
+        ):
+            raise ValueError("retained specialist return lineage mismatch")
+        if branches.get(owning_delegation.task.task_id) != owning_delegation.branch_id:
+            raise ValueError("retained specialist branch does not match task scope")
+        if agenda_by_task.get(owning_delegation.task.task_id) != owning_delegation.task:
+            raise ValueError("retained specialist delegation scope does not match agenda")
+        digest = json_payload_hash(item.model_dump(mode="json"))
+        if accepted_digests[item.delegation_id] != digest:
+            raise ValueError("retained specialist return digest mismatch")
 
     issue_count = 0
     for key in ("warnings", "blockers"):
