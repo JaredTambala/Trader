@@ -115,6 +115,14 @@ artifact revisions. The verifier keeps missing and negative evidence visible:
 'complete'
 ```
 
+For an exact review, pass the named `node.key` values and a trusted reader that
+performs `load_artifact_record(type, id)` and normalizes the record's public
+identity and assessment facts to `ResolvedReviewArtifact`. Pass the expected
+scope and strategy version to `resolve_session_review_evidence`. A newer
+canonical revision returns `stale`; it never replaces the named graph revision.
+Keep complete artifact payloads in the research store. This qualification API
+does not record a human decision.
+
 ## Required services
 
 - Ollama serving the exact admitted `lfm2.5:8b` digest

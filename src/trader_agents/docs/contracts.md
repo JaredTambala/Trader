@@ -75,10 +75,22 @@ not replace canonical research artifacts or decision receipts.
 `SessionEvidenceGraph` is the small UJ-09 review projection over retained public
 session evidence and canonical artifact identities. `EvidenceNode` records the
 exact artifact type, ID, immutable revision, URI, claim scope, limitations, and
-one of the explicit `available`, `partial`, `negative`, `missing`, or
-`incompatible` states. `EvidenceEdge` joins those exact revisions without
+one of the explicit `available`, `partial`, `negative`, `missing`,
+`incompatible`, `stale`, or `redacted` states. `EvidenceEdge` joins those exact revisions without
 embedding artifact payloads. `verify_session_evidence_graph` returns a stable
 Console-safe result: missing or incompatible evidence is `blocked`, partial or
 negative evidence is `partial`, and only complete available evidence is
 `complete`. `EvidenceGraphStore` is an atomic JSON qualification fixture for
 fresh-process reopen; it is not canonical research persistence.
+
+`resolve_session_review_evidence` accepts named graph node revisions and an
+injected exact type/ID reader. The reader supplies `ResolvedReviewArtifact`, a
+bounded public projection from the record actually read. Resolution compares
+artifact revision, URI, owner, source hash when pinned, session, branch, run,
+scope, and strategy version. An absent graph node or canonical record is
+`missing`; a different revision at the same ID is `stale`; context drift is
+`incompatible`; a redacted or negative producer finding retains that distinct
+status. Reader outages propagate rather than becoming false absences. The
+`SessionReviewResolution` projection carries limitations, uncertainty, comparison exclusions,
+statistical and robustness assessment status, and blockers. Its verdict reports
+evidence availability only; it does not approve deployment or assert profit.

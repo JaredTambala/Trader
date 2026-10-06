@@ -119,6 +119,13 @@ from .observability.evidence_graph import (
     SessionEvidenceGraph,
     verify_session_evidence_graph,
 )
+from .observability.evidence_resolution import (
+    ResolvedReviewArtifact,
+    ReviewArtifactResolution,
+    ReviewAssessmentStatus,
+    SessionReviewResolution,
+    resolve_session_review_evidence,
+)
 from .observability.projections import (
     project_agent_turn,
     project_budget_usage,
@@ -256,6 +263,11 @@ __all__ = [
     "EvidenceNode",
     "EvidenceStatus",
     "SessionEvidenceGraph",
+    "ResolvedReviewArtifact",
+    "ReviewArtifactResolution",
+    "ReviewAssessmentStatus",
+    "SessionReviewResolution",
+    "resolve_session_review_evidence",
     "RecordingTraceSink",
     "ResearchCoordinator",
     "RoleScopedMcpRuntime",

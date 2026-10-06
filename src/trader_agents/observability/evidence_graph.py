@@ -27,6 +27,8 @@ class EvidenceStatus(StrEnum):
     PARTIAL = "partial"
     MISSING = "missing"
     INCOMPATIBLE = "incompatible"
+    STALE = "stale"
+    REDACTED = "redacted"
     NEGATIVE = "negative"
 
 
@@ -275,7 +277,10 @@ def verify_session_evidence_graph(
     if not graph.nodes:
         blockers.append("no evidence nodes are retained")
         verdict = "blocked"
-    elif statuses & {EvidenceStatus.MISSING, EvidenceStatus.INCOMPATIBLE}:
+    elif statuses & {
+        EvidenceStatus.MISSING, EvidenceStatus.INCOMPATIBLE,
+        EvidenceStatus.STALE, EvidenceStatus.REDACTED,
+    }:
         verdict = "blocked"
     elif statuses & {EvidenceStatus.PARTIAL, EvidenceStatus.NEGATIVE} or blockers:
         verdict = "partial"

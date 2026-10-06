@@ -65,6 +65,8 @@ def test_complete_graph_preserves_exact_revisions_and_stable_console_shape() -> 
         (EvidenceStatus.NEGATIVE, "partial"),
         (EvidenceStatus.MISSING, "blocked"),
         (EvidenceStatus.INCOMPATIBLE, "blocked"),
+        (EvidenceStatus.STALE, "blocked"),
+        (EvidenceStatus.REDACTED, "blocked"),
     ],
 )
 def test_graph_preserves_non_positive_evidence_states(
@@ -83,7 +85,7 @@ def test_graph_preserves_non_positive_evidence_states(
         branch_id=nodes[-1].branch_id,
         claim_scope=nodes[-1].claim_scope,
         limitations=("Producer did not establish the complete claim.",),
-        blockers=("review evidence is unavailable",) if status in {EvidenceStatus.MISSING, EvidenceStatus.INCOMPATIBLE} else (),
+        blockers=("review evidence is unavailable",) if status in {EvidenceStatus.MISSING, EvidenceStatus.INCOMPATIBLE, EvidenceStatus.STALE, EvidenceStatus.REDACTED} else (),
     )
     graph = SessionEvidenceGraph(
         session_id=SESSION_ID,
@@ -98,7 +100,7 @@ def test_graph_preserves_non_positive_evidence_states(
 
     assert result["verdict"] == expected_verdict
     assert result["statuses"][status.value] == 1
-    assert "review evidence is unavailable" in result["blockers"] if status in {EvidenceStatus.MISSING, EvidenceStatus.INCOMPATIBLE} else True
+    assert "review evidence is unavailable" in result["blockers"] if status in {EvidenceStatus.MISSING, EvidenceStatus.INCOMPATIBLE, EvidenceStatus.STALE, EvidenceStatus.REDACTED} else True
 
 
 def test_graph_reopens_in_a_fresh_process_with_identical_verifier_output(tmp_path: Path) -> None:

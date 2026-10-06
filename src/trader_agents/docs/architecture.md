@@ -150,6 +150,12 @@ turn a DEBUG event into INFO or label diagnostic activity as a canonical product
 the state projected by the event—diagnostic activity, recoverable checkpoint state, or an already accepted canonical
 record. The event itself is never product truth.
 
+The UJ-09 evidence-review qualifier consumes an injected reader of canonical
+research records. It compares the record's public identity and revision with
+the retained graph before projecting limitations and assessment status. The
+agent runtime does not open research storage directly; a product-facing
+composition must provide an authorized reader through the documented boundary.
+
 Every event carries session, branch, role, agent-program, model-profile, tool-catalogue, and process identities. Delegation
 and attempt identities occur as a pair; model and MCP stages require a call identity; checkpoint, phase, and committed
 decision events require the accepted transition sequence. Event sequence is strictly increasing within one process.

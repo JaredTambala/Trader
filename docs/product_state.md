@@ -273,6 +273,14 @@ accepted return digests. Canonical artifact verification and coordinator citatio
 matching URI with a changed source hash is not accepted as the same artifact revision. The remaining mixed-outcome,
 Console, and controlled model/MCP/Postgres gates are separate.
 
+The UJ-09 exact-resolution qualification now checks named graph revisions
+against independently read canonical artifact facts. It distinguishes absent,
+incompatible, stale, redacted, and negative reports and retains uncertainty,
+comparison exclusions, statistical and robustness status, and blockers. The
+current evidence is deterministic, including a retained-graph/canonical-store
+seam test; product Console integration, independent review, and the human
+next-decision qualification remain open.
+
 The functional-requirement audit sizes the remaining work relative to its boundary: FR-02 and FR-06 are medium Console
 evidence projections; FR-14 is medium once the evidence chain exists; FR-01, FR-03, FR-04, FR-05, FR-07, and FR-08 through
 FR-13 are large because they cross persistence, authority, Console, agent, runtime, or controlled-qualification seams.
