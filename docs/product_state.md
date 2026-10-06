@@ -12,7 +12,7 @@ dependencies, and delivery progress. Use the repository
 [capability roadmap](../plans/research_capability_roadmap.md) only for its retained architecture, dependency,
 acceptance, and migration context.
 
-Last reviewed: 2026-10-05.
+Last reviewed: 2026-10-06.
 
 ## How To Read Capability State
 
@@ -257,8 +257,12 @@ it; partial and pre-execution failed outcomes remain distinct in focused tests.
 The 4 October feature diagnosis adds one feature-acceptance work item for each of UJ-04, UJ-07, UJ-08, and UJ-09. The
 UJ identifiers remain product features; the linked records are delivery work items that implement or qualify those
 features.
-The runtime and specialist contracts are ahead of their product qualification: UJ-04 and UJ-07 remain gated by the
-failed real-model campaign; UJ-08 remains gated by the Experiment Design review, the unresolved long-running MCP/job
+The runtime and specialist contracts are ahead of their product qualification. UJ-04 now has focused lifecycle
+qualification over the actual Coordinator runtime: exact checkpoint pins are checked before inspection or replay,
+lost terminal responses recover without duplicate terminal events or decision receipts, and concurrent sessions retain
+separate checkpoint and decision lineage. A guarded Postgres test proves terminal inspection and retry across a fresh
+operating-system process. Console intervention, cross-process writer-race qualification, and the failed real-model gate
+remain open. UJ-07 also remains gated by that model campaign; UJ-08 remains gated by the Experiment Design review, the unresolved long-running MCP/job
 decision, replay identity, and missing independent Evaluation/Robustness paths; UJ-09 remains gated by the Console
 evidence graph and next-decision projection. These gates are recorded in the Product Intent and linked Notion work
 items; no agent journey is treated as controlled merely because deterministic component tests pass.
@@ -512,7 +516,7 @@ The current first slice is a real model/tool control loop, not a deterministic s
 | Data Research | Structured model/tool loop in `trader_agents.specialists.data_research`. | Uses only phase-appropriate Data MCP tools; loading must remain in the approved multi-asset envelope. |
 | Strategy Engineering | Catalogue-first structured loop in `trader_agents.specialists.strategy_engineering`. | Reuse requires exact passed admission evidence; authorship uses isolated Coding Workspace MCP and independent admission, never host execution or self-approval. |
 | Evidence join | Structured returns plus exact `research_read_artifact` checks and append-only decision receipts. | A URI alone is insufficient; type, identity, owner, session/actor lineage, and bounded public metadata must agree. |
-| Runtime | `AgenticResearchRuntime.start`, `.resume`, `.cancel`, and `.inspect`, with three isolated MCP stdio clients and a PostgreSQL LangGraph saver. | Checkpoints are operational and redacted; canonical evidence remains in research persistence. Cancellation requires the owning operator and records a canonical terminal receipt. The Console exposes that public session/receipt evidence and records human lifecycle intents without importing agent internals; runtime application remains the authority. |
+| Runtime | `AgenticResearchRuntime.start`, `.inspect`, `.interrupt`, `.resume`, and `.cancel`, with three isolated MCP stdio clients and a PostgreSQL LangGraph saver. | Checkpoints are operational and redacted; exact session and runtime pins are checked before public recovery. Canonical evidence remains in research persistence. Cancellation requires the owning operator and records a canonical terminal receipt. Terminal replay returns the saved result without another terminal event. The Console exposes public session/receipt evidence and records human lifecycle intents without importing agent internals; runtime application remains the authority. |
 
 The runtime may conclude, stop, request operator input, revise a specialist, revisit earlier work, or fork a new
 lineage. Equivalent low-information loops, policy violations, invalid evidence, exhausted budgets, and out-of-scope

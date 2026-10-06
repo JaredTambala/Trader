@@ -8,6 +8,13 @@ Coordinator and specialist threads have deterministic identities derived from se
 attempt. Every state validates the immutable session/program/model/catalogue pins on load. A mismatch stops recovery
 instead of migrating or silently starting again.
 
+The application runtime validates the complete checkpoint shape and the session digest, root branch, Coordinator
+program, model profile, and tool catalogue before it returns an interrupted or terminal result, exposes an inspection,
+or applies a lifecycle command. This includes terminal replay: changing the operator, scope, budget, or other immutable
+session content under an existing session ID fails closed. A retry of `start` after a lost terminal response returns the
+persisted result without emitting a second terminal event or recording a second decision receipt. The checkpoint and
+canonical decision receipt remain the recovery authority; the diagnostic event stream is not a transactional outbox.
+
 The mutation rule is checkpoint-before-effect where possible and reconcile-after-ambiguity where not. Coordinator
 decision application checkpoints the validated decision before append-only receipt mutation. Tool mutations use stable
 operation records in their owning service. A fresh process reads the last public checkpoint and canonical operation

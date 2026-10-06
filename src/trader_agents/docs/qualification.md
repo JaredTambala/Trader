@@ -43,3 +43,16 @@ producer results into a positive claim. Its atomic JSON store is reopened in a
 fresh process by `tests/trader_agents/observability/test_evidence_graph.py`;
 the resulting projection is deterministic for Console rendering and contains
 no prompts, hidden reasoning, or raw tool payloads.
+
+The UJ-04 lifecycle qualification exercises the actual Coordinator runtime with
+two concurrent sessions sharing one checkpointer. It covers the legal creation,
+inspection, operator response, cancellation, and terminal-replay transitions;
+uncreated and foreign-operator commands fail with named checkpoint or authority
+errors. A replacement runtime instance recovers a lost cancellation response
+without another terminal event or canonical receipt. Tampered session content or
+root-branch identity is rejected before inspection or terminal replay. The
+in-process tests use static model and MCP collaborators. A guarded Postgres
+test opens a new operating-system process after a lost cancellation response,
+inspects the exact persisted terminal state, and proves start/cancel retries
+execute no model call, decision write, or terminal event. Neither test claims
+cross-process writer exclusion or promotes the gated model.
