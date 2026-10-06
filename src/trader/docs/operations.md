@@ -26,7 +26,7 @@ For the component-oriented operating manual, start with this package [README](..
 - Run a backtest: `uv run python examples/run_injected_backtest.py`.
 - Operate DB-first research tools through the MCP server; see
   [Research And Agent Operations](../../../docs/workflows/research_operations.md).
-- Run data quality checks: `uv run python run_data_quality.py configs/example.yaml` (set `data_quality.symbols/timeframe`, optionally `data_quality.sessions`).
+- Run data quality checks: `uv run python run_data_quality.py configs/example.yaml` (set `data_quality.symbols/timeframe`, optionally `data_quality.sessions` and per-symbol `max_gap_samples`).
 - Write data quality JSON: `uv run python run_data_quality.py configs/example.yaml --output-json artifacts/data_quality/example.json`.
 - Start Postgres (Docker): `docker compose -f docker-compose.postgres.yml up -d`.
 - Restart Postgres (Docker): `docker compose -f docker-compose.postgres.yml restart`.

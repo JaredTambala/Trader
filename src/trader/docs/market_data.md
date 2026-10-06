@@ -91,7 +91,11 @@ uv run python run_data_quality.py configs/example.yaml --output-json artifacts/d
 ```
 
 The data-quality command returns a structured report and can write JSON with a stable `report_id`, generated
-timestamp, symbols, asset class, timeframe, start/end, per-symbol summaries, gap counts, and maximum gaps. Research
+timestamp, symbols, asset class, timeframe, start/end, per-symbol summaries, gap counts, and maximum gaps. Set
+`data_quality.max_gap_samples` to cap detailed gap records per symbol (default `100`; `0` keeps counts only).
+`gap_samples` records each symbol's `total_count`, `retained_count`, `truncated_count`, `truncated`, and first observed
+`records` in timestamp order. The full missing/expected counts remain in `summaries`, even when details are truncated. The report ID
+includes the sample bound and retained evidence, while generation time remains outside its identity. Research
 runs can attach an existing report with `--data-quality-report` or generate one with `--run-data-quality`.
 Sprint 5 discovery also runs data quality before recommendations and treats missing reports or missing gaps as
 promotion blockers under the conservative profile.
