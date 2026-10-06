@@ -27,6 +27,7 @@ from trader_agents.checkpointing import (
     build_agent_checkpoint_state,
     coordinator_thread_config,
     open_postgres_checkpointer,
+    validate_agent_checkpoint_state,
 )
 from trader_agents.contracts.domain import (
     AgentPhase,
@@ -142,6 +143,7 @@ class AgenticResearchRuntime:
         config = coordinator_thread_config(session.session_id)
         snapshot = await graph.aget_state(config)
         if snapshot.values:
+            self._validate_checkpoint_session(session, snapshot.values)
             self._emit_checkpoint(AgentEventName.CHECKPOINT_RECOVERED, snapshot.values)
             self.event_emitter.emit(
                 name=AgentEventName.SESSION_RESUMED,
@@ -151,7 +153,7 @@ class AgenticResearchRuntime:
             )
             current = _outcome_if_available(session.session_id, snapshot.values)
             if current is not None:
-                return self._emit_outcome(session, current)
+                return current
             output = await graph.ainvoke(None, config)
             self._emit_checkpoint(AgentEventName.CHECKPOINT_SAVED, output)
             return self._emit_outcome(
@@ -212,6 +214,7 @@ class AgenticResearchRuntime:
         snapshot = await graph.aget_state(config)
         if not snapshot.values:
             raise ValueError("research session has no operational checkpoint")
+        self._validate_checkpoint_session(session, snapshot.values)
         self._emit_checkpoint(AgentEventName.CHECKPOINT_RECOVERED, snapshot.values)
         self.event_emitter.emit(
             name=AgentEventName.SESSION_RESUMED,
@@ -221,7 +224,7 @@ class AgenticResearchRuntime:
         )
         current = _outcome_if_available(session.session_id, snapshot.values)
         if isinstance(current, AgenticSliceResult):
-            return self._emit_outcome(session, current)
+            return current
         if not snapshot.interrupts:
             if (
                 "await_operator" in snapshot.next
@@ -287,6 +290,7 @@ class AgenticResearchRuntime:
             snapshot = await graph.aget_state(config)
             if not snapshot.values:
                 raise ValueError("research session has no operational checkpoint")
+            self._validate_checkpoint_session(session, snapshot.values)
             current = _outcome_if_available(session.session_id, snapshot.values)
             if isinstance(current, AgenticSliceResult):
                 raise ValueError("a terminal research session cannot be interrupted")
@@ -371,6 +375,7 @@ class AgenticResearchRuntime:
         snapshot = await graph.aget_state(config)
         if not snapshot.values:
             raise ValueError("research session has no operational checkpoint")
+        self._validate_checkpoint_session(session, snapshot.values)
         current = _outcome_if_available(session.session_id, snapshot.values)
         if isinstance(current, AgenticSliceResult):
             if current.status == "cancelled":
@@ -408,6 +413,7 @@ class AgenticResearchRuntime:
             )
             if not snapshot.values:
                 raise ValueError("research session has no operational checkpoint")
+            self._validate_checkpoint_session(session, snapshot.values)
             public_state = agent_public_state(snapshot.values)
             self.event_emitter.emit(
                 name=AgentEventName.SESSION_INSPECTED,
@@ -429,6 +435,29 @@ class AgenticResearchRuntime:
             agent_programs=self.programs,
             tool_catalogue=self.tool_catalogue,
         )
+
+    def _validate_checkpoint_session(
+        self,
+        session: ResearchSession,
+        state: Mapping[str, Any],
+    ) -> None:
+        """Reject a foreign or drifted checkpoint before projecting or mutating it."""
+        validate_agent_checkpoint_state(state)
+        expected = {
+            "session_id": session.session_id,
+            "session_digest": session.session_digest,
+            "branch_id": _root_branch_id(session.session_id),
+            "coordinator_program_id": self.programs.for_role(
+                AgentRole.RESEARCH_COORDINATOR
+            ).program_id,
+            "model_profile_id": session.model_profile_id,
+            "tool_catalog_id": self.tool_catalogue.catalogue_id,
+        }
+        for name, value in expected.items():
+            if state.get(name) != value:
+                raise ValueError(f"checkpoint {name} does not match research session")
+        if state.get("terminal_result"):
+            _outcome_if_available(session.session_id, state)
 
     def _trace_operation(self, session: ResearchSession, operation: str) -> Any:
         """Return one root span joining a public lifecycle trajectory."""
@@ -816,7 +845,24 @@ def _outcome_if_available(
     """Return a strict public result when state is terminal or interrupted."""
     terminal = state.get("terminal_result")
     if isinstance(terminal, Mapping) and terminal:
-        return AgenticSliceResult.model_validate(terminal)
+        result = AgenticSliceResult.model_validate(terminal)
+        if result.session_id != session_id:
+            raise ValueError("terminal result belongs to another research session")
+        if result.branch_id != state.get("branch_id"):
+            raise ValueError("terminal result belongs to another research branch")
+        receipt = state.get("decision_receipt_ref")
+        if isinstance(receipt, Mapping) and receipt:
+            if result.decision_receipt_ref is None:
+                raise ValueError("terminal result is missing its decision receipt")
+            if result.decision_receipt_ref.uri != receipt.get("uri"):
+                raise ValueError("terminal decision receipt does not match checkpoint")
+        for name, specialist_return in (
+            ("data", result.data_return),
+            ("strategy", result.strategy_return),
+        ):
+            if specialist_return is not None and specialist_return.session_id != session_id:
+                raise ValueError(f"terminal {name} return belongs to another session")
+        return result
     pending = state.get("pending_interrupt")
     if isinstance(pending, Mapping) and pending:
         resume_schema = pending.get("resume_schema")

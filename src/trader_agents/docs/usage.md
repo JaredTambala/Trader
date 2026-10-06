@@ -4,6 +4,7 @@
 
 `runtime_from_environment()` builds the exact configured system. `AgenticResearchRuntime` provides asynchronous
 `start(session)`, `resume(session, response)`, `inspect(session)`, and `cancel(session, cancellation)` methods. The
+runtime also exposes `interrupt(session, interruption)` for an owning-operator pause at a checkpoint boundary. The
 session is an immutable `trader_research.governance.ResearchSession`, normally loaded through its canonical MCP
 reference rather than constructed ad hoc.
 
@@ -23,6 +24,11 @@ The CLI is lifecycle control, not a free-form chat shell. It emits public JSON-s
 prints hidden model reasoning. Final result JSON is written to `stdout`; runtime and child MCP events are written to
 `stderr`. Preserve the same session, operator, model-profile, program, tool-catalogue, and checkpoint identities on
 recovery.
+
+After a lost response, reopen the exact session in a new runtime process and call `inspect` before deciding whether
+to retry. The checkpoint must match the original session content and runtime pins. Retrying `start` against an already
+terminal checkpoint returns the persisted result without a second terminal event; a changed operator, scope, budget,
+or root branch is rejected before public state is returned.
 
 `--log-level INFO` is the default narrative. `--log-level DEBUG` adds model receipt/schema, policy admission,
 scheduling, budgets, and checkpoint saves. Select `--log-format human` for direct reading or `--log-format json` for
