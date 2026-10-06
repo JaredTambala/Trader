@@ -16,9 +16,9 @@ The current application provides:
 - an allowlisted strategy/risk catalogue plus side-effect-free backtest preflight with normalized definitions,
   coverage, warmup, budget, and warning evidence; and
 - explicit Console-owned immutable definition storage with bounded list/get/revision routes (installed separately); and
-- durable execution command records with idempotent submit and bounded status/list reads (worker execution is next); and
+- durable execution command records with idempotent submit and bounded status/list reads; and
 - an injected worker seam with lease claims, deterministic run IDs, heartbeats, terminal outcomes and explicit ambiguity
-  reconciliation (the concrete BacktestRunner adapter remains deployment composition); and
+  reconciliation, composed with the canonical BacktestRunner in the separate worker process; and
 - a `trader-console-worker` entrypoint that binds the explicit core YAML config and polls the local queue; and
 - saved comparison-view definitions bound to one experiment and scope, with live eligibility explanations; and
 - saved data-scope alternative comparisons that retain independent evidence and explicit compatibility exclusions; and

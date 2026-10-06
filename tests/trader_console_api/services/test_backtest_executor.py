@@ -14,9 +14,12 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any, cast
 
+import pytest
+
 from trader_console_api.backtest_executor import BacktestDefinitionExecutor, _core_assumptions
 from trader_console_api.contracts import BacktestDefinition
 from trader_console_api.data_scope_contracts import BacktestDataScopeHandoff, DataScopeEvidenceStatus, DataScopeSourcePolicy
+from trader_console_api.worker import AmbiguousExecutionError
 from trader_standard.catalogue import maintained_catalogue
 from tests.trader_console_api.support import implementation_lineage
 
@@ -135,3 +138,31 @@ def test_adapter_persists_typed_result_for_postgres_only(monkeypatch) -> None:
     asyncio.run(executor.execute(_definition(), run_id="run-pg", progress=progress))
 
     assert persisted == [("run-pg", result, config)]
+
+
+def test_adapter_marks_result_persistence_failure_for_reconciliation(monkeypatch) -> None:
+    """A produced run without a durable result cannot become a failed or completed command."""
+    class _Runner:
+        def __init__(self, **kwargs):
+            del kwargs
+
+        def run(self, *, progress_callback):
+            del progress_callback
+            return SimpleNamespace(total_runs=1, failed_runs=0, warnings=())
+
+    def unavailable_result(*_args: object) -> None:
+        raise OSError("result store unavailable")
+
+    monkeypatch.setattr("trader_console_api.backtest_executor.BacktestRunner", _Runner)
+    monkeypatch.setattr(
+        "trader_console_api.backtest_executor.persist_backtest_result", unavailable_result
+    )
+    executor = BacktestDefinitionExecutor(
+        config=SimpleNamespace(event_store="postgres"), catalogue=maintained_catalogue()
+    )  # type: ignore[arg-type]
+
+    async def progress(processed, total, last_ts):
+        del processed, total, last_ts
+
+    with pytest.raises(AmbiguousExecutionError, match="could not be reconciled"):
+        asyncio.run(executor.execute(_definition(), run_id="run-pg", progress=progress))

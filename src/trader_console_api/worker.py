@@ -124,7 +124,7 @@ class BacktestExecutionWorker:
         ) -> None:
             """Persist coarse progress while the worker lease remains valid."""
             async with self._repository.session(write=True) as progress_session:
-                await progress_session.heartbeat(
+                renewed = await progress_session.heartbeat(
                     UUID(command.execution_id),
                     worker_id=self._worker_id,
                     processed_cycles=processed_cycles,
@@ -132,6 +132,10 @@ class BacktestExecutionWorker:
                     last_decision_at=last_decision_at,
                     lease_seconds=self._lease_seconds,
                 )
+                if not renewed:
+                    raise AmbiguousExecutionError(
+                        "The worker lost its lease while producer execution was active"
+                    )
 
         try:
             outcome = await self._executor.execute(
@@ -157,7 +161,7 @@ class BacktestExecutionWorker:
             )
 
         async with self._repository.session(write=True) as session:
-            await session.finish(
+            finished = await session.finish(
                 UUID(command.execution_id),
                 worker_id=self._worker_id,
                 status=outcome.status,
@@ -168,6 +172,10 @@ class BacktestExecutionWorker:
                 error_code=outcome.error_code,
                 error_message=outcome.error_message,
             )
+            if not finished:
+                raise AmbiguousExecutionError(
+                    "The worker could not retain its terminal execution receipt"
+                )
         return True
 
 
