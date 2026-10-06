@@ -267,6 +267,12 @@ decision, replay identity, and missing independent Evaluation/Robustness paths; 
 evidence graph and next-decision projection. These gates are recorded in the Product Intent and linked Notion work
 items; no agent journey is treated as controlled merely because deterministic component tests pass.
 
+UJ-07 now has a focused deterministic handoff-lineage check over its concurrent Data and Strategy fixture. The join
+rejects a return from another run, branch, or role; checkpoint reload reconstructs task ownership and recomputes the
+accepted return digests. Canonical artifact verification and coordinator citations compare full references, so a
+matching URI with a changed source hash is not accepted as the same artifact revision. The remaining mixed-outcome,
+Console, and controlled model/MCP/Postgres gates are separate.
+
 The functional-requirement audit sizes the remaining work relative to its boundary: FR-02 and FR-06 are medium Console
 evidence projections; FR-14 is medium once the evidence chain exists; FR-01, FR-03, FR-04, FR-05, FR-07, and FR-08 through
 FR-13 are large because they cross persistence, authority, Console, agent, runtime, or controlled-qualification seams.

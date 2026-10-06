@@ -123,6 +123,11 @@ A hard join waits for all required specialist results before evidence review. A 
 useful completed result exists while retaining unfinished delegation identity for recovery; it never forgets an
 in-flight mutation.
 
+The single-writer join admits a return only for its recorded session, task-owned branch, role, delegation, and attempt.
+The operational checkpoint retains each accepted return and its content digest; recovery recomputes the digest and
+reconstructs the same ownership links. Evidence merging and coordinator review preserve the full canonical reference,
+including the source hash where present, so one URI cannot silently stand for two artifact revisions.
+
 Coordinator decisions, approval interrupts, canonical decision receipt mutation, and evidence-dependent stages remain
 serialized. Concurrency is an execution optimization, not permission to weaken artifact ownership or review every
 selected return.

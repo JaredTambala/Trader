@@ -56,3 +56,9 @@ test opens a new operating-system process after a lost cancellation response,
 inspects the exact persisted terminal state, and proves start/cancel retries
 execute no model call, decision write, or terminal event. Neither test claims
 cross-process writer exclusion or promotes the gated model.
+
+The UJ-07 handoff-lineage qualification uses the public two-specialist fixture to exercise the coordinator's actual
+join and checkpoint validators. It rejects run/session, task scope/branch, role, delegation, attempt, and artifact
+revision drift; exact duplicate delivery remains idempotent and changed content conflicts. A fresh Python process
+reconstructs both branch identities and verifies retained return digests from public checkpoint state. These checks
+qualify deterministic admission and recovery, not model judgment or a live canonical-store campaign.

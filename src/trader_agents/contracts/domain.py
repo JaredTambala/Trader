@@ -766,9 +766,12 @@ def build_specialist_return(
     Raises:
         ValueError: If the conclusion cites evidence it never observed.
     """
-    available_by_uri = {
-        reference.uri: reference for reference in available_evidence_refs
-    }
+    available_by_uri: dict[str, CanonicalEvidenceRef] = {}
+    for reference in available_evidence_refs:
+        existing = available_by_uri.get(reference.uri)
+        if existing is not None and existing != reference:
+            raise ValueError("observed evidence URI has conflicting revision identity")
+        available_by_uri[reference.uri] = reference
     cited_uris = {reference.uri for reference in conclusion.evidence_refs}
     unavailable = cited_uris - set(available_by_uri)
     if unavailable:
@@ -776,6 +779,9 @@ def build_specialist_return(
             "specialist conclusion cites unavailable evidence: "
             + ", ".join(sorted(unavailable))
         )
+    for reference in conclusion.evidence_refs:
+        if available_by_uri[reference.uri] != reference:
+            raise ValueError("specialist conclusion evidence revision mismatch")
     trusted_evidence = [
         available_by_uri[reference.uri] for reference in conclusion.evidence_refs
     ]

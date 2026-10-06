@@ -44,6 +44,7 @@ from trader_agents.contracts.domain import (
     SpecialistReturn,
     SpecialistStatus,
     ToolCallProposal,
+    ToolObservation,
     build_delegation,
 )
 from trader_agents.specialists.data_research import DataResearchAgent
@@ -949,31 +950,7 @@ class ResearchCoordinator:
                     tool_catalog_id=self.tool_catalogue.catalogue_id,
                 ),
             )
-            if not result.observation.ok:
-                raise RuntimeError(
-                    f"canonical evidence verification failed: {reference.uri}"
-                )
-            returned = {item.uri: item for item in result.observation.evidence_refs}
-            if reference.uri not in returned:
-                raise RuntimeError(
-                    "canonical read did not return the requested exact ref"
-                )
-            record = result.observation.summary.get("record")
-            if not isinstance(record, Mapping):
-                raise RuntimeError("canonical read returned no bounded record metadata")
-            if record.get("domain_owner") != reference.domain_owner:
-                raise RuntimeError(
-                    "canonical evidence owner does not match specialist ref"
-                )
-            verified.append(
-                {
-                    "reference": reference.model_dump(mode="json"),
-                    "status": record.get("status"),
-                    "producer_tool": record.get("producer_tool"),
-                    "payload_hash": record.get("payload_hash"),
-                    "source_hash": record.get("source_hash"),
-                }
-            )
+            verified.append(_verified_canonical_read(reference, result.observation))
         return verified
 
     async def _record_decision(
@@ -1442,6 +1419,42 @@ def _mutation_keys_for_task(
     return (f"candidate-branch:{branch_id}",)
 
 
+def _verified_canonical_read(
+    reference: CanonicalEvidenceRef,
+    observation: ToolObservation,
+) -> dict[str, Any]:
+    """Match a coordinator reread to the specialist's exact artifact revision."""
+    if not observation.ok:
+        raise RuntimeError(f"canonical evidence verification failed: {reference.uri}")
+    returned = {item.uri: item for item in observation.evidence_refs}
+    if reference.uri not in returned:
+        raise RuntimeError("canonical read did not return the requested exact ref")
+    if returned[reference.uri] != reference:
+        raise RuntimeError("canonical evidence revision does not match specialist ref")
+    record = observation.summary.get("record")
+    if not isinstance(record, Mapping):
+        raise RuntimeError("canonical read returned no bounded record metadata")
+    if (
+        record.get("artifact_type") != reference.artifact_type
+        or record.get("artifact_id") != reference.artifact_id
+    ):
+        raise RuntimeError("canonical evidence identity does not match specialist ref")
+    if record.get("domain_owner") != reference.domain_owner:
+        raise RuntimeError("canonical evidence owner does not match specialist ref")
+    if (
+        reference.source_hash is not None
+        and record.get("source_hash") != reference.source_hash
+    ):
+        raise RuntimeError("canonical evidence digest does not match specialist ref")
+    return {
+        "reference": reference.model_dump(mode="json"),
+        "status": record.get("status"),
+        "producer_tool": record.get("producer_tool"),
+        "payload_hash": record.get("payload_hash"),
+        "source_hash": record.get("source_hash"),
+    }
+
+
 def _accept_specialist_returns(
     state: Mapping[str, Any],
     *,
@@ -1451,15 +1464,28 @@ def _accept_specialist_returns(
     """Validate isolated returns and reject replay/conflicting identities."""
     if len(delegations) != len(results):
         raise ValueError("specialist result cardinality does not match dispatch")
+    agenda = CoordinatorAgenda.model_validate(state.get("agenda", {}))
+    tasks_by_id = {task.task_id: task for task in agenda.tasks}
     digests = dict(state.get("accepted_return_digests", {}))
     accepted = []
     for delegation, result in zip(delegations, results, strict=True):
+        if delegation.session_id != state.get("session_id"):
+            raise ValueError("specialist delegation belongs to another run")
+        branch_by_task = state.get("branch_by_task", {})
+        if branch_by_task.get(delegation.task.task_id) != delegation.branch_id:
+            raise ValueError("specialist delegation branch does not match task scope")
+        if tasks_by_id.get(delegation.task.task_id) != delegation.task:
+            raise ValueError("specialist delegation scope does not match agenda")
         if result.delegation_id != delegation.delegation_id:
             raise ValueError("specialist return delegation identity mismatch")
         if result.attempt_id != delegation.attempt_id:
             raise ValueError("specialist return attempt identity mismatch")
         if result.session_id != delegation.session_id:
             raise ValueError("specialist return session identity mismatch")
+        if result.branch_id != delegation.branch_id:
+            raise ValueError("specialist return branch identity mismatch")
+        if result.role != delegation.task.role:
+            raise ValueError("specialist return role does not match task owner")
         digest = json_payload_hash(result.model_dump(mode="json"))
         existing = digests.get(result.delegation_id)
         if existing is not None and existing != digest:
@@ -1483,9 +1509,10 @@ def _validate_coordinator_decision(
     expected_reviewed = {item.delegation_id for item in new_returns}
     if set(decision.reviewed_delegation_ids) != expected_reviewed:
         raise ValueError("coordinator must review every newly joined specialist return")
-    verified_uris = {str(item.get("uri") or "") for item in verified_refs}
-    cited_uris = {item.uri for item in decision.cited_evidence_refs}
-    if not cited_uris.issubset(verified_uris):
+    verified_identities = {
+        CanonicalEvidenceRef.model_validate(item) for item in verified_refs
+    }
+    if not set(decision.cited_evidence_refs).issubset(verified_identities):
         raise ValueError(
             "coordinator cited evidence that was not independently verified"
         )
@@ -1877,10 +1904,13 @@ def _merge_refs(
     *groups: Sequence[CanonicalEvidenceRef],
 ) -> list[CanonicalEvidenceRef]:
     """Merge exact refs in first-seen order by canonical URI."""
-    merged: dict[str, CanonicalEvidenceRef] = {item.uri: item for item in first}
-    for group in groups:
+    merged: dict[str, CanonicalEvidenceRef] = {}
+    for group in (first, *groups):
         for item in group:
-            merged.setdefault(item.uri, item)
+            existing = merged.get(item.uri)
+            if existing is not None and existing != item:
+                raise ValueError("canonical evidence URI has conflicting revision identity")
+            merged[item.uri] = item
     return list(merged.values())
 
 
