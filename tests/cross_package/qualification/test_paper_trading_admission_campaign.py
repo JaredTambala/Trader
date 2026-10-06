@@ -17,7 +17,7 @@ paper qualification verdict without joining unrelated test modules.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
 import json
 from pathlib import Path
 from typing import Literal, Mapping, Sequence
@@ -70,6 +70,17 @@ _REQUIRED_SCENARIOS = (
     "reconciliation",
     "operator_intervention",
 )
+
+
+class _CampaignDateTime(datetime):
+    """Pin cycle freshness checks to the retained campaign decision time."""
+
+    @classmethod
+    def now(cls, tz: tzinfo | None = None) -> _CampaignDateTime:
+        """Return the campaign clock in the timezone requested by the cycle."""
+        if tz is None:
+            return cls.fromtimestamp(_QUALIFICATION_NOW.timestamp(), timezone.utc).replace(tzinfo=None)
+        return cls.fromtimestamp(_QUALIFICATION_NOW.timestamp(), tz)
 
 
 @dataclass(frozen=True)
@@ -305,6 +316,8 @@ def test_retained_paper_admission_campaign_records_all_incident_phases(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Qualify the paper horizon and retain a reconstructable evidence report."""
+    monkeypatch.setattr("trader.cycle.pipeline.datetime", _CampaignDateTime)
+    monkeypatch.setattr("trader.cycle.stream_pipeline.datetime", _CampaignDateTime)
     admission_store = InMemoryResearchArtifactStore()
     admission_id = _create_admission(admission_store)
     config_scope = {
