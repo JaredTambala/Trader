@@ -20,6 +20,13 @@ Specialist prose is advisory. The coordinator verifies exact canonical reference
 evidence to its model program. Its accepted decision cites the evidence it relied upon and records unresolved warnings,
 blockers, dissent, and budget usage. Missing, mismatched, or unreadable evidence blocks the transition.
 
+The join retains each task's terminal specialist return, including conditional, partial, blocked, and failed results.
+Only the latest ready return for a task satisfies a dependent agenda task; a terminal but non-ready return remains
+reviewable and cannot silently unlock downstream work. A conclusion requires every current agenda task, rather than
+merely every specialist role, to be ready. A later partial revision revokes eligibility from an earlier ready attempt.
+The coordinator records a fail-closed decision when its canonical reread cannot verify exact evidence; the specialist
+outcomes remain visible for review.
+
 ## Loop control
 
 Code fingerprints semantically equivalent transitions while ignoring paraphrase and disposable identifiers. A repeated

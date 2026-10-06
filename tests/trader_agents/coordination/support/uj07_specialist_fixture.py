@@ -18,14 +18,17 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from trader_agents import (
     BudgetUsage,
     CanonicalEvidenceRef,
+    CoordinatorAgenda,
     SpecialistConclusion,
     SpecialistDelegation,
     SpecialistReturn,
     SpecialistStatus,
     build_delegation,
+    build_agent_checkpoint_state,
     build_specialist_return,
 )
 from trader_research.governance import ResearchSession
+from trader_research.foundation import json_payload_hash
 from tests.trader_agents.support.runtime_contracts import _session, _task
 
 
@@ -78,9 +81,7 @@ class SpecialistBranchFixture(BaseModel):
             raise ValueError("specialist result attempt identity mismatch")
         if self.result.role != self.role:
             raise ValueError("specialist result role mismatch")
-        expected_owner = (
-            DATA_OWNER if self.role == "data_research" else STRATEGY_OWNER
-        )
+        expected_owner = DATA_OWNER if self.role == "data_research" else STRATEGY_OWNER
         if self.owner != expected_owner:
             raise ValueError("specialist owner does not match role")
         if self.result.status is not self.status:
@@ -106,9 +107,13 @@ class SpecialistQualificationFixture(BaseModel):
         expected = {DATA_BRANCH_ID, STRATEGY_BRANCH_ID}
         branch_ids = {branch.branch_id for branch in self.branches}
         if branch_ids != expected:
-            raise ValueError("qualification fixture must contain both specialist branches")
+            raise ValueError(
+                "qualification fixture must contain both specialist branches"
+            )
         if len({branch.role for branch in self.branches}) != 2:
-            raise ValueError("qualification fixture must contain distinct specialist roles")
+            raise ValueError(
+                "qualification fixture must contain distinct specialist roles"
+            )
         if any(branch.session_id != self.session_id for branch in self.branches):
             raise ValueError("all specialist branches must belong to the session")
         statuses = {branch.status for branch in self.branches}
@@ -180,6 +185,48 @@ def fixture_digest(fixture: SpecialistQualificationFixture) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def build_joined_checkpoint(
+    fixture: SpecialistQualificationFixture,
+) -> dict[str, object]:
+    """Retain the exact public two-branch coordinator join for replay tests."""
+    state: dict[str, object] = dict(
+        build_agent_checkpoint_state(
+            session_id=fixture.session_id,
+            session_digest="a" * 64,
+            branch_id="root",
+            coordinator_program_id="research-coordinator-v6",
+            model_profile_id=fixture.branches[0].result.model_profile_id,
+            tool_catalog_id=fixture.branches[0].result.tool_catalog_id,
+        )
+    )
+    state["branch_by_task"] = {
+        branch.delegation.task.task_id: branch.branch_id for branch in fixture.branches
+    }
+    state["agenda"] = CoordinatorAgenda(
+        objective_summary="Review both specialist branches.",
+        tasks=[branch.delegation.task for branch in fixture.branches],
+    ).model_dump(mode="json")
+    state["delegations"] = [
+        branch.delegation.model_dump(mode="json") for branch in fixture.branches
+    ]
+    state["specialist_returns"] = [
+        branch.result.model_dump(mode="json") for branch in fixture.branches
+    ]
+    state["accepted_return_digests"] = {
+        branch.result.delegation_id: json_payload_hash(
+            branch.result.model_dump(mode="json")
+        )
+        for branch in fixture.branches
+    }
+    state["task_attempts"] = {
+        branch.delegation.task.task_id: 1 for branch in fixture.branches
+    }
+    state["completed_task_ids"] = [
+        branch.delegation.task.task_id for branch in fixture.branches
+    ]
+    return state
+
+
 def _build_branch(
     *,
     session: ResearchSession,
@@ -207,7 +254,9 @@ def _build_branch(
         reserved_tokens=1_000,
         attempt=1,
     )
-    artifact_type = "dataset_manifest" if role == "data_research" else "implementation_version"
+    artifact_type = (
+        "dataset_manifest" if role == "data_research" else "implementation_version"
+    )
     artifact_id = f"{source}-{version}"
     evidence = CanonicalEvidenceRef(
         artifact_type=artifact_type,
@@ -227,19 +276,27 @@ def _build_branch(
     conclusion = SpecialistConclusion(
         status=status,
         answered_questions=[f"{owner} branch identity is preserved."],
-        unresolved_questions=[] if status is SpecialistStatus.READY else ["Further evidence is required."],
+        unresolved_questions=[]
+        if status is SpecialistStatus.READY
+        else ["Further evidence is required."],
         findings=[f"{source} {version} is attributed to {owner}."],
-        evidence_refs=[] if status in {SpecialistStatus.FAILED, SpecialistStatus.BLOCKED} else [evidence],
+        evidence_refs=[]
+        if status in {SpecialistStatus.FAILED, SpecialistStatus.BLOCKED}
+        else [evidence],
         blockers=blockers,
     )
     result = build_specialist_return(
         delegation=delegation,
         role=role,
-        program_id=("data-research-v6" if role == "data_research" else "strategy-engineering-v6"),
+        program_id=(
+            "data-research-v6" if role == "data_research" else "strategy-engineering-v6"
+        ),
         model_profile_id=session.model_profile_id,
         tool_catalog_id=session.tool_catalog_id,
         conclusion=conclusion,
-        budget_used=BudgetUsage(model_calls=1, tool_calls=1, input_tokens=20, output_tokens=20),
+        budget_used=BudgetUsage(
+            model_calls=1, tool_calls=1, input_tokens=20, output_tokens=20
+        ),
         available_evidence_refs=[evidence],
     )
     return SpecialistBranchFixture(

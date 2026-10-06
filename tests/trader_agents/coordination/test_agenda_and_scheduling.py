@@ -58,6 +58,7 @@ def test_scheduler_parallelizes_ready_work_and_honors_hard_joins() -> None:
     first = compute_ready_set(
         agenda,
         completed_task_ids=[],
+        eligible_dependency_ids=[],
         mutation_keys_by_task={"data-remediation": ["dataset:prices"]},
         budget=_budget(),
         usage=BudgetLedger(_budget()).usage,
@@ -66,6 +67,7 @@ def test_scheduler_parallelizes_ready_work_and_honors_hard_joins() -> None:
     second = compute_ready_set(
         agenda,
         completed_task_ids=["data", "strategy"],
+        eligible_dependency_ids=["data", "strategy"],
         active_mutation_keys=["dataset:prices"],
         mutation_keys_by_task={"data-remediation": ["dataset:prices"]},
         budget=_budget(),

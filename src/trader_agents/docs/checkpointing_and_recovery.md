@@ -20,6 +20,11 @@ decision application checkpoints the validated decision before append-only recei
 operation records in their owning service. A fresh process reads the last public checkpoint and canonical operation
 state, then continues without replaying accepted work.
 
+At a specialist join, a replacement process can recover a response lost after the specialist terminal checkpoint was
+saved. It validates the terminal return against the exact active delegation and current attempt, then admits that
+return once. The coordinator retains prior negative and partial returns, but computes downstream eligibility from
+the latest ready return for each task; a stale retry cannot requalify an older revision.
+
 `inspect` exposes a redacted projection. `resume` requires an actual pending interrupt and the owning operator identity.
 `cancel` stops an in-flight task owned by the runtime, records a terminal cancelled decision, and leaves ambiguous
 provider operations to their reconciliation contracts.

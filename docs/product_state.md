@@ -270,8 +270,12 @@ items; no agent journey is treated as controlled merely because deterministic co
 UJ-07 now has a focused deterministic handoff-lineage check over its concurrent Data and Strategy fixture. The join
 rejects a return from another run, branch, or role; checkpoint reload reconstructs task ownership and recomputes the
 accepted return digests. Canonical artifact verification and coordinator citations compare full references, so a
-matching URI with a changed source hash is not accepted as the same artifact revision. The remaining mixed-outcome,
-Console, and controlled model/MCP/Postgres gates are separate.
+matching URI with a changed source hash is not accepted as the same artifact revision. The mixed-outcome qualification
+now separates retained terminal results from downstream eligibility: only a task's latest ready return unlocks
+dependants, while partial, failed, blocked, and conditional outcomes remain reviewable. A same-role ready sibling or
+stale older attempt cannot support a conclusion. A fresh process reattaches a lost Strategy response from the public
+terminal specialist checkpoint exactly once and retains a verifier report with fixture, contract digest, checkout
+commit, and evidence revision. Console and controlled model/MCP/Postgres gates remain separate.
 
 The UJ-09 exact-resolution qualification now checks named graph revisions
 against independently read canonical artifact facts. It distinguishes absent,
