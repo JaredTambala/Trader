@@ -82,3 +82,18 @@ rows against the guarded local database. Prediction-binding contracts remain her
 strategy specifications, deployment and mapper pins, and dependency revalidation; ML deployment records are
 collaborators owned by the ML context. These tests do not treat tracking projections or optimisation selection as
 independent evaluation.
+
+## Deterministic hypothesis-to-candidate handoff
+
+`create_strategy_candidate_handoff` is the research-owned handoff from a resolved
+`HypothesisBriefHandoff` to one reviewable strategy/risk candidate. It re-reads
+the canonical brief, requires a catalogue comparison whose decision authority is
+Strategy Engineering, and requires independent passed validation reports for the
+strategy implementation, strategy specification, and ordered risk stack. The
+persisted `strategy_candidate_handoff` contains references and decisions only:
+it carries no source code, execution authority, broker permission, or model
+acceptance claim. `resolve_strategy_candidate_handoff` revalidates every edge and
+fails closed when a report is missing, blocked, stale, or points to an
+incompatible specification. This deterministic boundary is qualified by
+`tests/cross_package/workflows/test_candidate_handoff.py`; the controlled
+third-party-model and Console/browser variants remain separate work in TRD-288.
