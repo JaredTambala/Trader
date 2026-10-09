@@ -209,6 +209,8 @@ complete review artifact with a current retained session/graph/node revision. `P
 with `reject`, `refine`, or `continue`, rationale, exact canonical references for the run/Data/implementation/review
 chain, assumptions, and limitations. `refine` and `continue` additionally require a bounded successor experiment
 with exact Data and implementation references, an evaluation window, a maximum run count, and success criteria.
+The browser asks the human to pin the run, Data, and implementation source hashes; the API compares each supplied
+hash against the canonical artifact before accepting a session-linked decision.
 For an agent-session review, the command may also carry `session_review` with the exact session ID/digest, retained
 graph digest, and named review-node revisions. Each named node must match one cited review artifact; those references
 and every cited run, Data, implementation, and review reference must pin a canonical payload or source hash. The

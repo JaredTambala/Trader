@@ -50,7 +50,13 @@ test("backtest review shows scoped metrics, curves, and execution evidence", asy
       domain_owner: "Evaluation Agent",
       producer_tool: "evaluation_generate_report",
       schema_version: "1.0",
-      source_hash: "evaluation-hash",
+      source_hash: "hash-evaluation-1",
+      session_id: "session-review-1",
+      session_digest: "a".repeat(64),
+      graph_digest: "b".repeat(64),
+      branch_id: "branch-evaluation",
+      revision: 1,
+      node_key: "evaluation_report:evaluation-1:r1",
       claim_scope: { run_id: "run-1", scope_fingerprint: "scope-1" },
       data_roles: ["evaluation"],
       limitations: [],
@@ -152,6 +158,10 @@ test("backtest review shows scoped metrics, curves, and execution evidence", asy
         return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: storedDecision ? [storedDecision] : [], page: { limit: 20, offset: 0, total: storedDecision ? 1 : 0, has_more: false } }) });
       }
       const body = route.request().postDataJSON() as Record<string, unknown>;
+      expect(body.session_review).toMatchObject({
+        session_id: "session-review-1", graph_digest: "b".repeat(64),
+        review_node_keys: ["evaluation_report:evaluation-1:r1"],
+      });
       storedDecision = {
         artifact_type: "research_next_decision",
         artifact_id: "research_next_decision_fixture",
@@ -194,6 +204,9 @@ test("backtest review shows scoped metrics, curves, and execution evidence", asy
   await expect(page.getByText('{"limit":0}', { exact: true })).toBeVisible();
   await page.getByRole("textbox", { name: "Qualified data artifact ID" }).fill("data-1");
   await page.getByRole("textbox", { name: "Implementation artifact ID" }).fill("impl-1");
+  await page.getByRole("textbox", { name: "Run source hash" }).fill("hash-run-1");
+  await page.getByRole("textbox", { name: "Data source hash" }).fill("hash-data-1");
+  await page.getByRole("textbox", { name: "Implementation source hash" }).fill("hash-impl-1");
   await page.getByRole("textbox", { name: "Decision rationale" }).fill("The reviewed result does not survive the stated limitations.");
   await page.getByRole("textbox", { name: "Decision limitations" }).fill("Single holdout window");
   await page.getByRole("button", { name: "Record decision" }).click();

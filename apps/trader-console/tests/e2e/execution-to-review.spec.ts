@@ -18,10 +18,14 @@ test("the real worker result is reviewable and records a human decision", async 
   await expect(page.getByText("Executed trades", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Claims and limitations" })).toBeVisible();
   await expect(page.getByText("complete", { exact: true })).toBeVisible();
+  await expect(page.getByText("evaluation_report:qualification-evaluation:r1", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Choose what happens next" })).toBeVisible();
 
   await page.getByRole("textbox", { name: "Qualified data artifact ID" }).fill("qualification-manifest");
   await page.getByRole("textbox", { name: "Implementation artifact ID" }).fill("qualification-implementation");
+  await page.getByRole("textbox", { name: "Run source hash" }).fill(`hash-${runId}`);
+  await page.getByRole("textbox", { name: "Data source hash" }).fill("hash-qualification-manifest");
+  await page.getByRole("textbox", { name: "Implementation source hash" }).fill("hash-qualification-implementation");
   await page.getByRole("textbox", { name: "Decision rationale" }).fill("The bounded fixture is useful evidence but does not support advancement.");
   await page.getByRole("textbox", { name: "Decision limitations" }).fill("Single deterministic fixture window");
   await page.getByRole("button", { name: "Record decision" }).click();

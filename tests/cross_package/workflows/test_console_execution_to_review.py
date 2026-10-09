@@ -23,6 +23,7 @@ its restart assertions reuse the same isolated command store and frozen run.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 import os
 from pathlib import Path
 import subprocess
@@ -217,15 +218,22 @@ def _seed_review_artifacts(port: int, run_id: str, scope_fingerprint: str) -> No
     ]
     with psycopg.connect(demo_dsn(port)) as connection:
         for artifact_type, artifact_id, owner, producer, status, payload in artifacts:
+            metadata = (
+                {"session_id": "qualification-review-session", "session_digest": sha256(run_id.encode()).hexdigest(),
+                 "graph_digest": sha256(f"{run_id}:review-graph".encode()).hexdigest(),
+                 "branch_id": "evaluation", "revision": 1}
+                if artifact_type == "evaluation_report" else {}
+            )
             connection.execute(
                 """
                 INSERT INTO research_artifacts
                     (artifact_type, artifact_id, domain_owner, producer_tool, status, schema_version, source_hash, metadata, payload)
-                VALUES (%s, %s, %s, %s, %s, '1', %s, '{}'::jsonb, %s)
+                VALUES (%s, %s, %s, %s, %s, '1', %s, %s, %s)
                 ON CONFLICT (artifact_type, artifact_id) DO UPDATE
-                SET status = EXCLUDED.status, payload = EXCLUDED.payload
+                SET status = EXCLUDED.status, metadata = EXCLUDED.metadata, payload = EXCLUDED.payload
                 """,
-                [artifact_type, artifact_id, owner, producer, status, f"hash-{artifact_id}", Jsonb(payload)],
+                [artifact_type, artifact_id, owner, producer, status, f"hash-{artifact_id}",
+                 Jsonb(metadata), Jsonb(payload)],
             )
 
 

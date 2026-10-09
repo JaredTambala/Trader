@@ -36,6 +36,9 @@ export function NextDecisionPanel({ detail }: { detail: RunDetail }) {
   const [limitations, setLimitations] = useState("");
   const [dataArtifactId, setDataArtifactId] = useState("");
   const [implementationArtifactId, setImplementationArtifactId] = useState("");
+  const [runSourceHash, setRunSourceHash] = useState("");
+  const [dataSourceHash, setDataSourceHash] = useState("");
+  const [implementationSourceHash, setImplementationSourceHash] = useState("");
   const [nextQuestion, setNextQuestion] = useState("");
   const [nextStart, setNextStart] = useState("");
   const [nextEnd, setNextEnd] = useState("");
@@ -45,13 +48,14 @@ export function NextDecisionPanel({ detail }: { detail: RunDetail }) {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const availableReview = useMemo(
-    () => detail.review_evidence.find((item) => item.status === "complete" && item.artifact_id),
+    () => detail.review_evidence.find((item) => item.status === "complete" && item.artifact_id && item.source_hash),
     [detail.review_evidence],
   );
   const exactReview = availableReview?.session_id && availableReview.session_digest && availableReview.graph_digest
     && availableReview.revision && availableReview.node_key ? availableReview : undefined;
   const exactScope = typeof detail.scope?.scope_fingerprint === "string" ? detail.scope.scope_fingerprint : undefined;
-  const canRecord = Boolean(exactScope && exactReview && dataArtifactId.trim() && implementationArtifactId.trim());
+  const canRecord = Boolean(exactScope && exactReview?.source_hash && dataArtifactId.trim() && implementationArtifactId.trim()
+    && runSourceHash.trim() && dataSourceHash.trim() && implementationSourceHash.trim());
 
   useEffect(() => {
     const controller = new AbortController();
@@ -69,8 +73,8 @@ export function NextDecisionPanel({ detail }: { detail: RunDetail }) {
 
   async function submit() {
     if (!canRecord || !rationale.trim() || !limitations.trim()) return;
-    const dataRef = ref(dataArtifactId.trim(), "dataset_manifest", "Data", { scope_fingerprint: exactScope });
-    const implementationRef = ref(implementationArtifactId.trim(), "implementation_version", "Experiments");
+    const dataRef = ref(dataArtifactId.trim(), "dataset_manifest", "Data", { scope_fingerprint: exactScope, source_hash: dataSourceHash.trim() });
+    const implementationRef = ref(implementationArtifactId.trim(), "implementation_version", "Experiments", { source_hash: implementationSourceHash.trim() });
     const reviewRef = ref(availableReview?.artifact_id ?? "", availableReview?.artifact_type ?? "evaluation_report", "Review", {
       run_id: runId,
       scope_fingerprint: exactScope,
@@ -92,7 +96,7 @@ export function NextDecisionPanel({ detail }: { detail: RunDetail }) {
       revision: 1,
       outcome,
       rationale: rationale.trim(),
-      source_run_ref: ref(runId, "backtest_run", "Experiments", { run_id: runId, scope_fingerprint: exactScope }),
+      source_run_ref: ref(runId, "backtest_run", "Experiments", { run_id: runId, scope_fingerprint: exactScope, source_hash: runSourceHash.trim() }),
       data_ref: dataRef,
       implementation_refs: [implementationRef],
       assumptions: detail.assumptions ?? {},
@@ -144,6 +148,9 @@ export function NextDecisionPanel({ detail }: { detail: RunDetail }) {
       <label className={styles.field}><span>Decision</span><select aria-label="Next decision outcome" value={outcome} onChange={(event) => setOutcome(event.target.value as Outcome)}><option value="reject">Reject</option><option value="refine">Refine</option><option value="continue">Continue</option></select></label>
       <label className={styles.field}><span>Qualified data artifact ID</span><input aria-label="Qualified data artifact ID" value={dataArtifactId} onChange={(event) => setDataArtifactId(event.target.value)} placeholder="dataset_manifest_…" /></label>
       <label className={styles.field}><span>Implementation artifact ID</span><input aria-label="Implementation artifact ID" value={implementationArtifactId} onChange={(event) => setImplementationArtifactId(event.target.value)} placeholder="implementation_version_…" /></label>
+      <label className={styles.field}><span>Run source hash</span><input aria-label="Run source hash" value={runSourceHash} onChange={(event) => setRunSourceHash(event.target.value)} /></label>
+      <label className={styles.field}><span>Data source hash</span><input aria-label="Data source hash" value={dataSourceHash} onChange={(event) => setDataSourceHash(event.target.value)} /></label>
+      <label className={styles.field}><span>Implementation source hash</span><input aria-label="Implementation source hash" value={implementationSourceHash} onChange={(event) => setImplementationSourceHash(event.target.value)} /></label>
       <label className={styles.field}><span>Rationale</span><textarea aria-label="Decision rationale" value={rationale} onChange={(event) => setRationale(event.target.value)} rows={3} /></label>
       <label className={styles.field}><span>Limitations (one per line)</span><textarea aria-label="Decision limitations" value={limitations} onChange={(event) => setLimitations(event.target.value)} rows={3} /></label>
     </div>
@@ -157,6 +164,7 @@ export function NextDecisionPanel({ detail }: { detail: RunDetail }) {
     {!exactScope && <div className={styles.scopeNotice}><strong>Recording blocked.</strong> This run has no qualified scope fingerprint.</div>}
     {exactScope && !availableReview && <div className={styles.scopeNotice}><strong>Recording blocked.</strong> Complete review evidence is required.</div>}
     {exactScope && availableReview && !exactReview && <div className={styles.scopeNotice}><strong>Recording blocked.</strong> The review artifact has no current retained session graph identity and revision.</div>}
+    {exactReview && !exactReview.source_hash && <div className={styles.scopeNotice}><strong>Recording blocked.</strong> The review artifact has no pinned source hash.</div>}
     {submitState === "error" && <div className={styles.errorBox} role="alert"><p>{submitError}</p></div>}
     <button className={styles.button} type="button" onClick={() => void submit()} disabled={!canRecord || !rationale.trim() || !limitations.trim() || submitState === "submitting"}>{submitState === "submitting" ? "Recording…" : "Record decision"}</button>
   </section>;
