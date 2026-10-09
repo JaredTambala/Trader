@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 22146)
+Total output lines: 967
+
 # Trader Product State
 
 This document is the canonical current-state description of Trader's research product. It explains what the product
@@ -444,90 +447,7 @@ record is not yet accepted.
 
 The Quantitative Methods Agent review has started in its own
 [Quantitative Methods design](../plans/agent_designs/quantitative_methods.md). Its responsibility is now accepted as
-one pre-code, outcome-blind translation from validated research dossier to implementation-ready quantitative brief.
-Experiment statistics, execution, conformance diagnostics, and result interpretation belong to other agents or
-deterministic services. Behaviorally material Trader adaptations belong explicitly in the brief, while non-semantic
-software design belongs to Strategy Engineering. The remaining Quantitative Methods architecture record is not yet
-accepted.
-
-The Strategy Engineering Agent review has started in its own
-[Strategy Engineering design](../plans/agent_designs/strategy_engineering.md). Isolated model-selected coding through
-MCP, content-addressed candidate packaging, and independent admission are established constraints. The acceptable
-knowledge-backed and operator-specified entry contracts are both accepted and normalize into a typed build contract.
-Every target coding attempt must first use MCP to discover and compare relevant maintained or previously admitted
-implementations, then explicitly reuse, adapt, or author anew. The current template lists and
-registration/validation tools do not yet provide full versioned implementation ingestion, semantic/typed search,
-bounded retrieval, or brief-compatibility evidence. Only exact maintained or admitted versions are eligible for direct
-reuse; adaptations and untrusted references create new lineage and pass full admission. The target sandbox is now
-bounded as an ephemeral container with a pinned read-only Trader snapshot, separate candidate writes, no general
-network or credentials, MCP-only commands, policy-gated pinned dependencies, resource limits, and no repository or
-deployment authority. Normal authoring is outcome-blind; only a coordinator-authorized defect investigation may expose
-bounded execution traces, and any behavioral change requires a successor build contract and research branch. Concrete
-sandbox mechanics remain spike-owned. Admission repair is bounded by candidate-attempt, tool, time, and compute budgets;
-every revision needs an actionable finding and material source change, while equivalent failures and policy or contract
-problems terminate or escalate.
-
-The Experiment Design Agent review has started in its separate
-[Experiment Design design](../plans/agent_designs/experiment_design.md). The governance context now persists a
-revisioned `HypothesisBrief` as an Experiments-owned `hypothesis_card` before protocol authoring. The brief records the
-question, mechanism, falsifier, intended universe/timeframe, typed data requirements, strategy intent, risk intent,
-expected evidence, assumptions, and outcome-to-decision rules; exact retries are idempotent, contradictory scopes and
-unauthorized actors fail closed, and downstream Data, Strategy Engineering, and Evaluation receive a digest-pinned
-reference. This is a deterministic artifact boundary,
-not a claim that the Console or a model-backed Hypothesis Agent is complete. Prospective immutable protocols, explicit
-material assumptions, operator approval, and successor-protocol lineage remain foundational. Experiment Design owns
-the research claim, protected-evidence roles, stage gates, overall budgets, and the authority envelope for later work.
-Detailed attack and walk-forward plan design belongs to the Robustness & Walk-Forward Agent, which synthesizes
-coordinator-supplied canonical outputs from relevant specialists and records whether its plan is prospective, staged-
-prospective, or exploratory. The division between the coordinator's research-question authority and Experiment
-Design's hypothesis-formulation authority remains under review. A deterministically validated RWFO plan may advance
-inside the approved experiment envelope without another operator decision; material assumptions, scope, protected-data
-access, cost, or other out-of-envelope decisions interrupt through the coordinator for explicit authority. RWFO
-invokes plan-pinned deterministic attack/fold execution capabilities. There is no target Experiment Execution Agent:
-the coordinator invokes a specialized deterministic MCP capability for main-protocol baseline, comparison, and
-optimisation execution. Code owns protocol compilation, job scheduling, resource enforcement, retries, reconciliation,
-and canonical persistence because these operations carry no independent research judgment.
-
-The selected implementation focus is now the first Coordinator–Data–Strategy agentic slice. It will prove real-model
-agenda formation, specialist delegation, multi-asset Data tool use and bounded backfill, implementation-catalogue
-comparison, isolated reuse/adapt/author decisions, failed-admission revision, canonical evidence return, interrupts,
-restart, and fail-closed behavior. The provisional cutoff is an admitted strategy/risk candidate; Experiment Design and
-coordinator-invoked deterministic experiment execution follow only after this slice is qualified.
-
-The ML Signal Research Agent and active ML delivery are intentionally parked. Existing controlled ML runtime artifacts
-and behavior remain part of current product state. Roadmap `ready` labels on individual ML capabilities continue to
-describe dependency state, not selected priority; no new ML agent or ML capability work blocks the non-ML slice.
-
-## Product Authority
-
-| Concern | Authority |
-| --- | --- |
-| Market data, events, portfolio behavior, backtest runtime, risk and broker interfaces | Core `trader` runtime |
-| Maintained indicators, signals, strategies, risk managers, feature providers and prediction mappers | `trader_standard` |
-| Research implementations, specifications, runs, trials, selections, reviews and deployment evidence | Trader Postgres |
-| Source text, evidence units, embeddings and canonical method cards | `trader_research` Postgres knowledge store |
-| ML training telemetry, packaged models and registry records | Configured MLflow instance, once the planned training lifecycle exists |
-| MCP registration, transport envelopes and coarse policy gates | `trader_mcp` |
-| Agent planning, allowed tool use, handoffs and operational checkpoints | `trader_agents` and its configured checkpointer |
-| Human agent-session inspection and lifecycle intents | Console typed redacted projection over `research_agent_*` evidence plus Console-owned command-intent storage |
-
-Operational graph checkpoints are not research evidence. A workflow may be resumed from a checkpoint, but downstream
-claims must still be supported by immutable product artifacts and their bounded-context authority.
-
-The governance redesign removed agent identity from canonical artifact authority. `research_artifacts` now records a required
-`domain_owner` and `producer_tool`, plus nullable `requested_by` and `actor` provenance. Artifact types are mapped to
-Data, Knowledge/Methodology, Experiments, ML, Review or Orchestration. The MCP `agent_owner` envelope field remains a
-tool-allowlist/stewardship label and is not persisted as artifact authority. Direct pre-orchestration calls honestly
-leave requester/actor null. The deterministic workflow executor supplies the workflow ID and `workflow_executor` actor to every
-orchestrated canonical write through a contextual artifact-store boundary.
-
-## Capability Matrix
-
-| Capability | Implementation | Qualification | Availability | Product position |
-| --- | --- | --- | --- | --- |
-| Data discovery, inventory and quality | implemented | controlled | registered; loading gated | Produces exact dataset manifests, asset-aware quality reports and bounded load evidence. Reports preserve raw bars and distinguish exchange closures, lifecycle bounds, sparse no-trade activity, provider zero-activity bars, provider-wide gaps, and local ingestion loss with per-symbol actions. `data_discover_symbols` publishes explicit complete/partial/stale/unavailable catalogue state plus separate discover-only/load-capable/unavailable loading capability. Console dataset responses preserve the distinction; `data_create_research_snapshot` persists an exact manifest/quality pair for resumable workflows. |
-| Knowledge source registration and ingestion | implemented | integration | registered | Full-document text ingestion, evidence units, embeddings, lexical/vector retrieval and bounded dereferencing are operational. |
-| Methodology extraction and method cards | implemented | integration | registered | Reliable for bounded, locally evidenced methods. Composite book-scale frameworks remain outside the represented model. |
+one pre-code, out…2146 tokens truncated…ration | registered | Reliable for bounded, locally evidenced methods. Composite book-scale frameworks remain outside the represented model. |
 | Implementation admission | implemented | controlled | registered | Handwritten, maintained, AI-produced and method-produced strategy/risk/objective source enters one content-addressed validation path. |
 | Strategy and risk specifications | implemented | controlled | registered | Parameters and ordered risk behavior are immutable and separate from data scope. |
 | Backtest specifications and execution | implemented | controlled | registered; execution gated | Runs exact Data Agent scope with costs, initial state, risk evidence and canonical Postgres results. |
