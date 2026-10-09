@@ -5,7 +5,8 @@ Level: Pure domain unit contracts.
 Collaborators: Real gap-analysis and report builders with fixed timestamps and summary values.
 Guarantees: Session gaps remain distinct from missing data; detail is bounded while totals stay complete;
 report identity excludes generation time and includes the retained evidence.
-Non-goals: Querying stored bars, exchange-calendar completeness, persistence, or research promotion policy.
+Non-goals: Querying stored bars, persistence, or research promotion policy. Exchange calendars remain represented by
+the deterministic session policy supplied to the classifier rather than an external calendar service.
 """
 
 from __future__ import annotations
@@ -16,7 +17,11 @@ import json
 import pytest
 
 from trader.market_data.quality_gaps import (
+    AssetLifecycle,
+    BarObservation,
+    CompletenessContext,
     DataQualitySummary,
+    ProviderCoverageWindow,
     analyze_gaps,
 )
 from trader.market_data.quality_reports import build_quality_report
@@ -184,3 +189,86 @@ def test_gap_sample_bound_must_be_nonnegative_integer() -> None:
             sessions={},
             max_gap_samples=-1,
         )
+
+
+def _gap_context(**kwargs: object) -> CompletenessContext:
+    """Build a compact completeness context for classification contracts."""
+    return CompletenessContext(**kwargs)
+
+
+def test_asset_lifecycle_and_provider_evidence_remain_distinct() -> None:
+    """Listing bounds, provider holes, and local loss produce actionable classes."""
+    start = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    common = {
+        "asset_class": "stocks",
+        "timeframe": "1Min",
+        "multipliers": {"minute": 2.0},
+        "sessions": {},
+    }
+    lifecycle_summary, lifecycle_gaps = analyze_gaps(
+        symbol="NEW",
+        timestamps=(start, start + timedelta(minutes=5)),
+        context=_gap_context(lifecycle={"NEW": AssetLifecycle(listed_at=start + timedelta(minutes=10))}),
+        **common,
+    )
+    assert lifecycle_summary.classifications == {"asset_not_listed": 1}
+    assert lifecycle_gaps[0].classification == "asset_not_listed"
+    assert lifecycle_gaps[0].raw_facts["listed_at"] == "2026-01-20T12:10:00+00:00"
+
+    provider_summary, provider_gaps = analyze_gaps(
+        symbol="AAPL",
+        timestamps=(start, start + timedelta(minutes=5)),
+        context=_gap_context(
+            provider_windows=(
+                ProviderCoverageWindow(
+                    start=start,
+                    end=start + timedelta(minutes=5),
+                    available=False,
+                    provider="fixture",
+                    affected_symbols=("AAPL",),
+                ),
+            ),
+            provider="fixture",
+        ),
+        **common,
+    )
+    assert provider_summary.action == "await_provider_coverage"
+    assert provider_gaps[0].classification == "provider_coverage_gap"
+    assert provider_gaps[0].raw_facts["provider"] == "fixture"
+
+    local_summary, local_gaps = analyze_gaps(
+        symbol="AAPL",
+        timestamps=(start, start + timedelta(minutes=5)),
+        context=_gap_context(
+            provider_windows=(
+                ProviderCoverageWindow(
+                    start=start,
+                    end=start + timedelta(minutes=5),
+                    available=True,
+                    affected_symbols=("AAPL",),
+                ),
+            )
+        ),
+        **common,
+    )
+    assert local_summary.action == "repair_local_ingestion"
+    assert local_gaps[0].classification == "local_ingestion_loss"
+
+
+def test_crypto_no_trade_and_provider_zero_activity_are_not_ingestion_loss() -> None:
+    """Sparse crypto activity and explicit zero bars retain different evidence."""
+    start = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
+    summary, gaps = analyze_gaps(
+        symbol="BTC/USD",
+        timestamps=(start, start + timedelta(minutes=5)),
+        asset_class="crypto",
+        timeframe="1Min",
+        multipliers={"minute": 2.0},
+        sessions={},
+        observations=(BarObservation(ts=start, volume=0.0, trade_count=0.0, source="fixture"),),
+        context=CompletenessContext(provider_omits_no_trade=frozenset({"BTC/USD"})),
+    )
+    assert gaps[0].classification == "illiquid_no_trade"
+    assert summary.action == "accept_sparse_activity"
+    assert summary.zero_activity_bars == 1
+    assert summary.classifications == {"illiquid_no_trade": 1, "provider_zero_activity": 1}

@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 import hashlib
 import json
 from typing import Any, Iterable, Mapping
 
 from .queries import BarQuery, normalize_bar_query
+from .quality_gaps import (
+    BarObservation,
+    CompletenessContext,
+    classify_gap,
+    gap_reason,
+)
 
 __all__ = [
     "SymbolQualitySummary",
@@ -51,6 +57,9 @@ class SymbolQualitySummary:
     session_gap_count: int
     max_gap_seconds: int
     complete: bool
+    classifications: Mapping[str, int] = field(default_factory=dict)
+    zero_activity_bars: int = 0
+    action: str = "review"
 
     def to_dict(self) -> dict[str, Any]:
         """Return the summary as a JSON-compatible mapping."""
@@ -66,12 +75,18 @@ class SymbolQualitySummary:
             "session_gap_count": self.session_gap_count,
             "max_gap_seconds": self.max_gap_seconds,
             "complete": self.complete,
+            "classifications": dict(self.classifications),
+            "zero_activity_bars": self.zero_activity_bars,
+            "action": self.action,
         }
 
 
 def summarize_bar_quality_from_timestamps(
     query: BarQuery,
     timestamps_by_symbol: Mapping[str, Iterable[datetime]],
+    *,
+    observations_by_symbol: Mapping[str, Iterable[BarObservation]] | None = None,
+    context: CompletenessContext | None = None,
 ) -> tuple[dict[str, Any], tuple[str, ...]]:
     """Summarize bar coverage from already-fetched timestamps.
 
@@ -94,6 +109,8 @@ def summarize_bar_quality_from_timestamps(
             query=normalized,
             interval_seconds=interval_seconds,
             expected_bar_count=expected_bar_count,
+            observations=tuple((observations_by_symbol or {}).get(symbol, ())),
+            context=context,
         )
         symbol_summaries.append(summary)
         warnings.extend(_symbol_warnings(summary))
@@ -121,6 +138,7 @@ def summarize_bar_quality_from_timestamps(
         "complete": complete,
         "warnings": warnings,
         "symbols_detail": [summary.to_dict() for summary in symbol_summaries],
+        "classification_counts": _classification_counts(symbol_summaries),
     }
     return report, tuple(warnings)
 
@@ -132,11 +150,15 @@ def _summarize_symbol(
     query: BarQuery,
     interval_seconds: int | None,
     expected_bar_count: int | None,
+    observations: tuple[BarObservation, ...] = (),
+    context: CompletenessContext | None = None,
 ) -> SymbolQualitySummary:
     """Build the quality summary for one symbol."""
     missing_gap_count = 0
     missing_bar_count = 0
     max_gap_seconds = 0
+    classifications: dict[str, int] = {}
+    completeness_context = context or CompletenessContext()
     if interval_seconds is not None and timestamps:
         for earlier, later in zip(timestamps, timestamps[1:]):
             delta_seconds = int((later - earlier).total_seconds())
@@ -144,6 +166,25 @@ def _summarize_symbol(
                 missing_gap_count += 1
                 missing_bar_count += max((delta_seconds // interval_seconds) - 1, 1)
                 max_gap_seconds = max(max_gap_seconds, delta_seconds)
+                reason = gap_reason(
+                    earlier,
+                    later,
+                    query.asset_class,
+                    query.timeframe,
+                    session=None,
+                )
+                classification = classify_gap(
+                    symbol=symbol,
+                    prev_ts=earlier,
+                    next_ts=later,
+                    asset_class=query.asset_class,
+                    reason=reason,
+                    context=completeness_context,
+                )
+                classifications[classification] = classifications.get(classification, 0) + 1
+    zero_activity_bars = sum(1 for observation in observations if observation.zero_activity)
+    if zero_activity_bars:
+        classifications["provider_zero_activity"] = zero_activity_bars
 
     first_ts = timestamps[0] if timestamps else None
     last_ts = timestamps[-1] if timestamps else None
@@ -168,7 +209,38 @@ def _summarize_symbol(
         session_gap_count=0,
         max_gap_seconds=max_gap_seconds,
         complete=complete,
+        classifications=classifications,
+        zero_activity_bars=zero_activity_bars,
+        action=_summary_action(classifications, bar_count=bar_count),
     )
+
+
+def _classification_counts(summaries: Iterable[SymbolQualitySummary]) -> dict[str, int]:
+    """Aggregate per-symbol classifications without losing symbol detail."""
+    totals: dict[str, int] = {}
+    for summary in summaries:
+        for classification, count in summary.classifications.items():
+            totals[classification] = totals.get(classification, 0) + count
+    return totals
+
+
+def _summary_action(classifications: Mapping[str, int], *, bar_count: int) -> str:
+    """Choose the highest-priority user action for a summary."""
+    if not bar_count:
+        return "no_observations"
+    if classifications.get("local_ingestion_loss"):
+        return "repair_local_ingestion"
+    if classifications.get("provider_coverage_gap"):
+        return "await_provider_coverage"
+    if classifications.get("unclassified_gap"):
+        return "investigate_gap"
+    if classifications.get("illiquid_no_trade"):
+        return "accept_sparse_activity"
+    if classifications.get("asset_not_listed") or classifications.get("asset_delisted"):
+        return "outside_asset_lifecycle"
+    if classifications.get("exchange_closure"):
+        return "expected_exchange_closure"
+    return "usable"
 
 
 def _expected_bar_count(query: BarQuery, interval_seconds: int | None) -> int | None:

@@ -7,10 +7,10 @@ logging, clocks, and filesystem writes stay in `trader.market_data.quality`.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from itertools import islice
-from typing import Mapping, Sequence
+from typing import Literal, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from ..timeframes import normalize_timeframe, parse_timeframe
@@ -18,6 +18,77 @@ from ..timeframes import normalize_timeframe, parse_timeframe
 
 _MARKET_TZ = ZoneInfo("America/New_York")
 DEFAULT_MAX_GAP_SAMPLES = 100
+
+CompletenessClassification = Literal[
+    "exchange_closure",
+    "asset_not_listed",
+    "asset_delisted",
+    "illiquid_no_trade",
+    "provider_zero_activity",
+    "provider_coverage_gap",
+    "local_ingestion_loss",
+    "unclassified_gap",
+]
+
+
+@dataclass(frozen=True)
+class BarObservation:
+    """Raw bar facts used to distinguish no-trade observations from omissions.
+
+    The quality engine deliberately keeps these facts separate from inferred
+    completeness.  A provider-emitted zero-volume bar is evidence that the
+    provider answered for a minute; it is not evidence of local ingestion loss.
+    """
+
+    ts: datetime
+    volume: float | None = None
+    trade_count: float | None = None
+    source: str | None = None
+
+    @property
+    def zero_activity(self) -> bool:
+        """Return whether the provider explicitly emitted no activity."""
+        return (self.volume is not None and self.volume == 0) or (
+            self.trade_count is not None and self.trade_count == 0
+        )
+
+
+@dataclass(frozen=True)
+class AssetLifecycle:
+    """Listing bounds for one asset, inclusive at each observed boundary."""
+
+    listed_at: datetime | None = None
+    delisted_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class ProviderCoverageWindow:
+    """Provider coverage fact for a bounded interval.
+
+    ``available=False`` records a provider-wide hole.  ``affected_symbols``
+    may be empty when the provider evidence applies to the whole requested
+    universe.
+    """
+
+    start: datetime
+    end: datetime
+    available: bool
+    provider: str | None = None
+    affected_symbols: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class CompletenessContext:
+    """Asset and provider facts required for actionable gap classification."""
+
+    lifecycle: Mapping[str, AssetLifecycle] = field(default_factory=dict)
+    provider_windows: tuple[ProviderCoverageWindow, ...] = ()
+    provider_omits_no_trade: frozenset[str] = frozenset()
+    provider: str | None = None
+
+    def lifecycle_for(self, symbol: str) -> AssetLifecycle | None:
+        """Return lifecycle metadata using canonical case-insensitive lookup."""
+        return self.lifecycle.get(symbol) or self.lifecycle.get(symbol.upper())
 
 
 @dataclass(frozen=True)
@@ -31,7 +102,12 @@ class GapRecord:
         delta: Observed time delta between adjacent bars.
         expected: Nominal expected delta for the timeframe.
         threshold: Gap threshold used for classification.
-        reason: Stable reason code for the gap classification.
+        reason: Stable legacy-neutral reason for the gap (``gap`` or
+            ``expected_session_gap``).
+        classification: Asset-aware classification used by callers to decide
+            whether to repair, exclude, or accept the interval.
+        raw_facts: Provider, lifecycle, and policy facts retained with the
+            inferred classification.
     """
 
     symbol: str
@@ -41,6 +117,8 @@ class GapRecord:
     expected: timedelta
     threshold: timedelta
     reason: str
+    classification: CompletenessClassification = "unclassified_gap"
+    raw_facts: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -53,6 +131,9 @@ class DataQualitySummary:
         missing_gaps: Number of gaps classified as missing data.
         expected_gaps: Number of gaps classified as expected session downtime.
         max_gap: Largest adjacent timestamp delta, if enough bars exist.
+        classifications: Counts keyed by asset-aware classification.
+        zero_activity_bars: Provider-emitted bars with explicit zero activity.
+        action: Highest-priority action for the symbol.
     """
 
     symbol: str
@@ -60,6 +141,9 @@ class DataQualitySummary:
     missing_gaps: int
     expected_gaps: int
     max_gap: timedelta | None
+    classifications: Mapping[str, int] = field(default_factory=dict)
+    zero_activity_bars: int = 0
+    action: str = "review"
 
 
 @dataclass(frozen=True)
@@ -90,6 +174,8 @@ def analyze_gaps(
     multipliers: Mapping[str, float],
     sessions: Mapping[tuple[str, str], SessionWindow],
     max_gap_samples: int = DEFAULT_MAX_GAP_SAMPLES,
+    observations: Sequence[BarObservation] | None = None,
+    context: CompletenessContext | None = None,
 ) -> tuple[DataQualitySummary, list[GapRecord]]:
     """Classify oversized timestamp gaps for one symbol.
 
@@ -102,6 +188,9 @@ def analyze_gaps(
         sessions: Optional symbol/timeframe session overrides.
         max_gap_samples: Maximum detailed gaps retained per symbol. Zero keeps
             aggregate counts without detail.
+        observations: Optional raw bar facts. When supplied, zero-activity
+            provider bars are counted without turning them into missing gaps.
+        context: Optional listing, provider-coverage, and no-trade evidence.
 
     Returns:
         Per-symbol complete summary and at most `max_gap_samples` gap records.
@@ -111,6 +200,11 @@ def analyze_gaps(
     """
     if isinstance(max_gap_samples, bool) or not isinstance(max_gap_samples, int) or max_gap_samples < 0:
         raise ValueError("max_gap_samples must be a non-negative integer")
+    effective_context = context or CompletenessContext()
+    classification_counts: dict[str, int] = {}
+    zero_activity_bars = sum(
+        1 for observation in (observations or ()) if observation.zero_activity
+    )
     if len(timestamps) < 2:
         summary = DataQualitySummary(
             symbol=symbol,
@@ -118,6 +212,13 @@ def analyze_gaps(
             missing_gaps=0,
             expected_gaps=0,
             max_gap=None,
+            classifications=(
+                {"provider_zero_activity": zero_activity_bars}
+                if zero_activity_bars
+                else {}
+            ),
+            zero_activity_bars=zero_activity_bars,
+            action="review" if not timestamps else "usable",
         )
         return summary, []
 
@@ -138,6 +239,15 @@ def analyze_gaps(
             continue
         session = sessions.get((symbol.upper(), normalize_timeframe(timeframe)))
         reason = gap_reason(prev_ts, next_ts, asset_class, timeframe, session=session)
+        classification = classify_gap(
+            symbol=symbol,
+            prev_ts=prev_ts,
+            next_ts=next_ts,
+            asset_class=asset_class,
+            reason=reason,
+            context=effective_context,
+        )
+        classification_counts[classification] = classification_counts.get(classification, 0) + 1
         if len(gaps) < max_gap_samples:
             gaps.append(
                 GapRecord(
@@ -148,12 +258,22 @@ def analyze_gaps(
                     expected=expected_delta,
                     threshold=threshold,
                     reason=reason,
+                    classification=classification,
+                    raw_facts=_raw_gap_facts(
+                        symbol=symbol,
+                        asset_class=asset_class,
+                        classification=classification,
+                        context=effective_context,
+                    ),
                 )
             )
-        if reason == "expected_session_gap":
+        if classification == "exchange_closure":
             expected += 1
         else:
             missing += 1
+
+    if zero_activity_bars:
+        classification_counts["provider_zero_activity"] = zero_activity_bars
 
     summary = DataQualitySummary(
         symbol=symbol,
@@ -161,8 +281,93 @@ def analyze_gaps(
         missing_gaps=missing,
         expected_gaps=expected,
         max_gap=max_gap,
+        classifications=classification_counts,
+        zero_activity_bars=zero_activity_bars,
+        action=_symbol_action(classification_counts, has_bars=bool(timestamps)),
     )
     return summary, gaps
+
+
+def classify_gap(
+    *,
+    symbol: str,
+    prev_ts: datetime,
+    next_ts: datetime,
+    asset_class: str,
+    reason: str,
+    context: CompletenessContext,
+) -> CompletenessClassification:
+    """Classify an absent interval using explicit asset/provider evidence."""
+    lifecycle = context.lifecycle_for(symbol)
+    if lifecycle is not None:
+        if lifecycle.listed_at is not None and next_ts <= lifecycle.listed_at:
+            return "asset_not_listed"
+        if lifecycle.delisted_at is not None and prev_ts >= lifecycle.delisted_at:
+            return "asset_delisted"
+    if reason == "expected_session_gap":
+        return "exchange_closure"
+    if _matches_provider_window(symbol, prev_ts, next_ts, context, available=False):
+        return "provider_coverage_gap"
+    if symbol.upper() in {item.upper() for item in context.provider_omits_no_trade}:
+        return "illiquid_no_trade"
+    if _matches_provider_window(symbol, prev_ts, next_ts, context, available=True):
+        return "local_ingestion_loss"
+    return "unclassified_gap"
+
+
+def _matches_provider_window(
+    symbol: str,
+    prev_ts: datetime,
+    next_ts: datetime,
+    context: CompletenessContext,
+    *,
+    available: bool,
+) -> bool:
+    """Return whether an interval is covered by matching provider evidence."""
+    for window in context.provider_windows:
+        symbols = {value.upper() for value in window.affected_symbols}
+        applies = not symbols or symbol.upper() in symbols
+        if applies and window.available is available and window.start <= prev_ts and next_ts <= window.end:
+            return True
+    return False
+
+
+def _raw_gap_facts(
+    *,
+    symbol: str,
+    asset_class: str,
+    classification: CompletenessClassification,
+    context: CompletenessContext,
+) -> dict[str, object]:
+    """Retain the inputs that explain an inferred classification."""
+    lifecycle = context.lifecycle_for(symbol)
+    return {
+        "symbol": symbol,
+        "asset_class": asset_class,
+        "provider": context.provider,
+        "classification": classification,
+        "listed_at": lifecycle.listed_at.isoformat() if lifecycle and lifecycle.listed_at else None,
+        "delisted_at": lifecycle.delisted_at.isoformat() if lifecycle and lifecycle.delisted_at else None,
+    }
+
+
+def _symbol_action(classifications: Mapping[str, int], *, has_bars: bool) -> str:
+    """Return the actionable disposition for a symbol's quality evidence."""
+    if not has_bars:
+        return "no_observations"
+    if classifications.get("local_ingestion_loss"):
+        return "repair_local_ingestion"
+    if classifications.get("provider_coverage_gap"):
+        return "await_provider_coverage"
+    if classifications.get("unclassified_gap"):
+        return "investigate_gap"
+    if classifications.get("illiquid_no_trade"):
+        return "accept_sparse_activity"
+    if classifications.get("asset_not_listed") or classifications.get("asset_delisted"):
+        return "outside_asset_lifecycle"
+    if classifications.get("exchange_closure"):
+        return "expected_exchange_closure"
+    return "usable"
 
 
 def gap_reason(

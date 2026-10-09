@@ -12,17 +12,20 @@ from zoneinfo import ZoneInfo
 from ..config import build_config
 from ..event_store import EventStore, build_event_store
 from ..timeframes import normalize_timeframe
-from .queries import BarQuery, fetch_bar_timestamps, normalize_bar_query
+from .queries import BarQuery, fetch_all_bars, normalize_bar_query
 from .quality_config import (
     as_int as _as_int,
     get_section as _get_section,
     parse_datetime as _parse_datetime,
+    parse_completeness_context as _parse_completeness_context,
     parse_gap_multipliers as _parse_gap_multipliers,
     parse_sessions as _parse_sessions,
     parse_symbols as _parse_symbols,
 )
 from .quality_gaps import (
     DEFAULT_MAX_GAP_SAMPLES,
+    BarObservation,
+    CompletenessContext,
     DataQualitySummary,
     GapRecord,
     SessionWindow,
@@ -44,6 +47,8 @@ from .quality_summary import (
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "BarObservation",
+    "CompletenessContext",
     "DataQualitySummary",
     "GapRecord",
     "SessionWindow",
@@ -69,12 +74,27 @@ def summarize_bar_quality(event_store: EventStore, query: BarQuery) -> tuple[dic
         MarketDataQueryValidationError: If the query is invalid.
     """
     normalized = normalize_bar_query(query)
-    bars = fetch_bar_timestamps(event_store, normalized)
+    bars = fetch_all_bars(event_store, normalized)
     timestamps_by_symbol: dict[str, set[datetime]] = {symbol: set() for symbol in normalized.symbols}
+    observations_by_symbol: dict[str, list[BarObservation]] = {
+        symbol: [] for symbol in normalized.symbols
+    }
     for bar in bars:
         timestamps_by_symbol.setdefault(bar.symbol, set()).add(bar.ts)
+        observations_by_symbol.setdefault(bar.symbol, []).append(
+            BarObservation(
+                ts=bar.ts,
+                volume=bar.volume,
+                trade_count=bar.trade_count,
+                source=bar.source,
+            )
+        )
 
-    return summarize_bar_quality_from_timestamps(normalized, timestamps_by_symbol)
+    return summarize_bar_quality_from_timestamps(
+        normalized,
+        timestamps_by_symbol,
+        observations_by_symbol=observations_by_symbol,
+    )
 
 
 def run_data_quality(config_data: Mapping[str, object]) -> dict[str, object]:
@@ -105,13 +125,14 @@ def run_data_quality(config_data: Mapping[str, object]) -> dict[str, object]:
         raise ValueError("data_quality.max_gap_samples must be a non-negative integer")
     multipliers = _parse_gap_multipliers(quality.get("gap_multipliers"))
     sessions = _parse_sessions(quality.get("sessions"))
+    completeness = _parse_completeness_context(quality.get("completeness"))
 
     event_store = build_event_store(config)
     summaries: list[DataQualitySummary] = []
     gaps_by_symbol: dict[str, list[GapRecord]] = {}
     try:
         for symbol in symbols:
-            timestamps = _fetch_timestamps(
+            observations = _fetch_observations(
                 event_store,
                 asset_class,
                 symbol,
@@ -119,6 +140,7 @@ def run_data_quality(config_data: Mapping[str, object]) -> dict[str, object]:
                 start=start,
                 end=end,
             )
+            timestamps = [observation.ts for observation in observations]
             summary, gaps = _analyze_gaps(
                 symbol=symbol,
                 timestamps=timestamps,
@@ -127,6 +149,8 @@ def run_data_quality(config_data: Mapping[str, object]) -> dict[str, object]:
                 multipliers=multipliers,
                 sessions=sessions,
                 max_gap_samples=max_gap_samples,
+                context=completeness,
+                observations=observations,
             )
             _log_summary(summary)
             _log_gaps(gaps, max_gap_logs=max_gap_logs, total_count=summary.missing_gaps + summary.expected_gaps)
@@ -159,7 +183,7 @@ def write_data_quality_report(report: Mapping[str, object], path: str | Path) ->
     return output_path
 
 
-def _fetch_timestamps(
+def _fetch_observations(
     event_store: EventStore,
     asset_class: str,
     symbol: str,
@@ -167,8 +191,8 @@ def _fetch_timestamps(
     *,
     start: datetime | None,
     end: datetime | None,
-) -> list[datetime]:
-    """Fetch stored bar timestamps for one symbol/timeframe in ascending order."""
+) -> list[BarObservation]:
+    """Fetch stored bar facts for one symbol/timeframe in ascending order."""
     table = "crypto_bar_events" if asset_class in {"crypto", "cryptocurrency"} else "stock_bar_events"
     connection = getattr(event_store, "connection", lambda: None)()
     if connection is None or not hasattr(connection, "cursor"):
@@ -186,14 +210,22 @@ def _fetch_timestamps(
         params.append(end)
     where_clause = " AND ".join(filters)
     query = f"""
-        SELECT ts
+        SELECT ts, volume, trade_count, source
         FROM {table}
         WHERE {where_clause}
         ORDER BY ts ASC
     """
     with connection.cursor() as cursor:
         cursor.execute(query, params)
-        return [_normalize_timestamp(row[0]) for row in cursor.fetchall()]
+        return [
+            BarObservation(
+                ts=_normalize_timestamp(row[0]),
+                volume=float(row[1]) if row[1] is not None else None,
+                trade_count=float(row[2]) if row[2] is not None else None,
+                source=str(row[3]) if row[3] is not None else None,
+            )
+            for row in cursor.fetchall()
+        ]
 
 
 def _log_summary(summary: DataQualitySummary) -> None:
@@ -215,7 +247,7 @@ def _log_gaps(gaps: Iterable[GapRecord], *, max_gap_logs: int, total_count: int)
         if logged_count >= max_gap_logs:
             break
         logged_count += 1
-        if gap.reason == "expected_session_gap":
+        if gap.classification == "exchange_closure":
             logger.info(
                 "Expected session gap symbol=%s prev_ts=%s next_ts=%s delta=%s threshold=%s",
                 gap.symbol,
