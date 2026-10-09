@@ -6,6 +6,11 @@ to non-authoritative tracking sinks. Optional provider adapters live in outer
 infrastructure and are injected through the protocols exported here.
 """
 
+from .candidate_handoff import (
+    StrategyCandidateHandoff,
+    create_strategy_candidate_handoff,
+    resolve_strategy_candidate_handoff,
+)
 from .backtests import (
     compare_backtest_results,
     get_backtest_results,
@@ -71,6 +76,9 @@ from .tracking import ExperimentTrackingSinkRegistry, project_experiment_trackin
 
 __all__ = [
     "BacktestOptimizationTrialExecutor",
+    "StrategyCandidateHandoff",
+    "create_strategy_candidate_handoff",
+    "resolve_strategy_candidate_handoff",
     "DeadlineOptimizationTrialExecutor",
     "ExperimentTrackingSink",
     "ExperimentTrackingSinkRegistry",
