@@ -546,6 +546,12 @@ CONSOLE_READ_COLUMNS: Final[Mapping[str, tuple[str, ...]]] = {
         "blockers",
         "independent_confirmation",
         "origin_kind",
+        "session_id",
+        "session_digest",
+        "graph_digest",
+        "branch_id",
+        "revision",
+        "node_key",
     ),
 }
 
@@ -2054,7 +2060,21 @@ SELECT
         WHEN artifact_type LIKE 'parameter_optimization%' THEN 'optimization'
         WHEN artifact_type = 'multiple_testing_report' THEN 'diagnostic'
         ELSE 'independent_review'
-    END AS origin_kind
+    END AS origin_kind,
+    NULLIF(COALESCE(metadata->>'session_id', payload->>'session_id'), '') AS session_id,
+    NULLIF(COALESCE(metadata->>'session_digest', payload->>'session_digest'), '') AS session_digest,
+    NULLIF(COALESCE(metadata->>'graph_digest', payload->>'graph_digest'), '') AS graph_digest,
+    NULLIF(COALESCE(metadata->>'branch_id', payload->>'branch_id'), '') AS branch_id,
+    CASE
+        WHEN COALESCE(metadata->>'revision', payload->>'revision') ~ '^[0-9]+$'
+        THEN (COALESCE(metadata->>'revision', payload->>'revision'))::integer
+        ELSE NULL
+    END AS revision,
+    CASE
+        WHEN COALESCE(metadata->>'revision', payload->>'revision') ~ '^[0-9]+$'
+        THEN artifact_type || ':' || artifact_id || ':r' || COALESCE(metadata->>'revision', payload->>'revision')
+        ELSE NULL
+    END AS node_key
 FROM public.research_artifacts
 WHERE artifact_type IN (
     'evaluation_report',
@@ -2093,7 +2113,13 @@ SELECT
     '[]'::jsonb AS limitations,
     '[]'::jsonb AS blockers,
     false AS independent_confirmation,
-    NULL::text AS origin_kind
+    NULL::text AS origin_kind,
+    NULL::text AS session_id,
+    NULL::text AS session_digest,
+    NULL::text AS graph_digest,
+    NULL::text AS branch_id,
+    NULL::integer AS revision,
+    NULL::text AS node_key
 WHERE false
 """
 

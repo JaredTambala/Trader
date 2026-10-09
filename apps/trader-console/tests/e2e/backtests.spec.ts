@@ -45,7 +45,7 @@ test("backtest review shows scoped metrics, curves, and execution evidence", asy
       evidence_kind: "evaluation",
       artifact_type: "evaluation_report",
       artifact_id: "evaluation-1",
-      status: "available",
+      status: "complete",
       reason: "Independent evaluation is available for the declared claim scope",
       domain_owner: "Evaluation Agent",
       producer_tool: "evaluation_generate_report",

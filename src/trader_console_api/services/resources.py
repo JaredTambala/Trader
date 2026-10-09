@@ -63,7 +63,9 @@ def _run_summary(row: dict[str, Any]) -> ExperimentRunSummary:
 
 
 ReviewEvidenceKind = Literal["evaluation", "multiple_testing", "adversarial"]
-ReviewEvidenceStatus = Literal["available", "missing", "incompatible", "blocked"]
+ReviewEvidenceStatus = Literal[
+    "complete", "partial", "negative", "missing", "incompatible", "stale", "blocked",
+]
 ReviewEvidenceOrigin = Literal["independent_review", "optimization", "diagnostic"]
 
 _REVIEW_KINDS: dict[str, ReviewEvidenceKind] = {
@@ -91,6 +93,12 @@ def _string_tuple(value: Any) -> tuple[str, ...]:
     return tuple(str(item) for item in value if item is not None)
 
 
+def _sha256(value: Any) -> str | None:
+    """Accept only lowercase SHA-256 digests at the producer boundary."""
+    text = str(value or "")
+    return text if len(text) == 64 and all(char in "0123456789abcdef" for char in text) else None
+
+
 def _review_evidence(rows: Iterable[dict[str, Any]]) -> tuple[ReviewEvidence, ...]:
     """Map producer artifacts to a complete, claim-scoped review projection."""
     by_kind: dict[ReviewEvidenceKind, ReviewEvidence] = {}
@@ -110,16 +118,39 @@ def _review_evidence(rows: Iterable[dict[str, Any]]) -> tuple[ReviewEvidence, ..
         if artifact_status in {"blocked", "failed", "error"}:
             status: ReviewEvidenceStatus = "blocked"
             reason = blockers[0] if blockers else f"{_REVIEW_LABELS[kind]} is blocked"
-        elif artifact_status not in {"passed", "completed", "complete"}:
+        elif artifact_status in {"passed", "completed", "complete", "available"}:
+            status = "complete"
+            reason = "Producer artifact is complete for the declared claim scope"
+        elif artifact_status in {"partial", "warning"}:
+            status = "partial"
+            reason = f"{_REVIEW_LABELS[kind]} is partial for the declared claim scope"
+        elif artifact_status in {"negative", "rejected"}:
+            status = "negative"
+            reason = f"{_REVIEW_LABELS[kind]} reports a negative result"
+        elif artifact_status in {"missing", "incompatible", "stale"}:
+            status = cast(ReviewEvidenceStatus, artifact_status)
+            reason = f"{_REVIEW_LABELS[kind]} status is {artifact_status}"
+        else:
             status = "incompatible"
             reason = f"{_REVIEW_LABELS[kind]} status is {artifact_status or 'unknown'}"
-        else:
-            status = "available"
-            reason = "Producer artifact is available for the declared claim scope"
         independent = bool(row.get("independent_confirmation", False))
         if origin == "optimization":
             independent = False
             limitations = (*limitations, "Optimisation-derived evidence is not independent confirmation")
+        session_id = str(row.get("session_id") or "") or None
+        session_digest = _sha256(row.get("session_digest"))
+        graph_digest = _sha256(row.get("graph_digest"))
+        branch_id = str(row.get("branch_id") or "") or None
+        try:
+            revision = int(row["revision"]) if row.get("revision") is not None else None
+        except (TypeError, ValueError):
+            revision = None
+        node_key = str(row.get("node_key") or "") or None
+        if not all((session_id, session_digest, graph_digest, revision, node_key)):
+            if any((session_id, session_digest, graph_digest, revision, node_key)):
+                limitations = (*limitations, "Retained graph identity is incomplete; current revision cannot be cited")
+            session_id = session_digest = graph_digest = branch_id = node_key = None
+            revision = None
         by_kind[kind] = ReviewEvidence(
             evidence_kind=kind, artifact_type=artifact_type,
             artifact_id=str(row.get("artifact_id") or "") or None,
@@ -128,6 +159,8 @@ def _review_evidence(rows: Iterable[dict[str, Any]]) -> tuple[ReviewEvidence, ..
             producer_tool=str(row.get("producer_tool") or "") or None,
             schema_version=str(row.get("schema_version") or "") or None,
             source_hash=str(row.get("source_hash") or "") or None,
+            session_id=session_id, session_digest=session_digest, graph_digest=graph_digest,
+            branch_id=branch_id, revision=revision, node_key=node_key,
             claim_scope=dict(row.get("claim_scope") or {}) if isinstance(row.get("claim_scope"), dict) else {},
             data_roles=tuple(item if isinstance(item, (str, dict)) else str(item) for item in (row.get("data_roles") or ())),
             limitations=limitations,

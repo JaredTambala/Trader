@@ -1088,18 +1088,38 @@ class ReviewEvidence(BaseModel):
     evidence_kind: Literal["evaluation", "multiple_testing", "adversarial"]
     artifact_type: str | None = None
     artifact_id: str | None = None
-    status: Literal["available", "missing", "incompatible", "blocked"]
+    status: Literal[
+        "complete", "partial", "negative", "missing", "incompatible", "stale", "blocked",
+    ]
     reason: str
     domain_owner: str | None = None
     producer_tool: str | None = None
     schema_version: str | None = None
     source_hash: str | None = None
+    session_id: str | None = None
+    session_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    graph_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    branch_id: str | None = None
+    revision: int | None = Field(default=None, ge=1)
+    node_key: str | None = None
     claim_scope: dict[str, Any] = Field(default_factory=dict)
     data_roles: tuple[dict[str, Any] | str, ...] = ()
     limitations: tuple[str, ...] = ()
     blockers: tuple[str, ...] = ()
     independent_confirmation: bool = False
     origin_kind: Literal["independent_review", "optimization", "diagnostic"] | None = None
+
+    @model_validator(mode="after")
+    def validate_exact_identity(self) -> "ReviewEvidence":
+        """Require a complete graph identity whenever one is projected."""
+        identity = (self.session_id, self.session_digest, self.graph_digest, self.revision, self.node_key)
+        if any(value is not None for value in identity) and not all(value is not None for value in identity):
+            raise ValueError("review evidence graph identity must include session, graph, revision, and node key")
+        if self.node_key is not None:
+            expected = f"{self.artifact_type}:{self.artifact_id}:r{self.revision}"
+            if self.node_key != expected:
+                raise ValueError("review evidence node key does not match artifact identity and revision")
+        return self
 
 
 class NextDecisionArtifactReference(BaseModel):

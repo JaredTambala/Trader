@@ -140,15 +140,19 @@ function EvidenceTable({ detail, section }: { detail: RunDetail; section: Sectio
 
 function ReviewEvidencePanel({ detail }: { detail: RunDetail }) {
   const labels = { evaluation: "Evaluation", multiple_testing: "Multiple-testing", adversarial: "Adversarial / robustness" } as const;
+  const statusClass = (status: string) => status === "complete" ? styles.statusCompleted : ["negative", "blocked"].includes(status) ? styles.statusFailed : styles.statusWarning;
   return <section className={styles.panel} aria-labelledby="review-evidence-heading">
     <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>REVIEW EVIDENCE</p><h2 id="review-evidence-heading">Claims and limitations</h2></div><span className={styles.resultCount}>Producer-owned evidence</span></div>
+    <p className={styles.scopeNotice}>Evidence is retained for review and research decisions. This terminal view does not establish deployment readiness, profitability, or paper-trading admission.</p>
     <div className={styles.reviewEvidenceGrid}>{detail.review_evidence.map((item) => {
-      const statusClass = item.status === "available" ? styles.statusCompleted : item.status === "blocked" ? styles.statusFailed : styles.statusWarning;
       return <article className={styles.reviewEvidenceCard} key={item.evidence_kind}>
-        <div className={styles.reviewEvidenceHeader}><h3>{labels[item.evidence_kind]}</h3><span className={`${styles.status} ${statusClass}`}>{item.status}</span></div>
+        <div className={styles.reviewEvidenceHeader}><h3>{labels[item.evidence_kind]}</h3><span className={`${styles.status} ${statusClass(item.status)}`}>{item.status}</span></div>
         <p className={styles.reviewEvidenceReason}>{item.reason}</p>
         <dl className={styles.reviewEvidenceMeta}>
           <div><dt>Artifact</dt><dd>{item.artifact_id ?? "Unavailable"}</dd></div>
+          <div><dt>Revision</dt><dd>{item.revision ? `r${item.revision}` : "Unavailable"}</dd></div>
+          <div><dt>Graph node</dt><dd>{item.node_key ?? "Unavailable"}</dd></div>
+          <div><dt>Session / graph</dt><dd>{item.session_id && item.graph_digest ? `${item.session_id} · ${item.graph_digest}` : "Unavailable"}</dd></div>
           <div><dt>Claim scope</dt><dd>{formatValue(item.claim_scope)}</dd></div>
           <div><dt>Data roles</dt><dd>{item.data_roles.length ? item.data_roles.map((role) => formatValue(role)).join(", ") : "Unavailable"}</dd></div>
           <div><dt>Independent confirmation</dt><dd>{item.independent_confirmation ? "Yes" : "No"}</dd></div>

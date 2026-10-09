@@ -195,7 +195,7 @@ function evidenceArtifact(artifactId: string) {
   return {
     artifact_id: artifactId,
     uri: `research://fixture/${artifactId}`,
-    status: "available",
+    status: "complete",
     schema_version: "1",
     source_hash: `${artifactId}-hash`,
     created_at: "2026-06-21T00:00:00Z",

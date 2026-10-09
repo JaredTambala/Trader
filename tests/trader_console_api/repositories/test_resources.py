@@ -73,10 +73,12 @@ class _DetailConnection(_Connection):
                     "artifact_type", "artifact_id", "domain_owner", "producer_tool", "artifact_status",
                     "schema_version", "source_hash", "created_at", "updated_at", "run_id", "claim_scope",
                     "data_roles", "limitations", "blockers", "independent_confirmation", "origin_kind",
+                    "session_id", "session_digest", "graph_digest", "branch_id", "revision", "node_key",
                 ],
                 [("robustness_report", "robust-1", "Adversarial Agent", "adversarial_run_robustness", "blocked",
                   "1", None, None, None, "run-1", {"run_id": "run-1"}, ["protected_holdout"], [], ["variants missing"], False,
-                  "independent_review")],
+                  "independent_review", "session-1", "a" * 64, "b" * 64, "branch-1", 1,
+                  "robustness_report:robust-1:r1")],
             )
         return _Cursor(["run_id"], [])
 

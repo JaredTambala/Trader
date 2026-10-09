@@ -17,7 +17,7 @@ test("the real worker result is reviewable and records a human decision", async 
   await expect(page.getByText("full_fill", { exact: true })).toBeVisible();
   await expect(page.getByText("Executed trades", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Claims and limitations" })).toBeVisible();
-  await expect(page.getByText("available", { exact: true })).toBeVisible();
+  await expect(page.getByText("complete", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Choose what happens next" })).toBeVisible();
 
   await page.getByRole("textbox", { name: "Qualified data artifact ID" }).fill("qualification-manifest");

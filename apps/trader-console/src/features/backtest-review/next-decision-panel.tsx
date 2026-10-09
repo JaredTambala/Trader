@@ -45,11 +45,13 @@ export function NextDecisionPanel({ detail }: { detail: RunDetail }) {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const availableReview = useMemo(
-    () => detail.review_evidence.find((item) => item.status === "available" && item.artifact_id),
+    () => detail.review_evidence.find((item) => item.status === "complete" && item.artifact_id),
     [detail.review_evidence],
   );
+  const exactReview = availableReview?.session_id && availableReview.session_digest && availableReview.graph_digest
+    && availableReview.revision && availableReview.node_key ? availableReview : undefined;
   const exactScope = typeof detail.scope?.scope_fingerprint === "string" ? detail.scope.scope_fingerprint : undefined;
-  const canRecord = Boolean(exactScope && availableReview?.artifact_id && dataArtifactId.trim() && implementationArtifactId.trim());
+  const canRecord = Boolean(exactScope && exactReview && dataArtifactId.trim() && implementationArtifactId.trim());
 
   useEffect(() => {
     const controller = new AbortController();
@@ -72,7 +74,19 @@ export function NextDecisionPanel({ detail }: { detail: RunDetail }) {
     const reviewRef = ref(availableReview?.artifact_id ?? "", availableReview?.artifact_type ?? "evaluation_report", "Review", {
       run_id: runId,
       scope_fingerprint: exactScope,
+      session_id: exactReview?.session_id,
+      session_digest: exactReview?.session_digest,
+      graph_digest: exactReview?.graph_digest,
+      revision: exactReview?.revision,
+      node_key: exactReview?.node_key,
+      source_hash: exactReview?.source_hash,
     });
+    const sessionReview = exactReview ? {
+      session_id: exactReview.session_id ?? "",
+      session_digest: exactReview.session_digest ?? "",
+      graph_digest: exactReview.graph_digest ?? "",
+      review_node_keys: [exactReview.node_key ?? ""],
+    } : null;
     const request: NextResearchDecisionRequest = {
       decision_id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `decision-${Date.now()}`,
       revision: 1,
@@ -83,6 +97,7 @@ export function NextDecisionPanel({ detail }: { detail: RunDetail }) {
       implementation_refs: [implementationRef],
       assumptions: detail.assumptions ?? {},
       review_refs: [reviewRef],
+      session_review: sessionReview,
       limitations: limitations.split("\n").map((item) => item.trim()).filter(Boolean),
       next_experiment: outcome === "reject" ? null : {
         question: nextQuestion.trim(),
@@ -140,7 +155,8 @@ export function NextDecisionPanel({ detail }: { detail: RunDetail }) {
       <label className={styles.field}><span>Success criteria (one per line)</span><textarea aria-label="Next experiment success criteria" value={nextCriteria} onChange={(event) => setNextCriteria(event.target.value)} rows={3} /></label>
     </div>}
     {!exactScope && <div className={styles.scopeNotice}><strong>Recording blocked.</strong> This run has no qualified scope fingerprint.</div>}
-    {exactScope && !availableReview && <div className={styles.scopeNotice}><strong>Recording blocked.</strong> An available review artifact is required.</div>}
+    {exactScope && !availableReview && <div className={styles.scopeNotice}><strong>Recording blocked.</strong> Complete review evidence is required.</div>}
+    {exactScope && availableReview && !exactReview && <div className={styles.scopeNotice}><strong>Recording blocked.</strong> The review artifact has no current retained session graph identity and revision.</div>}
     {submitState === "error" && <div className={styles.errorBox} role="alert"><p>{submitError}</p></div>}
     <button className={styles.button} type="button" onClick={() => void submit()} disabled={!canRecord || !rationale.trim() || !limitations.trim() || submitState === "submitting"}>{submitState === "submitting" ? "Recording…" : "Record decision"}</button>
   </section>;

@@ -9,6 +9,8 @@ Non-goals: SQL selection, persistence, or frontend rendering.
 
 from datetime import datetime, timezone
 
+import pytest
+
 from trader_console_api.services.resources import _review_evidence, _run_summary
 
 
@@ -62,10 +64,41 @@ def test_review_evidence_preserves_claim_scope_and_blocks_optimization_promotion
         ]
     )
 
-    assert evidence[0].status == "available"
+    assert evidence[0].status == "complete"
     assert evidence[0].independent_confirmation is False
     assert "not independent confirmation" in evidence[0].limitations[-1]
     adversarial = next(item for item in evidence if item.evidence_kind == "adversarial")
     assert adversarial.status == "blocked"
     assert adversarial.reason == "stress variants are missing"
     assert next(item for item in evidence if item.evidence_kind == "multiple_testing").status == "missing"
+
+
+@pytest.mark.parametrize("state", ("partial", "negative", "missing", "incompatible", "stale"))
+def test_review_evidence_preserves_fail_closed_qualification_states_and_graph_identity(state: str) -> None:
+    """Expose every producer qualification state with exact retained identity."""
+    row = {
+        "artifact_type": "evaluation_report",
+        "artifact_id": "eval-1",
+        "artifact_status": state,
+        "session_id": "session-1",
+        "session_digest": "a" * 64,
+        "graph_digest": "b" * 64,
+        "branch_id": "branch-review",
+        "revision": 2,
+        "node_key": "evaluation_report:eval-1:r2",
+    }
+    evidence = _review_evidence([row])
+    assert evidence[0].status == state
+    assert evidence[0].node_key == "evaluation_report:eval-1:r2"
+    assert evidence[0].session_id == "session-1"
+
+
+def test_review_evidence_drops_partial_graph_identity_without_breaking_projection() -> None:
+    """An incomplete producer graph receipt remains visible but cannot be cited."""
+    evidence = _review_evidence([{
+        "artifact_type": "evaluation_report", "artifact_id": "eval-1", "artifact_status": "complete",
+        "revision": 2, "node_key": "evaluation_report:eval-1:r2",
+    }])
+    assert evidence[0].status == "complete"
+    assert evidence[0].revision is None
+    assert any("graph identity is incomplete" in item for item in evidence[0].limitations)

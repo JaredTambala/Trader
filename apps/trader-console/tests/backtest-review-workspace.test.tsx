@@ -30,7 +30,7 @@ const detail = {
   comparison_curves: [{ run_id: "run-1", ts: run.start_ts, strategy_drawdown: 0, benchmark_drawdown: 0 }, { run_id: "run-1", ts: run.end_ts, strategy_drawdown: -0.04, benchmark_drawdown: -0.06 }],
   trades: [{ run_id: "run-1", fill_ts: run.end_ts, symbol: "BTC/USD", side: "buy", fill_qty: 0.1, fill_price: 60_000, realized_pnl: 0 }],
   review_evidence: [
-    { evidence_kind: "evaluation", artifact_type: "parameter_optimization_evaluation_report", artifact_id: "eval-1", status: "available", reason: "Producer artifact is available for the declared claim scope", domain_owner: "Evaluation Agent", producer_tool: "evaluation_generate_parameter_optimization_report", schema_version: "1", source_hash: null, claim_scope: { holdout_run_id: "run-1" }, data_roles: ["sealed_holdout"], limitations: ["Optimisation-derived evidence is not independent confirmation"], blockers: [], independent_confirmation: false, origin_kind: "optimization" },
+    { evidence_kind: "evaluation", artifact_type: "parameter_optimization_evaluation_report", artifact_id: "eval-1", status: "complete", reason: "Producer artifact is available for the declared claim scope", domain_owner: "Evaluation Agent", producer_tool: "evaluation_generate_parameter_optimization_report", schema_version: "1", source_hash: null, claim_scope: { holdout_run_id: "run-1" }, data_roles: ["sealed_holdout"], limitations: ["Optimisation-derived evidence is not independent confirmation"], blockers: [], independent_confirmation: false, origin_kind: "optimization" },
     { evidence_kind: "multiple_testing", artifact_type: null, artifact_id: null, status: "missing", reason: "No multiple-testing report is linked to this run", domain_owner: null, producer_tool: null, schema_version: null, source_hash: null, claim_scope: {}, data_roles: [], limitations: [], blockers: [], independent_confirmation: false, origin_kind: null },
     { evidence_kind: "adversarial", artifact_type: "robustness_report", artifact_id: "robust-1", status: "blocked", reason: "Stress variants are missing", domain_owner: "Adversarial Agent", producer_tool: "adversarial_run_robustness", schema_version: "1", source_hash: null, claim_scope: { run_id: "run-1" }, data_roles: ["protected_holdout"], limitations: [], blockers: ["Stress variants are missing"], independent_confirmation: false, origin_kind: "independent_review" },
   ],
@@ -82,6 +82,28 @@ describe("single-backtest review workflow", () => {
     expect(await screen.findByText(/Scope evidence unavailable/)).toBeVisible();
     expect(screen.queryByText("Scoped result summary")).not.toBeInTheDocument();
     expect(screen.queryByText("Strategy return")).not.toBeInTheDocument();
+  });
+
+  it("renders mixed review states and exact retained graph identity without promotion claims", async () => {
+    const mixedReviewEvidence: RunDetail["review_evidence"] = [
+      {
+        ...detail.review_evidence[0], status: "partial" as const, session_id: "session-1", session_digest: "a".repeat(64),
+        graph_digest: "b".repeat(64), branch_id: "branch-review", revision: 2,
+        node_key: "parameter_optimization_evaluation_report:eval-1:r2",
+      } as RunDetail["review_evidence"][number],
+      { ...detail.review_evidence[1], status: "negative" as const } as RunDetail["review_evidence"][number],
+      { ...detail.review_evidence[2], status: "stale" as const } as RunDetail["review_evidence"][number],
+    ];
+    vi.mocked(loadRunDetail).mockResolvedValue({
+      ...detail,
+      review_evidence: mixedReviewEvidence,
+    });
+    render(<BacktestReviewWorkspace />);
+    expect(await screen.findByText("partial")).toBeVisible();
+    expect(screen.getByText("negative")).toBeVisible();
+    expect(screen.getByText("stale")).toBeVisible();
+    expect(screen.getByText("parameter_optimization_evaluation_report:eval-1:r2")).toBeVisible();
+    expect(screen.getByText(/does not establish deployment readiness, profitability, or paper-trading admission/)).toBeVisible();
   });
 
   it("labels legacy runs whose risk evidence is unavailable", async () => {
