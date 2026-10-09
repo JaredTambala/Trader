@@ -205,10 +205,12 @@ block from a broker rejection or an absent fill.
 ### Human next-decision record
 
 The review workspace records a human research decision only after the run exposes a qualified scope and at least one
-available review artifact. `POST /api/runs/{run_id}/next-decisions` accepts a strict `NextResearchDecisionRequest`
+complete review artifact with a current retained session/graph/node revision. `POST /api/runs/{run_id}/next-decisions` accepts a strict `NextResearchDecisionRequest`
 with `reject`, `refine`, or `continue`, rationale, exact canonical references for the run/Data/implementation/review
 chain, assumptions, and limitations. `refine` and `continue` additionally require a bounded successor experiment
 with exact Data and implementation references, an evaluation window, a maximum run count, and success criteria.
+The browser asks the human to pin the run, Data, and implementation source hashes; the API compares each supplied
+hash against the canonical artifact before accepting a session-linked decision.
 For an agent-session review, the command may also carry `session_review` with the exact session ID/digest, retained
 graph digest, and named review-node revisions. Each named node must match one cited review artifact; those references
 and every cited run, Data, implementation, and review reference must pin a canonical payload or source hash. The
@@ -231,7 +233,9 @@ still required for the complete UJ-09 interface.
 
 `review_evidence` is a fixed three-part projection of Evaluation, multiple-testing, and Adversarial/robustness
 artifacts. Each item carries its producer identity, artifact digest, claim scope, data roles, limitations, blockers,
-and an explicit `available`, `missing`, `incompatible`, or `blocked` status. Optimisation-derived Evaluation and
+and an explicit `complete`, `partial`, `negative`, `missing`, `incompatible`, `stale`, or `blocked` status. When
+retained graph evidence exists it also carries session/graph digests, branch, revision, and the exact node key.
+Optimisation-derived Evaluation and
 robustness artifacts remain labelled as optimisation context and cannot set `independent_confirmation`; the Console
 never recomputes producer statistics or turns exploratory selection into confirmation. Multiple-testing reports that
 are not persisted and linked to the run stay `missing` with an actionable reason.

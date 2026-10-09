@@ -325,8 +325,9 @@ API:
   trace for a known run stays distinct from an unknown run.
 - The run detail also returns `review_evidence`, a fixed projection of the producer-owned Evaluation,
   multiple-testing, and Adversarial/robustness artifacts. The producer view joins only exact run references and exposes
-  claim scope, data roles, limitations, blockers, identity, and digest. The service supplies explicit missing states;
-  it never calculates statistics or promotes optimisation output to independent confirmation.
+  claim scope, data roles, limitations, blockers, identity, digest, and the retained session/graph/node revision when
+  one is published. Statuses are explicit (`complete`, `partial`, `negative`, `missing`, `incompatible`, `stale`, or
+  `blocked`); the service never calculates statistics or promotes optimisation output to independent confirmation.
 
 The service boundary filters producer-only columns from the repository's `runs.*` selection before validating the
 closed run-summary contract. Standalone runs retain their canonical `run_id`; the stable group label only supplies the

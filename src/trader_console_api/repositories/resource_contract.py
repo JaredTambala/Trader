@@ -150,6 +150,7 @@ RESOURCE_CONTRACT_COLUMNS: Final[dict[str, tuple[str, ...]]] = {
         "artifact_type", "artifact_id", "domain_owner", "producer_tool",
         "artifact_status", "schema_version", "source_hash", "created_at", "updated_at",
         "run_id", "claim_scope", "data_roles", "limitations", "blockers",
-        "independent_confirmation", "origin_kind",
+        "independent_confirmation", "origin_kind", "session_id", "session_digest",
+        "graph_digest", "branch_id", "revision", "node_key",
     ),
 }

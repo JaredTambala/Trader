@@ -5814,6 +5814,17 @@
             "title": "Blockers",
             "type": "array"
           },
+          "branch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Id"
+          },
           "claim_scope": {
             "additionalProperties": true,
             "title": "Claim Scope",
@@ -5855,6 +5866,18 @@
             "title": "Evidence Kind",
             "type": "string"
           },
+          "graph_digest": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graph Digest"
+          },
           "independent_confirmation": {
             "default": false,
             "title": "Independent Confirmation",
@@ -5867,6 +5890,17 @@
             },
             "title": "Limitations",
             "type": "array"
+          },
+          "node_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Key"
           },
           "origin_kind": {
             "anyOf": [
@@ -5899,6 +5933,18 @@
             "title": "Reason",
             "type": "string"
           },
+          "revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          },
           "schema_version": {
             "anyOf": [
               {
@@ -5909,6 +5955,29 @@
               }
             ],
             "title": "Schema Version"
+          },
+          "session_digest": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Digest"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
           },
           "source_hash": {
             "anyOf": [
@@ -5923,9 +5992,12 @@
           },
           "status": {
             "enum": [
-              "available",
+              "complete",
+              "partial",
+              "negative",
               "missing",
               "incompatible",
+              "stale",
               "blocked"
             ],
             "title": "Status",

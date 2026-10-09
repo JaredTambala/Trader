@@ -2947,6 +2947,8 @@ export interface components {
              * @default []
              */
             blockers: string[];
+            /** Branch Id */
+            branch_id?: string | null;
             /** Claim Scope */
             claim_scope?: {
                 [key: string]: unknown;
@@ -2965,6 +2967,8 @@ export interface components {
              * @enum {string}
              */
             evidence_kind: "evaluation" | "multiple_testing" | "adversarial";
+            /** Graph Digest */
+            graph_digest?: string | null;
             /**
              * Independent Confirmation
              * @default false
@@ -2975,21 +2979,29 @@ export interface components {
              * @default []
              */
             limitations: string[];
+            /** Node Key */
+            node_key?: string | null;
             /** Origin Kind */
             origin_kind?: ("independent_review" | "optimization" | "diagnostic") | null;
             /** Producer Tool */
             producer_tool?: string | null;
             /** Reason */
             reason: string;
+            /** Revision */
+            revision?: number | null;
             /** Schema Version */
             schema_version?: string | null;
+            /** Session Digest */
+            session_digest?: string | null;
+            /** Session Id */
+            session_id?: string | null;
             /** Source Hash */
             source_hash?: string | null;
             /**
              * Status
              * @enum {string}
              */
-            status: "available" | "missing" | "incompatible" | "blocked";
+            status: "complete" | "partial" | "negative" | "missing" | "incompatible" | "stale" | "blocked";
         };
         /**
          * RiskCompositionEntry
