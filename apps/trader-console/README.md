@@ -82,7 +82,9 @@ make the remaining dataset visible without pretending a large result is complete
 and unavailable bars are explicit states. There is no polling or shared state framework.
 
 `/agents/{session_id}` renders the API's redacted public session projection: identity and runtime pins, agenda,
-budgets, specialist and blocker progress, recovery checkpoint, and terminal evidence lineage. Its controls use the
+budgets, specialist and blocker progress, recovery checkpoint, and terminal evidence lineage. Each specialist branch
+also exposes a typed outcome and handoff artifact revisions, hashes, and availability states, so refresh and recovery
+retain exact evidence identity. Its controls use the
 API-provided `available_commands`; a missing inspection or terminal state disables invalid lifecycle actions. The
 API independently enforces the same policy and the agent runtime rechecks state when consuming an intent.
 

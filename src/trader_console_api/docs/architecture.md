@@ -148,6 +148,13 @@ Missing or incompatible producer projections fail closed with `agent_session_sto
 invents agenda, checkpoint, or completion state from a missing row. The event list is a public decision trajectory,
 not a replacement for retained observability evidence.
 
+Each delegation also carries a typed specialist outcome (`running`, `complete`, `partial`, `failed`, `blocked`,
+`stale`, or `unavailable`) and, when a receipt identifies an attempt, a bounded handoff containing its owner, digest,
+blockers, and artifact references. References include an optional positive revision and an explicit availability state
+(`available`, `stale`, `missing`, `unavailable`, or `incompatible`). The browser renders these fields per branch so a
+human can distinguish concurrent progress from a failed or stale handoff and can inspect the exact URI, revision, and
+source hash that was retained. Missing revision evidence remains visible as unavailable rather than being inferred.
+
 `POST /api/agent-sessions/{session_id}/commands` records an explicit human command intent (`inspect`, `interrupt`,
 `resume`, or `cancel`) in `console_app.agent_session_commands`. The endpoint requires an authenticated human principal
 who owns the immutable session; agents and MCP identities are rejected. Commands are append-only and idempotent by

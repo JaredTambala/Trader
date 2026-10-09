@@ -74,6 +74,14 @@ class AgentSessionEvidenceReference(BaseModel):
     artifact_id: str = Field(min_length=1, max_length=200)
     domain_owner: str = Field(min_length=1, max_length=100)
     uri: str = Field(min_length=1, max_length=500)
+    revision: int | None = Field(default=None, ge=1)
+    status: Literal[
+        "available",
+        "stale",
+        "missing",
+        "unavailable",
+        "incompatible",
+    ] = "available"
     source_hash: str | None = Field(
         default=None,
         min_length=64,
@@ -88,6 +96,34 @@ class AgentSessionEvidenceReference(BaseModel):
         if self.uri != expected:
             raise ValueError("agent evidence URI does not match artifact identity")
         return self
+
+
+AgentSessionSpecialistStatus = Literal[
+    "running",
+    "complete",
+    "partial",
+    "failed",
+    "blocked",
+    "stale",
+    "unavailable",
+]
+
+
+class AgentSessionHandoff(BaseModel):
+    """Typed specialist handoff state visible to a human reviewer."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    branch_id: str = Field(min_length=1, max_length=200)
+    delegation_id: str = Field(min_length=1, max_length=200)
+    attempt_id: str = Field(min_length=1, max_length=200)
+    owner: str = Field(min_length=1, max_length=200)
+    status: AgentSessionSpecialistStatus
+    digest: str | None = Field(
+        default=None, min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$"
+    )
+    artifact_refs: tuple[AgentSessionEvidenceReference, ...] = ()
+    blockers: tuple[str, ...] = ()
 
 
 class AgentSessionBudgetLimits(BaseModel):
@@ -132,6 +168,8 @@ class AgentSessionDelegation(BaseModel):
     evidence_refs: tuple[AgentSessionEvidenceReference, ...] = ()
     blockers: tuple[str, ...] = ()
     next_actions: tuple[str, ...] = ()
+    specialist_status: AgentSessionSpecialistStatus = "running"
+    handoff: AgentSessionHandoff | None = None
 
 
 class AgentSessionEvent(BaseModel):

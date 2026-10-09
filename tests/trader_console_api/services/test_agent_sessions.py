@@ -192,6 +192,73 @@ def test_projection_is_typed_and_redacted() -> None:
     assert "secret" not in rendered
 
 
+def test_projection_retains_specialist_outcomes_handoffs_and_exact_revisions() -> None:
+    """Specialist branches expose bounded outcome states and pinned artifact identity."""
+    statuses = ("complete", "partial", "failed", "blocked", "stale", "unavailable")
+    receipts = []
+    for sequence, specialist_status in enumerate(statuses, start=1):
+        artifact_status = {
+            "complete": "available",
+            "partial": "stale",
+            "failed": "unavailable",
+            "blocked": "incompatible",
+            "stale": "stale",
+            "unavailable": "unavailable",
+        }[specialist_status]
+        receipts.append(
+            {
+                "payload": {
+                    "receipt_id": f"receipt-{sequence}",
+                    "session_id": "session-1",
+                    "branch_id": f"branch-{sequence}",
+                    "sequence": sequence,
+                    "actor": "Data Specialist",
+                    "program_id": "data-v1",
+                    "model_profile_id": "model-v1",
+                    "action": "handoff",
+                    "status": "completed" if specialist_status == "complete" else "running",
+                    "specialist_status": specialist_status,
+                    "summary": f"Specialist branch {specialist_status}.",
+                    "delegation_id": f"delegation-{sequence}",
+                    "attempt_id": f"attempt-{sequence}",
+                    "evidence_refs": [
+                        {
+                            "artifact_type": "dataset_manifest",
+                            "artifact_id": f"manifest-{sequence}",
+                            "domain_owner": "Data",
+                            "uri": f"research://postgres/dataset_manifest/manifest-{sequence}",
+                            "metadata": {
+                                "source_hash": "b" * 64,
+                                "revision": sequence,
+                                "status": artifact_status,
+                            },
+                        }
+                    ],
+                    "blockers": (
+                        [{"code": "evidence", "message": "Evidence needs review."}]
+                        if specialist_status in {"partial", "failed", "blocked"}
+                        else []
+                    ),
+                    "next_actions": ["review"],
+                    "metadata": {
+                        "role": "data_research",
+                        "owner": "Data Specialist",
+                        "handoff_digest": "c" * 64,
+                    },
+                }
+            }
+        )
+
+    projection = _build_projection(replace(_source(), receipts=tuple(receipts)))
+
+    assert [item.specialist_status for item in projection.delegations] == list(statuses)
+    assert projection.delegations[0].handoff is not None
+    assert projection.delegations[0].handoff.digest == "c" * 64
+    assert projection.delegations[0].handoff.artifact_refs[0].revision == 1
+    assert projection.delegations[4].handoff.artifact_refs[0].status == "stale"
+    assert projection.delegations[5].status == "blocked"
+
+
 def test_runtime_public_state_drives_workspace_progress() -> None:
     """Use a fresh runtime inspection snapshot for agenda, budget, and interrupt state."""
     source = replace(

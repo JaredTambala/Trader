@@ -442,6 +442,11 @@ The response contains the immutable session identity, objective, allowlisted sco
 specialist/branch progress, public transition summaries, and exact canonical evidence references. Prompts, model
 completions, hidden reasoning, raw tool payloads, credentials, source code, and arbitrary metadata are structurally
 absent. Missing or incompatible producer projections return HTTP 503 rather than a guessed status.
+Each branch includes a specialist outcome (`running`, `complete`, `partial`, `failed`, `blocked`, `stale`, or
+`unavailable`) and may include a typed handoff with an owner, digest, blockers, and exact artifact references. Every
+reference exposes its revision when one is retained plus an explicit availability state; the browser shows stale,
+missing, incompatible, and unavailable evidence without linking it as qualified. A missing revision is rendered as
+unavailable, never guessed from the event sequence.
 The `available_commands` field is the same command set used by the API and browser. Before a public runtime inspection
 it contains only `inspect`; an inspected running session admits `interrupt` and `cancel`, an inspected pending operator
 boundary admits `resume` and `cancel`, and terminal or blocked sessions admit only `inspect`. An invalid-state command

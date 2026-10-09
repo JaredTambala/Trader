@@ -816,6 +816,7 @@ export interface components {
              * @default []
              */
             evidence_refs: components["schemas"]["AgentSessionEvidenceReference"][];
+            handoff?: components["schemas"]["AgentSessionHandoff"] | null;
             /**
              * Next Actions
              * @default []
@@ -828,6 +829,12 @@ export interface components {
             role: "data_research" | "strategy_engineering" | "research_coordinator";
             /** Sequence */
             sequence: number;
+            /**
+             * Specialist Status
+             * @default running
+             * @enum {string}
+             */
+            specialist_status: "running" | "complete" | "partial" | "failed" | "blocked" | "stale" | "unavailable";
             /**
              * Status
              * @enum {string}
@@ -892,10 +899,49 @@ export interface components {
             artifact_type: string;
             /** Domain Owner */
             domain_owner: string;
+            /** Revision */
+            revision?: number | null;
             /** Source Hash */
             source_hash?: string | null;
+            /**
+             * Status
+             * @default available
+             * @enum {string}
+             */
+            status: "available" | "stale" | "missing" | "unavailable" | "incompatible";
             /** Uri */
             uri: string;
+        };
+        /**
+         * AgentSessionHandoff
+         * @description Typed specialist handoff state visible to a human reviewer.
+         */
+        AgentSessionHandoff: {
+            /**
+             * Artifact Refs
+             * @default []
+             */
+            artifact_refs: components["schemas"]["AgentSessionEvidenceReference"][];
+            /** Attempt Id */
+            attempt_id: string;
+            /**
+             * Blockers
+             * @default []
+             */
+            blockers: string[];
+            /** Branch Id */
+            branch_id: string;
+            /** Delegation Id */
+            delegation_id: string;
+            /** Digest */
+            digest?: string | null;
+            /** Owner */
+            owner: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "complete" | "partial" | "failed" | "blocked" | "stale" | "unavailable";
         };
         /**
          * AgentSessionInterrupt

@@ -218,7 +218,10 @@ remain partial. The human next-decision artifact and Console command/read surfac
 agent-session journey; UJ-07 covers specialist investigation, UJ-08 covers the
 agent-directed experiment loop, and UJ-09 covers evidence review and the next decision. The model-backed
 Coordinator/Data/Strategy runtime and recovery contracts exist, but controlled third-party-model acceptance, Console
-intervention, experiment handoff, and the unified evidence-review surface remain open.
+intervention, experiment handoff, and the unified evidence-review surface remain open. TRD-319 now exposes UJ-07's
+specialist branches in the Console with typed outcome states, owner/digest handoffs, blockers, and exact artifact
+revision/status identity. Browser refresh preserves concurrent branch attribution and keeps stale or unavailable
+evidence explicit; it does not infer a qualified artifact when its revision is missing.
 UJ-05 has conservative core paper-runtime and operator-CLI safety behavior. Human paper admission, the Console's
 read-only paper-operations projection, and an admission-validated, human-only audited command queue for
 start/pause/stop/halt/reconcile are implemented. Runtime consumption records terminal or ambiguous outcomes; the

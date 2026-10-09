@@ -113,3 +113,72 @@ test("agent workspace keeps lifecycle commands human-owned and typed", async ({ 
   await expect(page.getByRole("button", { name: "cancel" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "inspect" })).toBeEnabled();
 });
+
+test("agent workspace keeps concurrent specialist outcomes and exact handoff revisions across refresh", async ({ page }) => {
+  test.skip(process.env.CONSOLE_TEST_SCENARIO !== "healthy");
+  const outcomes = ["complete", "partial", "failed", "blocked", "stale", "unavailable"];
+  const delegation = (outcome: string, index: number) => ({
+    branch_id: `branch-${index}`,
+    delegation_id: `delegation-${index}`,
+    attempt_id: `attempt-${index}`,
+    role: "data_research",
+    status: outcome === "complete" ? "completed" : "blocked",
+    sequence: index,
+    summary: `Branch ${outcome}`,
+    evidence_refs: [{
+      artifact_type: "dataset_manifest",
+      artifact_id: `manifest-${index}`,
+      domain_owner: "Data",
+      uri: `research://postgres/dataset_manifest/manifest-${index}`,
+      revision: index + 1,
+      status: outcome === "complete" ? "available" : outcome === "stale" ? "stale" : "unavailable",
+      source_hash: "b".repeat(64),
+    }],
+    blockers: ["Review specialist evidence."],
+    next_actions: ["review"],
+    specialist_status: outcome,
+    handoff: {
+      branch_id: `branch-${index}`,
+      delegation_id: `delegation-${index}`,
+      attempt_id: `attempt-${index}`,
+      owner: "Data Specialist",
+      status: outcome,
+      digest: "c".repeat(64),
+      artifact_refs: [{
+        artifact_type: "dataset_manifest",
+        artifact_id: `manifest-${index}`,
+        domain_owner: "Data",
+        uri: `research://postgres/dataset_manifest/manifest-${index}`,
+        revision: index + 1,
+        status: outcome === "complete" ? "available" : outcome === "stale" ? "stale" : "unavailable",
+        source_hash: "b".repeat(64),
+      }],
+      blockers: ["Review specialist evidence."],
+    },
+  });
+  const first = { ...structuredClone(initialSession), session_id: "session-uj07", delegations: outcomes.map(delegation) };
+  const recovered = structuredClone(first);
+  const recoveredUnavailable = recovered.delegations[5];
+  if (!recoveredUnavailable || !recoveredUnavailable.handoff) throw new Error("missing unavailable branch fixture");
+  const recoveredHandoffRef = recoveredUnavailable.handoff.artifact_refs[0];
+  const recoveredEvidenceRef = recoveredUnavailable.evidence_refs[0];
+  if (!recoveredHandoffRef || !recoveredEvidenceRef) throw new Error("missing unavailable artifact fixture");
+  recoveredHandoffRef.status = "incompatible";
+  recoveredEvidenceRef.status = "incompatible";
+  let reads = 0;
+  await page.route("**/api/agent-sessions/session-uj07", async (route) => {
+    reads += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(reads > 1 ? recovered : first) });
+  });
+
+  await page.goto("/agents/session-uj07");
+  await expect(page.getByText("Branch complete", { exact: true })).toBeVisible();
+  await expect(page.getByText("Branch partial", { exact: true })).toBeVisible();
+  await expect(page.getByText("Branch unavailable", { exact: true })).toBeVisible();
+  await expect(page.getByText("revision 1", { exact: false })).toBeVisible();
+  await expect(page.getByText(/research:\/\/postgres\/dataset_manifest\/manifest-5/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(page.getByText("incompatible", { exact: true }).last()).toBeVisible();
+  await expect(page.getByText(/Handoff owner: Data Specialist/)).toHaveCount(6);
+});
