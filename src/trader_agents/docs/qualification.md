@@ -22,6 +22,19 @@ with material ambiguity. A later diagnostic execution of the still-gated Data co
 turn-schema validation before any MCP call. The combined model gate therefore remains failed and the broader campaign
 was not promoted. No fallback or post-hoc output rewrite counts as acceptance.
 
+TRD-315 retains this boundary in a revisioned `UJ04QualificationEvidence` record. The record names fixture
+`uj04-public-session-completed-v1` (fixture version 1), verifier version 1, the `AgentSessionProjection`, `RetainedTrajectory`, and evidence contracts, the
+exact qualification command, checkout commit, admitted model/program/tool identities, and separate gate verdicts. The
+deterministic lifecycle gate is `passed`; the active model-profile gate is `failed` and the repeated real-model gate is
+`not_run` because the model gate is not promoted. `controlled_acceptance` is structurally fixed to `not_claimed`, so a
+rerun cannot turn unavailable evidence into a product-acceptance claim. Each rerun writes a new immutable evidence
+revision and leaves earlier JSON unchanged. The focused verifier is:
+
+`uv run pytest tests/cross_package/qualification/test_uj04_model_gate_evidence.py -q --basetemp=/tmp/trader-trd315-model-gate`
+
+The report contains only bounded public identities, assertions, and blockers; it does not retain prompts, model
+messages, hidden reasoning, tool payloads, credentials, or provider responses.
+
 The canonical current statement is in [Product State](../../../docs/product_state.md). When qualification resumes, all
 mandatory phases must run against the same clean revision, exact model digest, isolated Postgres profile, tool catalogue,
 program identities, and container image before a canonical acceptance record can be written.
