@@ -361,6 +361,17 @@ qualify the replacement profile. The LFM profile selected only Data for three eq
 failed the material-ambiguity brief by proposing executable Data work. A later diagnostic execution of the still-gated
 Data specialist contract failed twice at strict turn-schema validation before any MCP call. The complete model-choice
 gate therefore remains failed; neither result qualifies the profile or authorizes the broader campaign.
+
+TRD-100's profile decision record keeps the implementation baseline and promotion gate separate from model admission.
+The baseline is LangGraph 1.2.2, strict Pydantic/provider-neutral JSON, one schema-only retry, temperature zero, an
+8,192-token context window, and a 2,048-token output ceiling. The active LFM 2.5 8B digest remains rejected for
+controlled qualification; the historical Qwen 3.5 9B digest remains rejected; and the locally installed Qwen 3.5 27B
+digest (`7653528ba5cba4dd8e19da24aaddc7f4d0b5ecd93571c0825dfd4137958ec06e`) is only a candidate for the next bounded
+probe. The provisional gate is the reviewed 12-scenario fixture at three repetitions, requiring deterministic
+invariant pass rate 1.0, schema validity at least 0.98, grounded decisions at least 0.90, role coverage at least 0.95,
+zero forbidden calls/unapproved mutations/lost receipts/replayed accepted mutations, and per-run ceilings of 40 model
+calls, 40 tool calls, 120,000 tokens, 600 seconds, two revisions, and concurrency two. TRD-100 remains in review: no
+candidate has passed these thresholds, and controlled acceptance is not claimed.
 The current `research-coordinator-v7` program selects relevant specialist responsibilities rather than requiring every
 available role. Strict Pydantic schemas validate provider-neutral JSON outputs with at most one schema-only retry.
 There is no post-generation field rewriting, permissive fenced-JSON parsing, semantic validation feedback, agenda task
