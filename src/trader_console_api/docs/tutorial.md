@@ -248,6 +248,10 @@ Open `/agents/{session_id}` in the Console, or read the same workspace through t
 session identity, objective, allowlisted scope facts, budget counters, specialist progress, public transitions and
 exact evidence references. It omits prompts, completions, hidden reasoning, raw tool payloads, credentials and source
 code. Only the owning human operator can read or command the session; an agent or MCP principal receives `403`.
+For each concurrent specialist branch, review the outcome badge and any handoff owner, digest, blockers, and artifact
+revision. Complete, partial, failed, blocked, stale, and unavailable outcomes remain distinct. Artifact links show the
+canonical URI, retained revision, source hash, and availability state so a stale or missing handoff cannot be mistaken
+for qualified evidence after a refresh.
 Review the public agenda, available commands, checkpoint, blocker messages, and terminal evidence lineage in the
 workspace. Start with `inspect` if there is no runtime inspection yet. The browser disables commands excluded by
 `available_commands`; the API independently rejects them with `409`. Resume becomes available only at a pending

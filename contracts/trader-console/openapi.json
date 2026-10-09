@@ -414,6 +414,16 @@
             "title": "Evidence Refs",
             "type": "array"
           },
+          "handoff": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentSessionHandoff"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "next_actions": {
             "default": [],
             "items": {
@@ -435,6 +445,20 @@
             "minimum": 1.0,
             "title": "Sequence",
             "type": "integer"
+          },
+          "specialist_status": {
+            "default": "running",
+            "enum": [
+              "running",
+              "complete",
+              "partial",
+              "failed",
+              "blocked",
+              "stale",
+              "unavailable"
+            ],
+            "title": "Specialist Status",
+            "type": "string"
           },
           "status": {
             "enum": [
@@ -623,6 +647,18 @@
             "title": "Domain Owner",
             "type": "string"
           },
+          "revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          },
           "source_hash": {
             "anyOf": [
               {
@@ -636,6 +672,18 @@
               }
             ],
             "title": "Source Hash"
+          },
+          "status": {
+            "default": "available",
+            "enum": [
+              "available",
+              "stale",
+              "missing",
+              "unavailable",
+              "incompatible"
+            ],
+            "title": "Status",
+            "type": "string"
           },
           "uri": {
             "maxLength": 500,
@@ -651,6 +699,88 @@
           "uri"
         ],
         "title": "AgentSessionEvidenceReference",
+        "type": "object"
+      },
+      "AgentSessionHandoff": {
+        "additionalProperties": false,
+        "description": "Typed specialist handoff state visible to a human reviewer.",
+        "properties": {
+          "artifact_refs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AgentSessionEvidenceReference"
+            },
+            "title": "Artifact Refs",
+            "type": "array"
+          },
+          "attempt_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "blockers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "branch_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Branch Id",
+            "type": "string"
+          },
+          "delegation_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Delegation Id",
+            "type": "string"
+          },
+          "digest": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 64,
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest"
+          },
+          "owner": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Owner",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "complete",
+              "partial",
+              "failed",
+              "blocked",
+              "stale",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "branch_id",
+          "delegation_id",
+          "attempt_id",
+          "owner",
+          "status"
+        ],
+        "title": "AgentSessionHandoff",
         "type": "object"
       },
       "AgentSessionInterrupt": {

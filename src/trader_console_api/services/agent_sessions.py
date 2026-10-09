@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal, cast
 from uuid import UUID
 
 from trader.runtime.operator_control import is_human_operator_principal
@@ -19,9 +19,11 @@ from ..contracts import (
     AgentSessionDelegation,
     AgentSessionEvidenceReference,
     AgentSessionEvent,
+    AgentSessionHandoff,
     AgentSessionInterrupt,
     AgentSessionProjection,
     AgentSessionStatus,
+    AgentSessionSpecialistStatus,
     AgentSessionTerminalDecision,
     PageInfo,
     TraderPrincipal,
@@ -141,12 +143,27 @@ def _reference(value: object) -> AgentSessionEvidenceReference:
     metadata = raw.get("metadata")
     metadata_mapping = metadata if isinstance(metadata, Mapping) else {}
     source_hash = metadata_mapping.get("source_hash")
+    revision_value = metadata_mapping.get("revision", metadata_mapping.get("evidence_revision"))
+    revision: int | None = None
+    if revision_value is not None:
+        try:
+            revision = int(revision_value)
+        except (TypeError, ValueError) as exc:
+            raise AgentSessionStorageUnavailable("agent evidence revision is incompatible") from exc
+    raw_status = str(raw.get("status") or metadata_mapping.get("status") or "available")
+    if raw_status not in {"available", "stale", "missing", "unavailable", "incompatible"}:
+        raise AgentSessionStorageUnavailable("agent evidence status is incompatible")
     try:
         return AgentSessionEvidenceReference(
             artifact_type=_text(raw.get("artifact_type"), "evidence artifact_type", maximum=100),
             artifact_id=_text(raw.get("artifact_id"), "evidence artifact_id", maximum=200),
             domain_owner=_text(raw.get("domain_owner"), "evidence domain_owner", maximum=100),
             uri=_text(raw.get("uri"), "evidence uri", maximum=500),
+            revision=revision,
+            status=cast(
+                Literal["available", "stale", "missing", "unavailable", "incompatible"],
+                raw_status,
+            ),
             source_hash=str(source_hash) if source_hash is not None else None,
         )
     except Exception as exc:
@@ -168,6 +185,16 @@ def _references(values: object) -> tuple[AgentSessionEvidenceReference, ...]:
         seen.add(reference.uri)
         result.append(reference)
     return tuple(result)
+
+
+def _specialist_status(value: object) -> AgentSessionSpecialistStatus:
+    """Normalize specialist outcomes while preserving partial and stale states."""
+    candidate = str(value or "running")
+    if candidate in {"completed", "complete", "ready"}:
+        return "complete"
+    if candidate in {"partial", "failed", "blocked", "stale", "unavailable", "running"}:
+        return candidate  # type: ignore[return-value]
+    raise AgentSessionStorageUnavailable("agent specialist status is incompatible")
 
 
 def _scope_summary(value: object) -> dict[str, Any]:
@@ -321,7 +348,18 @@ def _build_projection(source: AgentSessionSource) -> AgentSessionProjection:
             raise AgentSessionStorageUnavailable("agent receipt sequence is invalid")
         refs = _references(receipt.get("evidence_refs"))
         evidence_refs.extend(ref for ref in refs if ref.uri not in {item.uri for item in evidence_refs})
-        status = _status(receipt.get("status"))
+        metadata = _mapping(receipt.get("metadata"), "receipt metadata")
+        raw_specialist_status = receipt.get("specialist_status") or metadata.get("specialist_status")
+        if raw_specialist_status is None and receipt.get("status") in {
+            "partial", "failed", "blocked", "stale", "unavailable", "completed", "complete", "ready"
+        }:
+            raw_specialist_status = receipt.get("status")
+        specialist_status = _specialist_status(raw_specialist_status or "running")
+        status = _status(
+            "blocked"
+            if specialist_status in {"partial", "failed", "blocked", "stale", "unavailable"}
+            else receipt.get("status")
+        )
         blockers = _blocker_messages(receipt.get("blockers"))
         next_actions = tuple(
             str(item).strip()[:200]
@@ -348,9 +386,26 @@ def _build_projection(source: AgentSessionSource) -> AgentSessionProjection:
         latest = latest_by_branch.get(branch_id)
         if latest is None or int(latest.get("sequence") or 0) < sequence:
             latest_by_branch[branch_id] = receipt
-        role = str(_mapping(receipt.get("metadata"), "receipt metadata").get("role") or "research_coordinator")
+        role = str(metadata.get("role") or "research_coordinator")
         if role not in {"data_research", "strategy_engineering", "research_coordinator"}:
             role = "research_coordinator"
+        handoff: AgentSessionHandoff | None = None
+        if receipt.get("delegation_id") and receipt.get("attempt_id"):
+            digest_value = metadata.get("handoff_digest") or metadata.get("return_digest")
+            if digest_value is not None and (
+                not isinstance(digest_value, str) or len(digest_value) != 64
+            ):
+                raise AgentSessionStorageUnavailable("agent handoff digest is incompatible")
+            handoff = AgentSessionHandoff(
+                branch_id=branch_id,
+                delegation_id=str(receipt["delegation_id"]),
+                attempt_id=str(receipt["attempt_id"]),
+                owner=str(metadata.get("owner") or role),
+                status=specialist_status,
+                digest=digest_value,
+                artifact_refs=refs,
+                blockers=blockers,
+            )
         delegations.append(
             AgentSessionDelegation(
                 branch_id=branch_id,
@@ -363,6 +418,8 @@ def _build_projection(source: AgentSessionSource) -> AgentSessionProjection:
                 evidence_refs=refs,
                 blockers=blockers,
                 next_actions=next_actions,
+                specialist_status=specialist_status,
+                handoff=handoff,
             )
         )
         if status == "awaiting_operator" and blockers:

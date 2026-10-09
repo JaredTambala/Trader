@@ -12,6 +12,9 @@
 .status.awaiting_operator { background: #5e4824; color: #ffe0a4; }
 .status.completed, .status.terminal { background: #244d3c; color: #c6f3d9; }
 .status.failed, .status.blocked, .status.cancelled { background: #5d2e35; color: #ffd4d9; }
+.status.complete, .status.completed { background: #244d3c; color: #c6f3d9; }
+.status.partial, .status.stale { background: #5e4824; color: #ffe0a4; }
+.status.unavailable, .status.missing, .status.incompatible { background: #5d2e35; color: #ffd4d9; }
 .facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; margin: 0; }
 .facts dt { color: var(--muted); font-size: 12px; }
 .facts dd { margin: 0; overflow-wrap: anywhere; font-size: 13px; }
@@ -20,6 +23,9 @@
 .item:first-child { border-top: 0; padding-top: 0; }
 .item strong { display: block; font-size: 13px; }
 .item small { color: var(--muted); line-height: 1.45; }
+.references { display: grid; gap: 7px; margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: 12px; }
+.references li { overflow-wrap: anywhere; }
+.references small { display: block; }
 .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px; }
 .button { border: 1px solid #5678ad; border-radius: 8px; background: #1b3155; color: var(--text); padding: 9px 13px; cursor: pointer; }
 .button:hover { background: #284777; }
