@@ -83,13 +83,22 @@ def summary_payload_from(summary: DataQualitySummary) -> dict[str, object]:
     Returns:
         JSON-compatible summary mapping.
     """
-    return {
+    payload: dict[str, object] = {
         "symbol": summary.symbol,
         "total_bars": summary.total_bars,
         "missing_gaps": summary.missing_gaps,
         "expected_gaps": summary.expected_gaps,
         "max_gap_seconds": summary.max_gap.total_seconds() if summary.max_gap else None,
     }
+    if summary.classifications or summary.zero_activity_bars or summary.action != "review":
+        payload.update(
+            {
+                "classifications": dict(summary.classifications),
+                "zero_activity_bars": summary.zero_activity_bars,
+                "action": summary.action,
+            }
+        )
+    return payload
 
 
 def gap_payload_from(gap: GapRecord) -> dict[str, object]:
@@ -109,4 +118,6 @@ def gap_payload_from(gap: GapRecord) -> dict[str, object]:
         "expected_seconds": gap.expected.total_seconds(),
         "threshold_seconds": gap.threshold.total_seconds(),
         "reason": gap.reason,
+        "classification": gap.classification,
+        "raw_facts": dict(gap.raw_facts),
     }

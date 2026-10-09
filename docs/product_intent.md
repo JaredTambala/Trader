@@ -157,6 +157,8 @@ boundary resolves the matching Data manifest and quality report, including provi
 warnings, provenance, and explicit complete, partial, stale, warning, empty, and unavailable states. Saved scopes
 reopen with immutable evidence references; authoring carries the exact scope, provider policy, manifest, and quality
 identity without re-entry; research backtest preflight revalidates replay identity before invoking `BacktestRunner`.
+Quality evidence now preserves raw bar facts and classifies exchange closures, asset lifecycle bounds, provider-omitted
+illiquid minutes, provider-emitted zero-activity bars, provider-wide coverage gaps, and local ingestion loss per symbol.
 The integrated API and browser qualification now proves selection, evidence review, saved-scope handoff, authoring,
 execution submission, review, and stale/mismatch blockers against isolated persistence.
 

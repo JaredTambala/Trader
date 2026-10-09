@@ -66,6 +66,12 @@ prior bar only within `latest_prior_max_age_seconds`; valuation may carry a know
 observed bar is required for a fill. Provider-emitted zero-volume or zero-trade bars remain observations and are
 signal-eligible. An absent provider bar is not synthesized from a wall-clock interval.
 
+Data-quality evidence carries the same distinction into replay qualification: exchange closures and asset lifecycle
+bounds are expected scope boundaries, provider-omitted illiquid minutes are sparse-activity evidence, and provider
+coverage gaps remain provider warnings. A missing bar is actionable as local ingestion loss only when provider evidence
+states that the interval was available. The raw classification and provider facts remain attached to the quality report
+so a backtest review can explain why an interval was accepted, excluded, or repaired.
+
 ## Execution flow
 
 1) Load YAML config and connect to the Postgres event store.

@@ -41,6 +41,18 @@ be available. A load operation must cite its matching plan and remains identifia
 The resulting manifest and quality evidence describe what the next context may use. They do not claim that the data is
 economically useful, and they do not authorize a backtest with a different scope.
 
+## Asset-aware completeness
+
+Quality evidence preserves the observed bar facts and classifies each absent interval per symbol. Stock session and
+exchange closures are separated from listing or delisting bounds; crypto or other continuously quoted assets can mark
+provider-omitted illiquid minutes when the provider policy says no-trade bars are omitted. A provider-emitted bar with
+zero volume or zero trades remains an observation and is counted as `provider_zero_activity`, never as local loss.
+Provider-wide coverage windows are recorded as `provider_coverage_gap`. An interval inside a provider-available window
+with no local bar is `local_ingestion_loss`; an interval without qualifying provider evidence remains
+`unclassified_gap` and requires review. Each symbol carries classification counts and an actionable disposition such as
+`repair_local_ingestion`, `await_provider_coverage`, `accept_sparse_activity`, or `usable`. The report therefore does
+not treat every absent wall-clock minute as an ingestion defect.
+
 ## Qualified replay identity
 
 An inventory manifest also carries `replay_data_identity` when rows are available. This is separate from `dataset_id`:

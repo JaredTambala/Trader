@@ -7,7 +7,12 @@ from typing import Mapping
 from zoneinfo import ZoneInfo
 
 from ..timeframes import normalize_timeframe
-from .quality_gaps import SessionWindow
+from .quality_gaps import (
+    AssetLifecycle,
+    CompletenessContext,
+    ProviderCoverageWindow,
+    SessionWindow,
+)
 
 
 def parse_symbols(value: object) -> tuple[str, ...]:
@@ -126,6 +131,65 @@ def parse_sessions(value: object | None) -> dict[tuple[str, str], SessionWindow]
     return sessions
 
 
+def parse_completeness_context(value: object | None) -> CompletenessContext:
+    """Parse optional asset-lifecycle and provider coverage evidence."""
+    if value is None:
+        return CompletenessContext()
+    if not isinstance(value, Mapping):
+        raise ValueError("data_quality.completeness must be a mapping")
+    lifecycle: dict[str, AssetLifecycle] = {}
+    raw_lifecycle = value.get("lifecycle", {})
+    if not isinstance(raw_lifecycle, Mapping):
+        raise ValueError("data_quality.completeness.lifecycle must be a mapping")
+    for symbol, raw_bounds in raw_lifecycle.items():
+        if not isinstance(raw_bounds, Mapping):
+            raise ValueError("lifecycle entries must be mappings")
+        lifecycle[str(symbol).upper()] = AssetLifecycle(
+            listed_at=parse_datetime(raw_bounds.get("listed_at")),
+            delisted_at=parse_datetime(raw_bounds.get("delisted_at")),
+        )
+    raw_windows = value.get("provider_windows", ())
+    if not isinstance(raw_windows, (list, tuple)):
+        raise ValueError("data_quality.completeness.provider_windows must be a list")
+    windows: list[ProviderCoverageWindow] = []
+    for raw_window in raw_windows:
+        if not isinstance(raw_window, Mapping):
+            raise ValueError("provider_windows entries must be mappings")
+        start = parse_datetime(raw_window.get("start"))
+        end = parse_datetime(raw_window.get("end"))
+        if start is None or end is None or end < start:
+            raise ValueError("provider_windows requires an ordered start and end")
+        symbols = raw_window.get("symbols", ())
+        if isinstance(symbols, str):
+            affected_symbols = tuple(item.strip().upper() for item in symbols.split(",") if item.strip())
+        elif isinstance(symbols, (list, tuple)):
+            affected_symbols = tuple(str(item).strip().upper() for item in symbols if str(item).strip())
+        else:
+            raise ValueError("provider_windows.symbols must be a string or list")
+        windows.append(
+            ProviderCoverageWindow(
+                start=start,
+                end=end,
+                available=bool(raw_window.get("available", False)),
+                provider=str(raw_window["provider"]) if raw_window.get("provider") else None,
+                affected_symbols=affected_symbols,
+            )
+        )
+    no_trade = value.get("provider_omits_no_trade", ())
+    if isinstance(no_trade, str):
+        no_trade_symbols = frozenset(item.strip().upper() for item in no_trade.split(",") if item.strip())
+    elif isinstance(no_trade, (list, tuple, set, frozenset)):
+        no_trade_symbols = frozenset(str(item).strip().upper() for item in no_trade if str(item).strip())
+    else:
+        raise ValueError("data_quality.completeness.provider_omits_no_trade must be a list")
+    return CompletenessContext(
+        lifecycle=lifecycle,
+        provider_windows=tuple(windows),
+        provider_omits_no_trade=no_trade_symbols,
+        provider=str(value["provider"]) if value.get("provider") else None,
+    )
+
+
 def parse_clock_time(value: str) -> time:
     """Parse `HH:MM` session-clock values into `datetime.time`.
 
@@ -162,7 +226,7 @@ def as_int(value: object | None, default: int) -> int:
     if value is None or value == "":
         return default
     try:
-        return int(value)
+        return int(str(value))
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid integer value: {value}") from exc
 
