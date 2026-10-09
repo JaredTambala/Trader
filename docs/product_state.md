@@ -276,6 +276,13 @@ recovery checkpoint, and coordinator terminal lineage; mismatched session, model
 The retained deterministic verifier joins the Console's terminal identity to the public trajectory fixture. This
 does not close the failed real-model gate or cross-process writer-race qualification.
 
+TRD-315 now records the UJ-04 qualification boundary as immutable evidence revision 1. It joins the deterministic
+retained-session verifier to exact fixture and contract identities, command, checkout commit, environment, and admitted
+model/program/tool profile. The deterministic gate is passed; the active model-profile gate is failed and the repeated
+real-model gate is not run because the controlled model gate remains blocked by TRD-100 and IMP-05. The evidence contract
+can only report `controlled_acceptance: not_claimed`, and later reruns create new revisions without overwriting prior
+reports. This makes the evidence auditable without overstating the current product qualification.
+
 UJ-07 now has a focused deterministic handoff-lineage check over its concurrent Data and Strategy fixture. The join
 rejects a return from another run, branch, or role; checkpoint reload reconstructs task ownership and recomputes the
 accepted return digests. Canonical artifact verification and coordinator citations compare full references, so a
