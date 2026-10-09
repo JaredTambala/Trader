@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 from trader.config import load_yaml_config, resolve_log_level
 from trader.market_data.quality import run_data_quality, write_data_quality_report
-from trader_mcp.protocol.contracts import SideEffect, envelope_json, success_envelope
+from trader.market_data.quality_cli import render_data_quality_cli_json
 
 
 logger = logging.getLogger(__name__)
@@ -45,17 +45,12 @@ def main() -> None:
         output_path = str(write_data_quality_report(report, args.output_json))
         logger.info("Data quality report written path=%s", output_path)
     if args.json:
-        envelope = success_envelope(
-            command="data_quality",
-            agent_owner="Data Agent",
-            side_effect=SideEffect.READ_ONLY,
-            data={
-                "report": report,
-                "report_id": report.get("report_id"),
-                "report_path": output_path,
-            },
+        print(
+            render_data_quality_cli_json(
+                report,
+                report_path=output_path,
+            )
         )
-        print(envelope_json(envelope))
 
 
 if __name__ == "__main__":
