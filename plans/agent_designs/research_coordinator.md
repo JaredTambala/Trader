@@ -88,6 +88,31 @@ Schema-valid agenda fields are never rewritten, and domain-validation failures d
 prompts and agent-program identities remain versioned production artifacts. A model, program, schema, context, or
 sampling-policy upgrade is a product change and must be evaluated before promotion.
 
+### First supported-profile decision record
+
+The runtime decision is LangGraph 1.2.2 with the existing strict Pydantic/provider-neutral JSON boundary, one
+schema-only retry, temperature zero, bounded context/output ceilings, and an Ollama adapter that verifies the exact
+served model digest before checkpoint access. This is the implementation baseline; it does not admit a model.
+
+The profile review remains open because the exercised candidates have not met the model-choice gate:
+
+| Candidate | Exact local revision | Bounded evidence | Decision state |
+| --- | --- | --- | --- |
+| `ollama-lfm25-8b-json-v1` | `9cf756159fc2f3b9128c6a3f544ec90c5e9b8afdbb4179a57b8aea9de589cfb2` | Three equivalent readiness briefs selected only Data; the material-ambiguity brief selected executable Data work; two later Data diagnostics failed strict turn-schema validation before MCP. | Rejected for controlled qualification pending a new review. |
+| `ollama-qwen35-9b-json-v5` | `6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7` | Three repeated ready-Data choice runs failed after inventory and quality evidence. | Historical rejected profile. |
+| `ollama-qwen35-27b-probe-v1` | `7653528ba5cba4dd8e19da24aaddc7f4d0b5ecd93571c0825dfd4137958ec06e` | Installed locally and available for a bounded probe; no valid gate result has been retained yet. | Candidate for the next probe, not an admission. |
+
+The provisional promotion contract remains the reviewed 12-scenario fixture with three repetitions per scenario:
+deterministic invariant pass rate 1.0, schema validity at least 0.98, grounded decisions at least 0.90, required-role
+coverage at least 0.95, zero forbidden calls, unapproved mutations, lost receipts, or replayed accepted mutations,
+and per-run ceilings of 40 model calls, 40 tool calls, 120,000 tokens, 600 seconds, two revisions, and concurrency two.
+These thresholds are the entry criteria for a controlled campaign, not evidence that any current profile passes them.
+
+TRD-100 is therefore in review rather than complete. A human decision is still required before promoting a candidate:
+the next bounded probe should exercise the ambiguity and equivalent-readiness choice contracts against the exact Qwen
+27B digest, record latency and schema outcomes, and only then decide whether to run the frozen 36-run campaign. No
+profile, provider, or model is promoted by this record alone.
+
 ## Capability surface
 
 The coordinator receives only:
