@@ -211,8 +211,10 @@ preferred provider.
 The same audit loop now covers the nine candidate journeys. UJ-01 has a working bounded data explorer with saved-scope
 and alternative-comparison continuity, but discovery completeness and broader quality/provenance continuity remain
 partial. UJ-02 has deterministic
-implementation admission and a catalogue-first Strategy loop but lacks a complete hypothesis-to-candidate and
-human-facing lineage path; real-model qualification remains outstanding. UJ-03 has canonical backtests, rich review,
+implementation admission and a catalogue-first Strategy loop. TRD-329 now adds a source-free, reconstructable
+hypothesis-to-candidate handoff that binds one brief revision, catalogue decision, independent implementation
+admission, and passed strategy/risk specifications; missing or incompatible lineage fails closed. The controlled
+third-party-model qualification, Console/browser review, and full TRD-288 journey remain outstanding. UJ-03 has canonical backtests, rich review,
 comparison, and a qualified Console worker-to-review path, while broader failure campaigns, inference, and robustness
 remain partial. The human next-decision artifact and Console command/read surface are delivered; UJ-04 now names the governed
 agent-session journey; UJ-07 covers specialist investigation, UJ-08 covers the
