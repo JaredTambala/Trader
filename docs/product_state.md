@@ -467,7 +467,7 @@ sandbox mechanics remain spike-owned. Admission repair is bounded by candidate-a
 every revision needs an actionable finding and material source change, while equivalent failures and policy or contract
 problems terminate or escalate.
 
-The Experiment Design Agent review has started in its separate
+The Experiment Design Agent review has a complete two-phase architecture proposal in its separate
 [Experiment Design design](../plans/agent_designs/experiment_design.md). The governance context now persists a
 revisioned `HypothesisBrief` as an Experiments-owned `hypothesis_card` before protocol authoring. The brief records the
 question, mechanism, falsifier, intended universe/timeframe, typed data requirements, strategy intent, risk intent,
@@ -479,8 +479,10 @@ material assumptions, operator approval, and successor-protocol lineage remain f
 the research claim, protected-evidence roles, stage gates, overall budgets, and the authority envelope for later work.
 Detailed attack and walk-forward plan design belongs to the Robustness & Walk-Forward Agent, which synthesizes
 coordinator-supplied canonical outputs from relevant specialists and records whether its plan is prospective, staged-
-prospective, or exploratory. The division between the coordinator's research-question authority and Experiment
-Design's hypothesis-formulation authority remains under review. A deterministically validated RWFO plan may advance
+prospective, or exploratory. The proposed boundary gives the Coordinator ownership of the research purpose, scope,
+and branch, while Experiment Design may formulate a bounded hypothesis brief before candidate construction and later
+author the protocol over an accepted brief and qualified inputs. Human acceptance of that boundary and the remaining
+standard architecture fields is still required. A deterministically validated RWFO plan may advance
 inside the approved experiment envelope without another operator decision; material assumptions, scope, protected-data
 access, cost, or other out-of-envelope decisions interrupt through the coordinator for explicit authority. RWFO
 invokes plan-pinned deterministic attack/fold execution capabilities. There is no target Experiment Execution Agent:
