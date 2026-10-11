@@ -64,6 +64,24 @@ it does not replace this Data-owned qualification contract.
 The context owns execution mechanics, not the scientific conclusion. A successful backtest proves that the declared
 simulation completed; it does not prove live profitability or authorize paper trading.
 
+## Approved experiment-to-job handoff
+
+`submit_approved_experiment_job` is the deterministic boundary between an
+operator-approved `ExperimentProtocol` and durable execution. It re-reads the
+canonical `ExperimentProtocolProposal`, checks that every approval decision
+matches the requested approver and proposed design, and requires the approved
+protocol record to be present with the same payload. It then persists one
+source-free `experiment_job_request` containing digest-pinned proposal,
+protocol, implementation, and Data evidence references before admitting one
+`ResearchJob` through the durable lifecycle service.
+
+The handoff accepts only the workflow executor or Quant Research Supervisor
+actor. Exact repeats return the same request and job; changed proposal,
+approval, scope, code, environment, or actor identity fails closed. This
+boundary grants no worker, broker, evaluation, robustness, or paper-trading
+authority. The worker slice consumes the request and re-reads the pinned Data
+manifest to validate replay identity before invoking the canonical backtest.
+
 ## Optimisation and projection boundaries
 
 `OptimizationEngine` suggests candidates, `OptimizationTrialExecutor` runs one exact candidate, and the canonical trial
