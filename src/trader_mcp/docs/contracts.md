@@ -116,8 +116,12 @@ blocker and cannot be retried until the worker or operator reconciles canonical 
 never causes an automatic replay. Exact resubmission is idempotent; a conflicting request under the same key fails
 closed. A retry after reconciliation creates a new attempt while retaining prior outcome lineage.
 
-The deterministic worker owns leases, heartbeats, scheduling, retries, persistence, joins, and resource enforcement. The
-Research Coordinator and specialist agents own bounded routing and approval decisions; they do not execute jobs directly.
+The deterministic lifecycle service now owns bounded submit, status, cancel, and reconcile commands over the persisted
+job projection; it preserves identity, actor, attempt, child refs, warnings, and blockers and returns typed application
+results. The deterministic worker owns leases, heartbeats, scheduling, retries, persistence, joins, and resource
+enforcement. The Research Coordinator and specialist agents own bounded routing and approval decisions; they do not
+execute jobs directly. MCP adapters for these commands remain a separate slice and must inject a configured job-store
+provider plus typed authority tests before registration.
 Training additionally reconciles the pinned external MLflow run/model identity before accepting a fit or retrying it.
 
 ### Deferred Walk-Forward Contract Invariants
