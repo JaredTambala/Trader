@@ -26,6 +26,20 @@ interface; the agent system carries out bounded research workflows; MCP gives th
 platform. The personal outcome is substantive evidence of quantitative development ability and a way to explore
 real-world trading. These are distinct reasons for building Trader, and both should influence what is worth doing.
 
+## Delivery reconciliation — 11 October 2026
+
+The recent delivery tranche has closed several deterministic boundaries while leaving the product journey gates
+explicit. Data discovery/evidence, exact scope handoff, replay identity, and the successful data-to-backtest Console
+journey are implemented and qualified. Agent trajectory retention, UJ-07 specialist evidence, UJ-09 review/decision
+surfaces, and the UJ-08 proposal/approval boundary are also qualified as deterministic slices. The long-running
+operation decision is accepted: backtest, optimisation, walk-forward, and training use one durable `ResearchJob`
+contract with fail-closed ambiguity and reconciliation states.
+
+The remaining product claims are separate: the reviewed model candidate has not passed the controlled behavior gate;
+UJ-08 still needs model-backed Experiment Design handoff, durable-job adapters/producers, and independent
+Evaluation/Robustness producers; broader worker failure campaigns and one unified cross-journey evidence chain remain
+open. These are capability limits, not reasons to downgrade the deterministic evidence already delivered.
+
 ## Candidate user journeys
 
 The UJ records below are product features expressed as user journeys. Each feature defines an actor, trigger, behavior,
@@ -387,7 +401,7 @@ trajectory qualification and the full-stack browser journey remain separate evid
 | Agenda, delegation, and lifecycle controls | Implemented in runtime and exposed through the typed Console workspace; controlled model qualification remains open | `src/trader_agents/coordination`, `src/trader_agents/application_runtime`, `src/trader_console_api` |
 | Public trace and checkpoint recovery | Implemented and focused-tested | `src/trader_agents/observability`, `src/trader_agents/checkpointing` |
 | Controlled model qualification | Failed gate / not accepted | `src/trader_agents/docs/qualification.md`, `tests/cross_package/qualification/test_agentic_real_model_campaign.py` |
-| Console intervention and terminal review | Implemented with human-owner API authority, redaction, leased command application, and frontend/browser fixture coverage; retained trajectory and full-stack qualification remains open | `apps/trader-console/src/features/agent-sessions`, `apps/trader-console/tests/e2e/agent-sessions.spec.ts`, `tests/trader_console_api`, `tests/trader_agents/application_runtime/test_interrupt.py` |
+| Console intervention and terminal review | Implemented with human-owner API authority, redaction, leased command application, frontend/browser fixture coverage, and retained public-trajectory evidence; controlled model and full-stack qualification remain open | `apps/trader-console/src/features/agent-sessions`, `apps/trader-console/tests/e2e/agent-sessions.spec.ts`, `tests/trader_console_api`, `tests/trader_agents/application_runtime/test_interrupt.py` |
 
 ### Open capability behavior
 
@@ -397,10 +411,11 @@ trajectory qualification and the full-stack browser journey remain separate evid
   context rather than acceptance.
 - **GAP-04-02 implementation:** the Console session workspace and agent-owned command worker now expose session
   identity, agenda, progress, public events, evidence references, operator interrupts, resume/cancel actions, and
-  terminal decisions without exposing hidden prompts or reasoning. GAP-04-04 still qualifies retained trajectory
-  evidence across concurrent branches and fresh processes.
-- **GAP-04-04 — Agent trajectory qualification:** prove fresh-process recovery and concurrent branch attribution in a
-  retained, queryable public trajectory fixture with model/program/catalogue identities and redaction guarantees.
+  terminal decisions without exposing hidden prompts or reasoning. GAP-04-04 supplies the retained trajectory evidence
+  used by that surface; controlled model and full-stack qualification remain open.
+- **GAP-04-04 — Agent trajectory qualification:** delivered through the retained, queryable public trajectory fixture;
+  fresh-process recovery, concurrent branch attribution, model/program/catalogue identity, redaction, duplicate
+  rejection, and sink-failure behavior are qualified.
 
 ## Detailed story audit — UJ-07 / US-07-01
 
@@ -466,14 +481,15 @@ execution, evaluation/optimisation artifacts, and robustness-related artifact co
 
 **Absent or partial:** no model-backed Experiment Design graph is in the clean runtime; the current agent slice does not
 execute experiments, request independent Evaluation/Robustness work, or expose the full lifecycle in the Console. The
-successful Console worker-to-review path, typed review evidence, next-decision record, and replay-bar identity are
-qualified as separate deterministic boundaries; broader worker failure campaigns and agent-to-experiment integration
-remain open.
+deterministic proposal/approval boundary is qualified by TRD-320, and the durable operation model is accepted by
+TRD-105. The successful Console worker-to-review path, typed review evidence, next-decision record, and replay-bar
+identity are qualified as separate deterministic boundaries; worker adapters/producers, broader failure campaigns, and
+agent-to-experiment integration remain open.
 
 ### Capability evidence and remaining behavior
 
-- **GAP-04-03 — Agent-to-experiment handoff:** add the approved proposal, deterministic execution request, evidence joins,
-  and terminal outcome while preserving specialist ownership.
+- **GAP-04-03 — Agent-to-experiment handoff:** add the approved proposal, durable-job submission, evidence joins, and
+  terminal outcome while preserving specialist ownership.
 - **GAP-03-01:** qualify the remaining stale-worker, partial, failed, outage, and reconciliation-required worker
   outcomes against isolated Postgres.
 - **GAP-03-02:** delivered the Evaluation, multiple-testing, and Adversarial projection with protected-data roles and
@@ -633,8 +649,9 @@ missing evidence; it must never convert absence into a positive verdict.
    process and concurrent branch identity.
 3. **Close specialist investigation:** complete the UJ-04 and UJ-07 feature-qualification slices against the same pinned environment and record their
    exclusions.
-4. **Settle experiment authority:** review Experiment Design and Robustness architecture, apply the accepted durable
-   operation contract, and enforce replay identity before expanding the agent loop.
+4. **Extend experiment authority:** complete the remaining Experiment Design architecture review, implement the
+   approved model-backed handoff, apply the accepted durable operation contract, and enforce replay identity before
+   expanding the agent loop.
 5. **Build experiment/review path:** deliver GAP-04-03, GAP-03-01/02/03/04, and independent review artifacts; preserve
    explicit blockers where a producer is not yet available.
 6. **Qualify the human outcomes:** complete the UJ-08 and UJ-09 feature-qualification slices, and link their retained evidence to Product State. A feature is complete only when its own decision can be made and reconstructed, even if the result is
@@ -711,7 +728,7 @@ same repository evidence and prevents a journey gap from hiding a cross-cutting 
 | **FR-06 — Fair comparison and inference** | Partial | Compatible comparison and typed review evidence exist; general inference, robustness, and walk-forward producer paths remain incomplete. |
 | **FR-07 — Bounded agent research** | Partial | Session, authority, budgets, specialist loops, and MCP policy exist; controlled third-party model acceptance and extension into experiment execution remain open. |
 | **FR-08 — Governed MCP access** | Implemented for the registered research surface; qualification remains scoped | Typed registration, envelopes, ownership, side-effect policy, and research-agent prohibitions are documented and tested. Real-model campaign evidence remains part of GAP-04-01. |
-| **FR-09 — Research trace and recoverability** | Partial as a controlled qualification claim | Redacted public events, bounded checkpoints, fresh-process recovery, canonical receipts, and the human Console projection/worker exist; retained concurrent trajectory qualification remains open. |
+| **FR-09 — Research trace and recoverability** | Partial as a controlled qualification claim | Redacted public events, bounded checkpoints, fresh-process recovery, canonical receipts, and the human Console projection/worker exist; deterministic retained concurrent trajectory qualification is delivered, while controlled model and cross-journey acceptance remain open. |
 | **FR-10 — Console research workflow** | Partial | Data, authoring, execution, review, comparison, and agent-session screens now exist as separate slices; exact cross-slice qualification and paper continuity remain open. |
 | **FR-11 — Controlled deployment** | Implemented for the current paper horizon; funded-live admission remains future | Human paper admission records exact versions, evidence, limits, broker scope, monitoring policy, expiry, and human approval; the retained campaign supports paper admission without claiming funded-live readiness. |
 | **FR-12 — Trading observability and intervention** | Implemented for core and Console paper operation; external broker qualification remains bounded | Runtime status, health, reconciliation, halt, read-only operational evidence, and authorized human commands are covered by the retained campaign's incident matrix. |
@@ -739,7 +756,7 @@ qualification. The size includes implementation, documentation, and verification
 | FR-06 — Fair comparison and inference | **M** | Compatibility rules and review evidence projection are delivered; general inference, robustness, and walk-forward producers remain incomplete. | Delivered GAP-03-02/03; independent producer paths remain larger roadmap capabilities. |
 | FR-07 — Bounded agent research | **L** | Runtime contracts exist, but controlled model behavior and the handoff into experiment design/execution are unqualified external boundaries. | Existing IMP-05/IMP-07 plus **GAP-02-03 (L):** Strategy qualification; **GAP-04-01 (L):** Coordinator/Data/Strategy campaign; **GAP-04-03 (L):** experiment handoff. Controlled qualification gates any autonomy claim. |
 | FR-08 — Governed MCP access | **L** | Registration, envelopes, ownership, and prohibitions are implemented; the remaining real-world claim requires controlled qualification across model, tool catalogue, transport, and failure behavior. | **GAP-04-01 (L):** qualification campaign is the material remaining task; no new MCP contract is required for the current deterministic surface. |
-| FR-09 — Research trace and recoverability | **L** | Redacted events, checkpoints, and the human Console projection/worker now exist; retained concurrent trajectory qualification is the remaining seam. | **GAP-04-04 (M):** retained trajectory fixture and branch/recovery qualification. GAP-04-02 supplies the implemented read/command surface. |
+| FR-09 — Research trace and recoverability | **L** | Redacted events, checkpoints, and the human Console projection/worker now exist; deterministic retained concurrent trajectory qualification is delivered, while controlled model and cross-journey acceptance remain. | **GAP-04-04 (M):** delivered retained trajectory fixture and branch/recovery qualification. GAP-04-02 supplies the implemented read/command surface. |
 | FR-10 — Console research workflow | **L** | The Console now has data, authoring, execution, review, comparison, paper-operations, and agent-session slices; preserving context across them is a multi-seam integration. | **GAP-06-02/04 (M/L):** data handoff; **GAP-02-02 (M):** strategy lineage; **GAP-03-03/04 (M/L):** decision and review; **GAP-04-02 (L):** delivered agent workspace; **GAP-05-02/03 (L):** paper operations. Each boundary must be qualified before the whole journey. |
 | FR-11 — Controlled deployment | **L** | Human paper admission, authorized transition, and the current deterministic incident campaign are delivered; funded-live admission remains a future product decision. | Delivered GAP-05-01/02/03/04 provide the current paper horizon; model-specific ML eligibility remains a collaborator, not the general admission contract. |
 | FR-12 — Trading observability and intervention | **L** | Core and Console paper read/command surfaces and the deterministic incident campaign are delivered; external broker qualification remains bounded. | Delivered GAP-05-02/03/04 cover the current paper horizon; funded-live operation is outside it. |
