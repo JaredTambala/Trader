@@ -59,6 +59,30 @@ def test_uj08_design_approval_verifier_retains_revisioned_evidence(
     )
     assert invalid.ok is False
 
+    manifest_ref = design.datasets[0].dataset_manifest_ref
+    manifest_record = store.load_artifact_record(
+        manifest_ref.artifact_type,
+        manifest_ref.artifact_id,
+    )
+    store.save_artifact(
+        artifact_type=manifest_record.artifact_type,
+        artifact_id=manifest_record.artifact_id,
+        domain_owner=manifest_record.domain_owner,
+        producer_tool=manifest_record.producer_tool,
+        status=manifest_record.status,
+        payload={**manifest_record.payload, "symbols": ["CONTRADICTORY"]},
+    )
+    contradictory = create_experiment_protocol_proposal(
+        objective=objective.to_dict(),
+        design_request=design.to_dict(),
+        task_id="uj08-contradictory-scope",
+        requested_by="uj08-qualification",
+        actor=EXPERIMENT_DESIGN_AGENT_OWNER,
+        artifact_store=store,
+    )
+    assert contradictory.ok is False
+    assert "symbols do not match" in contradictory.errors[0]["message"]
+
     unauthorized = create_experiment_protocol_proposal(
         objective=objective.to_dict(),
         design_request=design.to_dict(),
@@ -98,6 +122,7 @@ def test_uj08_design_approval_verifier_retains_revisioned_evidence(
         "assertions": {
             "required_design_fields": "passed",
             "invalid_underspecified_design": "rejected",
+            "contradictory_scope": "rejected",
             "unauthorized_proposer": "rejected",
             "approval_attribution_and_digest": "passed",
             "unapproved_or_superseded_job_registration": "rejected",
