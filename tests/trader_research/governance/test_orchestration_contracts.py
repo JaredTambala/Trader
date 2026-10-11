@@ -10,6 +10,7 @@ Non-goals: Executing a workflow, evaluating model choices, persisting records, o
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -54,7 +55,9 @@ from trader_research.governance import (
     WorkflowStep,
     WorkflowStepResult,
     WorkflowStepStatus,
+    register_experiment_workflow,
 )
+from trader_research.foundation import InMemoryResearchArtifactStore
 from trader_research.governance.handoffs import artifact_report_ref
 
 
@@ -533,3 +536,30 @@ def test_capabilities_reject_runtime_state_and_non_research_side_effects() -> No
     payload["side_effect"] = "broker_mutating"
     with pytest.raises(ValueError, match="unsupported capability side_effect"):
         CapabilityDefinition.from_dict(payload)
+
+
+def test_workflow_registration_rejects_unapproved_and_superseded_protocols() -> None:
+    """Only an approved protocol may cross the durable job-registration boundary."""
+    objective = ResearchObjective(
+        objective_id="objective_demo",
+        statement="Evaluate a supplied strategy and risk implementation.",
+        success_criteria=("Produce holdout evidence.",),
+        requested_by="operator:jared",
+        actor="operator:jared",
+        status=ResearchObjectiveStatus.APPROVED,
+    )
+    plan = _ready_plan()
+    store = InMemoryResearchArtifactStore()
+    for status, message in (
+        (ExperimentProtocolStatus.PROPOSED, "experiment protocol must be approved"),
+        (ExperimentProtocolStatus.SUPERSEDED, "experiment protocol must be approved"),
+    ):
+        protocol = replace(_approved_protocol(), status=status)
+        result = register_experiment_workflow(
+            objective=objective.to_dict(),
+            protocol=protocol.to_dict(),
+            workflow_plan=plan.to_dict(),
+            artifact_store=store,
+        )
+        assert result.ok is False
+        assert message in result.errors[0]["message"]

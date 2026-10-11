@@ -503,6 +503,12 @@ the coordinator invokes a specialized deterministic MCP capability for main-prot
 optimisation execution. Code owns protocol compilation, job scheduling, resource enforcement, retries, reconciliation,
 and canonical persistence because these operations carry no independent research judgment.
 
+The UJ-08 proposal and approval seam now has a retained deterministic qualification. The verifier records the complete
+Experiment Design fields, rejection of invalid or unauthorized requests, attributable operator approval bound to the
+proposal digest, immutable evidence revisions, and the registration gate that rejects proposed or superseded protocols.
+This closes the governance contract slice while leaving model-backed design judgment and end-to-end execution
+qualification outside the claim.
+
 The selected implementation focus is now the first Coordinator–Data–Strategy agentic slice. It will prove real-model
 agenda formation, specialist delegation, multi-asset Data tool use and bounded backfill, implementation-catalogue
 comparison, isolated reuse/adapt/author decisions, failed-admission revision, canonical evidence return, interrupts,

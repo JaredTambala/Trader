@@ -132,6 +132,31 @@ def test_operator_approval_cannot_change_proposal_identity() -> None:
         apply_experiment_protocol_approvals(proposal, (changed_subject,))
 
 
+def test_operator_approval_rejects_anonymous_or_unauthorized_decision() -> None:
+    """A material assumption can only be decided by its requested approver."""
+    store, objective, design = _prepared_design()
+    result = create_experiment_protocol_proposal(
+        objective=objective.to_dict(),
+        design_request=design.to_dict(),
+        task_id="design_task_authority",
+        requested_by="composition_authority",
+        actor=EXPERIMENT_DESIGN_AGENT_OWNER,
+        artifact_store=store,
+    )
+    proposal = ExperimentProtocolProposal.from_dict(
+        result.data["experiment_protocol_proposal"]
+    )
+    requested = proposal.protocol.approvals[0]
+    unauthorized = replace(
+        requested,
+        status=ApprovalStatus.APPROVED,
+        decided_by="operator:other",
+        rationale="Attempted approval from the wrong operator.",
+    )
+    with pytest.raises(ValueError, match="unauthorized approver"):
+        apply_experiment_protocol_approvals(proposal, (unauthorized,))
+
+
 def test_proposal_rejects_canonical_data_scope_drift() -> None:
     """Proposal creation rejects canonical dataset evidence whose declared scope has drifted."""
     store, objective, design = _prepared_design()
