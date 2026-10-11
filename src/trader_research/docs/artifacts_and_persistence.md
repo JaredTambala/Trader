@@ -48,6 +48,22 @@ MLflow and filesystem exports are non-authoritative projections unless a contrac
 canonical Postgres artifact remains the source of workflow truth, while projections support observation, comparison,
 and interoperability.
 
+## Durable research jobs
+
+The accepted `ResearchJob` contract has a separate operational projection under
+`research_jobs`; it is not stored as a `research_artifacts` payload. The
+`PostgresResearchJobStore` adapter persists request and execution identities,
+attempt and lease fields, status, bounded artifact references, warnings, and
+blockers. `research_job_transitions` records each admitted snapshot so a fresh
+connection can inspect the lifecycle without relying on a worker process.
+
+Admission is idempotent by `idempotency_key`. An exact repeat returns the
+existing job, while a changed request digest or other immutable identity fails
+closed. Non-terminal updates append a transition and terminal records cannot be
+overwritten. This slice deliberately stops at persistence; command authority,
+worker scheduling, cancellation, reconciliation, and MCP transport consume the
+store through later services.
+
 ## Replay identity evidence
 
 `dataset_manifest.replay_data_identity` is the Data-owned proof attached to a qualified scope. It uses the

@@ -583,9 +583,13 @@ TRD-105 now resolves the long-running operation design gate. Backtest, optimisat
 execution will use one durable `ResearchJob` contract with idempotent submission, queued/running/partial/terminal
 states, leases, bounded retries, and explicit ambiguous/reconciliation-required outcomes. Synchronous MCP calls are
 limited to bounded preflight, validation, compilation, status, cancellation, and reconciliation. The typed contract
-and architecture record are delivered; the worker persistence schema, MCP submit/status surface, and operation-specific
-producer migrations remain implementation work. UJ-08 therefore has an accepted execution boundary but is not yet
-qualified as an end-to-end agent-directed experiment.
+and architecture record are delivered. TRD-321A now provides the Postgres
+`research_jobs` projection and append-only transition history with fresh-process
+reload, exact idempotency, lease/attempt fields, and terminal rewrite protection.
+The command service, worker persistence/recovery campaign, MCP submit/status
+surface, and operation-specific producer migrations remain implementation work.
+UJ-08 therefore has an accepted execution boundary but is not yet qualified as
+an end-to-end agent-directed experiment.
 
 The runtime may conclude, stop, request operator input, revise a specialist, revisit earlier work, or fork a new
 lineage. Equivalent low-information loops, policy violations, invalid evidence, exhausted budgets, and out-of-scope

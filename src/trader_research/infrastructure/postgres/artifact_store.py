@@ -422,7 +422,57 @@ RESEARCH_ARTIFACT_SCHEMA_STATEMENTS: tuple[str, ...] = (
         payload JSONB NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS research_jobs (
+        job_id TEXT PRIMARY KEY,
+        operation_kind TEXT NOT NULL CHECK (
+            operation_kind IN ('backtest', 'optimization', 'walk_forward', 'training')
+        ),
+        request_ref TEXT NOT NULL,
+        request_digest TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        requested_by TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        code_identity TEXT NOT NULL,
+        environment_identity TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (
+            status IN (
+                'queued', 'running', 'partial', 'succeeded', 'failed',
+                'cancelled', 'ambiguous', 'reconciliation_required'
+            )
+        ),
+        attempt INTEGER NOT NULL CHECK (attempt >= 0),
+        lease_id TEXT,
+        lease_expires_at TIMESTAMPTZ,
+        produced_artifact_refs JSONB NOT NULL DEFAULT '[]'::jsonb,
+        warnings JSONB NOT NULL DEFAULT '[]'::jsonb,
+        blockers JSONB NOT NULL DEFAULT '[]'::jsonb,
+        retryable BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS research_job_transitions (
+        transition_id BIGSERIAL PRIMARY KEY,
+        job_id TEXT NOT NULL REFERENCES research_jobs(job_id),
+        from_status TEXT,
+        to_status TEXT NOT NULL,
+        attempt INTEGER NOT NULL CHECK (attempt >= 0),
+        lease_id TEXT,
+        lease_expires_at TIMESTAMPTZ,
+        produced_artifact_refs JSONB NOT NULL DEFAULT '[]'::jsonb,
+        warnings JSONB NOT NULL DEFAULT '[]'::jsonb,
+        blockers JSONB NOT NULL DEFAULT '[]'::jsonb,
+        retryable BOOLEAN NOT NULL DEFAULT FALSE,
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS research_artifacts_type_status_idx ON research_artifacts(artifact_type, status)",
+    (
+        "CREATE INDEX IF NOT EXISTS research_job_transitions_job_idx "
+        "ON research_job_transitions(job_id, transition_id)"
+    ),
     (
         "CREATE INDEX IF NOT EXISTS research_workflow_outcomes_plan_status_idx "
         "ON research_workflow_outcomes(plan_id, status)"

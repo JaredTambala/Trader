@@ -9,6 +9,7 @@ replaying a side effect.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from typing import Any, Mapping
 
@@ -69,6 +70,8 @@ class ResearchJob:
     environment_identity: str
     status: ResearchJobStatus = ResearchJobStatus.QUEUED
     attempt: int = 0
+    lease_id: str | None = None
+    lease_expires_at: datetime | None = None
     produced_artifact_refs: tuple[ArtifactReportRef, ...] = ()
     warnings: tuple[ResearchIssue, ...] = ()
     blockers: tuple[ResearchIssue, ...] = ()
@@ -89,6 +92,10 @@ class ResearchJob:
             _required_text(value, f"research job {label}")
         if self.attempt < 0:
             raise ValueError("research job attempt cannot be negative")
+        if self.lease_expires_at is not None and self.lease_id is None:
+            raise ValueError("research job lease expiry requires a lease_id")
+        if self.lease_expires_at is not None and self.lease_expires_at.tzinfo is None:
+            raise ValueError("research job lease expiry must be timezone-aware")
         refs = [item.uri for item in self.produced_artifact_refs]
         if len(refs) != len(set(refs)):
             raise ValueError("research job artifact refs must be unique")
@@ -129,6 +136,12 @@ class ResearchJob:
             "environment_identity": self.environment_identity,
             "status": self.status.value,
             "attempt": self.attempt,
+            "lease_id": self.lease_id,
+            "lease_expires_at": (
+                self.lease_expires_at.isoformat()
+                if self.lease_expires_at is not None
+                else None
+            ),
             "produced_artifact_refs": [item.to_dict() for item in self.produced_artifact_refs],
             "warnings": [item.to_dict() for item in self.warnings],
             "blockers": [item.to_dict() for item in self.blockers],
@@ -158,6 +171,8 @@ class ResearchJob:
                 "research job status",
             ),
             attempt=int(payload.get("attempt", 0)),
+            lease_id=(str(payload["lease_id"]) if payload.get("lease_id") else None),
+            lease_expires_at=_optional_datetime(payload.get("lease_expires_at")),
             produced_artifact_refs=tuple(
                 ArtifactReportRef.from_dict(item)
                 for item in _mapping_sequence(payload.get("produced_artifact_refs"))
@@ -172,6 +187,25 @@ class ResearchJob:
             ),
             retryable=bool(payload.get("retryable", False)),
         )
+
+
+def _optional_datetime(value: Any) -> datetime | None:
+    """Parse an optional timezone-aware ISO-8601 timestamp at the boundary."""
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        return value
+    if not isinstance(value, str):
+        raise ValueError("research job lease_expires_at must be an ISO-8601 timestamp")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(
+            "research job lease_expires_at must be an ISO-8601 timestamp"
+        ) from exc
+    if parsed.tzinfo is None:
+        raise ValueError("research job lease expiry must be timezone-aware")
+    return parsed
 
 
 def operation_mode(kind: ResearchOperationKind) -> ResearchOperationMode:
