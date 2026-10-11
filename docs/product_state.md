@@ -589,8 +589,11 @@ limited to bounded preflight, validation, compilation, status, cancellation, and
 and architecture record are delivered. TRD-321A now provides the Postgres
 `research_jobs` projection and append-only transition history with fresh-process
 reload, exact idempotency, lease/attempt fields, and terminal rewrite protection.
-The command service, worker persistence/recovery campaign, MCP submit/status
-surface, and operation-specific producer migrations remain implementation work.
+TRD-321B now provides the deterministic submit/status/cancel/reconcile command
+service over that projection, preserving actor, attempt, child refs, warnings,
+and blockers with fail-closed authority and terminal semantics. The worker
+persistence/recovery campaign, MCP submit/status surface, and operation-specific
+producer migrations remain implementation work.
 UJ-08 therefore has an accepted execution boundary but is not yet qualified as
 an end-to-end agent-directed experiment.
 

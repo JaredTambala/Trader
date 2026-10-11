@@ -177,8 +177,11 @@ The first persistence slice is delivered by `PostgresResearchJobStore` in
 append-only `research_job_transitions` history, including idempotency identity,
 attempt, lease, and bounded outcome references. The store can be reopened from
 an independent connection and refuses immutable-identity conflicts and terminal
-rewrites. Application commands, worker execution, reconciliation, and MCP
-submission remain separate boundaries.
+rewrites. `ResearchJobLifecycleService` is the deterministic application
+boundary over the store: submit, status, cancel, and reconcile commands return
+typed `ApplicationResult` projections and preserve actor, attempt, child refs,
+warnings, and blockers. Worker execution, retry-attempt persistence, producer
+migration, and MCP submission remain separate boundaries.
 
 ## State and authority
 

@@ -32,6 +32,18 @@ from .operations import (
     ResearchOperationMode,
     operation_mode,
 )
+from .lifecycle import (
+    RESEARCH_CANCEL_JOB,
+    RESEARCH_GET_JOB,
+    RESEARCH_RECONCILE_JOB,
+    RESEARCH_SUBMIT_JOB,
+    ResearchJobLifecycleService,
+    ResearchJobStore,
+    cancel_research_job,
+    get_research_job,
+    reconcile_research_job,
+    submit_research_job,
+)
 from .protocols import (
     Approval,
     CostAssumption,
@@ -133,4 +145,14 @@ __all__ = [
     "replace_experiment_design_refs",
     "register_experiment_workflow",
     "operation_mode",
+    "RESEARCH_CANCEL_JOB",
+    "RESEARCH_GET_JOB",
+    "RESEARCH_RECONCILE_JOB",
+    "RESEARCH_SUBMIT_JOB",
+    "ResearchJobLifecycleService",
+    "ResearchJobStore",
+    "cancel_research_job",
+    "get_research_job",
+    "reconcile_research_job",
+    "submit_research_job",
 ]

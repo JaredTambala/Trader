@@ -60,9 +60,11 @@ connection can inspect the lifecycle without relying on a worker process.
 Admission is idempotent by `idempotency_key`. An exact repeat returns the
 existing job, while a changed request digest or other immutable identity fails
 closed. Non-terminal updates append a transition and terminal records cannot be
-overwritten. This slice deliberately stops at persistence; command authority,
-worker scheduling, cancellation, reconciliation, and MCP transport consume the
-store through later services.
+overwritten. `ResearchJobLifecycleService` now provides the deterministic
+submit, status, cancel, and reconcile command boundary over this store. It
+preserves request identity, actor, attempt, child refs, warnings, and blockers;
+it does not schedule workers, create retry attempts, migrate producers, or
+expose an MCP transport.
 
 ## Replay identity evidence
 
