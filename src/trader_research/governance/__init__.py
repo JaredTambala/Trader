@@ -97,6 +97,11 @@ from .handoffs import (
 )
 from .orchestration import (
     Approval,
+    DURABLE_OPERATION_KINDS,
+    ResearchJob,
+    ResearchJobStatus,
+    ResearchOperationKind,
+    ResearchOperationMode,
     ApprovalStatus,
     ArtifactCardinality,
     ArtifactSlot,
@@ -143,6 +148,7 @@ from .orchestration import (
     record_workflow_outcome,
     replace_experiment_design_refs,
     register_experiment_workflow,
+    operation_mode,
 )
 from .ownership import (
     DECISION_AUTHORITIES,
@@ -174,6 +180,11 @@ __all__ = [
     "BoundedNextExperiment",
     "AgentDefinition",
     "Approval",
+    "DURABLE_OPERATION_KINDS",
+    "ResearchJob",
+    "ResearchJobStatus",
+    "ResearchOperationKind",
+    "ResearchOperationMode",
     "ApprovalStatus",
     "HYPOTHESIS_AGENT_OWNER",
     "HYPOTHESIS_CARD",
@@ -285,6 +296,7 @@ __all__ = [
     "apply_experiment_protocol_approvals",
     "record_workflow_outcome",
     "register_experiment_workflow",
+    "operation_mode",
     "agent_owner_for_tool",
     "artifact_report_ref",
     "build_experiment_protocol_proposal",

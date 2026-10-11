@@ -305,6 +305,15 @@ records but not for creating runs, model versions, tags, or aliases on an extern
 contract uses that external class and separate default-off policy for MLflow writes,
 training execution, and alias promotion. Runtime deployment remains outside agent mutation authority.
 
+## Durable execution boundary
+
+The registered operation tools remain split into bounded control calls and a future durable worker surface.
+Preflight/validation/compilation, `get` status, cancellation, and reconciliation are synchronous bounded operations.
+Backtest, optimisation, walk-forward, and training execution submit through one durable job contract; no MCP caller
+waits for the execution to finish. The job projection exposes request and execution identities, idempotency, attempt,
+status, canonical child refs, and blockers. A lost response is reconciled before retry, and the execution service is
+not an agent or a source of research judgment.
+
 ## Deferred Walk-Forward Tool Universe
 
 No tool in this section is registered. These tools depend on the prospective experiment loop, model-backed strategy

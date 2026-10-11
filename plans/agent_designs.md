@@ -2,7 +2,7 @@
 
 Design status: active design workbook; no implementation is authorized by this document.
 
-Last reviewed: 2026-09-03.
+Last reviewed: 2026-10-11.
 
 This is the canonical working record for the architecture of Trader's target model-backed agents. It carries accepted
 boundaries and pending decisions across review, implementation, and qualification, preventing the target from
@@ -37,6 +37,7 @@ plan should then be deleted or reduced to unresolved implementation notes.
 | [Strategy Engineering Agent](agent_designs/strategy_engineering.md) | accepted | accepted | accepted for first slice | Build contract, catalogue, sandbox, admission, outcome isolation, repair, recovery, evaluation, and concurrency boundaries accepted. |
 | [Experiment Design Agent](agent_designs/experiment_design.md) | in review | proposed, acceptance pending | pending | Complete two-phase architecture proposal: Experiment Design may formulate a bounded hypothesis brief before candidate construction, then a protocol over an accepted brief and qualified inputs; human acceptance remains required. |
 | [Robustness & Walk-Forward Agent](agent_designs/robustness_walk_forward.md) | accepted | pending | pending | Multi-agent plan design, pre-approved-envelope authority, and direct plan-pinned specialist execution are accepted; the remaining standard record is pending. |
+| [Durable Research Operation Model](agent_designs/long_running_operation_model.md) | service boundary | accepted | accepted | Backtest, optimisation, WFO, and training use one durable job contract; synchronous calls are limited to bounded preflight, reads, commands, and reconciliation. |
 | ML Signal Research Agent | parked | pending | pending | Intentionally deferred on 2026-08-28; it does not block the first Coordinator–Data–Strategy implementation slice. |
 | Evaluation Agent | provisional responsibility only | pending | pending | Not yet reviewed through the standard record. |
 

@@ -161,6 +161,17 @@ At each edge, the caller should be able to answer four questions:
 3. Which assumptions, warnings, or blockers were recorded?
 4. Which stable references must be re-read before the next mutation or conclusion?
 
+## Durable execution boundary
+
+Backtest, optimisation, walk-forward, and training are costly deterministic operations and share one durable job
+contract. `trader_research.governance.orchestration.operations.ResearchJob` owns the bounded public lifecycle; the
+operation-specific context owns its canonical child artifacts. Synchronous calls are limited to bounded preflight,
+validation, compilation, status, cancellation, and reconciliation reads. Workers own leases, scheduling, retries,
+joins, persistence, and resource limits. A lost response is represented as `ambiguous` or
+`reconciliation_required`, never replayed blindly. Job state is operational and never substitutes for canonical research
+evidence; consumers re-read exact artifact refs before interpretation. See
+[Durable Research Operation Model](../../../plans/agent_designs/long_running_operation_model.md).
+
 ## State and authority
 
 Agents own bounded decisions. Domain contexts own canonical artifacts. A persisted record separates `domain_owner`,

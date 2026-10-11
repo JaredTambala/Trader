@@ -12,7 +12,7 @@ dependencies, and delivery progress. Use the repository
 [capability roadmap](../plans/research_capability_roadmap.md) only for its retained architecture, dependency,
 acceptance, and migration context.
 
-Last reviewed: 2026-10-06.
+Last reviewed: 2026-10-11.
 
 ## How To Read Capability State
 
@@ -576,6 +576,14 @@ The current first slice is a real model/tool control loop, not a deterministic s
 | Strategy Engineering | Catalogue-first structured loop in `trader_agents.specialists.strategy_engineering`. | Reuse requires exact passed admission evidence; authorship uses isolated Coding Workspace MCP and independent admission, never host execution or self-approval. |
 | Evidence join | Structured returns plus exact `research_read_artifact` checks and append-only decision receipts. | A URI alone is insufficient; type, identity, owner, session/actor lineage, and bounded public metadata must agree. |
 | Runtime | `AgenticResearchRuntime.start`, `.inspect`, `.interrupt`, `.resume`, and `.cancel`, with three isolated MCP stdio clients and a PostgreSQL LangGraph saver. | Checkpoints are operational and redacted; exact session and runtime pins are checked before public recovery. Canonical evidence remains in research persistence. Cancellation requires the owning operator and records a canonical terminal receipt. Terminal replay returns the saved result without another terminal event. The Console exposes public session/receipt evidence and records human lifecycle intents without importing agent internals; runtime application remains the authority. |
+
+TRD-105 now resolves the long-running operation design gate. Backtest, optimisation, walk-forward, and training
+execution will use one durable `ResearchJob` contract with idempotent submission, queued/running/partial/terminal
+states, leases, bounded retries, and explicit ambiguous/reconciliation-required outcomes. Synchronous MCP calls are
+limited to bounded preflight, validation, compilation, status, cancellation, and reconciliation. The typed contract
+and architecture record are delivered; the worker persistence schema, MCP submit/status surface, and operation-specific
+producer migrations remain implementation work. UJ-08 therefore has an accepted execution boundary but is not yet
+qualified as an end-to-end agent-directed experiment.
 
 The runtime may conclude, stop, request operator input, revise a specialist, revisit earlier work, or fork a new
 lineage. Equivalent low-information loops, policy violations, invalid evidence, exhausted budgets, and out-of-scope

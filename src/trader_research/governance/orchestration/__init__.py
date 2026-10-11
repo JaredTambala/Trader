@@ -24,6 +24,14 @@ from .enums import (
     WorkflowOutcomeStatus,
     WorkflowStepStatus,
 )
+from .operations import (
+    DURABLE_OPERATION_KINDS,
+    ResearchJob,
+    ResearchJobStatus,
+    ResearchOperationKind,
+    ResearchOperationMode,
+    operation_mode,
+)
 from .protocols import (
     Approval,
     CostAssumption,
@@ -70,6 +78,11 @@ from .services import (
 
 __all__ = [
     "Approval",
+    "DURABLE_OPERATION_KINDS",
+    "ResearchJob",
+    "ResearchJobStatus",
+    "ResearchOperationKind",
+    "ResearchOperationMode",
     "ApprovalStatus",
     "ArtifactCardinality",
     "ArtifactSlot",
@@ -119,4 +132,5 @@ __all__ = [
     "record_workflow_outcome",
     "replace_experiment_design_refs",
     "register_experiment_workflow",
+    "operation_mode",
 ]
