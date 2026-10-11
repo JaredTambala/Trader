@@ -178,14 +178,11 @@ backtest authoring route now accepts the selected saved scope through a typed ha
 policy, manifest/quality references, and UTC window while performing coverage preflight. Exact scope drift, stale
 evidence, unavailable evidence, and missing scope are explicit blockers.
 
-The audit therefore records four executable gaps: expose the Data quality and provenance evidence in the Console;
-carry the selected scope and source policy into authoring without re-entry; prove that replay bars still match the
-qualified dataset; and qualify the complete selection-to-submission journey with integrated fixtures and failure
-states. GAP-06-02 delivers the typed handoff for the second step: it persists the immutable scope identity in the
-definition, checks server-owned manifest/quality evidence before coverage, and blocks stale, unavailable, or changed
-selections. Replay identity and complete journey qualification remain separate gaps. The detailed acceptance criteria,
-repository evidence, and linked Notion work items live in [product_intent.md](product_intent.md). This audit describes
-current capability; it does not claim that the end-to-end story is qualified.
+The original audit separated four boundaries: Console quality/provenance evidence, exact scope handoff, replay bar
+identity, and integrated selection-to-review qualification. All four now have deterministic implementation and
+qualification evidence. The integrated fixture proves the successful human route and stale/mismatch blockers; broader
+worker failure and ambiguous-outcome campaigns remain part of the UJ-03 execution boundary. The desired journey and
+acceptance criteria live in [product_intent.md](product_intent.md).
 
 GAP-06-01 is now delivered in the Console API and market-data workspace. `console_read.data_scope_evidence` resolves
 the Data-owned manifest and quality pair by exact symbols, asset class, timeframe/interval, bar type, UTC window,
@@ -197,8 +194,8 @@ renders manifest and quality evidence, saves the exact scope, follows the handof
 and immutable-definition payloads, submits durable execution, and opens a review fixture carrying the same saved-scope
 ID and scope fingerprint. It also proves that stale qualified evidence remains an actionable preflight blocker and
 cannot create a definition. The qualification is deterministic and route-isolated. GAP-03-04 now adds the producer
-worker, persisted-result, standalone-review, and human-decision qualification; GAP-06-03 still owns proof that replay
-bars match the qualified source content.
+worker, persisted-result, standalone-review, and human-decision qualification. GAP-06-03 separately proves that replay
+bars match the qualified source content before the runner starts.
 
 GAP-01-03 now provides the saved-scope alternative comparison read model. `POST /api/data-scope-comparisons` loads two
 or more immutable scopes and their exact producer evidence, compares every unordered pair, and admits only pairs whose
@@ -253,7 +250,8 @@ database. A separate worker reads the immutable definition, runs the maintained 
 risk, fills, warnings, and explicit comparison state through `console_read`. The API qualification replays the same
 idempotency key and records a human reject decision against canonical artifacts; the Playwright qualification reads the
 same run through Next.js and completes that decision in the visible review panel. This is a deterministic local paperless
-qualification: focused tests still own failed/ambiguous worker outcomes, and GAP-06-03 owns replay-content identity.
+qualification: focused tests still own failed/ambiguous worker outcomes, while the delivered GAP-06-03 preflight proves
+replay-content identity.
 The Console worker also fails closed when a progress lease or terminal receipt is lost. A runner or durable-result
 failure after execution may have written producer events, so the command requires reconciliation rather than being
 reported as a clean failure. A fresh worker process marks an expired reserved run for reconciliation without replaying
@@ -266,11 +264,13 @@ The runtime and specialist contracts are ahead of their product qualification. U
 qualification over the actual Coordinator runtime: exact checkpoint pins are checked before inspection or replay,
 lost terminal responses recover without duplicate terminal events or decision receipts, and concurrent sessions retain
 separate checkpoint and decision lineage. A guarded Postgres test proves terminal inspection and retry across a fresh
-operating-system process. Full Console-to-runtime intervention, cross-process writer-race qualification, and the failed real-model gate
-remain open. UJ-07 also remains gated by that model campaign; UJ-08 remains gated by the Experiment Design review, the unresolved long-running MCP/job
-decision, replay identity, and missing independent Evaluation/Robustness paths; UJ-09 remains gated by the Console
-evidence graph and next-decision projection. These gates are recorded in the Product Intent and linked Notion work
-items; no agent journey is treated as controlled merely because deterministic component tests pass.
+operating-system process. The Console command/worker surface and retained public-trajectory verifier are delivered;
+cross-process writer-race qualification and the failed real-model gate remain open. UJ-07 also remains gated by that
+model campaign. UJ-08 has a deterministic proposal/approval qualifier and an accepted durable-job contract, but still
+needs the model-backed Experiment Design handoff, job adapters and producers, and independent Evaluation/Robustness
+paths. Replay identity is delivered. UJ-09 has the Console evidence/decision surface and retained deterministic
+qualification, while independent review and controlled-model evidence remain open. No agent journey is treated as
+controlled merely because deterministic component tests pass.
 
 The Console UJ-04 authority slice now projects a state-specific command set from the exact public runtime inspection
 and enforces it again at the HTTP service. Browser controls show identity and runtime pins, agenda, budgets, blockers,
@@ -281,7 +281,8 @@ does not close the failed real-model gate or cross-process writer-race qualifica
 TRD-315 now records the UJ-04 qualification boundary as immutable evidence revision 1. It joins the deterministic
 retained-session verifier to exact fixture and contract identities, command, checkout commit, environment, and admitted
 model/program/tool profile. The deterministic gate is passed; the active model-profile gate is failed and the repeated
-real-model gate is not run because the controlled model gate remains blocked by TRD-100 and IMP-05. The evidence contract
+real-model gate is not run because the reviewed model candidate failed and the broader IMP-05 campaign has not begun.
+TRD-100 recorded the profile decision boundary but did not admit a model. The evidence contract
 can only report `controlled_acceptance: not_claimed`, and later reruns create new revisions without overwriting prior
 reports. This makes the evidence auditable without overstating the current product qualification.
 
@@ -369,11 +370,12 @@ The baseline is LangGraph 1.2.2, strict Pydantic/provider-neutral JSON, one sche
 8,192-token context window, and a 2,048-token output ceiling. The active LFM 2.5 8B digest remains rejected for
 controlled qualification; the historical Qwen 3.5 9B digest remains rejected; and the locally installed Qwen 3.5 27B
 digest (`7653528ba5cba4dd8e19da24aaddc7f4d0b5ecd93571c0825dfd4137958ec06e`) is only a candidate for the next bounded
-probe. The provisional gate is the reviewed 12-scenario fixture at three repetitions, requiring deterministic
+probe. TRD-100 is complete as a decision record; no candidate has passed its promotion gate. The provisional gate is
+the reviewed 12-scenario fixture at three repetitions, requiring deterministic
 invariant pass rate 1.0, schema validity at least 0.98, grounded decisions at least 0.90, role coverage at least 0.95,
 zero forbidden calls/unapproved mutations/lost receipts/replayed accepted mutations, and per-run ceilings of 40 model
-calls, 40 tool calls, 120,000 tokens, 600 seconds, two revisions, and concurrency two. TRD-100 remains in review: no
-candidate has passed these thresholds, and controlled acceptance is not claimed.
+calls, 40 tool calls, 120,000 tokens, 600 seconds, two revisions, and concurrency two. Controlled acceptance is not
+claimed.
 The current `research-coordinator-v7` program selects relevant specialist responsibilities rather than requiring every
 available role. Strict Pydantic schemas validate provider-neutral JSON outputs with at most one schema-only retry.
 There is no post-generation field rewriting, permissive fenced-JSON parsing, semantic validation feedback, agenda task
