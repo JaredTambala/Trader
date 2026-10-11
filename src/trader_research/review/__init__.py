@@ -10,9 +10,21 @@ from .adversarial import (
     generate_parameter_optimization_audit,
 )
 from .evaluation import generate_parameter_optimization_report
+from .evidence_join import (
+    EvidenceJoinRef,
+    EvidenceJoinResult,
+    EvidenceJoinStatus,
+    EvidenceJoinVerdict,
+    qualify_evidence_join,
+)
 
 __all__ = [
     "create_parameter_optimization_audit_plan",
     "generate_parameter_optimization_audit",
     "generate_parameter_optimization_report",
+    "EvidenceJoinRef",
+    "EvidenceJoinResult",
+    "EvidenceJoinStatus",
+    "EvidenceJoinVerdict",
+    "qualify_evidence_join",
 ]

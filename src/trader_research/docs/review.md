@@ -31,3 +31,17 @@ silently turns a missing artifact into a neutral finding.
 
 Read the verdict together with its scope, sample size, attack plan, and blockers. “Passed review” means that the stated
 review contract completed; it remains distinct from live deployment approval and from broker authority.
+
+
+## Cross-context evidence join
+
+`EvidenceJoinRef` and `EvidenceJoinResult` define the research-owned seam for a governed experiment. An adapter first
+reads each exact canonical record and supplies its pinned hash, immutable revision, bounded lineage projection, status,
+limitations, and review fields. `qualify_evidence_join` then checks the proposal, approval, Data scope, strategy
+version, run, Evaluation, Robustness, and terminal decision roles against one experiment identity. Missing, stale,
+incompatible, partial, and negative producer states remain explicit; a URI or a positive report cannot repair a
+mismatched join.
+
+The verifier is pure and does not load a latest record, persist payloads, or grant approval. Its JSON projection can be
+retained and reopened by a fresh process, which qualifies lineage reconstruction separately from worker durability,
+model behavior, independent producer maturity, and paper-trading admission.
