@@ -183,6 +183,13 @@ typed `ApplicationResult` projections and preserve actor, attempt, child refs,
 warnings, and blockers. Worker execution, retry-attempt persistence, producer
 migration, and MCP submission remain separate boundaries.
 
+TRD-321C retains the corresponding recovery qualification under
+`tests/cross_package/qualification/test_postgres_research_job_recovery.py`.
+The deterministic fixture proves command and blocker semantics for every public
+state, while the guarded Postgres case reloads a leased job in a fresh Python
+process before reconciling a terminal result. The qualification deliberately
+does not stand in for worker scheduling, model-backed, or scientific evidence.
+
 ## State and authority
 
 Agents own bounded decisions. Domain contexts own canonical artifacts. A persisted record separates `domain_owner`,

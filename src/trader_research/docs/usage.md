@@ -112,6 +112,23 @@ Research persistence is explicit. An unavailable store is a visible dependency f
 with an in-memory store. This matters for reproducibility: an in-memory result can support a unit test, while a durable
 artifact is required for a cross-process workflow or later review.
 
+### Qualifying durable research jobs
+
+Run the retained deterministic recovery campaign with:
+
+<!-- verified: integration:qualification tests/cross_package/qualification/test_postgres_research_job_recovery.py -->
+```bash
+uv run pytest tests/cross_package/qualification/test_postgres_research_job_recovery.py -q
+```
+
+The campaign always exercises the typed command contract in memory and writes a
+credential-free JSON report naming its fixture, contract, checkout, command,
+assertions, and blocker states. When the guarded `PG_TEST_*` verification
+environment is configured, the Postgres case also reloads a leased projection
+from a fresh Python process and verifies terminal reconciliation. Without that
+environment the Postgres case is skipped; the offline evidence does not claim
+durability, model-backed behavior, or scientific validity.
+
 ## Provider choices
 
 Provider adapters are optional and injected. Alpaca symbol discovery/data loading, embedding providers, Optuna, and

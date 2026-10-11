@@ -66,6 +66,18 @@ preserves request identity, actor, attempt, child refs, warnings, and blockers;
 it does not schedule workers, create retry attempts, migrate producers, or
 expose an MCP transport.
 
+The retained TRD-321C qualification campaign in
+`tests/cross_package/qualification/test_postgres_research_job_recovery.py`
+replays the complete public state matrix (`queued`, `running`, `partial`,
+`succeeded`, `failed`, `cancelled`, `ambiguous`, and
+`reconciliation_required`) with duplicate admission, cancellation, partial
+child refs, expired leases, and provider or Postgres loss represented by
+explicit blockers. Its JSON report records the fixture, contract, checkout,
+command, assertions, and blocker states. The in-memory campaign runs offline;
+the fresh-process Postgres assertion is guarded by the controlled verification
+environment. This is deterministic lifecycle evidence only and makes no
+model-backed or scientific acceptance claim.
+
 ## Replay identity evidence
 
 `dataset_manifest.replay_data_identity` is the Data-owned proof attached to a qualified scope. It uses the
