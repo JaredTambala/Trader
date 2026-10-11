@@ -172,6 +172,14 @@ joins, persistence, and resource limits. A lost response is represented as `ambi
 evidence; consumers re-read exact artifact refs before interpretation. See
 [Durable Research Operation Model](../../../plans/agent_designs/long_running_operation_model.md).
 
+The first persistence slice is delivered by `PostgresResearchJobStore` in
+`infrastructure.postgres`. It owns the typed `research_jobs` row and the
+append-only `research_job_transitions` history, including idempotency identity,
+attempt, lease, and bounded outcome references. The store can be reopened from
+an independent connection and refuses immutable-identity conflicts and terminal
+rewrites. Application commands, worker execution, reconciliation, and MCP
+submission remain separate boundaries.
+
 ## State and authority
 
 Agents own bounded decisions. Domain contexts own canonical artifacts. A persisted record separates `domain_owner`,

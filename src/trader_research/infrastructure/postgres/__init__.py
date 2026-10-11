@@ -9,10 +9,22 @@ from .artifact_store import (
     RESEARCH_ARTIFACT_SCHEMA_STATEMENTS,
     PostgresResearchArtifactStore,
 )
+from .job_store import (
+    PostgresResearchJobStore,
+    ResearchJobConflict,
+    ResearchJobNotFound,
+    ResearchJobStoreError,
+    ResearchJobTransitionError,
+)
 from .knowledge import PostgresKnowledgeStore
 
 __all__ = [
     "RESEARCH_ARTIFACT_SCHEMA_STATEMENTS",
     "PostgresKnowledgeStore",
     "PostgresResearchArtifactStore",
+    "PostgresResearchJobStore",
+    "ResearchJobConflict",
+    "ResearchJobNotFound",
+    "ResearchJobStoreError",
+    "ResearchJobTransitionError",
 ]

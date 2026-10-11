@@ -94,6 +94,8 @@ def _truncate_research_artifact_tables(
     connection.execute(
         """
         TRUNCATE TABLE
+            research_job_transitions,
+            research_jobs,
             research_agent_decision_receipts,
             research_agent_sessions,
             research_workflow_outcomes,

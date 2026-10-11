@@ -37,7 +37,7 @@ research artifact. Its public fields are:
 - `job_id`, `operation_kind`, `request_ref`, and `request_digest` identify the immutable request;
 - `idempotency_key` prevents duplicate submission;
 - `requested_by`, `actor`, `code_identity`, and `environment_identity` preserve authority and reproducibility;
-- `status`, `attempt`, and `retryable` expose lifecycle state without worker internals;
+- `status`, `attempt`, `lease_id`, `lease_expires_at`, and `retryable` expose lifecycle state without worker internals;
 - `produced_artifact_refs`, `warnings`, and `blockers` expose bounded canonical evidence and degraded outcomes.
 
 `ResearchOperationKind` is closed over `backtest`, `optimization`, `walk_forward`, and `training`. `ResearchJobStatus`
@@ -50,6 +50,12 @@ record under the original idempotency lineage.
 The projection never includes prompts, hidden reasoning, credentials, raw provider payloads, checkpoint bytes, or a full
 MCP transcript. Canonical research artifacts remain owned by their domain contexts. A job reference is not evidence by
 itself; consumers re-read each exact artifact ref before interpretation.
+
+TRD-321A persists this bounded projection in the research Postgres schema. The
+`research_jobs` row is reopened through `PostgresResearchJobStore`, while
+`research_job_transitions` retains each admitted snapshot. The persistence slice
+does not grant command authority or implement worker leases; later services own
+those decisions and use the stored lease fields for recovery inspection.
 
 ## Lifecycle and recovery
 
