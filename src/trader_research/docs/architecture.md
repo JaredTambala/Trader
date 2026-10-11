@@ -181,6 +181,17 @@ Backtest execution, optimisation scheduling, and risk evaluation do not become a
 invokes them. Deterministic services own those mechanics; Strategy Engineering is a bounded specialist because it must
 reason about catalogue comparison, reuse, adaptation, and source authoring.
 
+The UJ-08 Experiment Design boundary is qualified by
+`tests/cross_package/qualification/test_uj08_experiment_design_approval.py`. A proposal must carry a complete
+objective, falsifiable evaluation and robustness plan, bounded costs and runtime budget, explicit data and strategy
+versions, and named stop conditions. Strict parsing and protocol construction reject missing, contradictory, or
+underspecified choices; proposal creation accepts only the registered Experiment Design actor. Every material
+assumption receives an attributable operator decision whose digest remains bound to the immutable proposal. Workflow
+registration accepts only an approved protocol, so proposed or superseded designs cannot create durable jobs. The
+retained verifier writes immutable evidence revisions with fixture, contract, command, checkout commit, and explicit
+assertions. This qualifies the deterministic governance seam; it does not claim model-backed design judgment or
+experiment execution acceptance.
+
 Paper operation has a separate human-owned admission boundary. `paper_candidate_admission` records exact candidate,
 strategy, risk, data, and evidence identities plus limits, broker scope, monitoring, expiry, and revocation. Its
 validator re-reads canonical evidence before reporting eligibility; no research agent, MCP adapter, or admission

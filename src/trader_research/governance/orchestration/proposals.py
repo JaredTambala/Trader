@@ -498,6 +498,10 @@ def apply_experiment_protocol_approvals(
         decided = by_id[requested.approval_id]
         if decided.status is ApprovalStatus.REQUESTED:
             raise ValueError("approval decisions cannot remain requested")
+        if decided.decided_by != requested.requested_from:
+            raise ValueError(
+                "approval decision was made by an unauthorized approver"
+            )
         for attribute in (
             "subject_type",
             "subject_id",
