@@ -201,7 +201,13 @@ assumption receives an attributable operator decision whose digest remains bound
 registration accepts only an approved protocol, so proposed or superseded designs cannot create durable jobs. The
 retained verifier writes immutable evidence revisions with fixture, contract, command, checkout commit, and explicit
 assertions. This qualifies the deterministic governance seam; it does not claim model-backed design judgment or
-experiment execution acceptance.
+experiment execution acceptance. The research-owned `EvidenceJoinRef`/`EvidenceJoinResult` contract and
+`qualify_evidence_join` verifier now qualify the next deterministic seam in
+`tests/cross_package/qualification/test_uj08_evidence_join.py`: proposal, approval, Data scope, strategy version,
+run, independent review, terminal decision, and retained public trajectory evidence are joined by exact identity and
+revision. The verifier preserves missing, stale, incompatible, partial, and negative producer states and reopens its
+redacted output in a fresh process. It does not claim that the independent producers, durable workers, model campaign,
+or Console journey are complete.
 
 Paper operation has a separate human-owned admission boundary. `paper_candidate_admission` records exact candidate,
 strategy, risk, data, and evidence identities plus limits, broker scope, monitoring, expiry, and revocation. Its

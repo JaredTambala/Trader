@@ -266,11 +266,11 @@ lost terminal responses recover without duplicate terminal events or decision re
 separate checkpoint and decision lineage. A guarded Postgres test proves terminal inspection and retry across a fresh
 operating-system process. The Console command/worker surface and retained public-trajectory verifier are delivered;
 cross-process writer-race qualification and the failed real-model gate remain open. UJ-07 also remains gated by that
-model campaign. UJ-08 has a deterministic proposal/approval qualifier and an accepted durable-job contract, but still
-needs the model-backed Experiment Design handoff, job adapters and producers, and independent Evaluation/Robustness
-paths. Replay identity is delivered. UJ-09 has the Console evidence/decision surface and retained deterministic
-qualification, while independent review and controlled-model evidence remain open. No agent journey is treated as
-controlled merely because deterministic component tests pass.
+model campaign. UJ-08 has deterministic proposal/approval and exact evidence-join qualifiers plus an accepted
+durable-job contract, but still needs the model-backed Experiment Design handoff, job adapters and producers, and
+independent Evaluation/Robustness paths. Replay identity is delivered. UJ-09 has the Console evidence/decision surface
+and retained deterministic qualification, while independent review and controlled-model evidence remain open. No agent
+journey is treated as controlled merely because deterministic component tests pass.
 
 The Console UJ-04 authority slice now projects a state-specific command set from the exact public runtime inspection
 and enforces it again at the HTTP service. Browser controls show identity and runtime pins, agenda, budgets, blockers,
@@ -508,7 +508,10 @@ and canonical persistence because these operations carry no independent research
 The UJ-08 proposal and approval seam now has a retained deterministic qualification. The verifier records the complete
 Experiment Design fields, rejection of invalid or unauthorized requests, attributable operator approval bound to the
 proposal digest, immutable evidence revisions, and the registration gate that rejects proposed or superseded protocols.
-This closes the governance contract slice while leaving model-backed design judgment and end-to-end execution
+TRD-322 adds the research-owned evidence join: exact proposal, approval, Data scope, strategy version, run,
+Evaluation, Robustness, terminal decision, and retained public trajectory identities are checked together, with review
+limitations and negative findings preserved through a fresh-process reopen. This closes the deterministic governance and
+lineage slices while leaving model-backed design judgment, independent producer maturity, and end-to-end execution
 qualification outside the claim.
 
 The selected implementation focus is now the first Coordinator–Data–Strategy agentic slice. It will prove real-model

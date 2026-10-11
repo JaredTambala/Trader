@@ -38,7 +38,9 @@ contract with fail-closed ambiguity and reconciliation states.
 The remaining product claims are separate: the reviewed model candidate has not passed the controlled behavior gate;
 UJ-08 still needs model-backed Experiment Design handoff, durable-job adapters/producers, and independent
 Evaluation/Robustness producers; broader worker failure campaigns and one unified cross-journey evidence chain remain
-open. These are capability limits, not reasons to downgrade the deterministic evidence already delivered.
+open. TRD-322 now qualifies the deterministic UJ-08 evidence join across proposal, approval, scope, strategy, run,
+review, decision, and retained trajectory identities. These are capability limits, not reasons to downgrade the
+deterministic evidence already delivered.
 
 ## Candidate user journeys
 
@@ -481,10 +483,11 @@ execution, evaluation/optimisation artifacts, and robustness-related artifact co
 
 **Absent or partial:** no model-backed Experiment Design graph is in the clean runtime; the current agent slice does not
 execute experiments, request independent Evaluation/Robustness work, or expose the full lifecycle in the Console. The
-deterministic proposal/approval boundary is qualified by TRD-320, and the durable operation model is accepted by
-TRD-105. The successful Console worker-to-review path, typed review evidence, next-decision record, and replay-bar
-identity are qualified as separate deterministic boundaries; worker adapters/producers, broader failure campaigns, and
-agent-to-experiment integration remain open.
+deterministic proposal/approval boundary is qualified by TRD-320, the durable operation model is accepted by
+TRD-105, and TRD-322 qualifies the exact evidence join from proposal and approval through scope, implementation, run,
+independent review, terminal decision, and retained trajectory evidence. The successful Console worker-to-review path,
+typed review evidence, next-decision record, and replay-bar identity are qualified as separate deterministic
+boundaries; worker adapters/producers, broader failure campaigns, and agent-to-experiment integration remain open.
 
 ### Capability evidence and remaining behavior
 
@@ -614,7 +617,7 @@ and agent-to-experiment handoff remain incomplete.
 | Exact replay identity | Delivered core/research boundary. Qualified manifests carry bar-content digest and source semantics, and execution revalidates them before loading the runner. | Use the delivered identity receipt as an input to GAP-03-01 and the agent handoff. | Execution refuses changed bars/source or records the permitted environmental difference explicitly. |
 | Independent Evaluation and Robustness | Producer capability gap, separate from the delivered GAP-03-02 Console projection. Parameter-optimisation reports exist, but general model-backed Evaluation and Robustness/WFO paths remain absent or under design. | Progress the independent Evaluation and Robustness producer paths; preserve absence/limitations in the existing projection. | Independent artifacts identify claim scope, protected data, limitations, negative findings, and dissent; no Coordinator verdict substitutes for either authority. |
 | Agent-to-experiment integration | Cross-boundary gap. GAP-04-03 must join approved Data/Strategy returns to proposal, execution, review, and terminal outcome without granting the Coordinator experiment or quality authority. | Implement GAP-04-03 after the upstream model and protocol/job decisions; qualify denial, mismatch, retry, recovery, and approval paths. | Public trajectory ends in a reproducible experiment/evidence bundle or typed blocker, with canonical refs at every handoff. |
-| Feature acceptance and implementation gap | No single acceptance item currently proves the complete agent-to-experiment path. | The feature-qualification slice qualifies UJ-08 by composing the remaining GAP-04-03/GAP-03-01 boundaries with delivered GAP-03-02/03/04 and GAP-06-03 evidence. | Isolated workflow fixture proves proposal → approval → job/run → independent evidence or blocker → terminal outcome. |
+| Feature acceptance and implementation gap | No single acceptance item proves the complete agent-to-experiment path; the deterministic evidence-join seam is now qualified separately. | The feature-qualification slice still composes the remaining GAP-04-03/GAP-03-01 boundaries with delivered GAP-03-02/03/04, GAP-06-03, and TRD-322 evidence. | Isolated workflow fixture proves exact proposal → approval → scope/implementation → run → independent evidence or blocker → terminal outcome, with retained trajectory identity. |
 
 **Dependency order:** review Experiment Design authority; apply the accepted durable operation contract and resolve replay
 identity; implement the bounded agent handoff; make independent review artifacts available; then complete the UJ-08 feature-qualification slice. Until independent Evaluation/Robustness
