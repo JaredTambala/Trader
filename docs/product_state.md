@@ -592,8 +592,15 @@ reload, exact idempotency, lease/attempt fields, and terminal rewrite protection
 TRD-321B now provides the deterministic submit/status/cancel/reconcile command
 service over that projection, preserving actor, attempt, child refs, warnings,
 and blockers with fail-closed authority and terminal semantics. The worker
-persistence/recovery campaign, MCP submit/status surface, and operation-specific
-producer migrations remain implementation work.
+persistence/recovery campaign is retained in
+`tests/cross_package/qualification/test_postgres_research_job_recovery.py`:
+its deterministic fixture covers every public state, duplicate admission,
+cancellation, partial child artifacts, lease expiry, and explicit provider or
+storage blockers; a guarded Postgres case checks fresh-process reload when the
+verification environment is available. This qualifies the lifecycle command
+and recovery contract only. Worker scheduling, MCP submit/status exposure,
+operation-specific producer migrations, model-backed acceptance, and scientific
+validity remain outside the evidence boundary.
 UJ-08 therefore has an accepted execution boundary but is not yet qualified as
 an end-to-end agent-directed experiment.
 
