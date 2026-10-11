@@ -98,6 +98,28 @@ artifacts obey these rules:
 - MLflow writes, training, alias assignment, and runtime deployment have separate policy gates. The ML Agent cannot
   mutate live trading or broker state.
 
+### Durable Research Operation Contract
+
+Costly execution uses the typed `ResearchJob` contract owned by `trader_research.governance.orchestration.operations`.
+Backtest, optimisation, walk-forward, and training all use `durable_job` mode. MCP calls remain synchronous only for
+bounded preflight/validation/compilation, status reads, cancellation commands, and reconciliation reads; an execution
+request never relies on keeping one transport call open.
+
+A submit operation returns a bounded `ResearchJob` projection with the immutable request reference and digest,
+idempotency key, requester/actor, code and environment identities, attempt, status, canonical child artifact refs,
+warnings, and blockers. Public state is operational and is not research evidence. It contains no prompts, hidden
+reasoning, credentials, provider payloads, checkpoint bytes, or full transcripts. Consumers re-read every exact child
+artifact reference before interpretation.
+
+The lifecycle is `queued` → `running` → `partial`/terminal. `ambiguous` and `reconciliation_required` always carry a
+blocker and cannot be retried until the worker or operator reconciles canonical child/provider state. A lost response
+never causes an automatic replay. Exact resubmission is idempotent; a conflicting request under the same key fails
+closed. A retry after reconciliation creates a new attempt while retaining prior outcome lineage.
+
+The deterministic worker owns leases, heartbeats, scheduling, retries, persistence, joins, and resource enforcement. The
+Research Coordinator and specialist agents own bounded routing and approval decisions; they do not execute jobs directly.
+Training additionally reconciles the pinned external MLflow run/model identity before accepting a fit or retrying it.
+
 ### Deferred Walk-Forward Contract Invariants
 
 Full walk-forward optimisation depends on reproducible backtesting, ML deployment where applicable, and robustness

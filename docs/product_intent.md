@@ -594,14 +594,14 @@ and agent-to-experiment handoff remain incomplete.
 | Gap | Diagnosis | Next product step | Closure evidence |
 | --- | --- | --- | --- |
 | Experiment Design authority and graph | Architecture and implementation gap. The design is still in review; deterministic proposal services are not a model-backed specialist. | Complete the canonical `plans/agent_designs/experiment_design.md` review and its existing architecture decision; implement only the approved proposal loop and preserve human approval. GAP-04-03 owns the first bounded handoff. | A typed proposal contains claims, assumptions, protected-data roles, budgets, stage gates, and exact inputs; approval changes status without changing design identity. |
-| Long-running execution boundary | Open platform decision. TRD-105 still leaves synchronous bounded calls versus MCP jobs unresolved, while this journey requires durable queued/running/partial/failed/reconciliation receipts. | Resolve TRD-105 before claiming general agent-directed execution; align GAP-04-03 with GAP-03-01 worker lifecycle and the chosen job contract. | A fresh process can inspect and recover a long operation without duplicate mutation; lifecycle and ambiguous-outcome receipts are durable. |
+| Long-running execution boundary | Accepted platform decision. Backtest, optimisation, WFO, and training use one durable job contract; synchronous calls are limited to bounded preflight, reads, commands, and reconciliation. | Implement the worker persistence schema, MCP submit/status/cancel/reconcile surface, and operation-specific migrations under the accepted contract before claiming general agent-directed execution. | A fresh process can inspect and recover a long operation without duplicate mutation; lifecycle and ambiguous-outcome receipts are durable. |
 | Exact replay identity | Delivered core/research boundary. Qualified manifests carry bar-content digest and source semantics, and execution revalidates them before loading the runner. | Use the delivered identity receipt as an input to GAP-03-01 and the agent handoff. | Execution refuses changed bars/source or records the permitted environmental difference explicitly. |
 | Independent Evaluation and Robustness | Producer capability gap, separate from the delivered GAP-03-02 Console projection. Parameter-optimisation reports exist, but general model-backed Evaluation and Robustness/WFO paths remain absent or under design. | Progress the independent Evaluation and Robustness producer paths; preserve absence/limitations in the existing projection. | Independent artifacts identify claim scope, protected data, limitations, negative findings, and dissent; no Coordinator verdict substitutes for either authority. |
 | Agent-to-experiment integration | Cross-boundary gap. GAP-04-03 must join approved Data/Strategy returns to proposal, execution, review, and terminal outcome without granting the Coordinator experiment or quality authority. | Implement GAP-04-03 after the upstream model and protocol/job decisions; qualify denial, mismatch, retry, recovery, and approval paths. | Public trajectory ends in a reproducible experiment/evidence bundle or typed blocker, with canonical refs at every handoff. |
 | Feature acceptance and implementation gap | No single acceptance item currently proves the complete agent-to-experiment path. | The feature-qualification slice qualifies UJ-08 by composing the remaining GAP-04-03/GAP-03-01 boundaries with delivered GAP-03-02/03/04 and GAP-06-03 evidence. | Isolated workflow fixture proves proposal → approval → job/run → independent evidence or blocker → terminal outcome. |
 
-**Dependency order:** settle Experiment Design authority and TRD-105; resolve replay identity; implement the bounded
-agent handoff; make independent review artifacts available; then complete the UJ-08 feature-qualification slice. Until independent Evaluation/Robustness
+**Dependency order:** review Experiment Design authority; apply the accepted durable operation contract and resolve replay
+identity; implement the bounded agent handoff; make independent review artifacts available; then complete the UJ-08 feature-qualification slice. Until independent Evaluation/Robustness
 artifacts exist, the journey may prove deterministic execution and explicit absence, but cannot support a full research
 quality claim.
 
@@ -633,8 +633,8 @@ missing evidence; it must never convert absence into a positive verdict.
    process and concurrent branch identity.
 3. **Close specialist investigation:** complete the UJ-04 and UJ-07 feature-qualification slices against the same pinned environment and record their
    exclusions.
-4. **Settle experiment authority:** review Experiment Design and Robustness architecture, resolve TRD-105's job model,
-   and enforce replay identity before expanding the agent loop.
+4. **Settle experiment authority:** review Experiment Design and Robustness architecture, apply the accepted durable
+   operation contract, and enforce replay identity before expanding the agent loop.
 5. **Build experiment/review path:** deliver GAP-04-03, GAP-03-01/02/03/04, and independent review artifacts; preserve
    explicit blockers where a producer is not yet available.
 6. **Qualify the human outcomes:** complete the UJ-08 and UJ-09 feature-qualification slices, and link their retained evidence to Product State. A feature is complete only when its own decision can be made and reconstructed, even if the result is
