@@ -84,7 +84,10 @@ from trader_mcp.catalogue.policy import McpEnvironment, load_local_environment
 from trader_mcp.tools.evaluation import register_evaluation_tools
 from trader_mcp.tools.methodology import register_quant_methods_tools
 from trader_mcp.tools.ml import register_ml_tools
-from trader_mcp.tools.experiment_design import register_orchestration_tools
+from trader_mcp.tools.experiment_design import (
+    ResearchJobStoreProvider,
+    register_orchestration_tools,
+)
 from trader_mcp.tools.experiments import (
     ImplementationValidationService,
     register_research_tools,
@@ -148,6 +151,7 @@ def create_server(
     knowledge_embedding_provider: EmbeddingProvider | None = None,
     knowledge_store_provider: KnowledgeStoreProvider | None = None,
     research_artifact_store_provider: ResearchArtifactStoreProvider | None = None,
+    research_job_store_provider: ResearchJobStoreProvider | None = None,
     backtest_config_provider: ToolConfigProvider | None = None,
     optimizer_registry: OptimizationEngineRegistry | None = None,
     tracking_sink_registry: ExperimentTrackingSinkRegistry | None = None,
@@ -546,6 +550,7 @@ def create_server(
     register_orchestration_tools(
         server,
         artifact_store_provider=resolved_research_artifact_store_provider,
+        job_store_provider=research_job_store_provider,
     )
     register_evaluation_tools(
         server,

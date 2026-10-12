@@ -598,14 +598,16 @@ its deterministic fixture covers every public state, duplicate admission,
 cancellation, partial child artifacts, lease expiry, and explicit provider or
 storage blockers; a guarded Postgres case checks fresh-process reload when the
 verification environment is available. This qualifies the lifecycle command
-and recovery contract only. Worker scheduling, MCP submit/status exposure,
-operation-specific producer migrations, model-backed acceptance, and scientific
-validity remain outside the evidence boundary.
+and recovery contract only. Worker scheduling, operation-specific producer
+migrations, model-backed acceptance, and scientific validity remain outside the
+evidence boundary.
 The first GAP-04-03 implementation slice now adds an approval-aware
 experiment-to-job handoff: it re-reads the canonical proposal and approved
 protocol, persists digest-pinned request lineage, and admits one durable
-backtest job only for an authorized execution actor. The backtest worker and
-registered MCP command remain separate delivery slices.
+backtest job only for an authorized execution actor. GAP-04-03A2 registers the
+typed `research_submit_approved_experiment_job` MCP admission command with
+injected artifact/job stores and fails closed when durable job persistence is
+not configured. Worker execution remains a separate delivery slice.
 UJ-08 therefore has an accepted execution boundary but is not yet qualified as
 an end-to-end agent-directed experiment.
 

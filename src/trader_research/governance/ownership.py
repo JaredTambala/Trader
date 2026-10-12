@@ -91,9 +91,7 @@ STRATEGY_ENGINEERING_TOOLS = (
     "research_validate_risk_manager_implementation",
 )
 
-EXPERIMENT_DESIGN_AGENT_TOOLS = (
-    "research_create_experiment_protocol_proposal",
-)
+EXPERIMENT_DESIGN_AGENT_TOOLS = ("research_create_experiment_protocol_proposal",)
 
 QUANTITATIVE_METHODS_TOOLS = (
     "knowledge_register_source",
@@ -185,6 +183,7 @@ QUANT_RESEARCH_SUPERVISOR_TOOLS = (
     "research_project_experiment_tracking",
     "research_register_experiment_workflow",
     "research_record_workflow_outcome",
+    "research_submit_approved_experiment_job",
 )
 
 EVALUATION_AGENT_TOOLS = (
@@ -490,7 +489,9 @@ def _normalize_lookup(value: str) -> str:
     return text
 
 
-_AGENTS_BY_KEY: Mapping[str, AgentDefinition] = {agent.key: agent for agent in AGENT_DEFINITIONS}
+_AGENTS_BY_KEY: Mapping[str, AgentDefinition] = {
+    agent.key: agent for agent in AGENT_DEFINITIONS
+}
 _DECISION_AUTHORITIES_BY_KEY: Mapping[str, DecisionAuthority] = {
     authority.key: authority for authority in DECISION_AUTHORITIES
 }
@@ -505,15 +506,18 @@ TOOL_STEWARD_BY_NAME: Mapping[str, str] = {
     **{tool: "Research Coordinator" for tool in RESEARCH_COORDINATOR_TOOLS},
     **{tool: "Data Agent" for tool in DATA_AGENT_TOOLS},
     **{tool: "Strategy Engineering Agent" for tool in STRATEGY_ENGINEERING_TOOLS},
-    **{
-        tool: "Experiment Design Agent"
-        for tool in EXPERIMENT_DESIGN_AGENT_TOOLS
-    },
+    **{tool: "Experiment Design Agent" for tool in EXPERIMENT_DESIGN_AGENT_TOOLS},
     **{tool: "Quantitative Methods Agent" for tool in QUANTITATIVE_METHODS_TOOLS},
-    **{tool: "Quantitative Methods Agent" for tool in QUANTITATIVE_METHODS_COMPATIBILITY_TOOLS},
+    **{
+        tool: "Quantitative Methods Agent"
+        for tool in QUANTITATIVE_METHODS_COMPATIBILITY_TOOLS
+    },
     **{tool: "ML Agent" for tool in ML_AGENT_TOOLS},
     **{tool: "Hypothesis Agent" for tool in HYPOTHESIS_AGENT_TOOLS},
-    **{tool: "Quant Research Supervisor Agent" for tool in QUANT_RESEARCH_SUPERVISOR_TOOLS},
+    **{
+        tool: "Quant Research Supervisor Agent"
+        for tool in QUANT_RESEARCH_SUPERVISOR_TOOLS
+    },
     **{tool: "Evaluation Agent" for tool in EVALUATION_AGENT_TOOLS},
     **{tool: "Adversarial Agent" for tool in ADVERSARIAL_AGENT_TOOLS},
 }

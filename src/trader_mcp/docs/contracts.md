@@ -120,8 +120,8 @@ The deterministic lifecycle service now owns bounded submit, status, cancel, and
 job projection; it preserves identity, actor, attempt, child refs, warnings, and blockers and returns typed application
 results. The deterministic worker owns leases, heartbeats, scheduling, retries, persistence, joins, and resource
 enforcement. The Research Coordinator and specialist agents own bounded routing and approval decisions; they do not
-execute jobs directly. MCP adapters for these commands remain a separate slice and must inject a configured job-store
-provider plus typed authority tests before registration.
+execute jobs directly. The approved-experiment submission adapter is registered only with injected artifact and
+job-store providers; worker execution and status/cancel/reconcile transport remain separate boundaries.
 Training additionally reconciles the pinned external MLflow run/model identity before accepting a fit or retrying it.
 
 ### Deferred Walk-Forward Contract Invariants
@@ -485,6 +485,7 @@ executor made the research-design decision.
 | `research_create_experiment_protocol_proposal` | Approved objective, complete design request, exact task/requester identity and registered Experiment Design actor. | Immutable Experiments-owned `experiment_protocol_proposal` ref with requested approvals. |
 | `research_register_experiment_workflow` | Approved objective, approved matching protocol, ready matching plan, requester and actor. | Orchestration objective/plan refs plus Experiments-owned protocol ref. |
 | `research_record_workflow_outcome` | Terminal `WorkflowOutcome`, requester and actor; its ready plan and matching objective/protocol must resolve, every produced/review ref must resolve under its declared authority and pinned hash, and review refs must be a subset of produced refs. | Orchestration-owned `workflow_outcome` ref. |
+| `research_submit_approved_experiment_job` | Digest-pinned proposal/protocol refs, requester, authorized workflow executor or supervisor actor, code identity, and environment identity; canonical approval and all upstream implementation/Data evidence are re-read before admission. | Immutable `experiment_job_request` ref plus idempotent queued `ResearchJob` projection. |
 
 ## Side Effects
 
@@ -589,6 +590,7 @@ implementation, and an unavailable adapter cannot be represented as an empty suc
 | `research_create_experiment_protocol_proposal` | Experiment Design Agent | immutable proposed protocol and requested approvals |
 | `research_register_experiment_workflow` | Quant Research Supervisor Agent | approved objective/protocol and ready plan refs |
 | `research_record_workflow_outcome` | Quant Research Supervisor Agent | terminal workflow outcome ref |
+| `research_submit_approved_experiment_job` | Quant Research Supervisor Agent | durable approved-experiment job admission |
 | `research_create_walk_forward_plan`, `research_run_walk_forward_optimization`, `research_get_walk_forward_results` | Quant Research Supervisor Agent | deferred walk-forward plan/run/result artifacts |
 | `evaluation_generate_parameter_optimization_report` | Evaluation Agent | sealed untouched-holdout Evaluation report |
 | `evaluation_generate_walk_forward_report` | Evaluation Agent | deferred stitched out-of-sample walk-forward Evaluation report |

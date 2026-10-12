@@ -163,6 +163,12 @@ The operation validates canonical types, ownership, producer metadata, status, p
 Data scope/quality agreement and optional optimisation validation before saving. It cannot approve a material
 assumption, register the approved protocol, execute an experiment or overwrite conflicting proposal evidence.
 
+Approved execution admission is a separate supervisor-owned operation:
+
+| Tool | Side effect | Primary output | Notes |
+| --- | --- | --- | --- |
+| `research_submit_approved_experiment_job` | `local_mutating` | Bounded `ResearchJob` and `experiment_job_request` refs. | Accepts only digest-pinned proposal/protocol refs, revalidates approval and upstream evidence, and admits one idempotent backtest job. It does not run the producer. |
+
 ## Strategy Engineering Tools
 
 | Tool | Side effect | Primary output | Notes |
@@ -274,7 +280,8 @@ The next planned tool work is not additional knowledge extraction. It is:
 
 Higher-level orchestration composes the registered tools in this catalog through a fixed compiler/executor; it is not a
 new generic MCP tool that bypasses their contracts. The Experiment Design operation persists proposal evidence; the
-two workflow MCP tools persist approved governance records and do not execute the graph. Current implemented
+workflow MCP tools persist approved governance records and the supervisor-owned submission tool admits a durable job,
+but none of these MCP operations execute the producer graph. Current implemented
 orchestration state is recorded in [Product State](../../../docs/product_state.md#implemented-orchestration-at-a-glance);
 remaining delivery dependencies are recorded in Notion's
 [Trader Development Roadmap](https://app.notion.com/p/d1453b7a4da6468babead2a5cda7ef84).
@@ -307,12 +314,13 @@ training execution, and alias promotion. Runtime deployment remains outside agen
 
 ## Durable execution boundary
 
-The registered operation tools remain split into bounded control calls and a future durable worker surface.
+The registered operation tools remain split into bounded control calls and a separately composed durable worker surface.
 Preflight/validation/compilation, `get` status, cancellation, and reconciliation are synchronous bounded operations.
 Backtest, optimisation, walk-forward, and training execution submit through one durable job contract; no MCP caller
 waits for the execution to finish. The job projection exposes request and execution identities, idempotency, attempt,
 status, canonical child refs, and blockers. A lost response is reconciled before retry, and the execution service is
-not an agent or a source of research judgment.
+not an agent or a source of research judgment. The approved-experiment submission command is the registered admission
+boundary; it requires a configured artifact store and lease-capable job store and fails closed when either is absent.
 
 ## Deferred Walk-Forward Tool Universe
 
