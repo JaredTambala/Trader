@@ -52,6 +52,11 @@ from trader_research.experiments import (
     validate_risk_manager_implementation,
     validate_strategy_implementation,
 )
+from trader_research.data import (
+    DataInventoryRequest,
+    DataQualityRequest,
+    create_data_research_snapshot,
+)
 from trader_research.foundation import InMemoryResearchArtifactStore, json_payload_hash
 from trader_research.governance import (
     BACKTEST_RUN,
@@ -501,6 +506,7 @@ def test_uj08_postgres_campaign_uses_real_runner_and_fresh_process(
         artifacts_for_job = artifacts
         proposal_ref, protocol_ref = _realistic_approved_inputs(
             artifacts_for_job,
+            event_store,
             manifest,
             quality,
         )
@@ -729,6 +735,7 @@ class _AdmissionStore:
 
 def _realistic_approved_inputs(
     artifacts,
+    event_store,
     manifest: dict[str, Any],
     quality: dict[str, Any],
 ) -> tuple[ArtifactReportRef, ArtifactReportRef]:
@@ -779,37 +786,42 @@ def _realistic_approved_inputs(
     )
     assert risk_validation.ok is True, risk_validation.errors
 
-    manifest_payload = {
-        "artifact_type": "dataset_manifest",
-        **manifest,
-        "status": "captured",
-    }
-    quality_payload = {
-        "artifact_type": "data_quality_report",
-        **quality,
-        "status": "captured",
-    }
-    manifest_record = artifacts.save_artifact(
-        artifact_type="dataset_manifest",
-        artifact_id=manifest["dataset_id"],
-        domain_owner="Data",
-        producer_tool="data_create_research_snapshot",
-        payload=manifest_payload,
-        status="captured",
-        metadata={"qualification": "uj08-real"},
-    )
-    quality_record = artifacts.save_artifact(
-        artifact_type="data_quality_report",
-        artifact_id=quality["report_id"],
-        domain_owner="Data",
-        producer_tool="data_create_research_snapshot",
-        payload=quality_payload,
-        status="captured",
-        metadata={"dataset_manifest_artifact_id": manifest_record.artifact_id},
-    )
     manifest_window = manifest.get("time_range") or manifest.get("requested_window")
     if not isinstance(manifest_window, dict):
         raise AssertionError("fixture manifest must publish its qualified replay window")
+    snapshot_start = datetime.fromisoformat(
+        str(manifest_window["start"]).replace("Z", "+00:00")
+    )
+    snapshot_end = datetime.fromisoformat(
+        str(manifest_window["end"]).replace("Z", "+00:00")
+    )
+    snapshot = create_data_research_snapshot(
+        event_store=event_store,
+        inventory_request=DataInventoryRequest(
+            symbols=tuple(str(item) for item in manifest["symbols"]),
+            asset_class=str(manifest["asset_class"]),
+            timeframe=str(manifest["timeframe"]),
+            start=snapshot_start,
+            end=snapshot_end,
+        ),
+        quality_request=DataQualityRequest(
+            symbols=tuple(str(item) for item in manifest["symbols"]),
+            asset_class=str(manifest["asset_class"]),
+            timeframe=str(manifest["timeframe"]),
+            start=snapshot_start,
+            end=snapshot_end,
+        ),
+        requested_by="uj08-data-snapshot",
+        actor="Data Agent",
+        artifact_store=artifacts,
+    )
+    assert snapshot.ok is True, snapshot.errors
+    manifest_record = artifacts.load_artifact_record(
+        "dataset_manifest", snapshot.artifacts["dataset_manifest"]["artifact_id"]
+    )
+    quality_record = artifacts.load_artifact_record(
+        "data_quality_report", snapshot.artifacts["data_quality_report"]["artifact_id"]
+    )
     requirement = DataRequirement(
         symbols=tuple(str(item) for item in manifest["symbols"]),
         asset_class=str(manifest["asset_class"]),
