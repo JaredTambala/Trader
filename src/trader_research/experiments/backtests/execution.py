@@ -361,7 +361,7 @@ def _validate_replay_data_identity(
     raw_semantics = raw_expected.get("source_semantics")
     if not isinstance(raw_semantics, Mapping):
         raise ReplayDataIdentityMismatch("identity_missing_source_semantics", "qualified replay identity has no source semantics")
-    window = dataset.get("time_range")
+    window = dataset.get("time_range") or dataset.get("requested_window")
     if not isinstance(window, Mapping):
         raise ReplayDataIdentityMismatch("identity_scope_mismatch", "qualified replay identity has no replay window")
     records = fetch_all_bars(
