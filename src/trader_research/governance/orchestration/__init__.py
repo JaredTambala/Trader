@@ -86,6 +86,7 @@ from .services import (
     create_experiment_protocol_proposal,
     record_workflow_outcome,
     register_experiment_workflow,
+    revalidate_experiment_protocol_inputs,
 )
 
 __all__ = [
@@ -144,6 +145,7 @@ __all__ = [
     "record_workflow_outcome",
     "replace_experiment_design_refs",
     "register_experiment_workflow",
+    "revalidate_experiment_protocol_inputs",
     "operation_mode",
     "RESEARCH_CANCEL_JOB",
     "RESEARCH_GET_JOB",

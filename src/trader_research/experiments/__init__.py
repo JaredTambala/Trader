@@ -11,6 +11,11 @@ from .candidate_handoff import (
     create_strategy_candidate_handoff,
     resolve_strategy_candidate_handoff,
 )
+from .job_handoff import (
+    ExperimentJobRequest,
+    RESEARCH_SUBMIT_APPROVED_EXPERIMENT_JOB,
+    submit_approved_experiment_job,
+)
 from .backtests import (
     compare_backtest_results,
     get_backtest_results,
@@ -79,6 +84,9 @@ __all__ = [
     "StrategyCandidateHandoff",
     "create_strategy_candidate_handoff",
     "resolve_strategy_candidate_handoff",
+    "ExperimentJobRequest",
+    "RESEARCH_SUBMIT_APPROVED_EXPERIMENT_JOB",
+    "submit_approved_experiment_job",
     "DeadlineOptimizationTrialExecutor",
     "ExperimentTrackingSink",
     "ExperimentTrackingSinkRegistry",

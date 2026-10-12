@@ -601,6 +601,11 @@ verification environment is available. This qualifies the lifecycle command
 and recovery contract only. Worker scheduling, MCP submit/status exposure,
 operation-specific producer migrations, model-backed acceptance, and scientific
 validity remain outside the evidence boundary.
+The first GAP-04-03 implementation slice now adds an approval-aware
+experiment-to-job handoff: it re-reads the canonical proposal and approved
+protocol, persists digest-pinned request lineage, and admits one durable
+backtest job only for an authorized execution actor. The backtest worker and
+registered MCP command remain separate delivery slices.
 UJ-08 therefore has an accepted execution boundary but is not yet qualified as
 an end-to-end agent-directed experiment.
 
