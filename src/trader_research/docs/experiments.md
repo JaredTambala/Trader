@@ -86,6 +86,16 @@ grants no worker, broker, evaluation, robustness, or paper-trading authority.
 The worker slice consumes the request and re-reads the pinned Data manifest to
 validate replay identity before invoking the canonical backtest.
 
+The integrated UJ-08 qualification adds the Console-side
+`ApprovedExperimentBacktestExecutor` at the worker boundary. It resolves the
+source-free request, rereads proposal and approval records, revalidates every
+Data and implementation reference, and checks the returned `backtest_run`
+receipt before retaining success. Evaluation and Robustness records remain
+independent producer-owned artifacts; their absence, negative result, or
+identity mismatch remains visible to `EvidenceJoinResult`. The deterministic
+fixture records its retained join and fresh-process reread separately from the
+controlled third-party model gate.
+
 ## Optimisation and projection boundaries
 
 `OptimizationEngine` suggests candidates, `OptimizationTrialExecutor` runs one exact candidate, and the canonical trial

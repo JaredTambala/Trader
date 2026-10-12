@@ -353,6 +353,20 @@ retains only typed child artifact refs and bounded issues. If the lease or termi
 worker does not claim success; a fresh worker calls the store's expired-lease reconciliation pass, which records
 `reconciliation_required` without replaying the producer.
 
+The integrated UJ-08 path composes `ApprovedExperimentBacktestExecutor` above
+that worker. It rereads the canonical `experiment_job_request`, proposal, and
+approved protocol from the research artifact store, checks the request digest,
+approval digest, actor, code/environment pins, and all upstream input hashes,
+then calls the injected canonical backtest producer. A successful producer must
+return a resolvable `backtest_run` reference; otherwise the worker retains a
+typed partial blocker. The adapter never accepts a copied protocol, arbitrary
+strategy source, broker credentials, or an unverified child reference.
+
+<!-- verified: integration:local tests/cross_package/qualification/test_uj08_integrated_campaign.py -->
+```bash
+uv run pytest tests/cross_package/qualification/test_uj08_integrated_campaign.py -q
+```
+
 ### Complete data-to-backtest qualification
 
 The qualified Console journey is deliberately ordered: select a bounded dataset in `/data`, inspect its Data-owned

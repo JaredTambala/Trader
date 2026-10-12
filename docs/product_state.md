@@ -167,6 +167,16 @@ YAML config, uses the maintained catalogue adapter and internal broker, polls th
 `--once` execution. The worker still depends on explicit definition/execution schema installation and remains local
 scope only.
 
+UJ-08 now has an integrated deterministic qualification slice. The
+`ApprovedExperimentBacktestExecutor` rereads the approved proposal and
+protocol before invoking the operation-specific producer, while
+`ResearchJobWorker` retains the deterministic run receipt and fail-closed
+request or child-evidence drift. Evaluation and Robustness remain independent
+producer-owned inputs: the retained campaign joins them by exact experiment,
+scope, strategy, run, and revision identity and reports a missing or negative
+producer explicitly. The campaign does not claim controlled third-party-model
+acceptance or scientific validity.
+
 ## Data-to-Backtest Story Audit
 
 The first detailed product-intent audit is the instrument-agnostic story in

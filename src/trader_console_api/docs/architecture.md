@@ -283,6 +283,15 @@ the canonical `BacktestRunner` under a deterministic run ID derived from the job
 reconciliation-required outcomes. `PostgresResearchJobStore` uses `FOR UPDATE SKIP LOCKED` for claims and refuses to
 replay an expired lease; its reconciliation pass marks a lost worker terminal without creating a duplicate child run.
 
+`ApprovedExperimentBacktestExecutor` is the research-owned handoff adapter
+used by the integrated UJ-08 qualification. It rereads the immutable request,
+proposal, and approved protocol through `ResearchArtifactStore`, validates
+every digest and authority edge, and delegates only the typed request and
+protocol to the injected canonical backtest producer. This keeps worker lease
+state, research approval state, and operation-specific runner construction in
+separate owners. Child references are reread before the worker can retain a
+successful outcome; missing or drifted evidence becomes a bounded failure.
+
 The completed execution-to-review path keeps that process boundary explicit. The demo/bootstrap owner installs the
 core event tables, the producer research-artifact projection, the `console_read` contract, and the three Console
 command tables in one fresh database. A worker process reads the immutable definition, translates it into the canonical
