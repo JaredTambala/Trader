@@ -619,11 +619,14 @@ typed `research_submit_approved_experiment_job` MCP admission command with
 injected artifact/job stores and fails closed when durable job persistence is
 not configured. GAP-04-03B adds the lease-capable `ResearchJobWorker` plus
 Postgres claim, heartbeat, terminal, and expired-lease reconciliation paths.
-The worker delegates canonical `BacktestRunner` construction to an injected
-adapter under a deterministic request-derived run ID and never replays a lost
-lease.
-UJ-08 therefore has an accepted execution boundary but is not yet qualified as
-an end-to-end agent-directed experiment.
+The worker composition now includes `BacktestRunnerResearchProducer`, which
+resolves the pinned implementation and Data evidence, runs the canonical
+`BacktestRunner`, and retains a deterministic `backtest_run` artifact under the
+request-derived run ID. The retained offline campaign still uses bounded
+producer doubles for denial and partial-path checks; the guarded Postgres
+campaign is the required evidence for the concrete producer, isolated schema,
+fresh-process reopen, and complete recovery matrix. UJ-08 therefore remains
+open as an end-to-end agent-directed qualification.
 
 The runtime may conclude, stop, request operator input, revise a specialist, revisit earlier work, or fork a new
 lineage. Equivalent low-information loops, policy violations, invalid evidence, exhausted budgets, and out-of-scope

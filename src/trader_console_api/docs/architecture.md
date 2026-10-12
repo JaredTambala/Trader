@@ -287,10 +287,15 @@ replay an expired lease; its reconciliation pass marks a lost worker terminal wi
 used by the integrated UJ-08 qualification. It rereads the immutable request,
 proposal, and approved protocol through `ResearchArtifactStore`, validates
 every digest and authority edge, and delegates only the typed request and
-protocol to the injected canonical backtest producer. This keeps worker lease
-state, research approval state, and operation-specific runner construction in
-separate owners. Child references are reread before the worker can retain a
-successful outcome; missing or drifted evidence becomes a bounded failure.
+protocol to the canonical `BacktestRunnerResearchProducer` in the worker
+composition. That producer rereads the pinned implementation and Data
+manifest/quality records, instantiates the maintained strategy/risk contracts,
+runs `BacktestRunner` against the configured event store, and writes one
+deterministic `backtest_run` artifact. A bounded injected producer remains a
+test seam for denial and partial-path tests only. This keeps worker lease state,
+research approval state, and operation-specific runner construction in separate
+owners. Child references are reread before the worker can retain a successful
+outcome; missing, drifted, or mismatched run evidence becomes a bounded failure.
 
 The completed execution-to-review path keeps that process boundary explicit. The demo/bootstrap owner installs the
 core event tables, the producer research-artifact projection, the `console_read` contract, and the three Console

@@ -1160,3 +1160,14 @@ claim. This serves Jared's professional goal across UJ-02 through UJ-09.
 
 The intent is ready for revision, not acceptance. We should refine the journeys and requirements against Jared's
 answers and real examples, then record an explicit human review of the resulting version.
+
+## UJ-08 qualification correction — 12 October 2026
+
+The previous merged-delivery note overstated the UJ-08 qualification. PR #62
+delivered the typed proposal/approval and job boundary plus a synthetic offline
+campaign. TRD-323 now adds the concrete `BacktestRunnerResearchProducer` seam,
+but the feature remains open until the guarded Postgres campaign proves the
+runner path in an isolated schema, fresh-process artifact reopening, concurrent
+independent reviews, and the complete worker recovery/failure matrix. No
+model-backed, scientific-validity, or paper-trading claim follows from the
+deterministic boundary evidence.

@@ -20,7 +20,8 @@ The current application provides:
 - an injected worker seam with lease claims, deterministic run IDs, heartbeats, terminal outcomes and explicit ambiguity
   reconciliation, composed with the canonical BacktestRunner in the separate worker process; and
 - a typed ResearchJob worker seam for approved experiment handoffs, with bounded leases, typed child evidence, and
-  expired-lease reconciliation that prevents duplicate producer runs; and
+  expired-lease reconciliation that prevents duplicate producer runs; the worker composition includes a concrete
+  `BacktestRunnerResearchProducer` that resolves pinned protocol inputs and retains a canonical `backtest_run`; and
 - a `trader-console-worker` entrypoint that binds the explicit core YAML config and polls the local queue; and
 - saved comparison-view definitions bound to one experiment and scope, with live eligibility explanations; and
 - saved data-scope alternative comparisons that retain independent evidence and explicit compatibility exclusions; and

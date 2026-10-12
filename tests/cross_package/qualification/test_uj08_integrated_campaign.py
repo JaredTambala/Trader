@@ -1,18 +1,23 @@
 """Retained UJ-08 qualification from approved protocol to terminal evidence.
 
-Subject: Approved Experiment Design → MCP-shaped job admission → worker
+Subject: Approved Experiment Design → public job-admission contract → worker
 execution → concurrent independent review → exact terminal evidence join.
-Level: Deterministic cross-package qualification with a guarded Postgres seam
-owned by the durable ResearchJob tests.
+Level: Deterministic cross-package qualification with a guarded Postgres
+campaign for the concrete ``BacktestRunnerResearchProducer``.
 Collaborators: Research proposal/approval and job contracts, the Console
-ResearchJobWorker, the fail-closed producer adapter, and the exact evidence
-join verifier. No model, broker, hidden reasoning, or raw payload persistence.
+ResearchJobWorker, the canonical Trader runner, Postgres artifact/event stores,
+and the exact evidence-join verifier. No model, broker, hidden reasoning, or
+raw payload persistence.
 Guarantees: Only an approved and freshly reread protocol can reach the producer;
 one deterministic run receipt is retained; Evaluation and Robustness retain
 their own ownership and may complete concurrently; a fresh process can reopen
 the redacted terminal join.
 Non-goals: Scientific validity, model-backed acceptance, paper authorization,
 or a claim that missing independent evidence is positive evidence.
+Cohesion rationale: The offline denial/partial cases and the guarded Postgres
+campaign all protect the same approved-protocol-to-terminal-evidence contract;
+keeping them together makes the retained report and its exact lineage fields
+reviewable as one qualification boundary.
 """
 
 from __future__ import annotations
@@ -21,13 +26,16 @@ import asyncio
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 from typing import Any, cast
+from uuid import uuid4
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg import sql
 import pytest
 
 from trader_console_api import (
@@ -35,13 +43,33 @@ from trader_console_api import (
     ResearchJobExecutionOutcome,
     ResearchJobProgressSink,
     ResearchJobWorker,
+    BacktestRunnerResearchProducer,
 )
-from trader_research.experiments import submit_approved_experiment_job
+from trader_research.experiments import (
+    register_risk_manager_implementation,
+    register_strategy_implementation,
+    submit_approved_experiment_job,
+    validate_risk_manager_implementation,
+    validate_strategy_implementation,
+)
 from trader_research.foundation import InMemoryResearchArtifactStore, json_payload_hash
 from trader_research.governance import (
     BACKTEST_RUN,
+    CostAssumption,
+    DataRequirement,
+    DatasetRole,
+    EXPERIMENT_DESIGN_AGENT_OWNER,
     EXPERIMENT_PROTOCOL,
     EXPERIMENT_PROTOCOL_PROPOSAL,
+    ExperimentDesignRequest,
+    InitialPortfolio,
+    MaterialAssumption,
+    ProtocolDataset,
+    ProtocolRiskManager,
+    ProtocolStrategy,
+    ResearchObjective,
+    ResearchObjectiveStatus,
+    create_experiment_protocol_proposal,
     WORKFLOW_OUTCOME,
     ApprovalStatus,
     ArtifactReportRef,
@@ -56,6 +84,18 @@ from trader_research.review import EvidenceJoinRef, EvidenceJoinStatus, qualify_
 from trader_research.infrastructure.postgres import PostgresResearchJobStore
 
 from tests.trader_research.governance.test_experiment_protocol_design import _prepared_design
+from tests.cross_package.qualification.support.realistic_optimization_fixture import (
+    BASE_STRATEGY_PARAMETERS,
+    RISK_PARAMETERS,
+    RISK_PARAMETER_SCHEMA,
+    RISK_SOURCE,
+    STRATEGY_PARAMETER_SCHEMA,
+    STRATEGY_SOURCE,
+    build_backtest_config,
+    build_realistic_optimization_fixture,
+    data_evidence,
+    seed_fixture,
+)
 
 
 @dataclass
@@ -63,6 +103,7 @@ class _MemoryResearchJobStore:
     """Small lease-capable store preserving the worker's public contract."""
 
     job: ResearchJob
+    lose_lease: bool = False
 
     def claim_next(
         self,
@@ -99,6 +140,7 @@ class _MemoryResearchJobStore:
             and lease_id == self.job.lease_id
             and self.job.status is ResearchJobStatus.RUNNING
             and lease_seconds > 0
+            and not self.lose_lease
         )
 
     def finish(
@@ -344,6 +386,250 @@ def test_uj08_adapter_turns_missing_run_receipt_into_partial_outcome() -> None:
     assert worker_store.job.blockers[0].code == "backtest_run_receipt_missing"
 
 
+def test_uj08_worker_retains_lost_lease_and_terminal_failure() -> None:
+    """Worker loss becomes reconciliation-required and producer failure is terminal."""
+    artifacts, proposal_ref, protocol_ref = _approved_inputs()
+    admission = submit_approved_experiment_job(
+        proposal_ref=proposal_ref,
+        approved_protocol_ref=protocol_ref,
+        requested_by="workflow-uj08",
+        actor="workflow_executor",
+        code_identity="git:uj08-fixture",
+        environment_identity="env:uj08-controlled",
+        artifact_store=artifacts,
+        job_store=_AdmissionStore(),
+    )
+    assert admission.ok is True
+    job = ResearchJob.from_dict(admission.data["research_job"])
+    lost_store = _MemoryResearchJobStore(job, lose_lease=True)
+    producer = _DeterministicBacktestProducer(artifacts)
+    assert asyncio.run(
+        ResearchJobWorker(
+            lost_store,
+            ApprovedExperimentBacktestExecutor(artifacts, producer),
+            worker_id="uj08-lost-worker",
+        ).run_once()
+    ) is True
+    assert lost_store.job.status is ResearchJobStatus.RECONCILIATION_REQUIRED
+    assert lost_store.job.blockers[0].code == "ambiguous_producer_outcome"
+    assert producer.calls == [(job.request_ref.rsplit("/", 1)[-1], protocol_ref.artifact_id, _deterministic_run_id(job))]
+
+    class _TerminalFailureProducer:
+        """Producer fixture that fails before retaining any child evidence."""
+
+        async def execute(
+            self,
+            request,
+            protocol,
+            *,
+            run_id: str,
+            progress: ResearchJobProgressSink,
+        ) -> ResearchJobExecutionOutcome:
+            """Raise one bounded terminal failure."""
+            del request, protocol, run_id, progress
+            raise RuntimeError("runner rejected the replay fixture")
+
+    failure_store = _MemoryResearchJobStore(job)
+    assert asyncio.run(
+        ResearchJobWorker(
+            failure_store,
+            ApprovedExperimentBacktestExecutor(artifacts, _TerminalFailureProducer()),
+            worker_id="uj08-failed-worker",
+        ).run_once()
+    ) is True
+    assert failure_store.job.status is ResearchJobStatus.FAILED
+    assert failure_store.job.blockers[0].code == "worker_execution_failed"
+
+
+@pytest.mark.postgres
+def test_uj08_postgres_campaign_uses_real_runner_and_fresh_process(
+    postgres_settings: dict[str, object],
+    tmp_path: Path,
+) -> None:
+    """Qualify the concrete runner, isolated schema, concurrent reviews, and reopen."""
+    schema = f"trader_uj08_{uuid4().hex}"
+    admin = psycopg.connect(**cast(Any, postgres_settings))
+    admin.autocommit = True
+    admin.execute(sql.SQL("CREATE SCHEMA {}" ).format(sql.Identifier(schema)))
+    admin.close()
+    dsn = psycopg.conninfo.make_conninfo(
+        **cast(Any, postgres_settings),
+        options=f"-c search_path={schema},public",
+    )
+    event_store = None
+    artifacts = None
+    try:
+        from trader.event_store import PostgresEventStore
+        from trader_research.infrastructure.postgres import PostgresResearchArtifactStore
+
+        event_store = PostgresEventStore(dsn=dsn)
+        artifacts = PostgresResearchArtifactStore(dsn=dsn)
+        fixture = build_realistic_optimization_fixture()
+        seed_fixture(event_store, fixture)
+        manifest, quality = data_evidence(event_store, fixture.selection)
+        artifacts_for_job = artifacts
+        proposal_ref, protocol_ref = _realistic_approved_inputs(
+            artifacts_for_job,
+            manifest,
+            quality,
+        )
+        admission_store = PostgresResearchJobStore(artifacts.connection())
+        admission = submit_approved_experiment_job(
+            proposal_ref=proposal_ref,
+            approved_protocol_ref=protocol_ref,
+            requested_by="workflow-uj08-real",
+            actor="workflow_executor",
+            code_identity="git:uj08-real-runner",
+            environment_identity=f"env:{schema}",
+            artifact_store=artifacts,
+            job_store=admission_store,
+        )
+        assert admission.ok is True, admission.errors
+        job = ResearchJob.from_dict(admission.data["research_job"])
+        worker = ResearchJobWorker(
+            admission_store,
+            ApprovedExperimentBacktestExecutor(
+                artifacts,
+                BacktestRunnerResearchProducer(
+                    artifacts,
+                    build_backtest_config(postgres_settings),
+                    event_store,
+                ),
+            ),
+            worker_id="uj08-real-runner",
+        )
+        assert asyncio.run(worker.run_once()) is True
+        completed = admission_store.load(job.job_id)
+        assert completed.status is ResearchJobStatus.SUCCEEDED
+        assert len(completed.produced_artifact_refs) == 1
+        run_ref = completed.produced_artifact_refs[0]
+        run_record = artifacts.load_artifact_record(BACKTEST_RUN, run_ref.artifact_id)
+        assert run_record.payload["run_id"] == _deterministic_run_id(job)
+        assert run_record.payload["bundle"]["result"]["run_id"] == _deterministic_run_id(job)
+        assert run_record.payload["bundle"]["result"]["total_runs"] > 0
+
+        proposal = artifacts.load_artifact_record(
+            EXPERIMENT_PROTOCOL_PROPOSAL,
+            proposal_ref.artifact_id,
+        )
+        protocol = artifacts.load_artifact_record(EXPERIMENT_PROTOCOL, protocol_ref.artifact_id)
+        manifest_record = artifacts.load_artifact_record("dataset_manifest", manifest["dataset_id"])
+        strategy_record = artifacts.load_artifact_record(
+            "implementation_version",
+            protocol.payload["strategy"]["implementation_ref"]["artifact_id"],
+        )
+        lineage = {
+            "experiment_id": protocol.artifact_id,
+            "proposal_id": proposal.artifact_id,
+            "scope_id": manifest["dataset_id"],
+            "strategy_version_id": strategy_record.artifact_id,
+            "run_id": run_record.artifact_id,
+        }
+
+        def save_review(role: str, artifact_type: str, status: str) -> Any:
+            """Persist one independent review over a separate connection."""
+            review_store = PostgresResearchArtifactStore(dsn=dsn, ensure_schema=False)
+            try:
+                return review_store.save_artifact(
+                    artifact_type=artifact_type,
+                    artifact_id=f"uj08-real-{role}-1",
+                    domain_owner="Review",
+                    producer_tool=f"{role}_review_experiment",
+                    payload={"artifact_type": artifact_type, **lineage, "status": status},
+                    status=status,
+                    metadata={"revision": 1},
+                )
+            finally:
+                review_store.close()
+
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            evaluation, robustness = tuple(
+                pool.map(
+                    save_review,
+                    ("evaluation", "robustness"),
+                    ("evaluation_report", "robustness_report"),
+                    ("available", "negative"),
+                )
+            )
+        terminal = artifacts.save_artifact(
+            artifact_type=WORKFLOW_OUTCOME,
+            artifact_id="uj08-real-terminal-1",
+            domain_owner="Orchestration",
+            producer_tool="research_record_workflow_outcome",
+            payload={"artifact_type": WORKFLOW_OUTCOME, **lineage, "status": "completed"},
+            status="completed",
+            metadata={"revision": 1},
+        )
+        joined = qualify_evidence_join(
+            experiment_id=protocol.artifact_id,
+            proposal_id=proposal.artifact_id,
+            scope_id=manifest["dataset_id"],
+            strategy_version_id=strategy_record.artifact_id,
+            run_id=run_record.artifact_id,
+            evidence_revision=1,
+            records=(
+                _join_ref("proposal", proposal, lineage),
+                _join_ref(
+                    "approval",
+                    artifacts.load_artifact_record("approval_request", proposal.artifact_id),
+                    lineage,
+                ),
+                _join_ref("scope", manifest_record, lineage),
+                _join_ref("strategy", strategy_record, lineage),
+                _join_ref("run", run_record, lineage),
+                _join_ref("evaluation", evaluation, lineage),
+                _join_ref("robustness", robustness, lineage, status=EvidenceJoinStatus.NEGATIVE),
+                _join_ref("decision", terminal, lineage),
+            ),
+        )
+        assert joined.verdict.value == "partial"
+
+        checkout = subprocess.run(
+            ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+        ).stdout.strip()
+        report = {
+            "fixture_id": "uj08-integrated-agent-directed-experiment-postgres-v2",
+            "contract": "BacktestRunnerResearchProducer/ResearchJobWorker/EvidenceJoinResult",
+            "contract_version": "2",
+            "checkout_commit": checkout,
+            "evidence_revision": 2,
+            "schema": schema,
+            "deterministic_evidence": joined.to_dict(),
+            "model_gate": {"status": "not_claimed", "reason": "controlled third-party model gate is separate"},
+        }
+        report_path = tmp_path / "uj08-postgres-verifier.json"
+        report_path.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
+        reopened = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import json, os; "
+                    "from trader_research.infrastructure.postgres import PostgresResearchArtifactStore; "
+                    "store = PostgresResearchArtifactStore(dsn=os.environ['UJ08_DSN'], ensure_schema=False); "
+                    "record = store.load_artifact_record('backtest_run', os.environ['UJ08_RUN_ID']); "
+                    "print(record.payload['run_id']); store.close()"
+                ),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "UJ08_DSN": dsn, "UJ08_RUN_ID": run_record.artifact_id},
+        )
+        assert reopened.stdout.strip() == run_record.artifact_id
+    finally:
+        if artifacts is not None:
+            artifacts.close()
+        if event_store is not None:
+            event_store.close()
+        cleanup = psycopg.connect(**cast(Any, postgres_settings))
+        cleanup.autocommit = True
+        cleanup.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
+        cleanup.close()
+
+
 @pytest.mark.postgres
 def test_uj08_postgres_claim_is_single_winner_across_concurrent_workers(
     postgres_research_artifact_store,
@@ -408,6 +694,183 @@ class _AdmissionStore:
         del expected_status
         self.job = job
         return job
+
+
+def _realistic_approved_inputs(
+    artifacts,
+    manifest: dict[str, Any],
+    quality: dict[str, Any],
+) -> tuple[ArtifactReportRef, ArtifactReportRef]:
+    """Build a fully admitted protocol over the deterministic replay fixture."""
+    strategy_result = register_strategy_implementation(
+        name="uj08-real-trailing-return",
+        version="1",
+        source_code=STRATEGY_SOURCE,
+        factory_name="build_strategy",
+        class_name="TrailingReturnTransitionStrategy",
+        parameter_schema=STRATEGY_PARAMETER_SCHEMA,
+        authoring_origin="uj08_qualification",
+        capabilities=["multi_asset", "event_store_bars"],
+        artifact_store=artifacts,
+    )
+    assert strategy_result.ok is True, strategy_result.errors
+    strategy = artifacts.load_artifact_record(
+        "implementation_version",
+        strategy_result.data["implementation_version"]["implementation_version_id"],
+    )
+    strategy_validation = validate_strategy_implementation(
+        implementation_version_id=strategy.artifact_id,
+        fixture_parameters=BASE_STRATEGY_PARAMETERS,
+        artifact_store=artifacts,
+    )
+    assert strategy_validation.ok is True, strategy_validation.errors
+
+    risk_result = register_risk_manager_implementation(
+        name="uj08-real-entry-limit",
+        version="1",
+        source_code=RISK_SOURCE,
+        factory_name="build_risk_manager",
+        class_name="EntryQuantityLimitRiskManager",
+        parameter_schema=RISK_PARAMETER_SCHEMA,
+        authoring_origin="uj08_qualification",
+        capabilities=["entry_quantity_limit"],
+        artifact_store=artifacts,
+    )
+    assert risk_result.ok is True, risk_result.errors
+    risk = artifacts.load_artifact_record(
+        "implementation_version",
+        risk_result.data["implementation_version"]["implementation_version_id"],
+    )
+    risk_validation = validate_risk_manager_implementation(
+        implementation_version_id=risk.artifact_id,
+        fixture_parameters=RISK_PARAMETERS,
+        artifact_store=artifacts,
+    )
+    assert risk_validation.ok is True, risk_validation.errors
+
+    manifest_record = artifacts.save_artifact(
+        artifact_type="dataset_manifest",
+        artifact_id=manifest["dataset_id"],
+        domain_owner="Data",
+        producer_tool="data_create_research_snapshot",
+        payload=manifest,
+        status="captured",
+        metadata={"qualification": "uj08-real"},
+    )
+    quality_record = artifacts.save_artifact(
+        artifact_type="data_quality_report",
+        artifact_id=quality["report_id"],
+        domain_owner="Data",
+        producer_tool="data_create_research_snapshot",
+        payload=quality,
+        status="captured",
+        metadata={"dataset_manifest_artifact_id": manifest_record.artifact_id},
+    )
+    requirement = DataRequirement(
+        symbols=tuple(str(item) for item in manifest["symbols"]),
+        asset_class=str(manifest["asset_class"]),
+        timeframe=str(manifest["timeframe"]),
+        start=str(manifest["time_range"]["start"]),
+        end=str(manifest["time_range"]["end"]),
+        source=str(manifest.get("source_filter")) if manifest.get("source_filter") else None,
+    )
+    strategy_ref = _pinned_ref(strategy)
+    risk_ref = _pinned_ref(risk)
+    design = ExperimentDesignRequest(
+        strategy=ProtocolStrategy(
+            implementation_ref=strategy_ref,
+            parameters=BASE_STRATEGY_PARAMETERS,
+            portfolio_mode="multi_asset",
+        ),
+        risk_managers=(
+            ProtocolRiskManager(
+                implementation_ref=risk_ref,
+                parameters=RISK_PARAMETERS,
+            ),
+        ),
+        datasets=(
+            ProtocolDataset(
+                requirement_id="baseline",
+                role=DatasetRole.BASELINE,
+                requirement=requirement,
+                dataset_manifest_ref=_pinned_ref(manifest_record),
+                data_quality_report_ref=_pinned_ref(quality_record),
+            ),
+        ),
+        costs=(CostAssumption(name="commission", value=0.25, unit="USD"),),
+        initial_portfolio=InitialPortfolio(cash=100_000.0, currency="USD"),
+        robustness_requirements=(),
+        evaluation_questions=("Does the admitted strategy replay deterministically?",),
+        falsification_criteria=("Reject when the qualified replay cannot be completed.",),
+        material_assumptions=(
+            MaterialAssumption(
+                assumption_id="commission",
+                category="cost",
+                statement="Use the declared fixed commission.",
+                value={"fixed_per_order": 0.25, "unit": "USD"},
+            ),
+        ),
+        requested_approver="operator:jared",
+        deterministic_seed=5701,
+        max_runs=48,
+        log_cycle_details=False,
+        runtime_limits={"fixture": "uj08-real", "bounded": True},
+        optimizer_profile="builtin_random",
+    )
+    objective = ResearchObjective(
+        objective_id="uj08-real-objective",
+        statement="Qualify the approved strategy against the retained replay fixture.",
+        success_criteria=("Retain deterministic runner evidence.",),
+        requested_by="operator:jared",
+        actor="operator:jared",
+        supplied_artifact_refs=(strategy_ref, risk_ref),
+        status=ResearchObjectiveStatus.APPROVED,
+    )
+    proposal_result = create_experiment_protocol_proposal(
+        objective=objective.to_dict(),
+        design_request=design.to_dict(),
+        task_id="uj08-real-proposal",
+        requested_by="workflow-uj08-real",
+        actor=EXPERIMENT_DESIGN_AGENT_OWNER,
+        artifact_store=artifacts,
+    )
+    assert proposal_result.ok is True, proposal_result.errors
+    proposal = ExperimentProtocolProposal.from_dict(
+        proposal_result.data["experiment_protocol_proposal"]
+    )
+    requested = proposal.protocol.approvals[0]
+    approved = apply_experiment_protocol_approvals(
+        proposal,
+        (
+            replace(
+                requested,
+                status=ApprovalStatus.APPROVED,
+                decided_by=requested.requested_from,
+                rationale="Approved retained qualification fixture.",
+            ),
+        ),
+    )
+    approved_record = artifacts.save_artifact(
+        artifact_type=EXPERIMENT_PROTOCOL,
+        artifact_id=approved.protocol_id,
+        domain_owner=EXPERIMENTS_DOMAIN_OWNER,
+        producer_tool="research_register_experiment_workflow",
+        payload=approved.to_dict(),
+        status="approved",
+    )
+    artifacts.save_artifact(
+        artifact_type="approval_request",
+        artifact_id=proposal.proposal_id,
+        domain_owner="Orchestration",
+        producer_tool="research_register_experiment_workflow",
+        payload={"artifact_type": "approval_request", "proposal_id": proposal.proposal_id, "status": "approved"},
+        status="approved",
+    )
+    proposal_record = artifacts.load_artifact_record(
+        EXPERIMENT_PROTOCOL_PROPOSAL,
+        proposal.proposal_id,
+    )
+    return _pinned_ref(proposal_record), _pinned_ref(approved_record)
 
 
 def _approved_inputs() -> tuple[InMemoryResearchArtifactStore, ArtifactReportRef, ArtifactReportRef]:
