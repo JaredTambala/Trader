@@ -85,6 +85,7 @@ from .worker import (
 from .research_job_executor import (
     ApprovedExperimentBacktestExecutor,
     ApprovedExperimentBacktestProducer,
+    BacktestRunnerResearchProducer,
 )
 
 __all__ = [
@@ -162,4 +163,5 @@ __all__ = [
     "deterministic_research_run_id",
     "ApprovedExperimentBacktestExecutor",
     "ApprovedExperimentBacktestProducer",
+    "BacktestRunnerResearchProducer",
 ]

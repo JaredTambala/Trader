@@ -357,14 +357,33 @@ The integrated UJ-08 path composes `ApprovedExperimentBacktestExecutor` above
 that worker. It rereads the canonical `experiment_job_request`, proposal, and
 approved protocol from the research artifact store, checks the request digest,
 approval digest, actor, code/environment pins, and all upstream input hashes,
-then calls the injected canonical backtest producer. A successful producer must
-return a resolvable `backtest_run` reference; otherwise the worker retains a
-typed partial blocker. The adapter never accepts a copied protocol, arbitrary
-strategy source, broker credentials, or an unverified child reference.
+then calls `BacktestRunnerResearchProducer`. The producer rereads the pinned
+implementation and Data evidence, executes the core `BacktestRunner`, and
+retains a deterministic `backtest_run` receipt. A successful producer must
+return a resolvable receipt whose run identity matches the admitted job;
+otherwise the worker retains a typed partial or reconciliation blocker. The
+adapter never accepts a copied protocol, arbitrary strategy source, broker
+credentials, or an unverified child reference.
+Cancellation is a durable terminal lifecycle command: a cancelled queued job
+cannot be claimed later, while lease loss, partial output, and terminal failure
+remain explicit reconciliation or failure states.
 
 <!-- verified: integration:local tests/cross_package/qualification/test_uj08_integrated_campaign.py -->
 ```bash
 uv run pytest tests/cross_package/qualification/test_uj08_integrated_campaign.py -q
+```
+
+The Postgres half of the campaign is a required CI qualification. It runs with
+`UJ08_PG_*` settings against a disposable database whose name ends in `_test`,
+creates a unique schema for the fixture, and drops that schema during cleanup.
+Running it locally uses the same command with those five settings exported and
+the `postgres` marker selected:
+
+<!-- verified: integration:local tests/cross_package/qualification/test_uj08_integrated_campaign.py -->
+```bash
+UJ08_PG_HOST=127.0.0.1 UJ08_PG_PORT=5432 \
+UJ08_PG_DB=trader_uj08_test UJ08_PG_USER=trader UJ08_PG_PASSWORD=traderpass \
+  uv run pytest tests/cross_package/qualification/test_uj08_integrated_campaign.py -m postgres -q
 ```
 
 ### Complete data-to-backtest qualification

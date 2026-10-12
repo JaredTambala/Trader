@@ -1160,3 +1160,15 @@ claim. This serves Jared's professional goal across UJ-02 through UJ-09.
 
 The intent is ready for revision, not acceptance. We should refine the journeys and requirements against Jared's
 answers and real examples, then record an explicit human review of the resulting version.
+
+## UJ-08 qualification correction — 12 October 2026
+
+The previous merged-delivery note overstated the UJ-08 qualification. PR #62
+delivered only the typed proposal/approval and job boundary plus a synthetic
+offline campaign. The completed TRD-323 slice now adds the concrete
+`BacktestRunnerResearchProducer` and hosted evidence from the required isolated
+Postgres campaign: qualified replay verification, fresh-process artifact
+reopening, concurrent independent reviews, cancellation, lease loss, partial
+output, and terminal failure. This qualifies the deterministic product journey;
+model-backed acceptance, scientific validity, and paper-trading admission remain
+separate product claims.
