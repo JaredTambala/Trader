@@ -598,7 +598,27 @@ def test_uj08_postgres_campaign_uses_real_runner_and_fresh_process(
             artifact_id="uj08-real-terminal-1",
             domain_owner="Orchestration",
             producer_tool="research_record_workflow_outcome",
-            payload={"artifact_type": WORKFLOW_OUTCOME, **lineage, "status": "completed"},
+            payload={
+                "artifact_type": WORKFLOW_OUTCOME,
+                "outcome_id": "uj08-real-terminal-1",
+                "workflow_id": f"uj08-workflow-{protocol.artifact_id}",
+                "plan_id": protocol.artifact_id,
+                "objective_ref": proposal_ref.to_dict(),
+                "protocol_ref": protocol_ref.to_dict(),
+                "status": "completed",
+                "produced_artifact_refs": [
+                    _pinned_ref(run_record).to_dict(),
+                    _pinned_ref(evaluation).to_dict(),
+                    _pinned_ref(robustness).to_dict(),
+                ],
+                "review_verdict_refs": [
+                    _pinned_ref(evaluation).to_dict(),
+                    _pinned_ref(robustness).to_dict(),
+                ],
+                "requested_by": "workflow-uj08-real",
+                "actor": "workflow_executor",
+                **lineage,
+            },
             status="completed",
             metadata={"revision": 1},
         )
