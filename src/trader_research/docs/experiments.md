@@ -67,20 +67,24 @@ simulation completed; it does not prove live profitability or authorize paper tr
 ## Approved experiment-to-job handoff
 
 `submit_approved_experiment_job` is the deterministic boundary between an
-operator-approved `ExperimentProtocol` and durable execution. It re-reads the
-canonical `ExperimentProtocolProposal`, checks that every approval decision
-matches the requested approver and proposed design, and requires the approved
-protocol record to be present with the same payload. It then persists one
-source-free `experiment_job_request` containing digest-pinned proposal,
-protocol, implementation, and Data evidence references before admitting one
-`ResearchJob` through the durable lifecycle service.
+operator-approved `ExperimentProtocol` and durable execution. Its inputs are
+typed, digest-pinned `ArtifactReportRef` values for the canonical
+`ExperimentProtocolProposal` and approved `ExperimentProtocol`; callers do not
+send a copied protocol payload. The service re-reads both records, checks that
+every approval decision matches the requested approver and proposed design, and
+revalidates every implementation and Data reference before admission. It then
+persists one source-free `experiment_job_request` containing the exact
+proposal, protocol, implementation, and Data evidence references before
+admitting one `ResearchJob` through the durable lifecycle service.
 
 The handoff accepts only the workflow executor or Quant Research Supervisor
 actor. Exact repeats return the same request and job; changed proposal,
-approval, scope, code, environment, or actor identity fails closed. This
-boundary grants no worker, broker, evaluation, robustness, or paper-trading
-authority. The worker slice consumes the request and re-reads the pinned Data
-manifest to validate replay identity before invoking the canonical backtest.
+approval, scope, code, environment, or actor identity fails closed. A repeat
+with changed execution pins cannot create another attempt for the same proposal;
+an already-terminal job is returned for reconciliation or review. This boundary
+grants no worker, broker, evaluation, robustness, or paper-trading authority.
+The worker slice consumes the request and re-reads the pinned Data manifest to
+validate replay identity before invoking the canonical backtest.
 
 ## Optimisation and projection boundaries
 

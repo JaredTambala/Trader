@@ -93,9 +93,7 @@ class ExperimentDesignRequest:
         if not self.costs:
             raise ValueError("experiment design costs must be explicit")
         if not self.material_assumptions:
-            raise ValueError(
-                "experiment design material assumptions must be explicit"
-            )
+            raise ValueError("experiment design material assumptions must be explicit")
         if self.max_runs <= 0:
             raise ValueError("experiment design max_runs must be positive")
         if not isinstance(self.log_cycle_details, bool):
@@ -179,9 +177,7 @@ class ExperimentDesignRequest:
             raise ValueError("experiment design max_runs must be an integer")
         seed = payload.get("deterministic_seed")
         if isinstance(seed, bool) or not isinstance(seed, int):
-            raise ValueError(
-                "experiment design deterministic_seed must be an integer"
-            )
+            raise ValueError("experiment design deterministic_seed must be an integer")
         log_cycle_details = payload.get("log_cycle_details")
         if not isinstance(log_cycle_details, bool):
             raise ValueError("experiment design log_cycle_details must be a boolean")
@@ -309,8 +305,21 @@ class ExperimentProtocolProposal:
         }
         if set(requested) != assumptions:
             raise ValueError("proposal approvals must cover every material assumption")
-        if any(item.status is not ApprovalStatus.REQUESTED for item in requested.values()):
+        if any(
+            item.status is not ApprovalStatus.REQUESTED for item in requested.values()
+        ):
             raise ValueError("proposal approvals must remain requested")
+        expected_id = stable_research_id(
+            EXPERIMENT_PROTOCOL_PROPOSAL,
+            {
+                "task_id": self.task_id,
+                "objective_digest": self.objective_digest,
+                "design_digest": self.design_digest,
+                "input_refs": [item.to_dict() for item in self.input_refs],
+            },
+        )
+        if self.proposal_id != expected_id:
+            raise ValueError("experiment protocol proposal identity drifted")
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize canonical proposal evidence without artifact payload expansion."""
@@ -329,9 +338,7 @@ class ExperimentProtocolProposal:
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ExperimentProtocolProposal":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ExperimentProtocolProposal":
         """Parse and validate a complete canonical protocol proposal."""
         allowed = {
             "artifact_type",
@@ -499,9 +506,7 @@ def apply_experiment_protocol_approvals(
         if decided.status is ApprovalStatus.REQUESTED:
             raise ValueError("approval decisions cannot remain requested")
         if decided.decided_by != requested.requested_from:
-            raise ValueError(
-                "approval decision was made by an unauthorized approver"
-            )
+            raise ValueError("approval decision was made by an unauthorized approver")
         for attribute in (
             "subject_type",
             "subject_id",
@@ -510,9 +515,7 @@ def apply_experiment_protocol_approvals(
             "requested_from",
         ):
             if getattr(decided, attribute) != getattr(requested, attribute):
-                raise ValueError(
-                    f"approval decision changed proposal {attribute}"
-                )
+                raise ValueError(f"approval decision changed proposal {attribute}")
         ordered.append(decided)
     status = (
         ExperimentProtocolStatus.BLOCKED
@@ -545,15 +548,13 @@ def experiment_protocol_design_digest(protocol: ExperimentProtocol) -> str:
 
 
 def experiment_design_input_refs(
-    design: ExperimentDesignRequest,
+    design: ExperimentDesignRequest | ExperimentProtocol,
 ) -> tuple[ArtifactReportRef, ...]:
     """Return unique canonical refs consumed by one design in stable order."""
     refs = [design.strategy.implementation_ref]
     refs.extend(item.implementation_ref for item in design.risk_managers)
     for dataset in design.datasets:
-        refs.extend(
-            (dataset.dataset_manifest_ref, dataset.data_quality_report_ref)
-        )
+        refs.extend((dataset.dataset_manifest_ref, dataset.data_quality_report_ref))
     if design.optimization is not None:
         artifact_type, artifact_id = parse_research_artifact_uri(
             design.optimization.objective_validation_ref
@@ -657,9 +658,7 @@ def _mapping(value: object, label: str) -> Mapping[str, Any]:
     return value
 
 
-def _mapping_sequence(
-    value: object, label: str
-) -> tuple[Mapping[str, Any], ...]:
+def _mapping_sequence(value: object, label: str) -> tuple[Mapping[str, Any], ...]:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
         raise ValueError(f"{label} must be a sequence")
     if any(not isinstance(item, Mapping) for item in value):

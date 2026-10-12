@@ -9,7 +9,7 @@ internally consistent.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -267,22 +267,16 @@ def record_workflow_outcome(
                 "workflow outcome objective does not match registered plan"
             )
         if protocol_ref.get("artifact_id") != parsed.protocol_ref.artifact_id:
-            raise ValueError(
-                "workflow outcome protocol does not match registered plan"
-            )
+            raise ValueError("workflow outcome protocol does not match registered plan")
         if parsed.requested_by != plan.get("requested_by"):
             raise ValueError(
                 "workflow outcome requested_by does not match registered plan"
             )
         if parsed.actor != plan.get("actor"):
-            raise ValueError(
-                "workflow outcome actor does not match registered plan"
-            )
+            raise ValueError("workflow outcome actor does not match registered plan")
         _resolve_ref(parsed.objective_ref, artifact_store)
         _resolve_ref(parsed.protocol_ref, artifact_store)
-        produced_uris = {
-            reference.uri for reference in parsed.produced_artifact_refs
-        }
+        produced_uris = {reference.uri for reference in parsed.produced_artifact_refs}
         unknown_reviews = sorted(
             reference.uri
             for reference in parsed.review_verdict_refs
@@ -347,9 +341,42 @@ def _pin_experiment_design(
     design: ExperimentDesignRequest,
     artifact_store: ResearchArtifactStore,
 ) -> _PinnedExperimentDesign:
+    input_refs = experiment_design_input_refs(design)
+    pinned = _resolve_experiment_inputs(design, input_refs, artifact_store)
+    pinned_design = replace_experiment_design_refs(design, pinned)
+    ordered_refs = tuple(pinned[reference.uri] for reference in input_refs)
+    return _PinnedExperimentDesign(pinned_design, ordered_refs)
+
+
+def revalidate_experiment_protocol_inputs(
+    proposal: ExperimentProtocolProposal,
+    *,
+    artifact_store: ResearchArtifactStore,
+) -> None:
+    """Re-read the exact canonical inputs pinned by a protocol proposal.
+
+    Args:
+        proposal: Validated proposal with digest-pinned input references.
+        artifact_store: Trusted store used to resolve those references.
+
+    Raises:
+        ValueError: If refs, payloads, producers, status, or Data scope drifted.
+        ResearchArtifactStoreError: If a canonical input cannot be resolved.
+    """
+    _resolve_experiment_inputs(proposal.protocol, proposal.input_refs, artifact_store)
+
+
+def _resolve_experiment_inputs(
+    design: ExperimentDesignRequest | ExperimentProtocol,
+    input_refs: Sequence[ArtifactReportRef],
+    artifact_store: ResearchArtifactStore,
+) -> dict[str, ArtifactReportRef]:
+    design_refs = experiment_design_input_refs(design)
+    if {item.uri for item in input_refs} != {item.uri for item in design_refs}:
+        raise ValueError("proposal canonical inputs do not match the design")
     records: dict[str, ResearchArtifactRecord] = {}
     pinned: dict[str, ArtifactReportRef] = {}
-    for reference in experiment_design_input_refs(design):
+    for reference in input_refs:
         record = artifact_store.load_artifact_record(
             reference.artifact_type,
             reference.artifact_id,
@@ -357,6 +384,8 @@ def _pin_experiment_design(
         _validate_record_identity(reference, record)
         records[reference.uri] = record
         pinned[reference.uri] = _pinned_ref(reference, record)
+    for reference in design_refs:
+        _validate_record_identity(reference, records[reference.uri])
     _validate_implementation_record(
         records[design.strategy.implementation_ref.uri],
         expected_kind="strategy",
@@ -375,11 +404,7 @@ def _pin_experiment_design(
     if design.optimization is not None:
         objective_uri = design.optimization.objective_validation_ref
         _validate_optimization_validation(records[objective_uri])
-    pinned_design = replace_experiment_design_refs(design, pinned)
-    ordered_refs = tuple(
-        pinned[reference.uri] for reference in experiment_design_input_refs(design)
-    )
-    return _PinnedExperimentDesign(pinned_design, ordered_refs)
+    return pinned
 
 
 def _validate_objective_implementation_scope(
@@ -422,14 +447,10 @@ def _validate_implementation_record(
     if record.artifact_type != IMPLEMENTATION_VERSION:
         raise ValueError("experiment design implementation ref has the wrong type")
     if record.payload.get("implementation_kind") != expected_kind:
-        raise ValueError(
-            f"experiment design requires a {expected_kind} implementation"
-        )
+        raise ValueError(f"experiment design requires a {expected_kind} implementation")
     expected_producer = f"research_register_{expected_kind}_implementation"
     if record.producer_tool != expected_producer:
-        raise ValueError(
-            "experiment design implementation has the wrong producer"
-        )
+        raise ValueError("experiment design implementation has the wrong producer")
     if record.payload.get("status") != "registered" or record.status != "registered":
         raise ValueError("experiment design implementation must be registered")
 
@@ -578,9 +599,7 @@ def _timestamps_equal(left: object, right: object) -> bool:
         return False
     if left_value.tzinfo is None or right_value.tzinfo is None:
         return False
-    return left_value.astimezone(timezone.utc) == right_value.astimezone(
-        timezone.utc
-    )
+    return left_value.astimezone(timezone.utc) == right_value.astimezone(timezone.utc)
 
 
 def _required_value(value: object, label: str) -> str:
@@ -599,18 +618,12 @@ def _resolve_ref(
         reference.artifact_id,
     )
     if record.domain_owner != reference.domain_owner:
-        raise ValueError(
-            f"workflow outcome artifact authority drift: {reference.uri}"
-        )
+        raise ValueError(f"workflow outcome artifact authority drift: {reference.uri}")
     if record.payload.get("artifact_type") != reference.artifact_type:
-        raise ValueError(
-            f"workflow outcome artifact type drift: {reference.uri}"
-        )
+        raise ValueError(f"workflow outcome artifact type drift: {reference.uri}")
     expected_hash = str(reference.metadata.get("payload_sha256") or "")
     if expected_hash and json_payload_hash(record.payload) != expected_hash:
-        raise ValueError(
-            f"workflow outcome artifact payload drift: {reference.uri}"
-        )
+        raise ValueError(f"workflow outcome artifact payload drift: {reference.uri}")
     return record
 
 
