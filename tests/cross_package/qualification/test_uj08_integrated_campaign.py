@@ -797,12 +797,15 @@ def _realistic_approved_inputs(
         status="captured",
         metadata={"dataset_manifest_artifact_id": manifest_record.artifact_id},
     )
+    manifest_window = manifest.get("time_range") or manifest.get("requested_window")
+    if not isinstance(manifest_window, dict):
+        raise AssertionError("fixture manifest must publish its qualified replay window")
     requirement = DataRequirement(
         symbols=tuple(str(item) for item in manifest["symbols"]),
         asset_class=str(manifest["asset_class"]),
         timeframe=str(manifest["timeframe"]),
-        start=str(manifest["time_range"]["start"]),
-        end=str(manifest["time_range"]["end"]),
+        start=str(manifest_window["start"]),
+        end=str(manifest_window["end"]),
         source=str(manifest.get("source_filter")) if manifest.get("source_filter") else None,
     )
     strategy_ref = _pinned_ref(strategy)
