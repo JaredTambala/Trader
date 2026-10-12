@@ -77,9 +77,14 @@ from .worker import (
     LeaseCapableResearchJobStore,
     ResearchJobExecutionOutcome,
     ResearchJobExecutor,
+    ResearchJobProgressSink,
     ResearchJobWorker,
     deterministic_execution_run_id,
     deterministic_research_run_id,
+)
+from .research_job_executor import (
+    ApprovedExperimentBacktestExecutor,
+    ApprovedExperimentBacktestProducer,
 )
 
 __all__ = [
@@ -150,8 +155,11 @@ __all__ = [
     "ExecutionOutcome",
     "ResearchJobExecutionOutcome",
     "ResearchJobExecutor",
+    "ResearchJobProgressSink",
     "ResearchJobWorker",
     "LeaseCapableResearchJobStore",
     "deterministic_execution_run_id",
     "deterministic_research_run_id",
+    "ApprovedExperimentBacktestExecutor",
+    "ApprovedExperimentBacktestProducer",
 ]
