@@ -779,12 +779,22 @@ def _realistic_approved_inputs(
     )
     assert risk_validation.ok is True, risk_validation.errors
 
+    manifest_payload = {
+        "artifact_type": "dataset_manifest",
+        **manifest,
+        "status": "captured",
+    }
+    quality_payload = {
+        "artifact_type": "data_quality_report",
+        **quality,
+        "status": "captured",
+    }
     manifest_record = artifacts.save_artifact(
         artifact_type="dataset_manifest",
         artifact_id=manifest["dataset_id"],
         domain_owner="Data",
         producer_tool="data_create_research_snapshot",
-        payload=manifest,
+        payload=manifest_payload,
         status="captured",
         metadata={"qualification": "uj08-real"},
     )
@@ -793,7 +803,7 @@ def _realistic_approved_inputs(
         artifact_id=quality["report_id"],
         domain_owner="Data",
         producer_tool="data_create_research_snapshot",
-        payload=quality,
+        payload=quality_payload,
         status="captured",
         metadata={"dataset_manifest_artifact_id": manifest_record.artifact_id},
     )
