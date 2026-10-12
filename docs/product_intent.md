@@ -1164,10 +1164,11 @@ answers and real examples, then record an explicit human review of the resulting
 ## UJ-08 qualification correction — 12 October 2026
 
 The previous merged-delivery note overstated the UJ-08 qualification. PR #62
-delivered the typed proposal/approval and job boundary plus a synthetic offline
-campaign. TRD-323 now adds the concrete `BacktestRunnerResearchProducer` seam,
-but the feature remains open until the guarded Postgres campaign proves the
-runner path in an isolated schema, fresh-process artifact reopening, concurrent
-independent reviews, and the complete worker recovery/failure matrix. No
-model-backed, scientific-validity, or paper-trading claim follows from the
-deterministic boundary evidence.
+delivered only the typed proposal/approval and job boundary plus a synthetic
+offline campaign. The completed TRD-323 slice now adds the concrete
+`BacktestRunnerResearchProducer` and hosted evidence from the required isolated
+Postgres campaign: qualified replay verification, fresh-process artifact
+reopening, concurrent independent reviews, cancellation, lease loss, partial
+output, and terminal failure. This qualifies the deterministic product journey;
+model-backed acceptance, scientific validity, and paper-trading admission remain
+separate product claims.

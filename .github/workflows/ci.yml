@@ -100,4 +100,12 @@ jobs:
           UJ08_PG_DB: trader_uj08_test
           UJ08_PG_USER: trader
           UJ08_PG_PASSWORD: traderpass
+          UJ08_EVIDENCE_PATH: ${{ github.workspace }}/uj08-postgres-verifier.json
         run: uv run pytest tests/cross_package/qualification/test_uj08_integrated_campaign.py -m postgres -q
+      - name: Retain UJ-08 verifier evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uj08-postgres-verifier-${{ github.sha }}
+          path: uj08-postgres-verifier.json
+          if-no-files-found: error

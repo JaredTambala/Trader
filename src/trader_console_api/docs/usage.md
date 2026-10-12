@@ -364,6 +364,9 @@ return a resolvable receipt whose run identity matches the admitted job;
 otherwise the worker retains a typed partial or reconciliation blocker. The
 adapter never accepts a copied protocol, arbitrary strategy source, broker
 credentials, or an unverified child reference.
+Cancellation is a durable terminal lifecycle command: a cancelled queued job
+cannot be claimed later, while lease loss, partial output, and terminal failure
+remain explicit reconciliation or failure states.
 
 <!-- verified: integration:local tests/cross_package/qualification/test_uj08_integrated_campaign.py -->
 ```bash

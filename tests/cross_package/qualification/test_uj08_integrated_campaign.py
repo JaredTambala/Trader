@@ -84,6 +84,7 @@ from trader_research.governance import (
     ResearchOperationKind,
     apply_experiment_protocol_approvals,
 )
+from trader_research.governance.orchestration import ResearchJobLifecycleService
 from trader_research.foundation import EXPERIMENTS_DOMAIN_OWNER
 from trader_research.review import EvidenceJoinRef, EvidenceJoinStatus, qualify_evidence_join
 from trader_research.infrastructure.postgres import PostgresResearchJobStore
@@ -477,6 +478,43 @@ def test_uj08_worker_retains_lost_lease_and_terminal_failure() -> None:
     assert failure_store.job.blockers[0].code == "worker_execution_failed"
 
 
+def test_uj08_cancel_is_terminal_and_does_not_start_the_producer() -> None:
+    """Cancellation is durable, idempotent, and prevents later worker claims."""
+    artifacts, proposal_ref, protocol_ref = _approved_inputs()
+    admission_store = _AdmissionStore()
+    admission = submit_approved_experiment_job(
+        proposal_ref=proposal_ref,
+        approved_protocol_ref=protocol_ref,
+        requested_by="workflow-uj08",
+        actor="workflow_executor",
+        code_identity="git:uj08-fixture",
+        environment_identity="env:uj08-controlled",
+        artifact_store=artifacts,
+        job_store=admission_store,
+    )
+    assert admission.ok is True
+    job = ResearchJob.from_dict(admission.data["research_job"])
+    cancelled = ResearchJobLifecycleService(admission_store).cancel(
+        job.job_id,
+        actor=job.actor,
+        reason="operator stopped the qualification before execution",
+    )
+    assert cancelled.ok is True
+    assert cancelled.data["research_job"]["status"] == ResearchJobStatus.CANCELLED.value
+    worker_store = _MemoryResearchJobStore(
+        ResearchJob.from_dict(cancelled.data["research_job"])
+    )
+    producer = _DeterministicBacktestProducer(artifacts)
+    assert asyncio.run(
+        ResearchJobWorker(
+            worker_store,
+            ApprovedExperimentBacktestExecutor(artifacts, producer),
+            worker_id="uj08-cancelled-worker",
+        ).run_once()
+    ) is False
+    assert producer.calls == []
+
+
 @pytest.mark.postgres
 def test_uj08_postgres_campaign_uses_real_runner_and_fresh_process(
     uj08_postgres_settings: dict[str, object],
@@ -659,7 +697,11 @@ def test_uj08_postgres_campaign_uses_real_runner_and_fresh_process(
             "deterministic_evidence": joined.to_dict(),
             "model_gate": {"status": "not_claimed", "reason": "controlled third-party model gate is separate"},
         }
-        report_path = tmp_path / "uj08-postgres-verifier.json"
+        report_path = Path(
+            os.environ.get(
+                "UJ08_EVIDENCE_PATH", str(tmp_path / "uj08-postgres-verifier.json")
+            )
+        )
         report_path.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
         reopened = subprocess.run(
             [

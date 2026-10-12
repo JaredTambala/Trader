@@ -620,13 +620,15 @@ injected artifact/job stores and fails closed when durable job persistence is
 not configured. GAP-04-03B adds the lease-capable `ResearchJobWorker` plus
 Postgres claim, heartbeat, terminal, and expired-lease reconciliation paths.
 The worker composition now includes `BacktestRunnerResearchProducer`, which
-resolves the pinned implementation and Data evidence, runs the canonical
-`BacktestRunner`, and retains a deterministic `backtest_run` artifact under the
-request-derived run ID. The retained offline campaign still uses bounded
-producer doubles for denial and partial-path checks; the guarded Postgres
-campaign is the required evidence for the concrete producer, isolated schema,
-fresh-process reopen, and complete recovery matrix. UJ-08 therefore remains
-open as an end-to-end agent-directed qualification.
+resolves the pinned implementation and Data evidence, verifies the qualified
+replay identity against the event store, runs the canonical `BacktestRunner`,
+and retains a deterministic `backtest_run` artifact under the request-derived
+run ID. The retained UJ-08 campaign covers approved admission, isolated-schema
+Postgres execution, concurrent independent review writes, fresh-process reopen,
+lease loss, cancellation, partial output, terminal failure, and explicit
+deterministic-versus-model-gate reporting. Hosted CI run `38312951086` passed
+the offline, Console, and dedicated UJ-08 Postgres jobs; the controlled
+third-party model gate and scientific validity remain separate product claims.
 
 The runtime may conclude, stop, request operator input, revise a specialist, revisit earlier work, or fork a new
 lineage. Equivalent low-information loops, policy violations, invalid evidence, exhausted budgets, and out-of-scope
