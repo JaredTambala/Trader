@@ -8,13 +8,17 @@ services built on top of this store in later slices.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import uuid4
 
 from trader_research.governance.orchestration.operations import (
     ResearchJob,
     ResearchJobStatus,
 )
+from trader_research.governance.handoffs import ArtifactReportRef, ResearchIssue
 
 from .artifact_store import Jsonb
 
@@ -87,9 +91,7 @@ class PostgresResearchJobStore:
         closed.  Admission never accepts a pre-running or terminal projection.
         """
         if job.status is not ResearchJobStatus.QUEUED:
-            raise ResearchJobTransitionError(
-                "job admission requires queued status"
-            )
+            raise ResearchJobTransitionError("job admission requires queued status")
         if job.attempt != 0 or job.lease_id is not None:
             raise ResearchJobTransitionError(
                 "job admission requires attempt 0 without a lease"
@@ -140,7 +142,10 @@ class PostgresResearchJobStore:
                 raise ResearchJobTransitionError(
                     f"terminal job {job.job_id} cannot transition"
                 )
-            if job.status is not current.status and job.status not in _ALLOWED_TRANSITIONS[current.status]:
+            if (
+                job.status is not current.status
+                and job.status not in _ALLOWED_TRANSITIONS[current.status]
+            ):
                 raise ResearchJobTransitionError(
                     f"illegal job transition: {current.status.value} -> {job.status.value}"
                 )
@@ -148,11 +153,138 @@ class PostgresResearchJobStore:
             self._insert_transition(current.status, job)
         return job
 
+    def claim_next(
+        self,
+        *,
+        worker_id: str,
+        lease_seconds: int,
+        max_attempts: int,
+    ) -> ResearchJob | None:
+        """Atomically claim one queued job with a bounded lease.
+
+        Expired leased jobs are never replayed by this method. A separate
+        reconciliation pass must classify them before a new attempt can be
+        admitted, which prevents duplicate producer evidence after worker loss.
+        """
+        _validate_worker_parameters(worker_id, lease_seconds, max_attempts)
+        with self._connection.transaction():
+            row = self._connection.execute(
+                _SELECT_JOB + " WHERE status = 'queued' AND attempt < %s "
+                "ORDER BY created_at, job_id FOR UPDATE SKIP LOCKED LIMIT 1",
+                [max_attempts],
+            ).fetchone()
+            if row is None:
+                return None
+            current = _job_from_row(row)
+            now = datetime.now(UTC)
+            claimed = replace(
+                current,
+                status=ResearchJobStatus.RUNNING,
+                attempt=current.attempt + 1,
+                lease_id=f"{worker_id}:{uuid4().hex}",
+                lease_expires_at=now + timedelta(seconds=lease_seconds),
+            )
+            self._update_job(claimed)
+            self._insert_transition(current.status, claimed)
+            return claimed
+
+    def heartbeat(
+        self,
+        job_id: str,
+        *,
+        worker_id: str,
+        lease_id: str,
+        lease_seconds: int,
+    ) -> bool:
+        """Renew an active worker lease without changing public job status."""
+        _validate_worker_parameters(worker_id, lease_seconds, 1)
+        with self._connection.transaction():
+            row = self._load_row(job_id, lock=True)
+            if row is None:
+                return False
+            current = _job_from_row(row)
+            if not _lease_matches(current, worker_id=worker_id, lease_id=lease_id):
+                return False
+            renewed = replace(
+                current,
+                lease_expires_at=datetime.now(UTC) + timedelta(seconds=lease_seconds),
+            )
+            self._update_job(renewed)
+            return True
+
+    def finish(
+        self,
+        job_id: str,
+        *,
+        worker_id: str,
+        lease_id: str,
+        status: ResearchJobStatus,
+        produced_artifact_refs: Sequence[ArtifactReportRef] = (),
+        warnings: Sequence[ResearchIssue] = (),
+        blockers: Sequence[ResearchIssue] = (),
+        retryable: bool = False,
+    ) -> ResearchJob | None:
+        """Persist one terminal or partial outcome owned by the active lease."""
+        _validate_worker_parameters(worker_id, 1, 1)
+        if status in {ResearchJobStatus.QUEUED, ResearchJobStatus.RUNNING}:
+            raise ResearchJobTransitionError("worker finish requires an outcome status")
+        with self._connection.transaction():
+            row = self._load_row(job_id, lock=True)
+            if row is None:
+                return None
+            current = _job_from_row(row)
+            if not _lease_matches(current, worker_id=worker_id, lease_id=lease_id):
+                return None
+            completed = replace(
+                current,
+                status=status,
+                lease_id=None,
+                lease_expires_at=None,
+                produced_artifact_refs=tuple(produced_artifact_refs),
+                warnings=tuple(warnings),
+                blockers=tuple(blockers),
+                retryable=retryable,
+            )
+            self._update_job(completed)
+            self._insert_transition(current.status, completed)
+            return completed
+
+    def reconcile_expired_leases(self) -> tuple[ResearchJob, ...]:
+        """Classify expired running leases without replaying their producers."""
+        reconciled: list[ResearchJob] = []
+        with self._connection.transaction():
+            rows = self._connection.execute(
+                _SELECT_JOB + " WHERE status IN ('running', 'partial') "
+                "AND lease_expires_at IS NOT NULL AND lease_expires_at <= now() "
+                "ORDER BY updated_at, job_id FOR UPDATE SKIP LOCKED"
+            ).fetchall()
+            for row in rows:
+                current = _job_from_row(row)
+                blocker = ResearchIssue(
+                    code="worker_lease_expired",
+                    message="The worker lease expired before a terminal receipt was retained.",
+                    details={"job_id": current.job_id},
+                )
+                expired = replace(
+                    current,
+                    status=ResearchJobStatus.RECONCILIATION_REQUIRED,
+                    lease_id=None,
+                    lease_expires_at=None,
+                    blockers=(*current.blockers, blocker),
+                    retryable=False,
+                )
+                self._update_job(expired)
+                self._insert_transition(current.status, expired)
+                reconciled.append(expired)
+        return tuple(reconciled)
+
     def _load_by_idempotency(
         self, idempotency_key: str, *, lock: bool = False
     ) -> ResearchJob | None:
         row = self._connection.execute(
-            _SELECT_JOB + " WHERE idempotency_key = %s" + (" FOR UPDATE" if lock else ""),
+            _SELECT_JOB
+            + " WHERE idempotency_key = %s"
+            + (" FOR UPDATE" if lock else ""),
             [idempotency_key],
         ).fetchone()
         return _job_from_row(row) if row is not None else None
@@ -311,6 +443,27 @@ def _job_from_row(row: Mapping[str, Any]) -> ResearchJob:
 def _json(value: Any) -> Any:
     """Wrap JSON values for psycopg while retaining adapter-test portability."""
     return Jsonb(value) if Jsonb is not None else value
+
+
+def _validate_worker_parameters(
+    worker_id: str, lease_seconds: int, max_attempts: int
+) -> None:
+    """Validate bounded worker inputs before opening a database transaction."""
+    if not worker_id.strip():
+        raise ValueError("worker_id must not be blank")
+    if lease_seconds < 1:
+        raise ValueError("lease_seconds must be positive")
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be positive")
+
+
+def _lease_matches(job: ResearchJob, *, worker_id: str, lease_id: str) -> bool:
+    """Return whether the active lease belongs to the expected worker."""
+    if job.status not in {ResearchJobStatus.RUNNING, ResearchJobStatus.PARTIAL}:
+        return False
+    if job.lease_id != lease_id or not lease_id.startswith(f"{worker_id}:"):
+        return False
+    return job.lease_expires_at is not None and job.lease_expires_at > datetime.now(UTC)
 
 
 __all__ = [

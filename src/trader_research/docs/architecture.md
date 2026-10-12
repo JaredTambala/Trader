@@ -181,7 +181,12 @@ rewrites. `ResearchJobLifecycleService` is the deterministic application
 boundary over the store: submit, status, cancel, and reconcile commands return
 typed `ApplicationResult` projections and preserve actor, attempt, child refs,
 warnings, and blockers. Worker execution, retry-attempt persistence, producer
-migration, and MCP submission remain separate boundaries.
+migration, and MCP submission remain separate boundaries. The Console-owned
+`ResearchJobWorker` now supplies the first lease-capable execution seam: it
+claims only queued backtests, renews the lease through `PostgresResearchJobStore`,
+and delegates canonical `BacktestRunner` construction to an injected adapter.
+Expired leases are reconciled as terminal `reconciliation_required` states
+instead of being replayed, preserving child-artifact identity after worker loss.
 
 TRD-321C retains the corresponding recovery qualification under
 `tests/cross_package/qualification/test_postgres_research_job_recovery.py`.

@@ -277,6 +277,12 @@ Lease-renewal and terminal-write rejection cannot be reported as success. Once t
 runner or result-persistence failure becomes reconciliation-required rather than an invented clean failure; an expired
 reserved run is never replayed by the next worker process.
 
+Approved research experiments use the parallel `trader_console_api.worker.ResearchJobWorker` seam. It claims only
+queued `backtest` jobs admitted by the MCP handoff, renews the typed ResearchJob lease while an injected adapter runs
+the canonical `BacktestRunner`, and persists produced artifact refs, warnings, partial results, failures, or explicit
+reconciliation-required outcomes. `PostgresResearchJobStore` uses `FOR UPDATE SKIP LOCKED` for claims and refuses to
+replay an expired lease; its reconciliation pass marks a lost worker terminal without creating a duplicate child run.
+
 The completed execution-to-review path keeps that process boundary explicit. The demo/bootstrap owner installs the
 core event tables, the producer research-artifact projection, the `console_read` contract, and the three Console
 command tables in one fresh database. A worker process reads the immutable definition, translates it into the canonical

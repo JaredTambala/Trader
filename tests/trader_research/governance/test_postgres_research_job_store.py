@@ -6,9 +6,9 @@ Level: Schema unit contract plus guarded Postgres adapter integration.
 Collaborators: ResearchJob values and the isolated research Postgres schema; no
 worker, MCP transport, model, or operation-specific execution engine.
 Guarantees: A fresh store connection can reload a job, conflicting idempotency
-requests fail closed, and terminal state cannot be overwritten.
-Non-goals: Command authorization, lease scheduling, retries, reconciliation
-policy, or producer migration.
+requests fail closed, terminal state cannot be overwritten, and one worker lease
+can be claimed, renewed, completed, or reconciled after expiry.
+Non-goals: Command authorization, retry-attempt admission, or producer migration.
 """
 
 from __future__ import annotations
@@ -140,13 +140,78 @@ def test_research_job_conflicting_idempotency_and_terminal_mutation_fail_closed(
             )
         )
 
-    transitions = postgres_research_artifact_store.connection().execute(
-        "SELECT from_status, to_status FROM research_job_transitions "
-        "WHERE job_id = %s ORDER BY transition_id",
-        [admitted.job_id],
-    ).fetchall()
+    transitions = (
+        postgres_research_artifact_store.connection()
+        .execute(
+            "SELECT from_status, to_status FROM research_job_transitions "
+            "WHERE job_id = %s ORDER BY transition_id",
+            [admitted.job_id],
+        )
+        .fetchall()
+    )
     assert transitions == [
         {"from_status": None, "to_status": "queued"},
         {"from_status": "queued", "to_status": "running"},
         {"from_status": "running", "to_status": "failed"},
     ]
+
+
+@pytest.mark.postgres
+def test_worker_lease_claim_heartbeat_and_terminal_outcome_are_durable(
+    postgres_research_artifact_store,
+) -> None:
+    """Lease ownership and typed child evidence survive the store boundary."""
+    store = PostgresResearchJobStore(postgres_research_artifact_store.connection())
+    store.admit(_job())
+
+    claimed = store.claim_next(worker_id="worker-a", lease_seconds=30, max_attempts=3)
+    assert claimed is not None
+    assert claimed.status is ResearchJobStatus.RUNNING
+    assert claimed.attempt == 1
+    assert (
+        store.heartbeat(
+            claimed.job_id,
+            worker_id="worker-a",
+            lease_id=claimed.lease_id or "",
+            lease_seconds=30,
+        )
+        is True
+    )
+
+    finished = store.finish(
+        claimed.job_id,
+        worker_id="worker-a",
+        lease_id=claimed.lease_id or "",
+        status=ResearchJobStatus.SUCCEEDED,
+        produced_artifact_refs=(artifact_report_ref("backtest_run", "run-1"),),
+    )
+    assert finished is not None
+    assert finished.status is ResearchJobStatus.SUCCEEDED
+    assert store.load(claimed.job_id).produced_artifact_refs[0].artifact_id == "run-1"
+
+
+@pytest.mark.postgres
+def test_expired_worker_lease_requires_reconciliation_without_reclaim(
+    postgres_research_artifact_store,
+) -> None:
+    """Worker loss becomes a terminal reconciliation state instead of a replay."""
+    store = PostgresResearchJobStore(postgres_research_artifact_store.connection())
+    store.admit(_job(job_id="job-expired-1", idempotency_key="expired-1"))
+    claimed = store.claim_next(worker_id="worker-a", lease_seconds=30, max_attempts=3)
+    assert claimed is not None
+    expired = ResearchJob.from_dict(
+        {
+            **claimed.to_dict(),
+            "lease_expires_at": (
+                datetime.now(timezone.utc) - timedelta(seconds=1)
+            ).isoformat(),
+        }
+    )
+    store.save(expired, expected_status=ResearchJobStatus.RUNNING)
+
+    recovered = store.reconcile_expired_leases()
+    assert len(recovered) == 1
+    assert recovered[0].status is ResearchJobStatus.RECONCILIATION_REQUIRED
+    assert (
+        store.claim_next(worker_id="worker-b", lease_seconds=30, max_attempts=3) is None
+    )
