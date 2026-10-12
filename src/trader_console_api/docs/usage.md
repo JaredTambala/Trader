@@ -370,6 +370,19 @@ credentials, or an unverified child reference.
 uv run pytest tests/cross_package/qualification/test_uj08_integrated_campaign.py -q
 ```
 
+The Postgres half of the campaign is a required CI qualification. It runs with
+`UJ08_PG_*` settings against a disposable database whose name ends in `_test`,
+creates a unique schema for the fixture, and drops that schema during cleanup.
+Running it locally uses the same command with those five settings exported and
+the `postgres` marker selected:
+
+<!-- verified: integration:local tests/cross_package/qualification/test_uj08_integrated_campaign.py -->
+```bash
+UJ08_PG_HOST=127.0.0.1 UJ08_PG_PORT=5432 \
+UJ08_PG_DB=trader_uj08_test UJ08_PG_USER=trader UJ08_PG_PASSWORD=traderpass \
+  uv run pytest tests/cross_package/qualification/test_uj08_integrated_campaign.py -m postgres -q
+```
+
 ### Complete data-to-backtest qualification
 
 The qualified Console journey is deliberately ordered: select a bounded dataset in `/data`, inspect its Data-owned

@@ -294,7 +294,9 @@ runs `BacktestRunner` against the configured event store, and writes one
 deterministic `backtest_run` artifact. A bounded injected producer remains a
 test seam for denial and partial-path tests only. This keeps worker lease state,
 research approval state, and operation-specific runner construction in separate
-owners. Child references are reread before the worker can retain a successful
+owners. Before execution, the producer re-reads and validates the qualified
+replay-data identity against the event store; the retained run therefore carries
+both the qualified digest and the observed replay receipt. Child references are reread before the worker can retain a successful
 outcome; missing, drifted, or mismatched run evidence becomes a bounded failure.
 
 The completed execution-to-review path keeps that process boundary explicit. The demo/bootstrap owner installs the

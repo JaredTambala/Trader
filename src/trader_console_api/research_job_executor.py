@@ -42,6 +42,7 @@ from trader_research.experiments.backtests.execution import (
     _risk_breaches,
     _risk_decisions,
     _symbol_metrics,
+    _validate_replay_data_identity,
 )
 from trader_research.experiments import ExperimentJobRequest
 from trader_research.foundation import (
@@ -135,7 +136,7 @@ class BacktestRunnerResearchProducer:
             asyncio.run_coroutine_threadsafe(notify(), loop).result()
 
         try:
-            result, risk_pipeline = await asyncio.to_thread(
+            result, risk_pipeline, replay_identity, replay_validation = await asyncio.to_thread(
                 self._run,
                 request,
                 protocol,
@@ -155,6 +156,8 @@ class BacktestRunnerResearchProducer:
             result=result,
             risk_manager=risk_pipeline,
             status=status,
+            replay_identity=replay_identity,
+            replay_validation=replay_validation,
         )
         try:
             record = self.artifact_store.save_artifact(
@@ -226,7 +229,12 @@ class BacktestRunnerResearchProducer:
         protocol: ExperimentProtocol,
         run_id: str,
         progress: Callable[[int, int, datetime | None], None],
-    ) -> tuple[BacktestResult, RecordingRiskPipeline]:
+    ) -> tuple[
+        BacktestResult,
+        RecordingRiskPipeline,
+        dict[str, Any],
+        dict[str, Any],
+    ]:
         """Resolve pinned inputs and execute the synchronous core runner."""
         dataset = _primary_dataset(protocol.datasets)
         manifest = _load_pinned_record(
@@ -239,6 +247,12 @@ class BacktestRunnerResearchProducer:
             dataset.data_quality_report_ref,
             expected_type=DATA_QUALITY_REPORT,
         )
+        replay_identity, replay_validation = _validate_replay_data_identity(
+            self.event_store,
+            manifest.payload,
+        )
+        if replay_identity is None or replay_validation is None:
+            raise ValueError("approved dataset manifest has no qualified replay identity")
         strategy_record = _load_pinned_record(
             self.artifact_store,
             protocol.strategy.implementation_ref,
@@ -307,7 +321,7 @@ class BacktestRunnerResearchProducer:
         if result.run_id != run_id:
             raise ValueError("BacktestRunner returned a different run identity")
         del request, quality
-        return result, risk_pipeline
+        return result, risk_pipeline, replay_identity, replay_validation
 
 
 @dataclass(frozen=True)
@@ -494,6 +508,8 @@ def _backtest_run_payload(
     result: BacktestResult,
     risk_manager: RiskManager,
     status: str,
+    replay_identity: Mapping[str, Any],
+    replay_validation: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Build the canonical research run payload from one core result."""
     dataset = _primary_dataset(protocol.datasets)
@@ -510,6 +526,10 @@ def _backtest_run_payload(
         "experiment_id": protocol.protocol_id,
         "proposal_id": request.proposal_ref.artifact_id,
         "dataset_id": dataset_id,
+        "dataset_hash": dataset.dataset_manifest_ref.metadata.get("payload_sha256"),
+        "quality_hash": dataset.data_quality_report_ref.metadata.get("payload_sha256"),
+        "replay_data_identity": dict(replay_identity),
+        "replay_data_identity_validation": dict(replay_validation),
         "backtest_specification_id": protocol.protocol_id,
         "strategy_specification_id": protocol.strategy.implementation_ref.artifact_id,
         "risk_stack_specification_id": protocol.protocol_id,
@@ -542,6 +562,8 @@ def _backtest_run_payload(
                 "risk_implementation_refs": [item.implementation_ref.to_dict() for item in protocol.risk_managers],
                 "dataset_manifest_ref": dataset.dataset_manifest_ref.to_dict(),
                 "data_quality_report_ref": dataset.data_quality_report_ref.to_dict(),
+                "replay_data_identity": dict(replay_identity),
+                "replay_data_identity_validation": dict(replay_validation),
             },
         },
     }

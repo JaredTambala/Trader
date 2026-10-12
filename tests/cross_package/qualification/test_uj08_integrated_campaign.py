@@ -98,6 +98,35 @@ from tests.cross_package.qualification.support.realistic_optimization_fixture im
 )
 
 
+@pytest.fixture
+def uj08_postgres_settings() -> dict[str, object]:
+    """Return the explicitly provisioned UJ-08 disposable Postgres database.
+
+    This campaign intentionally uses a separate profile from the historical
+    guarded verification database: its schema is created and dropped by the
+    test, while the database identity remains an explicit ``*_test`` target.
+    """
+    required = {
+        "host": os.environ.get("UJ08_PG_HOST", "").strip(),
+        "port": os.environ.get("UJ08_PG_PORT", "").strip(),
+        "dbname": os.environ.get("UJ08_PG_DB", "").strip(),
+        "user": os.environ.get("UJ08_PG_USER", "").strip(),
+        "password": os.environ.get("UJ08_PG_PASSWORD", ""),
+    }
+    if not all(required.values()):
+        pytest.skip("UJ08_PG_* disposable campaign settings are not configured")
+    if not required["dbname"].endswith(("_test", "_testing")):
+        raise pytest.UsageError("UJ08_PG_DB must be a disposable *_test database")
+    settings = {**required, "port": int(str(required["port"]))}
+    with psycopg.connect(**cast(Any, settings)) as connection:
+        identity = connection.execute(
+            "SELECT current_database(), current_user, current_setting('TimeZone')"
+        ).fetchone()
+    if identity != (settings["dbname"], settings["user"], "UTC"):
+        raise pytest.UsageError("UJ08 Postgres identity or timezone does not match its profile")
+    return settings
+
+
 @dataclass
 class _MemoryResearchJobStore:
     """Small lease-capable store preserving the worker's public contract."""
@@ -443,18 +472,18 @@ def test_uj08_worker_retains_lost_lease_and_terminal_failure() -> None:
 
 @pytest.mark.postgres
 def test_uj08_postgres_campaign_uses_real_runner_and_fresh_process(
-    postgres_settings: dict[str, object],
+    uj08_postgres_settings: dict[str, object],
     tmp_path: Path,
 ) -> None:
     """Qualify the concrete runner, isolated schema, concurrent reviews, and reopen."""
     schema = f"trader_uj08_{uuid4().hex}"
-    admin = psycopg.connect(**cast(Any, postgres_settings))
+    admin = psycopg.connect(**cast(Any, uj08_postgres_settings))
     admin.autocommit = True
     admin.execute(sql.SQL("CREATE SCHEMA {}" ).format(sql.Identifier(schema)))
     admin.close()
     dsn = psycopg.conninfo.make_conninfo(
-        **cast(Any, postgres_settings),
-        options=f"-c search_path={schema},public",
+        **cast(Any, uj08_postgres_settings),
+        options=f"-c search_path={schema}",
     )
     event_store = None
     artifacts = None
@@ -492,7 +521,7 @@ def test_uj08_postgres_campaign_uses_real_runner_and_fresh_process(
                 artifacts,
                 BacktestRunnerResearchProducer(
                     artifacts,
-                    build_backtest_config(postgres_settings),
+                    build_backtest_config(uj08_postgres_settings),
                     event_store,
                 ),
             ),
@@ -624,7 +653,7 @@ def test_uj08_postgres_campaign_uses_real_runner_and_fresh_process(
             artifacts.close()
         if event_store is not None:
             event_store.close()
-        cleanup = psycopg.connect(**cast(Any, postgres_settings))
+        cleanup = psycopg.connect(**cast(Any, uj08_postgres_settings))
         cleanup.autocommit = True
         cleanup.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
         cleanup.close()
