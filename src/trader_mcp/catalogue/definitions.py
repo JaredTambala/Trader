@@ -253,6 +253,9 @@ RESEARCH_REGISTER_EXPERIMENT_WORKFLOW_TOOL: Final = (
     "research_register_experiment_workflow"
 )
 RESEARCH_RECORD_WORKFLOW_OUTCOME_TOOL: Final = "research_record_workflow_outcome"
+RESEARCH_SUBMIT_APPROVED_EXPERIMENT_JOB_TOOL: Final = (
+    "research_submit_approved_experiment_job"
+)
 EVALUATION_GENERATE_PARAMETER_OPTIMIZATION_REPORT_TOOL: Final = (
     "evaluation_generate_parameter_optimization_report"
 )
@@ -373,6 +376,7 @@ RESEARCH_TOOL_NAMES: Final = (
     RESEARCH_PROJECT_EXPERIMENT_TRACKING_TOOL,
     RESEARCH_REGISTER_EXPERIMENT_WORKFLOW_TOOL,
     RESEARCH_RECORD_WORKFLOW_OUTCOME_TOOL,
+    RESEARCH_SUBMIT_APPROVED_EXPERIMENT_JOB_TOOL,
 )
 """Quant Research Supervisor tool names exposed by the MCP server."""
 
@@ -591,6 +595,10 @@ RESEARCH_TOOL_DESCRIPTIONS: Final = {
     ),
     RESEARCH_RECORD_WORKFLOW_OUTCOME_TOOL: (
         "Persist one bounded terminal workflow outcome over canonical evidence refs."
+    ),
+    RESEARCH_SUBMIT_APPROVED_EXPERIMENT_JOB_TOOL: (
+        "Admit one approved experiment as an idempotent durable ResearchJob "
+        "using exact canonical proposal and protocol evidence."
     ),
 }
 """Descriptions for Quant Research Supervisor tools exposed by the MCP server."""
