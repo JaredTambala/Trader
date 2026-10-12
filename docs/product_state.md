@@ -610,7 +610,8 @@ injected artifact/job stores and fails closed when durable job persistence is
 not configured. GAP-04-03B adds the lease-capable `ResearchJobWorker` plus
 Postgres claim, heartbeat, terminal, and expired-lease reconciliation paths.
 The worker delegates canonical `BacktestRunner` construction to an injected
-adapter and never replays a lost lease.
+adapter under a deterministic request-derived run ID and never replays a lost
+lease.
 UJ-08 therefore has an accepted execution boundary but is not yet qualified as
 an end-to-end agent-directed experiment.
 

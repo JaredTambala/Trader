@@ -348,7 +348,7 @@ with failed cycles remains `partial` and retains its warnings.
 
 The research-owned execution boundary is exposed as `ResearchJobWorker`. Its injected adapter receives one admitted
 backtest `ResearchJob` and must resolve the pinned execution request into the canonical `BacktestRunner`; the worker
-does not accept arbitrary callables, strategy source, or broker credentials. The job store renews a bounded lease and
+receives a deterministic run ID derived from the admitted request and does not accept arbitrary callables, strategy source, or broker credentials. The job store renews a bounded lease and
 retains only typed child artifact refs and bounded issues. If the lease or terminal receipt cannot be retained, the
 worker does not claim success; a fresh worker calls the store's expired-lease reconciliation pass, which records
 `reconciliation_required` without replaying the producer.

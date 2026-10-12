@@ -84,9 +84,10 @@ class ResearchJobExecutor(Protocol):
         self,
         job: ResearchJob,
         *,
+        run_id: str,
         progress: ResearchJobProgressSink,
     ) -> ResearchJobExecutionOutcome:
-        """Execute one admitted job and return only durable evidence references."""
+        """Execute one admitted job under its deterministic producer run ID."""
         ...
 
 
@@ -164,6 +165,7 @@ class ResearchJobWorker:
         )
         if job is None:
             return False
+        run_id = deterministic_research_run_id(job.job_id, job.request_digest)
         if job.operation_kind.value != "backtest":
             self._finish_failed(
                 job,
@@ -189,7 +191,11 @@ class ResearchJobWorker:
                 )
 
         try:
-            outcome = await self._executor.execute(job, progress=progress)
+            outcome = await self._executor.execute(
+                job,
+                run_id=run_id,
+                progress=progress,
+            )
         except AmbiguousExecutionError as exc:
             outcome = ResearchJobExecutionOutcome(
                 status="reconciliation_required",
@@ -263,6 +269,13 @@ def deterministic_execution_run_id(execution_id: str, fingerprint: str) -> str:
     """Derive one stable producer run identity from command identity and content."""
     return hashlib.sha256(
         f"console-backtest:{execution_id}:{fingerprint}".encode()
+    ).hexdigest()
+
+
+def deterministic_research_run_id(job_id: str, request_digest: str) -> str:
+    """Derive one stable producer run ID from an admitted research request."""
+    return hashlib.sha256(
+        f"research-backtest:{job_id}:{request_digest}".encode()
     ).hexdigest()
 
 
@@ -399,4 +412,5 @@ __all__ = [
     "ResearchJobWorker",
     "LeaseCapableResearchJobStore",
     "deterministic_execution_run_id",
+    "deterministic_research_run_id",
 ]

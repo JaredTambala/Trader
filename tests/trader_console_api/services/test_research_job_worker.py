@@ -24,6 +24,7 @@ from trader_console_api.worker import (
     AmbiguousExecutionError,
     ResearchJobExecutionOutcome,
     ResearchJobWorker,
+    deterministic_research_run_id,
 )
 from trader_research.governance import (
     ResearchIssue,
@@ -118,9 +119,11 @@ class _Executor:
 
     def __init__(self, outcome: ResearchJobExecutionOutcome) -> None:
         self.outcome = outcome
+        self.run_ids: list[str] = []
 
-    async def execute(self, job, *, progress):
+    async def execute(self, job, *, run_id, progress):
         """Renew the job lease before returning the configured outcome."""
+        self.run_ids.append(run_id)
         await progress(datetime(2026, 1, 1, tzinfo=UTC))
         return self.outcome
 
@@ -128,22 +131,24 @@ class _Executor:
 class _AmbiguousExecutor:
     """Adapter that cannot prove whether producer evidence was committed."""
 
-    async def execute(self, job, *, progress):
+    async def execute(self, job, *, run_id, progress):
         """Raise the explicit worker ambiguity signal."""
+        del run_id
         raise AmbiguousExecutionError("BacktestRunner result connection was lost")
 
 
 def test_research_worker_renews_and_persists_success_once() -> None:
     """A claimed backtest retains its produced artifact and terminal success."""
     store = _Store(_job())
+    executor = _Executor(
+        ResearchJobExecutionOutcome(
+            status="succeeded",
+            produced_artifact_refs=(artifact_report_ref("backtest_run", "run-1"),),
+        )
+    )
     worker = ResearchJobWorker(
         store,
-        _Executor(
-            ResearchJobExecutionOutcome(
-                status="succeeded",
-                produced_artifact_refs=(artifact_report_ref("backtest_run", "run-1"),),
-            )
-        ),
+        executor,
         worker_id="worker-a",
     )
 
@@ -151,6 +156,9 @@ def test_research_worker_renews_and_persists_success_once() -> None:
     assert store.calls == ["claim", "heartbeat", "finish:succeeded"]
     assert store.job.status is ResearchJobStatus.SUCCEEDED
     assert store.job.produced_artifact_refs[0].artifact_id == "run-1"
+    assert executor.run_ids == [
+        deterministic_research_run_id(store.job.job_id, store.job.request_digest)
+    ]
 
 
 @pytest.mark.parametrize("status", ["partial", "failed"])

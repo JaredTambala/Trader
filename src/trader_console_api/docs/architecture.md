@@ -279,7 +279,7 @@ reserved run is never replayed by the next worker process.
 
 Approved research experiments use the parallel `trader_console_api.worker.ResearchJobWorker` seam. It claims only
 queued `backtest` jobs admitted by the MCP handoff, renews the typed ResearchJob lease while an injected adapter runs
-the canonical `BacktestRunner`, and persists produced artifact refs, warnings, partial results, failures, or explicit
+the canonical `BacktestRunner` under a deterministic run ID derived from the job and request digest, and persists produced artifact refs, warnings, partial results, failures, or explicit
 reconciliation-required outcomes. `PostgresResearchJobStore` uses `FOR UPDATE SKIP LOCKED` for claims and refuses to
 replay an expired lease; its reconciliation pass marks a lost worker terminal without creating a duplicate child run.
 
