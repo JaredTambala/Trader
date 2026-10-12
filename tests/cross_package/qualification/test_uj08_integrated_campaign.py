@@ -122,7 +122,9 @@ def uj08_postgres_settings() -> dict[str, object]:
         identity = connection.execute(
             "SELECT current_database(), current_user, current_setting('TimeZone')"
         ).fetchone()
-    if identity != (settings["dbname"], settings["user"], "UTC"):
+    if identity is None or identity[:2] != (settings["dbname"], settings["user"]):
+        raise pytest.UsageError("UJ08 Postgres database or role does not match its profile")
+    if str(identity[2]).upper() not in {"UTC", "ETC/UTC"}:
         raise pytest.UsageError("UJ08 Postgres identity or timezone does not match its profile")
     return settings
 
