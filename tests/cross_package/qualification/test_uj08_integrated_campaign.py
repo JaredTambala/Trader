@@ -550,7 +550,10 @@ def test_uj08_postgres_campaign_uses_real_runner_and_fresh_process(
             proposal_ref.artifact_id,
         )
         protocol = artifacts.load_artifact_record(EXPERIMENT_PROTOCOL, protocol_ref.artifact_id)
-        manifest_record = artifacts.load_artifact_record("dataset_manifest", manifest["dataset_id"])
+        dataset_ref = protocol.payload["datasets"][0]["dataset_manifest_ref"]
+        manifest_record = artifacts.load_artifact_record(
+            "dataset_manifest", dataset_ref["artifact_id"]
+        )
         strategy_record = artifacts.load_artifact_record(
             "implementation_version",
             protocol.payload["strategy"]["implementation_ref"]["artifact_id"],
