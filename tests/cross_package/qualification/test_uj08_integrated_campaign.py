@@ -817,10 +817,10 @@ def _realistic_approved_inputs(
     )
     assert snapshot.ok is True, snapshot.errors
     manifest_record = artifacts.load_artifact_record(
-        "dataset_manifest", snapshot.artifacts["dataset_manifest"]["artifact_id"]
+        "dataset_manifest", snapshot.artifacts["dataset_manifest"]["metadata"]["id"]
     )
     quality_record = artifacts.load_artifact_record(
-        "data_quality_report", snapshot.artifacts["data_quality_report"]["artifact_id"]
+        "data_quality_report", snapshot.artifacts["data_quality_report"]["metadata"]["id"]
     )
     requirement = DataRequirement(
         symbols=tuple(str(item) for item in manifest["symbols"]),
