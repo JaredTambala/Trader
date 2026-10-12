@@ -607,7 +607,10 @@ protocol, persists digest-pinned request lineage, and admits one durable
 backtest job only for an authorized execution actor. GAP-04-03A2 registers the
 typed `research_submit_approved_experiment_job` MCP admission command with
 injected artifact/job stores and fails closed when durable job persistence is
-not configured. Worker execution remains a separate delivery slice.
+not configured. GAP-04-03B adds the lease-capable `ResearchJobWorker` plus
+Postgres claim, heartbeat, terminal, and expired-lease reconciliation paths.
+The worker delegates canonical `BacktestRunner` construction to an injected
+adapter and never replays a lost lease.
 UJ-08 therefore has an accepted execution boundary but is not yet qualified as
 an end-to-end agent-directed experiment.
 

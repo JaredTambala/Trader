@@ -74,6 +74,10 @@ from .worker import (
     AmbiguousExecutionError,
     BacktestExecutionWorker,
     ExecutionOutcome,
+    LeaseCapableResearchJobStore,
+    ResearchJobExecutionOutcome,
+    ResearchJobExecutor,
+    ResearchJobWorker,
     deterministic_execution_run_id,
 )
 
@@ -143,5 +147,9 @@ __all__ = [
     "AmbiguousExecutionError",
     "BacktestExecutionWorker",
     "ExecutionOutcome",
+    "ResearchJobExecutionOutcome",
+    "ResearchJobExecutor",
+    "ResearchJobWorker",
+    "LeaseCapableResearchJobStore",
     "deterministic_execution_run_id",
 ]

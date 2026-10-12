@@ -346,6 +346,13 @@ A producer run or durable-result failure after execution starts likewise require
 events may already exist. A failure before producer execution can be recorded as `failed`, while a producer result
 with failed cycles remains `partial` and retains its warnings.
 
+The research-owned execution boundary is exposed as `ResearchJobWorker`. Its injected adapter receives one admitted
+backtest `ResearchJob` and must resolve the pinned execution request into the canonical `BacktestRunner`; the worker
+does not accept arbitrary callables, strategy source, or broker credentials. The job store renews a bounded lease and
+retains only typed child artifact refs and bounded issues. If the lease or terminal receipt cannot be retained, the
+worker does not claim success; a fresh worker calls the store's expired-lease reconciliation pass, which records
+`reconciliation_required` without replaying the producer.
+
 ### Complete data-to-backtest qualification
 
 The qualified Console journey is deliberately ordered: select a bounded dataset in `/data`, inspect its Data-owned

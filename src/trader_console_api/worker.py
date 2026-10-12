@@ -8,12 +8,19 @@ pretends that an absent executor produced evidence.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass, replace
 from datetime import datetime
 import hashlib
 from typing import Literal, Protocol
 from uuid import UUID
+
+from trader_research.governance import (
+    ArtifactReportRef,
+    ResearchIssue,
+    ResearchJob,
+    ResearchJobStatus,
+)
 
 from .contracts import BacktestDefinition
 from .repositories.backtest_executions import BacktestExecutionRepository
@@ -53,9 +60,210 @@ class AmbiguousExecutionError(RuntimeError):
     """The worker cannot prove whether producer execution reached a terminal state."""
 
 
+ResearchJobProgressSink = Callable[[datetime | None], Awaitable[None]]
+ResearchJobOutcomeStatus = Literal[
+    "succeeded", "partial", "failed", "ambiguous", "reconciliation_required"
+]
+
+
+@dataclass(frozen=True)
+class ResearchJobExecutionOutcome:
+    """Bounded producer outcome returned by a ResearchJob executor adapter."""
+
+    status: ResearchJobOutcomeStatus
+    produced_artifact_refs: tuple[ArtifactReportRef, ...] = ()
+    warnings: tuple[ResearchIssue, ...] = ()
+    blockers: tuple[ResearchIssue, ...] = ()
+    retryable: bool = False
+
+
+class ResearchJobExecutor(Protocol):
+    """Injected adapter that resolves a job into the canonical BacktestRunner."""
+
+    async def execute(
+        self,
+        job: ResearchJob,
+        *,
+        progress: ResearchJobProgressSink,
+    ) -> ResearchJobExecutionOutcome:
+        """Execute one admitted job and return only durable evidence references."""
+        ...
+
+
+class LeaseCapableResearchJobStore(Protocol):
+    """Persistence contract required by the research worker."""
+
+    def claim_next(
+        self,
+        *,
+        worker_id: str,
+        lease_seconds: int,
+        max_attempts: int,
+    ) -> ResearchJob | None:
+        """Claim one queued job or return no work."""
+        ...
+
+    def heartbeat(
+        self,
+        job_id: str,
+        *,
+        worker_id: str,
+        lease_id: str,
+        lease_seconds: int,
+    ) -> bool:
+        """Renew one active lease."""
+        ...
+
+    def finish(
+        self,
+        job_id: str,
+        *,
+        worker_id: str,
+        lease_id: str,
+        status: ResearchJobStatus,
+        produced_artifact_refs: Sequence[ArtifactReportRef] = (),
+        warnings: Sequence[ResearchIssue] = (),
+        blockers: Sequence[ResearchIssue] = (),
+        retryable: bool = False,
+    ) -> ResearchJob | None:
+        """Persist one outcome when the worker still owns the lease."""
+        ...
+
+
+class ResearchJobWorker:
+    """Claim approved research jobs and retain restart-safe producer outcomes."""
+
+    def __init__(
+        self,
+        store: LeaseCapableResearchJobStore,
+        executor: ResearchJobExecutor,
+        *,
+        worker_id: str,
+        lease_seconds: int = 60,
+        max_attempts: int = 3,
+    ) -> None:
+        """Bind a worker identity, durable job store, and canonical executor."""
+        if not worker_id.strip():
+            raise ValueError("worker_id must not be blank")
+        if lease_seconds < 1:
+            raise ValueError("lease_seconds must be positive")
+        if max_attempts < 1:
+            raise ValueError("max_attempts must be positive")
+        self._store = store
+        self._executor = executor
+        self._worker_id = worker_id
+        self._lease_seconds = lease_seconds
+        self._max_attempts = max_attempts
+
+    async def run_once(self) -> bool:
+        """Claim and process one approved job, returning whether work was claimed."""
+        job = self._store.claim_next(
+            worker_id=self._worker_id,
+            lease_seconds=self._lease_seconds,
+            max_attempts=self._max_attempts,
+        )
+        if job is None:
+            return False
+        if job.operation_kind.value != "backtest":
+            self._finish_failed(
+                job,
+                ResearchIssue(
+                    code="unsupported_research_operation",
+                    message="This worker only executes admitted backtest jobs.",
+                    details={"operation_kind": job.operation_kind.value},
+                ),
+            )
+            return True
+
+        async def progress(last_decision_at: datetime | None = None) -> None:
+            """Renew the lease while the canonical producer is running."""
+            renewed = self._store.heartbeat(
+                job.job_id,
+                worker_id=self._worker_id,
+                lease_id=job.lease_id or "",
+                lease_seconds=self._lease_seconds,
+            )
+            if not renewed:
+                raise AmbiguousExecutionError(
+                    "The worker lost its ResearchJob lease during BacktestRunner execution"
+                )
+
+        try:
+            outcome = await self._executor.execute(job, progress=progress)
+        except AmbiguousExecutionError as exc:
+            outcome = ResearchJobExecutionOutcome(
+                status="reconciliation_required",
+                blockers=(
+                    ResearchIssue(
+                        code="ambiguous_producer_outcome",
+                        message=str(exc),
+                        details={"job_id": job.job_id},
+                    ),
+                ),
+            )
+        except Exception as exc:  # pragma: no cover - adapter failures vary
+            outcome = ResearchJobExecutionOutcome(
+                status="failed",
+                blockers=(
+                    ResearchIssue(
+                        code="worker_execution_failed",
+                        message=str(exc),
+                        details={"job_id": job.job_id},
+                    ),
+                ),
+            )
+
+        if (
+            outcome.status
+            in {"partial", "failed", "ambiguous", "reconciliation_required"}
+            and not outcome.blockers
+        ):
+            outcome = replace(
+                outcome,
+                blockers=(
+                    ResearchIssue(
+                        code="missing_outcome_blocker",
+                        message="Non-success research outcomes require a blocker.",
+                        details={"job_id": job.job_id},
+                    ),
+                ),
+            )
+        finished = self._store.finish(
+            job.job_id,
+            worker_id=self._worker_id,
+            lease_id=job.lease_id or "",
+            status=ResearchJobStatus(outcome.status),
+            produced_artifact_refs=outcome.produced_artifact_refs,
+            warnings=outcome.warnings,
+            blockers=outcome.blockers,
+            retryable=outcome.retryable,
+        )
+        if finished is None:
+            raise AmbiguousExecutionError(
+                "The worker could not retain the ResearchJob terminal receipt"
+            )
+        return True
+
+    def _finish_failed(self, job: ResearchJob, blocker: ResearchIssue) -> None:
+        """Persist a bounded failure before invoking an unsupported producer."""
+        finished = self._store.finish(
+            job.job_id,
+            worker_id=self._worker_id,
+            lease_id=job.lease_id or "",
+            status=ResearchJobStatus.FAILED,
+            blockers=(blocker,),
+        )
+        if finished is None:
+            raise AmbiguousExecutionError(
+                "The worker could not retain the unsupported-operation receipt"
+            )
+
+
 def deterministic_execution_run_id(execution_id: str, fingerprint: str) -> str:
     """Derive one stable producer run identity from command identity and content."""
-    return hashlib.sha256(f"console-backtest:{execution_id}:{fingerprint}".encode()).hexdigest()
+    return hashlib.sha256(
+        f"console-backtest:{execution_id}:{fingerprint}".encode()
+    ).hexdigest()
 
 
 class BacktestExecutionWorker:
@@ -185,5 +393,10 @@ __all__ = [
     "BacktestExecutor",
     "ExecutionOutcome",
     "ProgressSink",
+    "ResearchJobExecutionOutcome",
+    "ResearchJobExecutor",
+    "ResearchJobProgressSink",
+    "ResearchJobWorker",
+    "LeaseCapableResearchJobStore",
     "deterministic_execution_run_id",
 ]
