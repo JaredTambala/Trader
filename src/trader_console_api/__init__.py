@@ -79,6 +79,7 @@ from .worker import (
     ResearchJobExecutor,
     ResearchJobWorker,
     deterministic_execution_run_id,
+    deterministic_research_run_id,
 )
 
 __all__ = [
@@ -152,4 +153,5 @@ __all__ = [
     "ResearchJobWorker",
     "LeaseCapableResearchJobStore",
     "deterministic_execution_run_id",
+    "deterministic_research_run_id",
 ]
