@@ -358,8 +358,12 @@ that worker. It rereads the canonical `experiment_job_request`, proposal, and
 approved protocol from the research artifact store, checks the request digest,
 approval digest, actor, code/environment pins, and all upstream input hashes,
 then calls `BacktestRunnerResearchProducer`. The producer rereads the pinned
-implementation and Data evidence, executes the core `BacktestRunner`, and
-retains a deterministic `backtest_run` receipt. A successful producer must
+implementation and Data evidence, builds passed canonical strategy/risk/backtest
+specifications, and executes them through `run_backtest_specification` with the
+worker's stable run ID and lease progress callback. The receipt names actual
+specification IDs, implementation versions, and logical Data identity. Cost
+names/units must have an explicit supported mapping; conflicting or unsupported
+costs block before execution. A successful producer must
 return a resolvable receipt whose run identity matches the admitted job;
 otherwise the worker retains a typed partial or reconciliation blocker. The
 adapter never accepts a copied protocol, arbitrary strategy source, broker
@@ -373,18 +377,27 @@ remain explicit reconciliation or failure states.
 uv run pytest tests/cross_package/qualification/test_uj08_integrated_campaign.py -q
 ```
 
-The Postgres half of the campaign is a required CI qualification. It runs with
+The public Postgres campaign is a required CI qualification. It runs with
 `UJ08_PG_*` settings against a disposable database whose name ends in `_test`,
 creates a unique schema for the fixture, and drops that schema during cleanup.
 Running it locally uses the same command with those five settings exported and
 the `postgres` marker selected:
 
-<!-- verified: integration:local tests/cross_package/qualification/test_uj08_integrated_campaign.py -->
+<!-- verified: integration:local tests/cross_package/qualification/test_uj08_postgres_campaign.py -->
 ```bash
-UJ08_PG_HOST=127.0.0.1 UJ08_PG_PORT=5432 \
+UJ08_REQUIRED=1 UJ08_PG_HOST=127.0.0.1 UJ08_PG_PORT=5432 \
 UJ08_PG_DB=trader_uj08_test UJ08_PG_USER=trader UJ08_PG_PASSWORD=traderpass \
-  uv run pytest tests/cross_package/qualification/test_uj08_integrated_campaign.py -m postgres -q
+  uv run pytest tests/cross_package/qualification/test_uj08_postgres_campaign.py -m postgres -q
 ```
+
+This campaign uses actual stdio MCP, the canonical runner and specifications,
+Postgres jobs/artifacts/checkpoints, and a fresh interpreter for both session
+resume and complete evidence reconstruction. Scripted model responses qualify
+lifecycle mechanics only. Concurrent Evaluation/Robustness preflights retain
+missing-producer blockers and a blocked terminal outcome; no independent
+scientific report is implied. Fault cases inject producer responses over real
+job persistence. Required CI cannot skip its database profile or concurrent
+claim test. Session pause/resume does not suspend a running backtest.
 
 ### Complete data-to-backtest qualification
 

@@ -167,15 +167,18 @@ YAML config, uses the maintained catalogue adapter and internal broker, polls th
 `--once` execution. The worker still depends on explicit definition/execution schema installation and remains local
 scope only.
 
-UJ-08 now has an integrated deterministic qualification slice. The
-`ApprovedExperimentBacktestExecutor` rereads the approved proposal and
-protocol before invoking the operation-specific producer, while
-`ResearchJobWorker` retains the deterministic run receipt and fail-closed
-request or child-evidence drift. Evaluation and Robustness remain independent
-producer-owned inputs: the retained campaign joins them by exact experiment,
-scope, strategy, run, and revision identity and reports a missing or negative
-producer explicitly. The campaign does not claim controlled third-party-model
-acceptance or scientific validity.
+The UJ-08 deterministic campaign exercises real MCP proposal/approval registration
+and Supervisor-owned job admission, schema-isolated Postgres execution, and the
+canonical validated strategy/risk/backtest specification path. Its current
+single-backtest scope has no registered independent Evaluation/Robustness
+producer. Concurrent branch preflights therefore retain separate typed blockers
+in a canonical blocked `WorkflowOutcome`; they do not fabricate review reports.
+A new process reconstructs the proposal, approval, request, job, Data/source pins,
+validated specifications, run, and terminal join from canonical storage. A real
+Coordinator graph also proves operator interruption and fresh-process resume
+with Postgres checkpoints, real MCP, and scripted model responses. These checks
+qualify deterministic control and missing-evidence handling, not model-backed
+Experiment Design handoff, scientific review, or the complete UJ-08 feature.
 
 ## Data-to-Backtest Story Audit
 
@@ -277,8 +280,8 @@ separate checkpoint and decision lineage. A guarded Postgres test proves termina
 operating-system process. The Console command/worker surface and retained public-trajectory verifier are delivered;
 cross-process writer-race qualification and the failed real-model gate remain open. UJ-07 also remains gated by that
 model campaign. UJ-08 has deterministic proposal/approval and exact evidence-join qualifiers plus an accepted
-durable-job contract, but still needs the model-backed Experiment Design handoff, job adapters and producers, and
-independent Evaluation/Robustness paths. Replay identity is delivered. UJ-09 has the Console evidence/decision surface
+durable-job contract and a real validated backtest producer. Model-backed Experiment Design handoff and
+independent Evaluation/Robustness producers for a single-backtest protocol remain open. Replay identity is delivered. UJ-09 has the Console evidence/decision surface
 and retained deterministic qualification, while independent review and controlled-model evidence remain open. No agent
 journey is treated as controlled merely because deterministic component tests pass.
 
@@ -619,16 +622,22 @@ typed `research_submit_approved_experiment_job` MCP admission command with
 injected artifact/job stores and fails closed when durable job persistence is
 not configured. GAP-04-03B adds the lease-capable `ResearchJobWorker` plus
 Postgres claim, heartbeat, terminal, and expired-lease reconciliation paths.
-The worker composition now includes `BacktestRunnerResearchProducer`, which
-resolves the pinned implementation and Data evidence, verifies the qualified
-replay identity against the event store, runs the canonical `BacktestRunner`,
-and retains a deterministic `backtest_run` artifact under the request-derived
-run ID. The retained UJ-08 campaign covers approved admission, isolated-schema
-Postgres execution, concurrent independent review writes, fresh-process reopen,
-lease loss, cancellation, partial output, terminal failure, and explicit
-deterministic-versus-model-gate reporting. Hosted CI run `38312951086` passed
-the offline, Console, and dedicated UJ-08 Postgres jobs; the controlled
-third-party model gate and scientific validity remain separate product claims.
+`BacktestRunnerResearchProducer` now builds and validates actual strategy,
+risk-stack, and backtest specifications, then calls the research-owned
+`run_backtest_specification` service with the worker's request-derived run ID
+and lease progress callback. The run names real specification artifacts and the
+logical Data scope. Unsupported or conflicting cost semantics fail before
+execution; uncertain execution or receipt verification requires reconciliation.
+The required CI campaign is
+`tests/cross_package/qualification/test_uj08_postgres_campaign.py`. It covers
+public admission, a real runner, canonical missing-review blockers, complete
+fresh-process evidence reconstruction, session pause/resume, concurrent lease
+claims, and durable cancellation/partial/failure/worker-loss states. Required
+CI fails when its `UJ08_PG_*` profile is absent. Every case creates and drops its
+own schema; it neither consumes the shared `PG_TEST_*` fixtures nor silently
+skips worker-claim coverage. Scripted model responses and injected fault cases
+are identified separately from the real producer campaign. The feature remains
+limited by model-backed handoff and independent scientific producer maturity.
 
 The runtime may conclude, stop, request operator input, revise a specialist, revisit earlier work, or fork a new
 lineage. Equivalent low-information loops, policy violations, invalid evidence, exhausted budgets, and out-of-scope

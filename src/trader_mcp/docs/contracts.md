@@ -1116,3 +1116,19 @@ Minimal allowlists:
 
 LangGraph state may store artifact references, status, public messages, and structured decisions. It must not persist
 hidden reasoning or raw LLM scratchpads as product records.
+
+### Integrated approved-experiment qualification
+
+The required schema-isolated Postgres campaign uses production stdio MCP
+registrations for proposal creation, approved workflow registration, Supervisor
+job admission, exact artifact reads, and terminal outcome recording. Pending
+approval fails before job admission. The worker executes real validated
+specifications outside MCP. A fresh process rechecks every canonical edge and
+checks exact terminal resubmission without invoking the runner again.
+
+The catalogue currently has no independent review producer for a single
+approved backtest. Separate concurrent branch preflights preserve that absence
+as role/run-attributed blockers in the canonical `WorkflowOutcome`; optimisation
+review tools are not invoked with unrelated inputs. Scientific review and
+model-backed handoff therefore remain unqualified. This campaign adds no MCP
+operation, agent authority, event schema, or compatibility path.

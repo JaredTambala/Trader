@@ -20,8 +20,9 @@ from trader_research.foundation import (
 )
 from trader_research.foundation.artifacts import ArtifactReference, SCHEMA_VERSION
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import asdict
+from datetime import datetime
 from typing import Any, Mapping, Sequence
 
 from trader.backtest import BacktestResult, BacktestRunner, BacktestSpec, build_backtest_assumptions
@@ -128,6 +129,8 @@ def run_backtest_specification(
     prediction_deployment_reader: PredictionDeploymentReader | None = None,
     prediction_mapper_catalog: PredictionMapperCatalog | None = None,
     prediction_runtime_resolver: PredictionRuntimeResolver | None = None,
+    run_id: str | None = None,
+    progress_callback: Callable[[int, int, datetime | None], None] | None = None,
 ) -> ApplicationResult:
     """Execute a passed backtest specification and persist its complete result.
 
@@ -138,11 +141,20 @@ def run_backtest_specification(
     trades, equity, positions, risk decisions, and provenance in one canonical
     backtest artifact.
 
+    Args:
+        run_id: Optional stable identity supplied by the admitted durable worker.
+            The persisted specification lineage is checked before identity reuse.
+        progress_callback: Optional synchronous lease/progress callback invoked
+            by the core runner; a callback failure makes execution uncertain.
+
     Returns:
         A result containing the canonical run and summary. ``ok`` is false when
-        validation, runtime construction, replay, or persistence is blocked.
+        validation, runtime construction, replay, or persistence is blocked. An
+        admitted durable worker may supply its stable run identity and lease
+        progress callback; retained specification provenance is still revalidated.
     """
     command = RESEARCH_RUN_BACKTEST_SPECIFICATION
+    execution_started = False
     if artifact_store is None:
         return _error(command, "research_artifact_store_required", "A ResearchArtifactStore is required.")
     try:
@@ -200,7 +212,7 @@ def run_backtest_specification(
             Position(symbol=str(row["symbol"]), qty=float(row["qty"]), avg_price=row.get("avg_price"))
             for row in specification.get("initial_positions", [])
         ]
-        run_id = stable_research_id(
+        run_id = run_id or stable_research_id(
             "backtest_run",
             {
                 "backtest_specification_id": specification["backtest_specification_id"],
@@ -250,15 +262,19 @@ def run_backtest_specification(
             run_id=run_id,
             started_at=parse_datetime(window["start"], "dataset.start"),
         )
+        execution_started = True
         backtest_result = runner.run(
-            log_cycle_details=bool(specification.get("log_cycle_details"))
+            log_cycle_details=bool(specification.get("log_cycle_details")),
+            progress_callback=progress_callback,
         )
     except ReplayDataIdentityMismatch as exc:
         return _error(command, f"replay_data_identity_{exc.code}", str(exc))
     except (ValueError, KeyError, ResearchArtifactStoreError, RuntimeError) as exc:
-        return _error(command, "backtest_specification_execution_failed", str(exc))
+        code = "backtest_specification_execution_ambiguous" if execution_started else "backtest_specification_execution_failed"
+        return _error(command, code, str(exc))
     except Exception as exc:
-        return _error(command, "backtest_specification_execution_failed", f"backtest failed: {exc}")
+        code = "backtest_specification_execution_ambiguous" if execution_started else "backtest_specification_execution_failed"
+        return _error(command, code, f"backtest failed: {exc}")
 
     status = (
         "passed"
