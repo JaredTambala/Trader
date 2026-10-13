@@ -92,9 +92,22 @@ source-free request, rereads proposal and approval records, revalidates every
 Data and implementation reference, and checks the returned `backtest_run`
 receipt before retaining success. Evaluation and Robustness records remain
 independent producer-owned artifacts; their absence, negative result, or
-identity mismatch remains visible to `EvidenceJoinResult`. The deterministic
-fixture records its retained join and fresh-process reread separately from the
-controlled third-party model gate.
+identity mismatch remains visible to `EvidenceJoinResult`. The public Postgres
+campaign reconstructs its full chain from canonical storage in a fresh process.
+Single-backtest independent review producers are currently unavailable: separate
+branch preflights retain typed blockers in the canonical terminal outcome rather
+than writing simulated review artifacts. Model-backed handoff and scientific
+review remain separate feature limits.
+
+The worker producer uses the same canonical specification and execution services
+as other research backtests. It records real strategy/risk/backtest artifacts,
+seals the approved request reference and digest in specification runtime limits,
+and calls `run_backtest_specification` with an admitted `run_id` and
+`progress_callback`. The service always checks retained-run provenance, including
+explicit run identities, before returning an idempotent receipt. Errors after
+runner execution begins are classified as ambiguous; failures to retain a run
+receipt likewise require worker reconciliation. Unsupported or conflicting
+approved cost semantics fail during compilation before the runner starts.
 
 ## Optimisation and projection boundaries
 

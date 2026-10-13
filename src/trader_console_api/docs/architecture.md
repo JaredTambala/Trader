@@ -289,15 +289,20 @@ proposal, and approved protocol through `ResearchArtifactStore`, validates
 every digest and authority edge, and delegates only the typed request and
 protocol to the canonical `BacktestRunnerResearchProducer` in the worker
 composition. That producer rereads the pinned implementation and Data
-manifest/quality records, instantiates the maintained strategy/risk contracts,
-runs `BacktestRunner` against the configured event store, and writes one
-deterministic `backtest_run` artifact. A bounded injected producer remains a
+manifest/quality records, creates passed implementation and strategy/risk/backtest
+specifications through the canonical research services, and delegates execution
+to `run_backtest_specification`. Specification lineage names actual persisted
+artifacts; logical dataset identity is distinct from manifest artifact identity.
+The worker's deterministic run ID and progress callback enter that same service,
+which revalidates replay bars and suppresses an exact retained-run replay. A bounded injected producer remains a
 test seam for denial and partial-path tests only. This keeps worker lease state,
 research approval state, and operation-specific runner construction in separate
 owners. Before execution, the producer re-reads and validates the qualified
 replay-data identity against the event store; the retained run therefore carries
 both the qualified digest and the observed replay receipt. Child references are reread before the worker can retain a successful
-outcome; missing, drifted, or mismatched run evidence becomes a bounded failure.
+outcome. A missing successful receipt becomes partial; evidence that cannot be
+verified after producer execution requires reconciliation because side effects
+may already have occurred.
 
 The completed execution-to-review path keeps that process boundary explicit. The demo/bootstrap owner installs the
 core event tables, the producer research-artifact projection, the `console_read` contract, and the three Console

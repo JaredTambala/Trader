@@ -26,7 +26,7 @@ interface; the agent system carries out bounded research workflows; MCP gives th
 platform. The personal outcome is substantive evidence of quantitative development ability and a way to explore
 real-world trading. These are distinct reasons for building Trader, and both should influence what is worth doing.
 
-## Delivery reconciliation — 11 October 2026
+## Current capability boundaries
 
 The recent delivery tranche has closed several deterministic boundaries while leaving the product journey gates
 explicit. Data discovery/evidence, exact scope handoff, replay identity, and the successful data-to-backtest Console
@@ -36,10 +36,14 @@ operation decision is accepted: backtest, optimisation, walk-forward, and traini
 contract with fail-closed ambiguity and reconciliation states.
 
 The remaining product claims are separate: the reviewed model candidate has not passed the controlled behavior gate;
-UJ-08 still needs model-backed Experiment Design handoff, durable-job adapters/producers, and independent
-Evaluation/Robustness producers; broader worker failure campaigns and one unified cross-journey evidence chain remain
-open. TRD-322 now qualifies the deterministic UJ-08 evidence join across proposal, approval, scope, strategy, run,
-review, decision, and retained trajectory identities. These are capability limits, not reasons to downgrade the
+UJ-08 still needs model-backed Experiment Design handoff and independent
+Evaluation/Robustness producers for its single-backtest scope. The deterministic
+MCP admission, validated backtest, durable fault/recovery, and missing-review
+boundaries are covered by a retained campaign. Its blocked outcome is
+reconstructable after restart; it does not establish independent scientific
+review. One unified cross-journey evidence chain remains open. The deterministic
+evidence-join contract covers proposal, approval, scope, strategy, run, review,
+decision, and retained trajectory identities. These are capability limits, not reasons to downgrade the
 deterministic evidence already delivered.
 
 ## Candidate user journeys
@@ -1160,15 +1164,3 @@ claim. This serves Jared's professional goal across UJ-02 through UJ-09.
 
 The intent is ready for revision, not acceptance. We should refine the journeys and requirements against Jared's
 answers and real examples, then record an explicit human review of the resulting version.
-
-## UJ-08 qualification correction — 12 October 2026
-
-The previous merged-delivery note overstated the UJ-08 qualification. PR #62
-delivered only the typed proposal/approval and job boundary plus a synthetic
-offline campaign. The completed TRD-323 slice now adds the concrete
-`BacktestRunnerResearchProducer` and hosted evidence from the required isolated
-Postgres campaign: qualified replay verification, fresh-process artifact
-reopening, concurrent independent reviews, cancellation, lease loss, partial
-output, and terminal failure. This qualifies the deterministic product journey;
-model-backed acceptance, scientific validity, and paper-trading admission remain
-separate product claims.

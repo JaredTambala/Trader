@@ -123,3 +123,16 @@ The retained file appears at
 `/tmp/trader-trd326-decision/test_human_decision_reopens_ex0/uj09-human-next-decision-verifier.json`.
 This qualifies the decision seam; the local graph fixture is not durable
 product graph storage or independent scientific review.
+
+## Governed experiment control qualification
+
+The deterministic public Postgres experiment campaign under
+`tests/cross_package/qualification/test_uj08_postgres_campaign.py` also exercises
+the current Coordinator's public interruption and resume methods against real
+MCP and Postgres checkpoints. The owning operator interrupts an active scripted
+model call; a new process checks the same session and branch before applying a
+typed operator response. A foreign operator cannot resume it. The experiment
+job remains a separate durable operation, so pausing the session does not
+suspend an executing backtest. This evidence qualifies lifecycle mechanics and
+blocked-evidence handling, not an admitted third-party model or an implemented
+Experiment Design/Evaluation/Adversarial agent loop.
