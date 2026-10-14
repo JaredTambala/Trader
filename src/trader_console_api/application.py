@@ -52,6 +52,9 @@ from .repositories.next_research_decisions import NextResearchDecisionRepository
 from .services.next_research_decisions import NextResearchDecisionService
 from .repositories.agent_sessions import AgentSessionRepository
 from .services.agent_sessions import AgentSessionService
+from .repositories.decision_basis import DecisionBasisRepository
+from .services.decision_basis import DecisionBasisService
+from .routers.decision_basis import router as decision_basis_router
 
 
 class AuthenticationProvider(Protocol):
@@ -162,6 +165,9 @@ def create_app(
         app.state.paper_operator_command_service = paper_operator_command_service
         app.state.next_research_decision_service = next_research_decision_service
         app.state.agent_session_service = agent_session_service
+        app.state.decision_basis_service = DecisionBasisService(
+            DecisionBasisRepository(database, configured_settings.scope.scope_id)
+        )
         try:
             try:
                 await pool.open(
@@ -205,6 +211,7 @@ def create_app(
     app.include_router(paper_runtime_router)
     app.include_router(paper_operator_command_router)
     app.include_router(next_research_decision_router)
+    app.include_router(decision_basis_router)
     app.include_router(agent_session_router)
     from .routers.comparison_views import router as comparison_view_router
 

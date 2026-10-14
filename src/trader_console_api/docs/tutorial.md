@@ -310,3 +310,18 @@ canonical outcome and full structured blockers, leaves `review_refs` empty, and 
 `not_assessed`. Reject records a stopping choice; refine and continue additionally require the bounded successor
 contract. The API re-resolves the protocol and all input hashes before recording the immutable choice. This capability
 does not claim a successful scientific review or execute the successor.
+
+### Review a persisted experiment and choose the next step
+
+Open the experiment's exact run in `/backtests`. Inspect the qualified Data scope, implementation evidence,
+claims and limitations, and the human-decision panel's **Verified persisted evidence** result. Expand **Exact
+artifact hashes and revisions** to inspect the references that the command will carry. If canonical evidence is
+unavailable or incompatible, refresh it after resolving the reported issue; the panel does not accept manual
+replacement IDs.
+
+For an executed experiment blocked on absent independent scientific reviews, inspect each unresolved blocker.
+Scientific review remains **Not assessed**. Choose **Reject**, or **Refine** with a question, forward evaluation
+window, maximum runs and success criteria. Enter a rationale and limitations, then select **Record decision**.
+The resulting persisted receipt includes the operator, time and exact source run. Refresh or reopen the run to
+load its decision history. A failed or stale submission requires **Refresh persisted evidence** before another
+attempt. Recording a decision does not approve deployment or execute the successor experiment.

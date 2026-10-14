@@ -23,8 +23,11 @@ renderer; the review pages read persisted evidence and derive presentation from 
 
 The producer-backed execution qualification runs that authoring command through a separate local worker and reopens the
 result on `/backtests` with the exact data-scope identity, persisted assumptions, fills, warnings, review artifacts,
-and comparison state. The review panel records a human next decision through the same-origin API; missing or
-incompatible evidence remains visible and blocks the command. Failed and ambiguous worker campaigns, plus replay-bar
+and comparison state. The review panel reads an authenticated, server-verified decision basis through the same-origin API. It carries
+the displayed canonical hashes and references into the human command, without manual artifact-ID entry. Blocked
+workflow evidence with absent independent reviews remains **Not assessed**, with only reject or bounded refine
+actions. Missing or incompatible evidence remains visible and blocks the command. A stale or failed submission
+requires an explicit evidence refresh; persisted receipts and decision history survive reopening. Failed and ambiguous worker campaigns, plus replay-bar
 identity, remain separate qualification boundaries.
 
 `/paper` renders the current paper runtime evidence and a human operator command panel. Commands require an approved

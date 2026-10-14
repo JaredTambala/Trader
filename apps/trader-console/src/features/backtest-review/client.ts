@@ -12,6 +12,7 @@ export type RunDetail = components["schemas"]["RunDetail"];
 export type ResourceRecord = components["schemas"]["ResourceRecord"];
 export type RiskDecisionsResponse = components["schemas"]["RiskDecisionsResponse"];
 export type RiskDecisionOutcome = components["schemas"]["RiskDecision"]["outcome"];
+export type DecisionBasisResponse = components["schemas"]["DecisionBasisResponse"];
 export type NextResearchDecisionRecord = components["schemas"]["NextResearchDecisionRecord"];
 export type NextResearchDecisionRequest = components["schemas"]["NextResearchDecisionRequest"];
 
@@ -119,5 +120,13 @@ export async function loadNextResearchDecision(
     signal,
   });
   if (!result.response.ok || !result.data) throw errorFrom(result, "Research decision");
+  return result.data;
+}
+
+export async function loadDecisionBasis(signal: AbortSignal, runId: string) {
+  const result = await client.GET("/api/runs/{run_id}/decision-basis", {
+    params: { path: { run_id: runId } }, signal,
+  });
+  if (!result.response.ok || !result.data) throw errorFrom(result, "Decision evidence");
   return result.data;
 }

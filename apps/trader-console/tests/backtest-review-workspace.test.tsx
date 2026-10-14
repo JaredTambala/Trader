@@ -1,9 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BacktestReviewWorkspace } from "../src/features/backtest-review/backtest-review-workspace";
-import { createNextResearchDecision, loadExperimentRuns, loadExperiments, loadNextResearchDecisions, loadRiskDecisions, loadRunDetail, type RunDetail } from "../src/features/backtest-review/client";
+import { loadDecisionBasis, createNextResearchDecision, loadExperimentRuns, loadExperiments, loadNextResearchDecisions, loadRiskDecisions, loadRunDetail, type RunDetail } from "../src/features/backtest-review/client";
 
 vi.mock("../src/features/backtest-review/client", () => ({
+  loadDecisionBasis: vi.fn(),
   loadExperimentRuns: vi.fn(),
   loadExperiments: vi.fn(),
   loadRunDetail: vi.fn(),
@@ -38,6 +39,7 @@ const detail = {
 } satisfies RunDetail;
 
 beforeEach(() => {
+  vi.mocked(loadDecisionBasis).mockResolvedValue({ run_id: "run-1", status: "unavailable", reason: "No canonical decision basis is published", permitted_outcomes: [], limitations: [] });
   vi.mocked(loadExperiments).mockResolvedValue({ items: [experiment], page: { limit: 100, offset: 0, total: 1, has_more: false } });
   vi.mocked(loadExperimentRuns).mockResolvedValue({ items: [run], page: { limit: 100, offset: 0, total: 1, has_more: false } });
   vi.mocked(loadRunDetail).mockResolvedValue(detail);

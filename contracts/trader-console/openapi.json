@@ -3288,6 +3288,127 @@
         "title": "DataScopeSourcePolicy",
         "type": "object"
       },
+      "DecisionBasisResponse": {
+        "additionalProperties": false,
+        "description": "Read-only evidence availability, identity and permitted human outcomes.",
+        "properties": {
+          "evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecisionEvidenceBasis"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limitations": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "permitted_outcomes": {
+            "default": [],
+            "items": {
+              "enum": [
+                "reject",
+                "refine",
+                "continue"
+              ],
+              "type": "string"
+            },
+            "title": "Permitted Outcomes",
+            "type": "array"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "unavailable",
+              "incompatible"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "reason"
+        ],
+        "title": "DecisionBasisResponse",
+        "type": "object"
+      },
+      "DecisionEvidenceBasis": {
+        "additionalProperties": false,
+        "description": "Canonical references copied unchanged into a human decision command.",
+        "properties": {
+          "assumptions": {
+            "additionalProperties": true,
+            "title": "Assumptions",
+            "type": "object"
+          },
+          "blocked_evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlockedEvidenceBasisContract"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data_ref": {
+            "$ref": "#/components/schemas/NextDecisionArtifactReference"
+          },
+          "implementation_refs": {
+            "items": {
+              "$ref": "#/components/schemas/NextDecisionArtifactReference"
+            },
+            "minItems": 1,
+            "title": "Implementation Refs",
+            "type": "array"
+          },
+          "review_refs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/NextDecisionArtifactReference"
+            },
+            "title": "Review Refs",
+            "type": "array"
+          },
+          "session_review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionReviewLinkContract"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_run_ref": {
+            "$ref": "#/components/schemas/NextDecisionArtifactReference"
+          }
+        },
+        "required": [
+          "source_run_ref",
+          "data_ref",
+          "implementation_refs"
+        ],
+        "title": "DecisionEvidenceBasis",
+        "type": "object"
+      },
       "ExperimentRunSummary": {
         "additionalProperties": false,
         "description": "A backtest run and its current comparison eligibility.",
@@ -9733,6 +9854,81 @@
         "summary": "Run Detail",
         "tags": [
           "resources"
+        ]
+      }
+    },
+    "/api/runs/{run_id}/decision-basis": {
+      "get": {
+        "description": "Return verified references without writing a decision or launching execution.",
+        "operationId": "get_decision_basis_api_runs__run_id__decision_basis_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionBasisResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Decision Basis",
+        "tags": [
+          "research-decisions"
         ]
       }
     },
