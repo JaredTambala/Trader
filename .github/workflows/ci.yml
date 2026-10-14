@@ -110,3 +110,61 @@ jobs:
           name: uj08-postgres-verifier-${{ github.sha }}
           path: uj08-postgres-verifier.json*
           if-no-files-found: error
+
+  uj09-qualification:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: trader_uj09_test
+          POSTGRES_USER: trader
+          POSTGRES_PASSWORD: traderpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trader -d trader_uj09_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --dev --extra ml --group docs
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: apps/trader-console/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/trader-console/package-lock.json
+      - run: npm install --global npm@11.19.0
+      - run: npm ci
+        working-directory: apps/trader-console
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/trader-console
+      - name: Qualify real execution, Console decision and restart
+        env:
+          UJ09_PG_HOST: 127.0.0.1
+          UJ09_PG_PORT: "5432"
+          UJ09_PG_DB: trader_uj09_test
+          UJ09_PG_USER: trader
+          UJ09_PG_PASSWORD: traderpass
+          UJ09_REQUIRED: "1"
+          UJ09_EVIDENCE_PATH: ${{ github.workspace }}/uj09-postgres-browser-verifier.json
+        run: uv run pytest tests/cross_package/qualification/test_uj09_postgres_browser_campaign.py -m postgres -q
+      - name: Retain exact UJ-09 verifier
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uj09-verifier-${{ github.sha }}
+          path: uj09-postgres-browser-verifier.json
+          if-no-files-found: error
+      - name: Retain UJ-09 browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uj09-browser-${{ github.sha }}
+          path: apps/trader-console/test-results/
+          if-no-files-found: warn
