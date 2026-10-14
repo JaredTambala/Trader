@@ -98,3 +98,7 @@ Strategy Engineering, Experiments, Evaluation, and Adversarial review.
 Current availability and qualification are recorded centrally in [Product State](../../docs/product_state.md). The MCP
 surface is documented by [`trader_mcp`](../trader_mcp/README.md); the model-backed coordinator is documented by
 [`trader_agents`](../trader_agents/README.md).
+
+Human decisions may instead cite `BlockedEvidenceBasis` when a canonical workflow outcome retains unresolved blockers
+and no scientific review reports. The basis pins the terminal outcome and protocol input chain; missing reviews remain
+`not_assessed`. Reject, refine and bounded continuation do not clear blockers or authorize execution.

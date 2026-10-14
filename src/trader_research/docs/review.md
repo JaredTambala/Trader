@@ -45,3 +45,12 @@ mismatched join.
 The verifier is pure and does not load a latest record, persist payloads, or grant approval. Its JSON projection can be
 retained and reopened by a fresh process, which qualifies lineage reconstruction separately from worker durability,
 model behavior, independent producer maturity, and paper-trading admission.
+
+## Decisions when scientific review is unavailable
+
+Governance accepts `BlockedEvidenceBasis` as a distinct human decision basis. It is not a scientific-review report.
+The canonical `WorkflowOutcome` must be blocked, have no review verdict refs, and identify the exact source run. The
+decision retains its complete structured blockers and hashes, qualified protocol Data and quality references, and every
+admitted strategy/risk implementation. Hash drift, unrelated canonical inputs, altered blocker details and agent writes
+fail closed. `scientific_review_status` remains `not_assessed`; reject/refine/continue never grant scientific confidence,
+deployment readiness or paper admission. Refine and continue retain the blocker basis and require a bounded successor.

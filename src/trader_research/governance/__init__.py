@@ -47,6 +47,7 @@ from .artifacts import (
     WORKFLOW_PLAN,
 )
 from .next_decisions import (
+    BlockedEvidenceBasis,
     BoundedNextExperiment,
     NextDecisionOutcome,
     NextResearchDecision,
@@ -190,6 +191,7 @@ __all__ = [
     "BACKTEST_RUN",
     "BACKTEST_SPECIFICATION",
     "BACKTEST_SPECIFICATION_VALIDATION_REPORT",
+    "BlockedEvidenceBasis",
     "BoundedNextExperiment",
     "AgentDefinition",
     "Approval",

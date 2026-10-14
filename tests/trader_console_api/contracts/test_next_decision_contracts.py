@@ -94,3 +94,19 @@ def test_session_decision_requires_exact_named_review_revisions() -> None:
         _request(session_review={**link, "review_node_keys": ["evaluation_report:review-1"]})
     with pytest.raises(ValidationError, match="Input should be"):
         _request(outcome="deploy")
+
+
+def test_blocked_evidence_accepts_no_reviews_but_keeps_exact_basis():
+    """An unassessed canonical outcome is a distinct valid human decision basis."""
+    from tests.trader_research.governance.support.blocked_decisions import blocked_fixture
+    from trader_console_api.contracts import NextResearchDecisionRequest
+
+    _, decision, _ = blocked_fixture()
+    payload = decision.to_dict()
+    request_fields = NextResearchDecisionRequest.model_fields
+    request = NextResearchDecisionRequest.model_validate({key: value for key, value in payload.items() if key in request_fields})
+    assert request.review_refs == ()
+    assert request.blocked_evidence.scientific_review_status == "not_assessed"
+    assert request.blocked_evidence.blockers[0].details["role"] == "evaluation"
+    with pytest.raises(ValueError, match="payload_sha256"):
+        NextResearchDecisionRequest.model_validate({**request.model_dump(), "data_ref": {**request.data_ref.model_dump(), "metadata": {}}})

@@ -1180,6 +1180,27 @@ class SessionReviewLinkContract(BaseModel):
         return self
 
 
+class BlockedEvidenceIssueContract(BaseModel):
+    """Canonical unresolved blocker including its producer-owned details."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    code: str = Field(min_length=1, max_length=200)
+    message: str = Field(min_length=1, max_length=4000)
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class BlockedEvidenceBasisContract(BaseModel):
+    """Terminal blocked evidence; scientific reviews remain unassessed."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    outcome_ref: NextDecisionArtifactReference
+    blockers: tuple[BlockedEvidenceIssueContract, ...] = Field(min_length=1, max_length=32)
+    session_ref: NextDecisionArtifactReference | None = None
+    scientific_review_status: Literal["not_assessed"] = "not_assessed"
+
+
 class NextResearchDecisionRequest(BaseModel):
     """Human command for recording one immutable next-decision revision."""
 
@@ -1193,8 +1214,9 @@ class NextResearchDecisionRequest(BaseModel):
     data_ref: NextDecisionArtifactReference
     implementation_refs: tuple[NextDecisionArtifactReference, ...] = Field(min_length=1, max_length=16)
     assumptions: dict[str, Any] = Field(default_factory=dict)
-    review_refs: tuple[NextDecisionArtifactReference, ...] = Field(min_length=1, max_length=32)
+    review_refs: tuple[NextDecisionArtifactReference, ...] = Field(max_length=32)
     session_review: SessionReviewLinkContract | None = None
+    blocked_evidence: BlockedEvidenceBasisContract | None = None
     limitations: tuple[str, ...] = Field(min_length=1, max_length=32)
     next_experiment: BoundedNextExperimentContract | None = None
     supersedes_artifact_id: str | None = Field(default=None, max_length=200)
@@ -1210,6 +1232,21 @@ class NextResearchDecisionRequest(BaseModel):
     @model_validator(mode="after")
     def validate_successor(self) -> NextResearchDecisionRequest:
         """Require the successor experiment exactly when the outcome advances."""
+        if not self.review_refs and self.blocked_evidence is None:
+            raise ValueError("review_refs or blocked_evidence are required")
+        if self.blocked_evidence is not None:
+            if self.review_refs or self.session_review is not None:
+                raise ValueError("blocked_evidence cannot claim scientific reviews")
+            references = (self.source_run_ref, self.data_ref, *self.implementation_refs,
+                          self.blocked_evidence.outcome_ref)
+            if self.blocked_evidence.session_ref is not None:
+                references += (self.blocked_evidence.session_ref,)
+            if self.next_experiment is not None:
+                references += (self.next_experiment.data_ref, *self.next_experiment.implementation_refs)
+            for reference in references:
+                digest = reference.metadata.get("payload_sha256")
+                if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+                    raise ValueError("blocked evidence requires payload_sha256 for every reference")
         if self.outcome in {"refine", "continue"} and self.next_experiment is None:
             raise ValueError(f"{self.outcome} decisions require next_experiment")
         if self.outcome == "reject" and self.next_experiment is not None:
@@ -1254,6 +1291,7 @@ class NextResearchDecisionRecord(BaseModel):
     assumptions: dict[str, Any]
     review_refs: tuple[NextDecisionArtifactReference, ...]
     session_review: SessionReviewLinkContract | None = None
+    blocked_evidence: BlockedEvidenceBasisContract | None = None
     limitations: tuple[str, ...]
     next_experiment: BoundedNextExperimentContract | None = None
     supersedes_artifact_id: str | None = None

@@ -115,3 +115,16 @@ the reconciliation-required error instead of issuing a blind second mutation.
 
 Use [Artifacts And Persistence](artifacts_and_persistence.md) for the evidence contract, then continue to the focused
 Data, Knowledge, Methodology, Experiments, Review, Coding, or ML guide linked from the package README.
+
+## 7. Record a useful choice while reviews are blocked
+
+When the terminal workflow has unresolved scientific-review producer blockers, resolve its exact canonical references
+and construct a `BlockedEvidenceBasis`. Supply it to `build_next_research_decision` with empty `review_refs`. Preserve
+the full blocker list, including producer/branch details, and cite the source run, qualified protocol Data and all
+admitted strategy/risk implementations. Record a human reject, or append a refine/continue revision with an explicit
+evaluation window, run budget and success criteria. This records the next research choice without clearing blockers
+or starting the successor. Reopen the exact revision to inspect its unchanged evidence basis.
+
+The producer-shaped executable example in `tests/trader_research/governance/support/blocked_decisions.py` is exercised
+by `tests/trader_research/governance/test_blocked_next_decisions.py`; PostgreSQL and fresh-process recovery are verified
+by `tests/trader_console_api/repositories/test_postgres_blocked_decisions.py`.

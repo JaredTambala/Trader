@@ -429,3 +429,9 @@ These examples describe the approved join keys; the repository uses Psycopg `%s`
 names. Pagination metadata is calculated with a window count and never exposed as a client SQL primitive. The API does
 not query `public.experiments` directly because experiment metadata is not currently part of the published Console
 contract; exposing names/tags is an explicit producer-contract gap for later work.
+
+Blocked-evidence commands use the same transaction and immutable projection. The adapter preloads the exact terminal
+outcome, objective, protocol, Data/quality and implementation chain and applies the research-owned blocked validator.
+It never treats client-supplied hashes as proof: every payload is reloaded and compared. Missing reviews remain
+unassessed; optional sessions require explicit canonical linkage. No graph digest is invented for a blocked outcome
+without a retained graph. The genuine review-record path and its session/revision checks remain supported.

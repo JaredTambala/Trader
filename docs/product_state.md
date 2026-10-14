@@ -257,6 +257,12 @@ resolve those references again, reject missing/stale/cross-run evidence and agen
 revision after a fresh process. The record is a research choice only; it does not start execution, approve paper
 trading, or imply profitability. Integrated UJ-09 qualification and retained agent trajectory evidence remain open.
 
+The human next-decision API also accepts a typed canonical blocked-evidence basis when scientific reviews are
+unavailable. It retains the terminal blockers and exact protocol/run/Data/implementation hashes, and permits human
+reject/refine/bounded continuation while leaving scientific review `not_assessed`. Domain/API contracts and isolated
+PostgreSQL fresh-process recovery cover this boundary; the integrated UJ-08 → UJ-09 browser handoff remains a separate
+qualification. Existing genuine-review decisions and session graph/revision links remain supported.
+
 GAP-03-04 now qualifies the successful Console execution-to-review journey against a fresh disposable PostgreSQL
 database. A separate worker reads the immutable definition, runs the maintained strategy through the canonical
 `BacktestRunner`, persists a typed result snapshot, and exposes scope identity, assumptions, benchmark/performance,

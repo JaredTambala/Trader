@@ -2229,6 +2229,75 @@
         "title": "BarsResponse",
         "type": "object"
       },
+      "BlockedEvidenceBasisContract": {
+        "additionalProperties": false,
+        "description": "Terminal blocked evidence; scientific reviews remain unassessed.",
+        "properties": {
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/BlockedEvidenceIssueContract"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Blockers",
+            "type": "array"
+          },
+          "outcome_ref": {
+            "$ref": "#/components/schemas/NextDecisionArtifactReference"
+          },
+          "scientific_review_status": {
+            "const": "not_assessed",
+            "default": "not_assessed",
+            "title": "Scientific Review Status",
+            "type": "string"
+          },
+          "session_ref": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NextDecisionArtifactReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "outcome_ref",
+          "blockers"
+        ],
+        "title": "BlockedEvidenceBasisContract",
+        "type": "object"
+      },
+      "BlockedEvidenceIssueContract": {
+        "additionalProperties": false,
+        "description": "Canonical unresolved blocker including its producer-owned details.",
+        "properties": {
+          "code": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "message": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "BlockedEvidenceIssueContract",
+        "type": "object"
+      },
       "BoundedNextExperimentContract": {
         "additionalProperties": false,
         "description": "Bounded successor experiment attached to a refine or continue decision.",
@@ -4299,6 +4368,16 @@
             "title": "Assumptions",
             "type": "object"
           },
+          "blocked_evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlockedEvidenceBasisContract"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "data_ref": {
             "$ref": "#/components/schemas/NextDecisionArtifactReference"
           },
@@ -4425,6 +4504,16 @@
             "title": "Assumptions",
             "type": "object"
           },
+          "blocked_evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlockedEvidenceBasisContract"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "data_ref": {
             "$ref": "#/components/schemas/NextDecisionArtifactReference"
           },
@@ -4482,7 +4571,6 @@
               "$ref": "#/components/schemas/NextDecisionArtifactReference"
             },
             "maxItems": 32,
-            "minItems": 1,
             "title": "Review Refs",
             "type": "array"
           },

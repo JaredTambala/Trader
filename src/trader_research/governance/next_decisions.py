@@ -43,6 +43,7 @@ from .artifacts import (
     RISK_STACK_SPECIFICATION,
 )
 from .handoffs import ArtifactReportRef
+from .blocked_decisions import BlockedEvidenceBasis, validate_blocked_evidence
 
 
 RESEARCH_RECORD_NEXT_DECISION = "research_record_next_decision"
@@ -74,6 +75,7 @@ _ALLOWED_FIELDS = frozenset(
         "assumptions",
         "review_refs",
         "session_review",
+        "blocked_evidence",
         "limitations",
         "next_experiment",
         "supersedes_artifact_id",
@@ -226,6 +228,7 @@ class NextResearchDecision:
     review_refs: tuple[ArtifactReportRef, ...]
     limitations: tuple[str, ...]
     session_review: SessionReviewLink | None = None
+    blocked_evidence: BlockedEvidenceBasis | None = None
     next_experiment: BoundedNextExperiment | None = None
     supersedes_artifact_id: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
@@ -252,8 +255,16 @@ class NextResearchDecision:
             raise ValueError("data_ref must be a Data artifact")
         _require_implementation_refs(self.implementation_refs, "decision")
         _require_mapping(self.assumptions, "assumptions")
-        if not self.review_refs:
-            raise ValueError("review_refs are required")
+        if not self.review_refs and self.blocked_evidence is None:
+            raise ValueError("review_refs or blocked_evidence are required")
+        if self.blocked_evidence is not None:
+            if self.review_refs or self.session_review is not None:
+                raise ValueError("blocked_evidence cannot claim scientific reviews")
+            references = (self.source_run_ref, self.data_ref, *self.implementation_refs)
+            if self.next_experiment is not None:
+                references += (self.next_experiment.data_ref, *self.next_experiment.implementation_refs)
+            for reference in references:
+                self.blocked_evidence.require_pinned(reference)
         if any(item.artifact_type not in _REVIEW_ARTIFACT_TYPES for item in self.review_refs):
             raise ValueError("review_refs must contain review artifacts")
         if self.session_review is not None:
@@ -325,6 +336,8 @@ class NextResearchDecision:
         }
         if self.session_review is not None:
             payload["session_review"] = self.session_review.to_dict()
+        if self.blocked_evidence is not None:
+            payload["blocked_evidence"] = self.blocked_evidence.to_dict()
         return payload
 
     @classmethod
@@ -361,6 +374,10 @@ class NextResearchDecision:
                 SessionReviewLink.from_dict(_mapping(payload["session_review"]))
                 if payload.get("session_review") is not None else None
             ),
+            blocked_evidence=(
+                BlockedEvidenceBasis.from_dict(_mapping(payload["blocked_evidence"]))
+                if payload.get("blocked_evidence") is not None else None
+            ),
             limitations=_text_tuple(payload.get("limitations")),
             next_experiment=(
                 BoundedNextExperiment.from_dict(_mapping(payload.get("next_experiment")))
@@ -395,6 +412,7 @@ def build_next_research_decision(
     review_refs: Sequence[ArtifactReportRef],
     limitations: Sequence[str],
     session_review: SessionReviewLink | None = None,
+    blocked_evidence: BlockedEvidenceBasis | None = None,
     next_experiment: BoundedNextExperiment | None = None,
     supersedes_artifact_id: str | None = None,
     metadata: Mapping[str, Any] | None = None,
@@ -414,6 +432,7 @@ def build_next_research_decision(
         review_refs=tuple(review_refs),
         limitations=tuple(limitations),
         session_review=session_review,
+        blocked_evidence=blocked_evidence,
         next_experiment=next_experiment,
         supersedes_artifact_id=supersedes_artifact_id,
         metadata=dict(metadata or {}),
@@ -513,6 +532,9 @@ def get_next_research_decision(
 def _validate_references(store: ResearchArtifactStore, decision: NextResearchDecision) -> None:
     """Resolve every exact ref and reject missing or incompatible evidence."""
     source = _resolve_reference(store, decision.source_run_ref)
+    _match_ref_metadata(decision.source_run_ref, source)
+    if decision.blocked_evidence is not None:
+        validate_blocked_evidence(decision, store.load_artifact_record)
     source_payload = dict(source.payload)
     run_id = str(source_payload.get("run_id") or source.artifact_id)
     if decision.source_run_ref.artifact_id != run_id and decision.source_run_ref.metadata.get("run_id") != run_id:
@@ -530,9 +552,11 @@ def _validate_references(store: ResearchArtifactStore, decision: NextResearchDec
         if decision.session_review is not None:
             _validate_session_review_record(decision.session_review, reference, record)
     if decision.next_experiment is not None:
-        _resolve_reference(store, decision.next_experiment.data_ref)
+        successor_data = _resolve_reference(store, decision.next_experiment.data_ref)
+        _match_ref_metadata(decision.next_experiment.data_ref, successor_data)
         for reference in decision.next_experiment.implementation_refs:
-            _resolve_reference(store, reference)
+            successor_implementation = _resolve_reference(store, reference)
+            _match_ref_metadata(reference, successor_implementation)
 
 
 def _validate_revision_lineage(store: ResearchArtifactStore, decision: NextResearchDecision) -> None:
@@ -708,6 +732,7 @@ def _expect_constant(payload: Mapping[str, Any], key: str, expected: str) -> Non
 
 
 __all__ = [
+    "BlockedEvidenceBasis",
     "BoundedNextExperiment",
     "NextDecisionOutcome",
     "NextResearchDecision",

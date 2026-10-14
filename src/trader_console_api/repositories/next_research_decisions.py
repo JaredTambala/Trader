@@ -10,7 +10,9 @@ from typing import Any
 import psycopg
 from psycopg.types.json import Jsonb
 
-from trader_research.foundation import json_payload_hash, research_artifact_uri
+from trader_research.foundation import ResearchArtifactRecord, json_payload_hash, research_artifact_uri
+from trader_research.governance.blocked_decisions import blocked_protocol_references, validate_blocked_evidence
+from trader_research.governance.orchestration.workflows import WorkflowOutcome
 from trader_research.governance import NextResearchDecision
 from trader_research.governance.handoffs import ArtifactReportRef
 
@@ -165,10 +167,49 @@ class NextResearchDecisionSession:
                     raise NextResearchDecisionEvidenceUnavailable(
                         f"session review evidence identity changed: {reference.artifact_id}"
                     )
+        if decision.blocked_evidence is not None:
+            await self._validate_blocked_evidence(decision)
         if decision.next_experiment is not None:
             await self._canonical(decision.next_experiment.data_ref)
             for reference in decision.next_experiment.implementation_refs:
                 await self._canonical(reference)
+
+    async def _validate_blocked_evidence(self, decision: NextResearchDecision) -> None:
+        """Resolve the protocol chain, then apply research-owned semantic rules."""
+        basis = decision.blocked_evidence
+        assert basis is not None
+        records: dict[tuple[str, str], ResearchArtifactRecord] = {}
+
+        async def load(reference: ArtifactReportRef) -> ResearchArtifactRecord:
+            row = await self._canonical(reference)
+            record = ResearchArtifactRecord(
+                artifact_type=str(row["artifact_type"]), artifact_id=str(row["artifact_id"]),
+                domain_owner=str(row["domain_owner"]), producer_tool=str(row["producer_tool"]),
+                payload=dict(row["payload"]), metadata=dict(row.get("metadata") or {}),
+                status=row.get("status"), source_hash=row.get("source_hash"),
+                requested_by=row.get("requested_by"), actor=row.get("actor"),
+            )
+            records[(record.artifact_type, record.artifact_id)] = record
+            return record
+
+        try:
+            terminal = await load(basis.outcome_ref)
+            outcome = WorkflowOutcome.from_dict(terminal.payload)
+            protocol = await load(outcome.protocol_ref)
+            references = (
+                outcome.objective_ref, *outcome.produced_artifact_refs,
+                *blocked_protocol_references(protocol.payload), decision.source_run_ref,
+                decision.data_ref, *decision.implementation_refs,
+            )
+            if basis.session_ref is not None:
+                references += (basis.session_ref,)
+            if decision.next_experiment is not None:
+                references += (decision.next_experiment.data_ref, *decision.next_experiment.implementation_refs)
+            for reference in references:
+                await load(reference)
+            validate_blocked_evidence(decision, lambda kind, identity: records[(kind, identity)])
+        except (ValueError, KeyError, TypeError) as exc:
+            raise NextResearchDecisionEvidenceUnavailable(str(exc)) from exc
 
     async def latest(self, decision_id: str) -> tuple[int, str] | None:
         """Return the latest revision and artifact identity for one stream."""
