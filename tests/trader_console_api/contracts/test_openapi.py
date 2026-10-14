@@ -51,6 +51,7 @@ def test_checked_schema_matches_registered_routes_and_response_models() -> None:
         "/api/experiments",
         "/api/experiments/{experiment_id}/runs",
         "/api/runs/{run_id}",
+        "/api/runs/{run_id}/decision-basis",
         "/api/runs/{run_id}/next-decisions",
         "/api/runs/{run_id}/next-decisions/{decision_id}",
         "/api/runs/{run_id}/risk-decisions",

@@ -327,6 +327,14 @@ from a fresh Python process. It rejects agent authority, missing rationale,
 unbounded successor scope, changed implementation hashes, and stale review
 revisions. Product Console graph integration and independent review remain open.
 
+The Console now resolves a persisted human decision basis through an authenticated read endpoint. It presents
+exact run, qualified Data, implementation, available session/review identity and canonical blocked-outcome references,
+then carries those same payload-pinned references into the human command. Absent scientific reviews remain explicitly
+unassessed with reject or bounded refine actions; missing or incompatible evidence exposes no actions. A stale
+submission requires an evidence refresh, and the human can reopen server-persisted decision receipts and history.
+The UI no longer asks users to reconstruct artifact IDs or source hashes. A missing canonical session or retained
+graph remains unavailable, and independent scientific-review qualification remains open.
+
 The functional-requirement audit sizes the remaining work relative to its boundary: FR-02 and FR-06 are medium Console
 evidence projections; FR-14 is medium once the evidence chain exists; FR-01, FR-03, FR-04, FR-05, FR-07, and FR-08 through
 FR-13 are large because they cross persistence, authority, Console, agent, runtime, or controlled-qualification seams.

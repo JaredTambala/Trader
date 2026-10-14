@@ -204,14 +204,25 @@ block from a broker rejection or an absent fill.
 
 ### Human next-decision record
 
-The API records a human research decision against exact qualified inputs and either genuine review artifacts or
-a canonical blocked terminal outcome. The existing review workspace uses a complete review artifact with a current
-retained session/graph/node revision. `POST /api/runs/{run_id}/next-decisions` accepts a strict `NextResearchDecisionRequest`
-with `reject`, `refine`, or `continue`, rationale, exact canonical references for the run/Data/implementation/review
-chain, assumptions, and limitations. `refine` and `continue` additionally require a bounded successor experiment
-with exact Data and implementation references, an evaluation window, a maximum run count, and success criteria.
-The browser asks the human to pin the run, Data, and implementation source hashes; the API compares each supplied
-hash against the canonical artifact before accepting a session-linked decision.
+The review workspace first loads `GET /api/runs/{run_id}/decision-basis` with the authenticated human
+principal. This read resolves the canonical run, a uniquely linked workflow outcome and protocol, or genuine
+review artifacts explicitly linked to the run. It returns exact payload-pinned Data, implementation and available
+review references, assumptions, limitations and permitted outcomes. Missing evidence is `unavailable`;
+ambiguous, malformed or changed evidence is `incompatible`. Neither state exposes decision actions. The UI
+shows these identities and hashes without asking the human to reconstruct artifact IDs or owners.
+
+A canonical blocked outcome with no independent reviews remains `not_assessed`. Its complete blockers stay visible,
+and the UI permits only reject or bounded refine. An actual canonical session link is retained; an absent session
+or graph is displayed as unavailable. Existing scientific evidence, including negative results, retains its own
+claim scope and review identity. Execution success does not establish scientific acceptance.
+
+`POST /api/runs/{run_id}/next-decisions` accepts the displayed basis unchanged, a human rationale and limitations.
+Refine and continue additionally require a bounded successor with exact Data/implementation references, a forward
+evaluation window, a maximum run count and success criteria. Command validation rereads canonical evidence;
+a changed hash or failed authority blocks the command. The UI then disables submission until the human refreshes
+persisted evidence and reviews the durable history. Read resolution uses read-only transactions; command validation
+provides the final atomic evidence check. No projection table is added.
+
 For an agent-session review, the command may also carry `session_review` with the exact session ID/digest, retained
 graph digest, and named review-node revisions. Each named node must match one cited review artifact; those references
 and every cited run, Data, implementation, and review reference must pin a canonical payload or source hash. The

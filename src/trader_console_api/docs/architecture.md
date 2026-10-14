@@ -435,3 +435,19 @@ outcome, objective, protocol, Data/quality and implementation chain and applies 
 It never treats client-supplied hashes as proof: every payload is reloaded and compared. Missing reviews remain
 unassessed; optional sessions require explicit canonical linkage. No graph digest is invented for a blocked outcome
 without a retained graph. The genuine review-record path and its session/revision checks remain supported.
+
+### Persisted decision evidence handoff
+
+`routers.decision_basis` → `services.DecisionBasisService` → `repositories.DecisionBasisRepository`
+resolves human decision inputs through read-only transactions. The authenticated endpoint reads canonical research
+artifacts and follows exact outcome/protocol references. Multiple matching outcomes are incompatible; absent
+scientific reviews never become invented review records. Standalone genuine review chains require explicitly
+published run IDs on their canonical Data, implementation and review artifacts. Metadata is limited to identity,
+revision and hash fields before crossing the outward boundary.
+
+The service invokes the same canonical validator as the command boundary on a transient, unpersisted candidate.
+The response exposes an actionable basis only after validation. Command submission revalidates the displayed
+hashes and references atomically, so a concurrent change cannot authorize stale evidence. No browser-only decision
+or extra persistence projection is introduced. The UI renders canonical blockers, exact references, available
+session/graph identity, permitted outcomes and the server-persisted receipt/history. Missing session or graph links
+remain explicitly unavailable; workflow/requester labels are never substituted for retained identities.

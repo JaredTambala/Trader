@@ -567,6 +567,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{run_id}/decision-basis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Decision Basis
+         * @description Return verified references without writing a decision or launching execution.
+         */
+        get: operations["get_decision_basis_api_runs__run_id__decision_basis_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{run_id}/next-decisions": {
         parameters: {
             query?: never;
@@ -2011,6 +2031,53 @@ export interface components {
             provider: string;
             /** Source */
             source?: string | null;
+        };
+        /**
+         * DecisionBasisResponse
+         * @description Read-only evidence availability, identity and permitted human outcomes.
+         */
+        DecisionBasisResponse: {
+            evidence?: components["schemas"]["DecisionEvidenceBasis"] | null;
+            /**
+             * Limitations
+             * @default []
+             */
+            limitations: string[];
+            /**
+             * Permitted Outcomes
+             * @default []
+             */
+            permitted_outcomes: ("reject" | "refine" | "continue")[];
+            /** Reason */
+            reason: string;
+            /** Run Id */
+            run_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "unavailable" | "incompatible";
+        };
+        /**
+         * DecisionEvidenceBasis
+         * @description Canonical references copied unchanged into a human decision command.
+         */
+        DecisionEvidenceBasis: {
+            /** Assumptions */
+            assumptions?: {
+                [key: string]: unknown;
+            };
+            blocked_evidence?: components["schemas"]["BlockedEvidenceBasisContract"] | null;
+            data_ref: components["schemas"]["NextDecisionArtifactReference"];
+            /** Implementation Refs */
+            implementation_refs: components["schemas"]["NextDecisionArtifactReference"][];
+            /**
+             * Review Refs
+             * @default []
+             */
+            review_refs: components["schemas"]["NextDecisionArtifactReference"][];
+            session_review?: components["schemas"]["SessionReviewLinkContract"] | null;
+            source_run_ref: components["schemas"]["NextDecisionArtifactReference"];
         };
         /**
          * ExperimentRunSummary
@@ -5150,6 +5217,64 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    get_decision_basis_api_runs__run_id__decision_basis_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecisionBasisResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

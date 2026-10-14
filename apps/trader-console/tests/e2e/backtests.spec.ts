@@ -148,11 +148,31 @@ test("backtest review shows scoped metrics, curves, and execution evidence", asy
     risk_summary: { run_id: "run-1", composition_fingerprint: "risk-fingerprint", risk_evidence_status: "recorded", evaluated_count: 1, approved_count: 0, transformed_count: 0, rejected_count: 1, blocked_count: 1 },
     risk_decisions: [{ risk_decision_id: "riskdec-1", composition_fingerprint: "risk-fingerprint", run_id: "run-1", session_id: "session-1", cycle_id: "cycle-1", client_order_id: "order-1", decision_ts: run.end_ts, manager_id: "max_orders_per_run", manager_type: "trader_standard.risk.MaxOrdersPerRunRiskManager", manager_position: 0, outcome: "rejected", reason_code: "limit_exceeded", before_qty: 0.1, after_qty: null, before_order: { qty: 0.1 }, after_order: null }],
   };
+  const reference = (artifact_type: string, artifact_id: string, domain_owner: string) => ({
+    artifact_type, artifact_id, domain_owner, uri: `research://postgres/${artifact_type}/${artifact_id}`,
+    metadata: { source_hash: `hash-${artifact_id}`, payload_sha256: "c".repeat(64) },
+  });
+  const decisionBasis = {
+    run_id: "run-1", status: "available", reason: "Verified persisted evidence",
+    limitations: ["Single holdout window"], permitted_outcomes: ["reject", "refine", "continue"],
+    evidence: {
+      source_run_ref: reference("backtest_run", "run-1", "Experiments"),
+      data_ref: reference("dataset_manifest", "data-1", "Data"),
+      implementation_refs: [reference("implementation_version", "impl-1", "Experiments")],
+      review_refs: [reference("evaluation_report", "evaluation-1", "Review")],
+      assumptions: detail.assumptions, blocked_evidence: null,
+      session_review: { session_id: "session-review-1", session_digest: "a".repeat(64),
+        graph_digest: "b".repeat(64), review_node_keys: ["evaluation_report:evaluation-1:r1"] },
+    },
+  } satisfies components["schemas"]["DecisionBasisResponse"];
   let storedDecision: Record<string, unknown> | null = null;
   await page.route("**/api/experiments?**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [experiment], page: { limit: 100, offset: 0, total: 1, has_more: false } }) }));
   await page.route("**/api/experiments/exp-bollinger/runs**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [run], page: { limit: 100, offset: 0, total: 1, has_more: false } }) }));
   await page.route("**/api/runs/run-1**", (route) => {
     const pathname = new URL(route.request().url()).pathname;
+    if (pathname.endsWith("/decision-basis")) {
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(decisionBasis) });
+    }
     if (pathname.endsWith("/next-decisions")) {
       if (route.request().method() === "GET") {
         return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: storedDecision ? [storedDecision] : [], page: { limit: 20, offset: 0, total: storedDecision ? 1 : 0, has_more: false } }) });
@@ -202,11 +222,7 @@ test("backtest review shows scoped metrics, curves, and execution evidence", asy
   await expect(page.getByRole("heading", { name: "Composition and decisions" })).toBeVisible();
   await expect(page.getByText("Risk block recorded", { exact: true })).toBeVisible();
   await expect(page.getByText('{"limit":0}', { exact: true })).toBeVisible();
-  await page.getByRole("textbox", { name: "Qualified data artifact ID" }).fill("data-1");
-  await page.getByRole("textbox", { name: "Implementation artifact ID" }).fill("impl-1");
-  await page.getByRole("textbox", { name: "Run source hash" }).fill("hash-run-1");
-  await page.getByRole("textbox", { name: "Data source hash" }).fill("hash-data-1");
-  await page.getByRole("textbox", { name: "Implementation source hash" }).fill("hash-impl-1");
+  await expect(page.getByText("Verified persisted evidence", { exact: true })).toBeVisible();
   await page.getByRole("textbox", { name: "Decision rationale" }).fill("The reviewed result does not survive the stated limitations.");
   await page.getByRole("textbox", { name: "Decision limitations" }).fill("Single holdout window");
   await page.getByRole("button", { name: "Record decision" }).click();
