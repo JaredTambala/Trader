@@ -1,8 +1,13 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { test, expect } from "@playwright/test";
 
+test.skip(
+  process.env.UJ09_BROWSER_CAMPAIGN !== "1" && process.env.UJ09_REQUIRED !== "1",
+  "The isolated UJ-09 campaign owns this browser scenario.",
+);
+
 test("governed blocked evidence supports a durable human choice", async ({ page }) => {
-  // This spec is deliberately invoked only by the required isolated campaign.
+  // A selected or required campaign must fail when its fixture configuration is missing.
   expect(process.env.CONSOLE_TEST_STACK).toBe("1");
   const runId = process.env.UJ09_RUN_ID;
   const receiptPath = process.env.UJ09_BROWSER_RECEIPT;

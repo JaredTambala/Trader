@@ -66,7 +66,8 @@ def _browser(environment: dict[str, str], phase: str) -> None:
     subprocess.run(
         ["npm", "run", "test:e2e", "--", "tests/e2e/governed-review.spec.ts",
          "--output", f"test-results/governed-review-{phase}"],
-        cwd=REPO_ROOT / "apps/trader-console", env={**environment, "UJ09_BROWSER_PHASE": phase},
+        cwd=REPO_ROOT / "apps/trader-console",
+        env={**environment, "UJ09_BROWSER_CAMPAIGN": "1", "UJ09_BROWSER_PHASE": phase},
         check=True, timeout=180,
     )
 

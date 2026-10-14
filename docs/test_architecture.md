@@ -267,6 +267,8 @@ real MCP/worker producer and actual API/browser write, then reopens the same dec
 It never seeds independent scientific reports. `UJ09_REQUIRED=1` fails on missing configuration; required CI installs
 the pinned frontend toolchain and Chromium and retains the exact checkout/source digest, API-contract digest,
 canonical evidence and recovery verifier. Negative HTTP payloads are separate from the positive producer chain.
+The campaign selects its browser spec with `UJ09_BROWSER_CAMPAIGN=1`; ordinary Console scenarios skip that spec.
+`UJ09_REQUIRED=1` also selects it, so missing run IDs, receipt paths or a valid create/reopen phase fail rather than skip.
 
 With the pinned Node/npm toolchain, frontend dependencies and Chromium installed, configure every `UJ09_PG_HOST`,
 `UJ09_PG_PORT`, `UJ09_PG_DB`, `UJ09_PG_USER` and `UJ09_PG_PASSWORD` value explicitly before running:
