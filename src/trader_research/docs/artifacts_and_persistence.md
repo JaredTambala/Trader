@@ -113,3 +113,10 @@ to the immediately preceding artifact through `supersedes_artifact_id`. Existing
 replays return the original record. The Postgres projection `research_next_decisions` exposes query fields for the
 Console while the full payload in `research_artifacts` remains authoritative. The record is a research decision only:
 it does not approve deployment, paper trading, profitability, or broker mutation.
+
+A decision can alternatively contain `blocked_evidence` with an exact `outcome_ref`, complete structured `blockers`,
+optional explicitly linked `session_ref`, and `scientific_review_status: not_assessed`. In this case `review_refs` is
+empty and `session_review` is absent. Every cited input and nested protocol reference must pin `payload_sha256`;
+the resolver verifies canonical content, source run Data/strategy/risk lineage, and full blocker equality. The complete
+basis contributes to the immutable decision digest and survives exact replay and fresh-process recovery. Canonical
+protocol hashes retain source assumptions, while decision assumptions and rationale record the human interpretation.

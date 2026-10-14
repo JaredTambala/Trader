@@ -321,3 +321,12 @@ Research ML tests live under `tests/trader_research/ml/`. Deterministic deployme
 validation, and adapter parity form one offline lifecycle contract. Schema registration and typed deployment
 projections form a separate module with one marked guarded Postgres case. Their shared provider-neutral adapter and
 canonical upstream builders remain package-owned fixtures beside those tests.
+
+### Blocked terminal evidence at the human boundary
+
+`governance.blocked_decisions` owns the typed `BlockedEvidenceBasis` and pure canonical-chain validation. Console
+preloads records in its command transaction and calls the same validator as the research service. The basis is mutually
+exclusive with substantive review refs and `SessionReviewLink`; genuine review evidence remains a separate supported
+domain case. Optional session refs require an explicit canonical outcome metadata link and a valid immutable session
+digest. A blocked outcome with no retained graph has no invented graph digest; the genuine session-review case retains
+its existing graph identity contract. No research-to-agent dependency is introduced.

@@ -59,6 +59,35 @@ inside its immutable digest. A run-only human decision can still omit the
 session link. The linked graph must be verified by its trusted composition;
 research does not read the local agent qualification file.
 
+## Human next decision against blocked evidence
+
+Pass `blocked_evidence=BlockedEvidenceBasis(...)` and `review_refs=()` to
+`build_next_research_decision` when the exact canonical workflow outcome is blocked and has no scientific review refs.
+The basis fields are `outcome_ref`, complete structured `blockers`, optional explicitly linked `session_ref`, and
+`scientific_review_status="not_assessed"`. All run, Data, implementation, terminal and nested protocol refs require
+canonical `payload_sha256`. Obtain these by resolving persisted records; never invent a hash or substitute a latest
+artifact. Use the same human-only `create_next_research_decision` and exact `get_next_research_decision` services.
+Refine and continue require `BoundedNextExperiment` and retain the unresolved basis; neither starts an experiment.
+The evaluation window is prospective and may request future data. Recording it does not admit execution or load data;
+a separate execution admission must establish coverage and authority.
+
+The following serialization example is verified by the package documentation doctest check. Canonical resolution and
+negative cases are exercised in `tests/trader_research/governance/test_blocked_next_decisions.py`.
+
+<!-- verified: doctest -->
+```pycon
+>>> from trader_research.governance import BlockedEvidenceBasis, ResearchIssue
+>>> from trader_research.governance.handoffs import ArtifactReportRef
+>>> from trader_research.foundation import json_payload_hash
+>>> terminal_payload = {"status": "blocked", "blockers": ["review unavailable"]}
+>>> outcome_ref = ArtifactReportRef("outcome-1", "workflow_outcome", "Orchestration", "research://postgres/workflow_outcome/outcome-1", metadata={"payload_sha256": json_payload_hash(terminal_payload)})
+>>> basis = BlockedEvidenceBasis(outcome_ref, (ResearchIssue("review_unavailable", "Review unavailable"),))
+>>> BlockedEvidenceBasis.from_dict(basis.to_dict()) == basis
+True
+>>> basis.scientific_review_status
+'not_assessed'
+```
+
 ## Paper-candidate admission
 
 The governance facade provides a human-owned paper gate. Supply a complete

@@ -204,8 +204,9 @@ block from a broker rejection or an absent fill.
 
 ### Human next-decision record
 
-The review workspace records a human research decision only after the run exposes a qualified scope and at least one
-complete review artifact with a current retained session/graph/node revision. `POST /api/runs/{run_id}/next-decisions` accepts a strict `NextResearchDecisionRequest`
+The API records a human research decision against exact qualified inputs and either genuine review artifacts or
+a canonical blocked terminal outcome. The existing review workspace uses a complete review artifact with a current
+retained session/graph/node revision. `POST /api/runs/{run_id}/next-decisions` accepts a strict `NextResearchDecisionRequest`
 with `reject`, `refine`, or `continue`, rationale, exact canonical references for the run/Data/implementation/review
 chain, assumptions, and limitations. `refine` and `continue` additionally require a bounded successor experiment
 with exact Data and implementation references, an evaluation window, a maximum run count, and success criteria.
@@ -215,6 +216,12 @@ For an agent-session review, the command may also carry `session_review` with th
 graph digest, and named review-node revisions. Each named node must match one cited review artifact; those references
 and every cited run, Data, implementation, and review reference must pin a canonical payload or source hash. The
 response retains the link inside the immutable decision digest.
+
+For blocked terminal evidence, supply `blocked_evidence` containing `outcome_ref`, complete structured `blockers`,
+optional explicitly linked `session_ref`, and `scientific_review_status: not_assessed`. Use empty `review_refs` and omit
+`session_review`. Every cited reference must carry a canonical `payload_sha256`; the API validates the exact terminal,
+protocol, Data/quality, strategy and risk chain before accepting it. Altered blockers and valid but unrelated inputs
+fail closed. A bounded successor retains the unresolved basis and grants no execution or deployment authority.
 
 The request's `source_run_ref` must identify the route's run. The service resolves every reference from the research
 artifact store, compares pinned payload/source hashes, checks the published run scope, and rejects missing, stale,

@@ -1541,6 +1541,36 @@ export interface components {
             page: components["schemas"]["PageInfo"];
         };
         /**
+         * BlockedEvidenceBasisContract
+         * @description Terminal blocked evidence; scientific reviews remain unassessed.
+         */
+        BlockedEvidenceBasisContract: {
+            /** Blockers */
+            blockers: components["schemas"]["BlockedEvidenceIssueContract"][];
+            outcome_ref: components["schemas"]["NextDecisionArtifactReference"];
+            /**
+             * Scientific Review Status
+             * @default not_assessed
+             * @constant
+             */
+            scientific_review_status: "not_assessed";
+            session_ref?: components["schemas"]["NextDecisionArtifactReference"] | null;
+        };
+        /**
+         * BlockedEvidenceIssueContract
+         * @description Canonical unresolved blocker including its producer-owned details.
+         */
+        BlockedEvidenceIssueContract: {
+            /** Code */
+            code: string;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+            /** Message */
+            message: string;
+        };
+        /**
          * BoundedNextExperimentContract
          * @description Bounded successor experiment attached to a refine or continue decision.
          */
@@ -2380,6 +2410,7 @@ export interface components {
             assumptions: {
                 [key: string]: unknown;
             };
+            blocked_evidence?: components["schemas"]["BlockedEvidenceBasisContract"] | null;
             data_ref: components["schemas"]["NextDecisionArtifactReference"];
             /**
              * Decided At
@@ -2422,6 +2453,7 @@ export interface components {
             assumptions?: {
                 [key: string]: unknown;
             };
+            blocked_evidence?: components["schemas"]["BlockedEvidenceBasisContract"] | null;
             data_ref: components["schemas"]["NextDecisionArtifactReference"];
             /** Decision Id */
             decision_id: string;

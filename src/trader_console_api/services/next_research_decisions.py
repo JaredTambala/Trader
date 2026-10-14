@@ -7,6 +7,7 @@ from typing import Any
 
 from trader.runtime.operator_control import is_human_operator_principal
 from trader_research.governance import (
+    BlockedEvidenceBasis,
     BoundedNextExperiment,
     NextDecisionOutcome,
     SessionReviewLink,
@@ -100,27 +101,34 @@ class NextResearchDecisionService:
             )
         async def build(decided_at: str):
             """Build one domain candidate with a caller-selected timestamp."""
-            return build_next_research_decision(
-            decision_id=request.decision_id,
-            revision=request.revision,
-            outcome=NextDecisionOutcome(request.outcome),
-            rationale=request.rationale,
-            operator=principal.principal_id,
-            decided_at=decided_at,
-            source_run_ref=_artifact_ref(request.source_run_ref),
-            data_ref=_artifact_ref(request.data_ref),
-            implementation_refs=tuple(_artifact_ref(item) for item in request.implementation_refs),
-            assumptions=request.assumptions,
-            review_refs=tuple(_artifact_ref(item) for item in request.review_refs),
-            session_review=(
-                SessionReviewLink(**request.session_review.model_dump())
-                if request.session_review is not None else None
-            ),
-            limitations=request.limitations,
-            next_experiment=_experiment(request.next_experiment),
-            supersedes_artifact_id=request.supersedes_artifact_id,
-            metadata={"scope_id": self._repository.scope_id},
-            )
+            try:
+                return build_next_research_decision(
+                    decision_id=request.decision_id,
+                    revision=request.revision,
+                    outcome=NextDecisionOutcome(request.outcome),
+                    rationale=request.rationale,
+                    operator=principal.principal_id,
+                    decided_at=decided_at,
+                    source_run_ref=_artifact_ref(request.source_run_ref),
+                    data_ref=_artifact_ref(request.data_ref),
+                    implementation_refs=tuple(_artifact_ref(item) for item in request.implementation_refs),
+                    assumptions=request.assumptions,
+                    review_refs=tuple(_artifact_ref(item) for item in request.review_refs),
+                    session_review=(
+                        SessionReviewLink(**request.session_review.model_dump())
+                        if request.session_review is not None else None
+                    ),
+                    blocked_evidence=(
+                        BlockedEvidenceBasis.from_dict(request.blocked_evidence.model_dump())
+                        if request.blocked_evidence is not None else None
+                    ),
+                    limitations=request.limitations,
+                    next_experiment=_experiment(request.next_experiment),
+                    supersedes_artifact_id=request.supersedes_artifact_id,
+                    metadata={"scope_id": self._repository.scope_id},
+                )
+            except ValueError as exc:
+                raise NextResearchDecisionEvidenceUnavailable(str(exc)) from exc
         async with self._repository.session(write=True) as session:
             await session.require_storage()
             existing = await session.get(run_id, request.decision_id, request.revision)

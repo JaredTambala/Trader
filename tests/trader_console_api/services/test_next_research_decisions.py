@@ -179,3 +179,27 @@ def test_session_review_link_is_carried_into_the_canonical_decision() -> None:
     assert repository.session_value.created[0].session_review.review_node_keys == (
         "evaluation_report:review-1:r1",
     )
+
+
+def test_blocked_decision_service_retains_exact_basis_and_operator():
+    """Application normalization retains unavailable review evidence and the human."""
+    from tests.trader_research.governance.support.blocked_decisions import blocked_fixture
+
+    _, decision, _ = blocked_fixture()
+    payload = decision.to_dict()
+    request = NextResearchDecisionRequest.model_validate({key: value for key, value in payload.items() if key in NextResearchDecisionRequest.model_fields})
+    repository = _Repository()
+    result = asyncio.run(NextResearchDecisionService(repository).create("run-1", request, TraderPrincipal(principal_id="human:jared")))
+    assert result.operator == "human:jared"
+    assert result.review_refs == ()
+    assert result.blocked_evidence.model_dump(mode="json") == decision.blocked_evidence.to_dict()
+
+
+def test_incompatible_artifact_uri_is_an_actionable_evidence_error():
+    """A mismatched canonical ID/URI maps to evidence rejection before persistence."""
+    request = decision_request()
+    changed = request.model_copy(update={"implementation_refs": (request.implementation_refs[0].model_copy(update={"artifact_id": "different-version"}),)})
+    repository = _Repository()
+    with pytest.raises(NextResearchDecisionEvidenceUnavailable, match="URI"):
+        asyncio.run(NextResearchDecisionService(repository).create("run-1", changed, TraderPrincipal(principal_id="human:jared")))
+    assert repository.session_value.created is None

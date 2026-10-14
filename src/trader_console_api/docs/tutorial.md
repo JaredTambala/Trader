@@ -304,3 +304,9 @@ Stopping the process closes its one connection pool. Clear the local DSN from th
 ```bash
 unset TRADER_CONSOLE_DATABASE_URL
 ```
+
+A blocked experiment can also support a human next decision. An API caller supplies `blocked_evidence` with the exact
+canonical outcome and full structured blockers, leaves `review_refs` empty, and preserves `scientific_review_status` as
+`not_assessed`. Reject records a stopping choice; refine and continue additionally require the bounded successor
+contract. The API re-resolves the protocol and all input hashes before recording the immutable choice. This capability
+does not claim a successful scientific review or execute the successor.
