@@ -255,13 +255,14 @@ reject/refine/continue revisions with operator/time, exact run/Data/implementati
 limitations, and a bounded successor experiment for refine or continue. The Console API and backtest-review panel
 resolve those references again, reject missing/stale/cross-run evidence and agent identities, and reopen the latest
 revision after a fresh process. The record is a research choice only; it does not start execution, approve paper
-trading, or imply profitability. Integrated UJ-09 qualification and retained agent trajectory evidence remain open.
+trading, or imply profitability. Broader UJ-09 scientific, model and product graph qualification remain open.
 
 The human next-decision API also accepts a typed canonical blocked-evidence basis when scientific reviews are
 unavailable. It retains the terminal blockers and exact protocol/run/Data/implementation hashes, and permits human
 reject/refine/bounded continuation while leaving scientific review `not_assessed`. Domain/API contracts and isolated
-PostgreSQL fresh-process recovery cover this boundary; the integrated UJ-08 → UJ-09 browser handoff remains a separate
-qualification. Existing genuine-review decisions and session graph/revision links remain supported.
+PostgreSQL fresh-process recovery cover this boundary; the integrated blocked-outcome browser campaign described below
+qualifies the deterministic UJ-08 → UJ-09 handoff. Existing genuine-review decisions and session graph/revision links
+remain supported.
 
 GAP-03-04 now qualifies the successful Console execution-to-review journey against a fresh disposable PostgreSQL
 database. A separate worker reads the immutable definition, runs the maintained strategy through the canonical
@@ -334,6 +335,19 @@ unassessed with reject or bounded refine actions; missing or incompatible eviden
 submission requires an evidence refresh, and the human can reopen server-persisted decision receipts and history.
 The UI no longer asks users to reconstruct artifact IDs or source hashes. A missing canonical session or retained
 graph remains unavailable, and independent scientific-review qualification remains open.
+
+The blocked-outcome UJ-09 path now has an integrated deterministic campaign in
+`tests/cross_package/qualification/test_uj09_postgres_browser_campaign.py`. It executes the actual approved experiment
+through public MCP and a real worker in a dedicated PostgreSQL database, reads its canonical decision basis in
+Console, and records a human reject decision through Chromium and the actual API. The same campaign proves
+idempotent replay, an append-only bounded refine revision, rejected agent authority and evidence drift, then reopens
+the exact decisions and producer chain in fresh processes and a new browser session after API restart. The retained
+verifier identifies the commit, dirty source-tree digest, API contract digest, runtime versions and canonical evidence.
+No scientific review reports are seeded. Independent reviews remain unavailable, optional session lineage remains
+explicitly unavailable when the outcome has no canonical session link, and no graph is fabricated. The dedicated
+`uj09-qualification` CI job requires PostgreSQL and Chromium rather than silently skipping either. This campaign
+does not qualify deployment authentication, third-party models or independent scientific judgment, and does not by
+itself complete the broader UJ-09 feature.
 
 The functional-requirement audit sizes the remaining work relative to its boundary: FR-02 and FR-06 are medium Console
 evidence projections; FR-14 is medium once the evidence chain exists; FR-01, FR-03, FR-04, FR-05, FR-07, and FR-08 through

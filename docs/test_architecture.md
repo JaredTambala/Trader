@@ -257,5 +257,26 @@ orchestration lives under `tests/cross_package/workflows/`; TypeScript unit test
 live under `apps/trader-console/tests/`. See the [demo](../examples/console_demo/README.md) and
 [frontend](../apps/trader-console/README.md) for the executable checks and prerequisites.
 
+The UJ-09 execution-to-decision campaign in
+`tests/cross_package/qualification/test_uj09_postgres_browser_campaign.py` uses only its explicit `UJ09_PG_*`
+profile. That profile must identify a disposable test database and a role allowed to create databases. Each run
+creates a randomly named database, installs the producer's `public` tables and `console_read` views, and drops only
+that owned database afterwards. Database isolation is necessary because the Console producer contract explicitly
+references `public`; a search-path-only schema would not isolate the complete workflow. The campaign executes the
+real MCP/worker producer and actual API/browser write, then reopens the same decision revisions in new processes.
+It never seeds independent scientific reports. `UJ09_REQUIRED=1` fails on missing configuration; required CI installs
+the pinned frontend toolchain and Chromium and retains the exact checkout/source digest, API-contract digest,
+canonical evidence and recovery verifier. Negative HTTP payloads are separate from the positive producer chain.
+The campaign selects its browser spec with `UJ09_BROWSER_CAMPAIGN=1`; ordinary Console scenarios skip that spec.
+`UJ09_REQUIRED=1` also selects it, so missing run IDs, receipt paths or a valid create/reopen phase fail rather than skip.
+
+With the pinned Node/npm toolchain, frontend dependencies and Chromium installed, configure every `UJ09_PG_HOST`,
+`UJ09_PG_PORT`, `UJ09_PG_DB`, `UJ09_PG_USER` and `UJ09_PG_PASSWORD` value explicitly before running:
+
+<!-- verified: integration:local tests/cross_package/qualification/test_uj09_postgres_browser_campaign.py -->
+```bash
+UJ09_REQUIRED=1 uv run pytest tests/cross_package/qualification/test_uj09_postgres_browser_campaign.py -m postgres -q
+```
+
 This architecture governs ownership and verification structure. It does not change product behavior, public APIs, or
 the meaning of test assertions.
